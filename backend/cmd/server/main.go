@@ -6,6 +6,7 @@ import (
 
 	"github.com/Butterski/homelab-builder/backend/internal/config"
 	"github.com/Butterski/homelab-builder/backend/internal/handlers"
+	"github.com/Butterski/homelab-builder/backend/internal/middleware"
 	"github.com/Butterski/homelab-builder/backend/internal/services"
 	"github.com/Butterski/homelab-builder/backend/pkg/database"
 	"github.com/gin-gonic/gin"
@@ -57,15 +58,25 @@ func setupRouter(db *gorm.DB) *gin.Engine {
 
 	// API routes (require database)
 	if db != nil {
+		authService := services.NewAuthService(db)
 		serviceService := services.NewServiceService(db)
 		serviceHandler := handlers.NewServiceHandler(serviceService)
-
 		recommendationService := services.NewRecommendationService(db)
 		recommendationHandler := handlers.NewRecommendationHandler(recommendationService)
-
 		shoppingService := services.NewShoppingListService(db)
 		shoppingHandler := handlers.NewShoppingListHandler(shoppingService)
+		authHandler := handlers.NewAuthHandler(authService)
+		selectionService := services.NewSelectionService(db)
+		selectionHandler := handlers.NewSelectionHandler(selectionService)
 
+		// Auth routes (public)
+		auth := router.Group("/auth")
+		{
+			auth.POST("/google", authHandler.GoogleLogin)
+			auth.GET("/me", middleware.AuthMiddleware(authService), authHandler.GetCurrentUser)
+		}
+
+		// Public API routes
 		api := router.Group("/api")
 		{
 			api.GET("/services", serviceHandler.GetAll)
@@ -75,8 +86,16 @@ func setupRouter(db *gorm.DB) *gin.Engine {
 			api.DELETE("/services/:id", serviceHandler.Delete)
 
 			api.POST("/recommendations", recommendationHandler.Generate)
-
 			api.POST("/shopping-list", shoppingHandler.Generate)
+		}
+
+		// Protected API routes (require authentication)
+		protected := api.Group("")
+		protected.Use(middleware.AuthMiddleware(authService))
+		{
+			protected.GET("/selections", selectionHandler.GetSelections)
+			protected.POST("/selections", selectionHandler.AddSelection)
+			protected.DELETE("/selections/:id", selectionHandler.RemoveSelection)
 		}
 	}
 
