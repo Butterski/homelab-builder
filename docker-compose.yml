@@ -35,9 +35,21 @@ services:
       DB_PASSWORD: homelab_password
       DB_NAME: homelab_builder
       DB_SSLMODE: disable
+      JWT_SECRET: change-this-in-production
     depends_on:
       postgres:
         condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: homelab-builder-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
     restart: unless-stopped
 
 volumes:
