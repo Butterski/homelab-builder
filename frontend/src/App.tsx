@@ -5,6 +5,7 @@ import RecommendationsPage from './pages/RecommendationsPage';
 import ShoppingListPage from './pages/ShoppingListPage';
 import ChecklistPage from './pages/ChecklistPage';
 import AdminPage from './pages/AdminPage';
+import ServiceDetailPage from './pages/ServiceDetailPage';
 import Navbar from './components/Navbar';
 import './App.css';
 
@@ -17,6 +18,7 @@ function App() {
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/services" element={<ServicesPage />} />
+            <Route path="/services/:id" element={<ServiceDetailPage />} />
             <Route path="/recommendations" element={<RecommendationsPage />} />
             <Route path="/shopping-list" element={<ShoppingListPage />} />
             <Route path="/checklist" element={<ChecklistPage />} />
