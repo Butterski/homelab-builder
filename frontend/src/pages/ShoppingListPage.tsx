@@ -1,6 +1,9 @@
+import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import type { Service, Spec, ShoppingListItem as ShoppingItemType } from '../types';
 import './ShoppingListPage.css';
+
+type Locale = 'pl' | 'int';
 
 const CATEGORY_ORDER = ['cpu', 'ram', 'storage', 'case', 'network', 'accessories'];
 const CATEGORY_LABELS: Record<string, string> = {
@@ -16,6 +19,11 @@ function ShoppingListPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const state = location.state as { spec?: Spec; tier?: string; services?: Service[] } | undefined;
+  
+  // Detect locale (default to PL if user language starts with 'pl', else 'int')
+  const [locale, setLocale] = useState<Locale>(() => {
+    return navigator.language.startsWith('pl') ? 'pl' : 'int';
+  });
 
   if (!state?.spec) {
     return (
@@ -29,7 +37,7 @@ function ShoppingListPage() {
   }
 
   const spec = state.spec;
-  const items = generateLocalItems(spec);
+  const items = generateLocalItems(spec, locale);
 
   const grouped = CATEGORY_ORDER.reduce<Record<string, typeof items>>((acc, cat) => {
     const catItems = items.filter((i) => i.category === cat);
@@ -38,15 +46,34 @@ function ShoppingListPage() {
   }, {});
 
   const totalCost = items.reduce((sum, item) => sum + item.estimated_price, 0);
+  const currency = locale === 'pl' ? 'PLN' : 'USD'; // Simplified conversion display
 
   return (
     <div className="shopping-page">
       <div className="page-header">
         <h1>Shopping List</h1>
-        <p>
-          {state.tier?.charAt(0).toUpperCase()}{state.tier?.slice(1)} tier —
-          Estimated total: <strong>{totalCost} PLN</strong>
-        </p>
+        <div className="header-meta">
+          <p>
+            {state.tier?.charAt(0).toUpperCase()}{state.tier?.slice(1)} tier —
+            Estimated total: <strong>{totalCost} {currency}</strong>
+          </p>
+          <div className="locale-toggle">
+            <button 
+              className={locale === 'pl' ? 'active' : ''} 
+              onClick={() => setLocale('pl')}
+              title="Polish Stores (Amazon.pl, Allegro, x-kom)"
+            >
+              🇵🇱 PL
+            </button>
+            <button 
+              className={locale === 'int' ? 'active' : ''} 
+              onClick={() => setLocale('int')}
+              title="International Stores (Amazon.com, eBay)"
+            >
+              🌍 Int
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="shopping-groups">
@@ -62,7 +89,7 @@ function ShoppingListPage() {
                       <span className="item-badge optional">Optional</span>
                     )}
                   </div>
-                  <div className="item-price">{item.estimated_price} PLN</div>
+                  <div className="item-price">{item.estimated_price} {currency}</div>
                   <div className="item-links">
                     {item.purchase_links.map((link, i) => (
                       <a
@@ -86,15 +113,15 @@ function ShoppingListPage() {
       <div className="shopping-summary">
         <div className="summary-row">
           <span>Essential items</span>
-          <span>{items.filter(i => i.priority === 'essential').reduce((s, i) => s + i.estimated_price, 0)} PLN</span>
+          <span>{items.filter(i => i.priority === 'essential').reduce((s, i) => s + i.estimated_price, 0)} {currency}</span>
         </div>
         <div className="summary-row">
           <span>Optional items</span>
-          <span>{items.filter(i => i.priority === 'optional').reduce((s, i) => s + i.estimated_price, 0)} PLN</span>
+          <span>{items.filter(i => i.priority === 'optional').reduce((s, i) => s + i.estimated_price, 0)} {currency}</span>
         </div>
         <div className="summary-row total">
           <span>Total Estimated Cost</span>
-          <span>{totalCost} PLN</span>
+          <span>{totalCost} {currency}</span>
         </div>
       </div>
 
@@ -121,20 +148,49 @@ function ShoppingListPage() {
 }
 
 // Generate items client-side from spec (avoids requiring a saved recommendation in DB)
-function generateLocalItems(spec: Spec): (ShoppingItemType & { purchase_links: { store: string; url: string }[] })[] {
+function generateLocalItems(spec: Spec, locale: Locale): (ShoppingItemType & { purchase_links: { store: string; url: string }[] })[] {
   const items: (ShoppingItemType & { purchase_links: { store: string; url: string }[] })[] = [];
+  
+  // Approximate conversion rate: 1 USD = 4 PLN
+  const toCurrency = (pln: number) => locale === 'pl' ? pln : Math.round(pln / 4);
+
+  // Helper to get links based on locale
+  const getLinks = (query: string, category: string) => { // eslint-disable-line @typescript-eslint/no-unused-vars
+    const encoded = encodeURIComponent(query);
+    if (locale === 'pl') {
+      const links = [
+        { store: 'Amazon.pl', url: `https://www.amazon.pl/s?k=${encoded}` },
+        { store: 'Allegro', url: `https://allegro.pl/listing?string=${encoded}` },
+        { store: 'x-kom', url: `https://www.x-kom.pl/szukaj?q=${encoded}` },
+      ];
+      // Add OLX/Vinted for used parts (CPU, RAM, Case)
+      if (['cpu', 'ram', 'case'].includes(category)) {
+        links.push({ store: 'OLX', url: `https://www.olx.pl/elektronika/komputery/q-${encoded.replace(/%20/g, '-')}/` });
+        links.push({ store: 'Vinted', url: `https://www.vinted.pl/catalog?search_text=${encoded}` });
+      }
+      return links;
+    } else {
+      const links = [
+        { store: 'Amazon.com', url: `https://www.amazon.com/s?k=${encoded}` },
+        { store: 'eBay', url: `https://www.ebay.com/sch/i.html?_nkw=${encoded}` },
+      ];
+      // Vinted is international but domain changes. Keeping generic or UK for now? 
+      // User said "vinted is international so we can keep this", but usually Vinted is region-locked. 
+      // I'll add Vinted.com (redirects usually) or generic.
+      if (['cpu', 'ram', 'case'].includes(category)) {
+         links.push({ store: 'Vinted', url: `https://www.vinted.com/catalog?search_text=${encoded}` });
+      }
+      return links;
+    }
+  };
 
   // CPU
   items.push({
     name: spec.cpu_suggestion || 'CPU (see recommendation)',
     category: 'cpu',
-    estimated_price: estimateCPUPrice(spec.total_cpu_cores),
+    estimated_price: toCurrency(estimateCPUPrice(spec.total_cpu_cores)),
     priority: 'essential',
-    purchase_links: [
-      { store: 'Amazon', url: `https://www.amazon.pl/s?k=${encodeURIComponent(spec.cpu_suggestion)}` },
-      { store: 'Allegro', url: `https://allegro.pl/listing?string=${encodeURIComponent(spec.cpu_suggestion)}` },
-      { store: 'x-kom', url: `https://www.x-kom.pl/szukaj?q=${encodeURIComponent(spec.cpu_suggestion)}` },
-    ],
+    purchase_links: getLinks(spec.cpu_suggestion, 'cpu'),
   });
 
   // RAM
@@ -142,12 +198,9 @@ function generateLocalItems(spec: Spec): (ShoppingItemType & { purchase_links: {
   items.push({
     name: `${ramGB} GB DDR4 RAM`,
     category: 'ram',
-    estimated_price: ramGB * 80,
+    estimated_price: toCurrency(ramGB * 80),
     priority: 'essential',
-    purchase_links: [
-      { store: 'Amazon', url: `https://www.amazon.pl/s?k=${ramGB}GB+DDR4+RAM` },
-      { store: 'Allegro', url: `https://allegro.pl/listing?string=${ramGB}GB+DDR4` },
-    ],
+    purchase_links: getLinks(`${ramGB}GB DDR4 RAM`, 'ram'),
   });
 
   // Storage
@@ -155,48 +208,36 @@ function generateLocalItems(spec: Spec): (ShoppingItemType & { purchase_links: {
   items.push({
     name: `${storageGB} GB NVMe SSD`,
     category: 'storage',
-    estimated_price: Math.round(storageGB * 0.6),
+    estimated_price: toCurrency(Math.round(storageGB * 0.6)),
     priority: 'essential',
-    purchase_links: [
-      { store: 'Amazon', url: `https://www.amazon.pl/s?k=${storageGB}GB+NVMe+SSD` },
-      { store: 'Allegro', url: `https://allegro.pl/listing?string=${storageGB}GB+NVMe+SSD` },
-    ],
+    purchase_links: getLinks(`${storageGB}GB NVMe SSD`, 'storage'),
   });
 
   // Case
   items.push({
     name: spec.total_cpu_cores <= 4 ? 'Mini PC Case (compact)' : 'Micro-ATX Case + 450W PSU',
     category: 'case',
-    estimated_price: spec.total_cpu_cores <= 4 ? 200 : 350,
+    estimated_price: toCurrency(spec.total_cpu_cores <= 4 ? 200 : 350),
     priority: 'essential',
-    purchase_links: [
-      { store: 'Amazon', url: 'https://www.amazon.pl/s?k=obudowa+mini+ITX' },
-      { store: 'Allegro', url: 'https://allegro.pl/listing?string=obudowa+mini+ITX' },
-    ],
+    purchase_links: getLinks(spec.total_cpu_cores <= 4 ? 'mini ITX case' : 'micro ATX case PSU', 'case'),
   });
 
   // Network cable
   items.push({
     name: 'Ethernet Cable CAT6 (2m)',
     category: 'network',
-    estimated_price: 20,
+    estimated_price: toCurrency(20),
     priority: 'essential',
-    purchase_links: [
-      { store: 'Amazon', url: 'https://www.amazon.pl/s?k=kabel+ethernet+cat6' },
-      { store: 'Allegro', url: 'https://allegro.pl/listing?string=kabel+ethernet+cat6+2m' },
-    ],
+    purchase_links: getLinks('ethernet cable cat6', 'network'),
   });
 
   // USB for OS
   items.push({
     name: 'USB Flash Drive 16GB (for OS installation)',
     category: 'accessories',
-    estimated_price: 25,
+    estimated_price: toCurrency(25),
     priority: 'optional',
-    purchase_links: [
-      { store: 'Amazon', url: 'https://www.amazon.pl/s?k=pendrive+16GB' },
-      { store: 'Allegro', url: 'https://allegro.pl/listing?string=pendrive+16GB' },
-    ],
+    purchase_links: getLinks('usb flash drive 16GB', 'accessories'),
   });
 
   return items;

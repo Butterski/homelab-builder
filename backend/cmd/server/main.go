@@ -56,6 +56,12 @@ func setupRouter(db *gorm.DB) *gin.Engine {
 	healthHandler := handlers.NewHealthHandler()
 	router.GET("/health", healthHandler.HealthCheck)
 
+	// Security headers
+	router.Use(middleware.SecurityHeaders())
+
+	// Rate limiter
+	rateLimiter := middleware.NewRateLimiter()
+
 	// API routes (require database)
 	if db != nil {
 		authService := services.NewAuthService(db)
@@ -65,7 +71,7 @@ func setupRouter(db *gorm.DB) *gin.Engine {
 		recommendationHandler := handlers.NewRecommendationHandler(recommendationService)
 		shoppingService := services.NewShoppingListService(db)
 		shoppingHandler := handlers.NewShoppingListHandler(shoppingService)
-		authHandler := handlers.NewAuthHandler(authService)
+		authHandler := handlers.NewAuthHandler(authService, rateLimiter)
 		selectionService := services.NewSelectionService(db)
 		selectionHandler := handlers.NewSelectionHandler(selectionService)
 		adminHandler := handlers.NewAdminHandler(db, serviceService)
@@ -74,7 +80,8 @@ func setupRouter(db *gorm.DB) *gin.Engine {
 		// Auth routes (public)
 		auth := router.Group("/auth")
 		{
-			auth.POST("/google", authHandler.GoogleLogin)
+			// Apply rate limiting to login
+			auth.POST("/google", middleware.RateLimitMiddleware(rateLimiter), authHandler.GoogleLogin)
 			auth.GET("/me", middleware.AuthMiddleware(authService), authHandler.GetCurrentUser)
 		}
 
@@ -102,7 +109,8 @@ func setupRouter(db *gorm.DB) *gin.Engine {
 
 		// Admin routes (require authentication + admin role)
 		admin := router.Group("/admin")
-		admin.Use(middleware.AuthMiddleware(authService))
+		// Use AuthMiddlewareWithUser to load the full User model so is_admin check works
+		admin.Use(middleware.AuthMiddlewareWithUser(authService, db))
 		admin.Use(middleware.AdminRequired())
 		{
 			admin.GET("/dashboard", adminHandler.Dashboard)

@@ -3,32 +3,68 @@ package handlers
 import (
 	"net/http"
 
+	"github.com/Butterski/homelab-builder/backend/internal/middleware"
 	"github.com/Butterski/homelab-builder/backend/internal/services"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
 type AuthHandler struct {
-	service *services.AuthService
+	service     *services.AuthService
+	rateLimiter *middleware.RateLimiter
 }
 
-func NewAuthHandler(service *services.AuthService) *AuthHandler {
-	return &AuthHandler{service: service}
+func NewAuthHandler(service *services.AuthService, rateLimiter *middleware.RateLimiter) *AuthHandler {
+	return &AuthHandler{
+		service:     service,
+		rateLimiter: rateLimiter,
+	}
 }
 
 func (h *AuthHandler) GoogleLogin(c *gin.Context) {
+	ip := c.ClientIP()
+
+	// Check if IP is locked out — return same error as invalid creds
+	if h.rateLimiter.IsBlocked(ip) {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "Invalid credentials",
+			"code":  "invalid_credentials",
+		})
+		return
+	}
+
 	var input services.GoogleLoginInput
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		// Record as failed attempt (malformed request = suspicious)
+		h.rateLimiter.RecordFailure(ip)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid credentials",
+			"code":  "invalid_credentials",
+		})
 		return
 	}
 
 	result, err := h.service.GoogleLogin(input)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Authentication failed"})
+		// Record failure
+		locked := h.rateLimiter.RecordFailure(ip)
+		if locked {
+			// Just locked — return same generic error
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error": "Invalid credentials",
+				"code":  "invalid_credentials",
+			})
+			return
+		}
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "Invalid credentials",
+			"code":  "invalid_credentials",
+		})
 		return
 	}
 
+	// Success — clear attempt counter
+	h.rateLimiter.ClearAttempts(ip)
 	c.JSON(http.StatusOK, gin.H{"data": result})
 }
 
