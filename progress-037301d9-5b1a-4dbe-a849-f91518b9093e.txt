@@ -1,0 +1,19 @@
+# Progress Log
+Run: 037301d9-5b1a-4dbe-a849-f91518b9093e
+Task: Zbuduj MVP dla Homelab Builder - aplikacji do konfigurowania sprzętu pod usługi homelabowe
+Started: 2026-02-17
+
+## Codebase Patterns
+- Project uses React + Vite frontend, Go + Gin backend, PostgreSQL database
+- Docker Compose for local development with PostgreSQL 15
+- Python tests for configuration validation
+
+---
+## 2026-02-17 17:42 - US-001: Set up project structure and Docker Compose
+- Created directory structure: backend/{cmd,internal,pkg}, frontend/{src,public}
+- Added docker-compose.yml with PostgreSQL 15 and healthcheck (pg_isready)
+- Added Makefile with common commands (up, down, test, build, clean)
+- Added tests: test_docker_config.py, test_directory_structure.py
+- Committed: 57d9a378
+**Learnings:** Docker not available in this environment, validated YAML syntax using Python. Tests run via Python scripts.
+---
