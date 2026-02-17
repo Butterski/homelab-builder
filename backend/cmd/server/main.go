@@ -60,6 +60,9 @@ func setupRouter(db *gorm.DB) *gin.Engine {
 		serviceService := services.NewServiceService(db)
 		serviceHandler := handlers.NewServiceHandler(serviceService)
 
+		recommendationService := services.NewRecommendationService(db)
+		recommendationHandler := handlers.NewRecommendationHandler(recommendationService)
+
 		api := router.Group("/api")
 		{
 			api.GET("/services", serviceHandler.GetAll)
@@ -67,6 +70,8 @@ func setupRouter(db *gorm.DB) *gin.Engine {
 			api.POST("/services", serviceHandler.Create)
 			api.PUT("/services/:id", serviceHandler.Update)
 			api.DELETE("/services/:id", serviceHandler.Delete)
+
+			api.POST("/recommendations", recommendationHandler.Generate)
 		}
 	}
 
