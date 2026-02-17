@@ -1,0 +1,26 @@
+.services-page {
+  padding: 1rem 0;
+}
+
+.page-header {
+  margin-bottom: 2rem;
+}
+
+.page-header h1 {
+  font-size: 2rem;
+  font-weight: 800;
+  margin-bottom: 0.5rem;
+}
+
+.page-header p {
+  color: var(--color-text-secondary);
+}
+
+.services-placeholder {
+  background: var(--color-bg-card);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius);
+  padding: 3rem;
+  text-align: center;
+  color: var(--color-text-secondary);
+}
