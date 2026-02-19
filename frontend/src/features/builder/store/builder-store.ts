@@ -33,6 +33,7 @@ interface BuilderState {
     edges: Edge[]
     onNodesChange: OnNodesChange
     onEdgesChange: OnEdgesChange
+    updateEdge: (id: string, updates: Partial<Edge>) => void
     onConnect: OnConnect
 
     // Selection
@@ -119,16 +120,20 @@ export const useBuilderStore = create<BuilderState>()(
             onEdgesChange: (changes) => {
                 set({ edges: applyEdgeChanges(changes, get().edges) });
             },
+            updateEdge: (id, updates) => {
+                set((state) => ({
+                    edges: state.edges.map(e => e.id === id ? { ...e, ...updates } : e)
+                }))
+            },
             onConnect: (connection: Connection) => {
                 const state = get()
-                const newEdges = addEdge(connection, state.edges)
+                // Default new edges to custom type
+                const newEdges = addEdge({ ...connection, type: 'custom' }, state.edges)
                 set({ edges: newEdges })
 
                 // Trigger graph-aware IP recalculation whenever a new edge is drawn
                 setTimeout(() => get().reassignAllIPs(), 0)
             },
-
-
 
             selectNode: (nodeId) => set({ selectedNodeId: nodeId }),
 

@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import { Card } from '../../../components/ui/card'
 import { cn } from '../../../lib/utils'
-import type { HardwareType, VirtualMachine, HardwareComponent } from '../../../types'
+import type { HardwareType, VirtualMachine, HardwareComponent, HardwareSpec } from '../../../types'
 
 type HardwareNodeData = {
     label: string
@@ -15,7 +15,7 @@ type HardwareNodeData = {
     vms?: VirtualMachine[]
     internal_components?: HardwareComponent[]
     status?: 'online' | 'offline' | 'warning'
-    details?: { model?: string; cpu?: string; ram?: string; storage?: string }
+    details?: HardwareSpec
 }
 
 // ─── Per-type icon + color ─────────────────────────────────────────────────────
@@ -121,20 +121,23 @@ export const HardwareNode = memo(({ data, selected }: NodeProps) => {
           })()
         : null
 
+    // Calculate dynamic width for high-port-count switches
+    const numPorts = (nodeData.type === 'switch' || nodeData.type === 'router') 
+        ? (Number(nodeData.details?.ports) || 4) 
+        : 0;
+    const dynamicMinWidth = numPorts * 16; // 16px per port
+
     return (
         <div className="relative group">
-            <Handle
-                type="target"
-                position={Position.Top}
-                className="!bg-muted-foreground w-3 h-3 !border-2 !border-background"
-            />
-
-            <Card className={cn(
-                'transition-all duration-200 border-2 overflow-hidden shadow-sm',
-                (hasVMs || hasComponents) ? 'w-56' : 'w-48',
-                cfg.border, cfg.bg,
-                selected ? 'ring-2 ring-primary shadow-lg scale-105' : 'hover:border-primary/50'
-            )}>
+            <Card 
+                className={cn(
+                    'transition-all duration-200 border-2 overflow-hidden shadow-sm',
+                    (hasVMs || hasComponents) ? 'w-56' : 'w-48',
+                    cfg.border, cfg.bg,
+                    selected ? 'ring-2 ring-primary shadow-lg scale-105' : 'hover:border-primary/50'
+                )}
+                style={dynamicMinWidth > 192 ? { minWidth: `${dynamicMinWidth}px` } : undefined}
+            >
                 {/* Header */}
                 <div className={cn(
                     'px-3 py-2 flex items-center gap-2 border-b bg-background/50 backdrop-blur-sm',
@@ -185,7 +188,7 @@ export const HardwareNode = memo(({ data, selected }: NodeProps) => {
                         {(nodeData.details?.cpu || nodeData.details?.ram || nodeData.details?.storage) && (
                             <div className="flex flex-wrap gap-1 pt-0.5">
                                 {nodeData.details.cpu && (
-                                    <span className="text-[9px] bg-muted/60 rounded px-1 py-0.5 truncate max-w-full" title={nodeData.details.cpu}>{nodeData.details.cpu}</span>
+                                    <span className="text-[9px] bg-muted/60 rounded px-1 py-0.5 truncate max-w-full" title={nodeData.details.cpu.toString()}>{nodeData.details.cpu}</span>
                                 )}
                                 {nodeData.details.ram && (
                                     <span className="text-[9px] bg-muted/60 rounded px-1 py-0.5">{nodeData.details.ram} {nodeData.type === 'gpu' ? 'VRAM' : ''}</span>
@@ -233,11 +236,43 @@ export const HardwareNode = memo(({ data, selected }: NodeProps) => {
                 )}
             </Card>
 
+            {/* Target Port (Top, for incoming cables) */}
             <Handle
-                type="source"
-                position={Position.Bottom}
-                className="!bg-muted-foreground w-3 h-3 !border-2 !border-background"
+                type="target"
+                position={Position.Top}
+                id="target-0"
+                className="!bg-muted-foreground w-3 h-1.5 !border !border-background !rounded-sm hover:!bg-primary hover:scale-125 transition-all"
             />
+
+            {/* Source Ports (Bottom, for outgoing cables) */}
+            {(() => {
+                if (nodeData.type === 'switch' || nodeData.type === 'router') {
+                    const numPorts = Number(nodeData.details?.ports) || 4;
+                    const portSpacing = 100 / (numPorts + 1);
+                    return Array.from({ length: numPorts }).map((_, i) => (
+                        <Handle
+                            key={`port-${i}`}
+                            id={`eth${i}`}
+                            type="source"
+                            position={Position.Bottom}
+                            style={{ left: `${portSpacing * (i + 1)}%` }}
+                            className="!bg-muted-foreground w-2 h-2 !border !border-background !rounded-sm hover:!bg-primary hover:scale-125 transition-all"
+                            title={`eth${i}`}
+                        />
+                    ));
+                }
+                
+                // 1 Port for all other components (servers, PCs, UPS, HBA, GPU)
+                return (
+                    <Handle
+                        id="eth0"
+                        type="source"
+                        position={Position.Bottom}
+                        className="!bg-muted-foreground w-3 h-3 !border-2 !border-background !rounded-sm hover:!bg-primary hover:scale-125 transition-all"
+                        title="eth0"
+                    />
+                );
+            })()}
         </div>
     )
 })

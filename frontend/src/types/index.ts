@@ -107,6 +107,7 @@ export interface HardwareSpec {
     cpu_cores?: number
     ram?: string | number
     storage?: string | number
+    ports?: number | string
     price_est?: number
     currency?: string
     url?: string

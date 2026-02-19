@@ -22,6 +22,7 @@ export function NodePropertiesPanel() {
     const [cpu, setCpu] = useState("")
     const [ram, setRam] = useState("")
     const [storage, setStorage] = useState("")
+    const [ports, setPorts] = useState("")
     const [errors, setErrors] = useState<{ip?: string, mask?: string, gateway?: string}>({})
 
     const selectedNode = hardwareNodes.find(n => n.id === selectedNodeId)
@@ -38,6 +39,7 @@ export function NodePropertiesPanel() {
             if (cpu !== (selectedNode.details?.cpu?.toString() || "")) setCpu(selectedNode.details?.cpu?.toString() || "")
             if (ram !== (selectedNode.details?.ram?.toString() || "")) setRam(selectedNode.details?.ram?.toString() || "")
             if (storage !== (selectedNode.details?.storage?.toString() || "")) setStorage(selectedNode.details?.storage?.toString() || "")
+            if (ports !== (selectedNode.details?.ports?.toString() || "")) setPorts(selectedNode.details?.ports?.toString() || "")
             
             setErrors({})
         }
@@ -54,6 +56,7 @@ export function NodePropertiesPanel() {
                 const cpuVal = cpu ? Number(cpu) : undefined
                 const ramVal = ram ? Number(ram) : undefined
                 const storageVal = storage ? Number(storage) : undefined
+                const portsVal = ports ? Number(ports) : undefined
 
                 updateHardware(selectedNode.id, { 
                     name, 
@@ -65,14 +68,15 @@ export function NodePropertiesPanel() {
                         model, 
                         cpu: cpuVal, 
                         ram: ramVal, 
-                        storage: storageVal 
+                        storage: storageVal,
+                        ports: portsVal
                     }
                 })
             }
         }, 500) // 500ms debounce
 
         return () => clearTimeout(timer)
-    }, [name, ip, mask, gateway, model, cpu, ram, storage])
+    }, [name, ip, mask, gateway, model, cpu, ram, storage, ports])
 
     if (!selectedNode) return null
 
@@ -190,8 +194,23 @@ export function NodePropertiesPanel() {
                     </>
                 )}
 
-                {/* Hardware Specs (Model, CPU, RAM, Storage) */}
+                {/* Hardware Specs (Model, CPU, RAM, Storage, Ports) */}
                 <div className="space-y-3 pt-2 border-t">
+                    {(selectedNode.type === 'switch' || isRouter) && (
+                        <div className="space-y-1">
+                            <Label htmlFor="ports" className="text-xs text-muted-foreground">Number of Ports</Label>
+                            <Input
+                                id="ports"
+                                type="number"
+                                min={1}
+                                max={48}
+                                value={ports}
+                                onChange={(e) => setPorts(e.target.value)}
+                                className="h-8 text-xs"
+                                placeholder="e.g. 4, 8, 16, 24"
+                            />
+                        </div>
+                    )}
                      <div className="space-y-1">
                         <Label htmlFor="model" className="text-xs text-muted-foreground">Model</Label>
                         <Input

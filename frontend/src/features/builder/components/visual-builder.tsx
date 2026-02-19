@@ -8,6 +8,7 @@ import {
     type NodeTypes,
     ReactFlowProvider,
     Panel,
+    ConnectionMode,
 } from '@xyflow/react';
 import { toast } from "sonner";
 import '@xyflow/react/dist/style.css';
@@ -88,7 +89,6 @@ function Flow() {
 
                 // MERGE Relational Data (Source of Truth for IPs and Backend State)
                 if (build.nodes && build.nodes.length > 0) {
-                    // console.log("Merging relational nodes into state", build.nodes);
                     data.hardwareNodes = build.nodes.map((n: any) => ({
                         id: n.id,
                         type: n.type,
@@ -108,21 +108,11 @@ function Flow() {
                             status: vm.status
                         })) || []
                     }));
-
-                    // Reconstruct ReactFlow nodes from hardwareNodes to ensure visual sync?
-                    // actually loadBuild does this mapping from hardwareNodes -> nodes.
                 }
 
-                if (build.edges && build.edges.length > 0) {
-                     data.edges = build.edges.map((e: any) => ({
-                         id: e.id,
-                         source: e.source_node_id,
-                         target: e.target_node_id,
-                         type: 'custom', 
-                         animated: true,
-                         style: { stroke: '#f97316', strokeWidth: 2 }
-                     }));
-                }
+                // Removed the code that overwrites data.edges with build.edges. 
+                // data.edges from JSON already contains the correct handles and custom properties.
+                // We trust the frontend blob as the source of truth for visual React Flow structure!
 
                 loadBuild(build.id, build.name, data);
             }).catch(err => {
@@ -186,6 +176,8 @@ function Flow() {
         });
     };
 
+    const { getEdges, deleteElements } = useReactFlow();
+
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             const tag = (e.target as HTMLElement).tagName
@@ -197,10 +189,19 @@ function Flow() {
                 return;
             }
 
-            if ((e.key === 'Delete' || e.key === 'Backspace') && selectedNodeId) {
-                e.preventDefault()
-                removeHardware(selectedNodeId)
-                return
+            if (e.key === 'Delete' || e.key === 'Backspace') {
+                const selectedEdges = getEdges().filter(edge => edge.selected);
+                if (selectedEdges.length > 0) {
+                    e.preventDefault();
+                    deleteElements({ edges: selectedEdges });
+                    return;
+                }
+
+                if (selectedNodeId) {
+                    e.preventDefault();
+                    removeHardware(selectedNodeId);
+                    return;
+                }
             }
 
             if (e.key === 'd' && (e.ctrlKey || e.metaKey) && selectedNodeId) {
@@ -216,7 +217,7 @@ function Flow() {
 
         window.addEventListener('keydown', handleKeyDown)
         return () => window.removeEventListener('keydown', handleKeyDown)
-    }, [selectedNodeId, removeHardware, duplicateHardware, selectNode, handleManualSave])
+    }, [selectedNodeId, removeHardware, duplicateHardware, selectNode, handleManualSave, getEdges, deleteElements])
 
     const onDragOver = useCallback((event: React.DragEvent) => {
         event.preventDefault();
@@ -338,7 +339,42 @@ function Flow() {
         [screenToFlowPosition, getIntersectingNodes, addHardware, addInternalComponent, addVM, setPendingComponent, setPendingNode],
     );
 
-// Removed misplaced code
+    const isValidConnection = useCallback((connection: any) => {
+        const sourceNode = hardwareNodes.find(n => n.id === connection.source);
+        const targetNode = hardwareNodes.find(n => n.id === connection.target);
+        
+        if (!sourceNode || !targetNode) return false;
+
+        // Ensure physical port is not already occupied on the SOURCE side
+        const isSourceHandleUsed = edges.some(e => 
+            (e.source === connection.source && e.sourceHandle === connection.sourceHandle) ||
+            (e.target === connection.source && e.targetHandle === connection.sourceHandle)
+        );
+        if (isSourceHandleUsed) {
+            toast.error("Source port is already in use.");
+            return false;
+        }
+
+        // Ensure physical port is not already occupied on the TARGET side
+        const isTargetHandleUsed = edges.some(e => 
+            (e.source === connection.target && e.sourceHandle === connection.targetHandle) ||
+            (e.target === connection.target && e.targetHandle === connection.targetHandle)
+        );
+        if (isTargetHandleUsed) {
+            toast.error("Target port is already in use.");
+            return false;
+        }
+
+        // A router or switch can connect to anything
+        if (sourceNode.type === 'switch' || sourceNode.type === 'router' ||
+            targetNode.type === 'switch' || targetNode.type === 'router') {
+            return true;
+        }
+
+        // Otherwise (e.g. PC to PC or PC to Server without a switch), it's invalid
+        toast.error("Invalid connection. Devices must connect through a Switch or Router.");
+        return false;
+    }, [hardwareNodes, edges]);
 
 // ...
 
@@ -353,6 +389,7 @@ function Flow() {
                     onNodesChange={onNodesChange}
                     onEdgesChange={onEdgesChange}
                     onConnect={onConnect}
+                    isValidConnection={isValidConnection}
                     nodeTypes={nodeTypes}
                     edgeTypes={edgeTypes}
                     onDragOver={onDragOver}
@@ -362,6 +399,7 @@ function Flow() {
                         else selectNode(null)
                     }}
                     onPaneClick={() => selectNode(null)}
+                    connectionMode={ConnectionMode.Loose}
                     fitView
                     attributionPosition="bottom-right"
                     className="bg-slate-50 dark:bg-slate-900/50"
