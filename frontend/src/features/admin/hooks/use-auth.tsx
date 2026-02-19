@@ -1,22 +1,63 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react"; // Fixed imports
 import { api } from "../../../lib/api";
+interface User {
+    id: string;
+    name: string;
+    email: string;
+    avatar_url?: string;
+    is_admin?: boolean;
+}
 
-// TODO: Replace with real auth logic
 export function useAuth() {
+    const [user, setUser] = useState<User | null>(null);
+    const [loading, setLoading] = useState(true);
+    // const { toast } = useToast(); 
+
     useEffect(() => {
-        const token = localStorage.getItem('auth_token');
-        if (!token) {
-            // Auto-login as dev if no token exists
-            api.devLogin("demo@homelab.com").catch(console.error);
-        }
+        checkAuth();
     }, []);
 
+    async function checkAuth() {
+        try {
+            const token = localStorage.getItem('auth_token');
+            if (token) {
+                // Determine if we need to fetch user separately or trust token claims
+                // For now, let's fetch 'me'
+                // Backend now returns user object directly without "data" wrapper
+                const user = await api.get<User>('/auth/me');
+                setUser(user);
+            }
+        } catch (error) {
+            console.error("Auth check failed", error);
+            localStorage.removeItem('auth_token'); // Clear invalid token
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    async function loginWithGoogle(credential: string) {
+        setLoading(true);
+        try {
+            const data = await api.googleLogin(credential);
+            setUser(data.user);
+            // toast({ title: "Logged in", description: `Welcome back, ${data.user.name}` });
+            window.location.reload(); // Reload to refresh all data/states dependent on auth
+        } catch (error) {
+            console.error("Login failed", error);
+            alert("Login failed. Please try again.");
+        } finally {
+            setLoading(false);
+        }
+    }
+
     return {
-        user: { id: "user-1", name: "Test User", email: "test@example.com" },
-        loading: false,
+        user,
+        loading,
+        loginWithGoogle,
         logout: () => {
-             console.log("Logout clicked");
              localStorage.removeItem('auth_token');
+             setUser(null);
+             window.location.reload();
         }
     };
 }

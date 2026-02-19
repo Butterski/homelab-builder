@@ -9,6 +9,7 @@ import {
     ReactFlowProvider,
     Panel,
 } from '@xyflow/react';
+import { toast } from "sonner";
 import '@xyflow/react/dist/style.css';
 import { useBuilderStore } from '../store/builder-store';
 import { HardwareToolbox } from './hardware-toolbox';
@@ -29,8 +30,14 @@ import {
     DropdownMenuTrigger,
 } from "../../../components/ui/dropdown-menu";
 
+import { CustomEdge } from './custom-edge';
+
 const nodeTypes: NodeTypes = {
     hardware: HardwareNodeComponent
+};
+
+const edgeTypes = {
+    custom: CustomEdge,
 };
 
 function ShortcutHints() {
@@ -67,7 +74,10 @@ function Flow() {
         reassignAllIPs,
         loadBuild,
         getBuildData,
-        currentBuildId
+        currentBuildId,
+        hardwareNodes,  // Added for auto-save dependency
+        selectedServices, // Added for auto-save dependency
+        projectName
     } = useBuilderStore();
 
     const { screenToFlowPosition, getIntersectingNodes } = useReactFlow();
@@ -76,28 +86,105 @@ function Flow() {
         if (id && id !== currentBuildId) {
             buildApi.get(id).then(build => {
                 const data = JSON.parse(build.data);
-                loadBuild(build.id, data);
+
+                // MERGE Relational Data (Source of Truth for IPs and Backend State)
+                if (build.nodes && build.nodes.length > 0) {
+                    // console.log("Merging relational nodes into state", build.nodes);
+                    data.hardwareNodes = build.nodes.map((n: any) => ({
+                        id: n.id,
+                        type: n.type,
+                        name: n.name,
+                        x: n.x,
+                        y: n.y,
+                        ip: n.ip, // Important: Get the calculated IP
+                        details: typeof n.details === 'string' ? JSON.parse(n.details) : n.details,
+                        vms: n.virtual_machines?.map((vm: any) => ({
+                            id: vm.id,
+                            name: vm.name,
+                            type: vm.type,
+                            ip: vm.ip,
+                            os: vm.os,
+                            cpu_cores: vm.cpu_cores,
+                            ram_mb: vm.ram_mb,
+                            status: vm.status
+                        })) || []
+                    }));
+
+                    // Reconstruct ReactFlow nodes from hardwareNodes to ensure visual sync?
+                    // actually loadBuild does this mapping from hardwareNodes -> nodes.
+                }
+
+                if (build.edges && build.edges.length > 0) {
+                     data.edges = build.edges.map((e: any) => ({
+                         id: e.id,
+                         source: e.source_node_id,
+                         target: e.target_node_id,
+                         type: 'custom', 
+                         animated: true,
+                         style: { stroke: '#f97316', strokeWidth: 2 }
+                     }));
+                }
+
+                loadBuild(build.id, build.name, data);
             }).catch(err => {
                 console.error("Failed to load build", err);
+                useBuilderStore.getState().clearCurrentBuild();
                 navigate('/');
             });
         }
     }, [id, currentBuildId, loadBuild, navigate]);
 
-    const handleSave = async () => {
+    const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
+    const isFirstRender = useRef(true);
+    const lastSaveTime = useRef(Date.now());
+
+    // Effect to mark as "saved" initially when data loads
+    useEffect(() => {
+        setSaveStatus('saved');
+    }, [currentBuildId]);
+
+    const saveProject = useCallback(async () => {
         if (!id) return;
+        setSaveStatus('saving');
         try {
             const data = getBuildData();
+            const jsonString = JSON.stringify(data);
             await buildApi.update(id, {
-                name: "My Homelab",
-                data: JSON.stringify(data),
+                name: projectName || "Untitled Project", // Use store name
+                data: jsonString,
                 thumbnail: "" 
             });
-             alert("Build saved successfully!");
+            setSaveStatus('saved');
+            lastSaveTime.current = Date.now();
         } catch (err) {
             console.error("Failed to save", err);
-            alert("Failed to save build.");
+            setSaveStatus('error');
+            toast.error("Failed to auto-save");
         }
+    }, [id, getBuildData, projectName]);
+
+    // Auto-save trigger
+    useEffect(() => {
+        if (isFirstRender.current) {
+            isFirstRender.current = false;
+            return;
+        }
+
+        // Debounce save
+        const timer = setTimeout(() => {
+            saveProject();
+        }, 2000); // 2 seconds debounce
+
+        return () => clearTimeout(timer);
+    }, [nodes, edges, hardwareNodes, selectedServices, saveProject]); // Any change triggers debounce
+
+    // Manual save wrapper (immediate)
+    const handleManualSave = () => {
+        toast.promise(saveProject(), {
+            loading: 'Saving...',
+            success: 'Project saved',
+            error: 'Failed to save'
+        });
     };
 
     useEffect(() => {
@@ -107,7 +194,7 @@ function Flow() {
 
             if ((e.ctrlKey || e.metaKey) && e.key === 's') {
                 e.preventDefault();
-                handleSave();
+                handleManualSave();
                 return;
             }
 
@@ -130,7 +217,7 @@ function Flow() {
 
         window.addEventListener('keydown', handleKeyDown)
         return () => window.removeEventListener('keydown', handleKeyDown)
-    }, [selectedNodeId, removeHardware, duplicateHardware, selectNode, handleSave])
+    }, [selectedNodeId, removeHardware, duplicateHardware, selectNode, handleManualSave])
 
     const onDragOver = useCallback((event: React.DragEvent) => {
         event.preventDefault();
@@ -196,6 +283,23 @@ function Flow() {
 
             if (!data.type) return;
 
+            // Direct add if it's a preset (has details) OR if it's a known preset structure
+            // We check for details.model to assume it's a preset
+            if (data.details && Object.keys(data.details).length > 0 && !pendingComponent) {
+                 const newNode: HardwareNode = {
+                    id: `node-${Date.now()}`,
+                    type: data.type as HardwareType,
+                    name: data.name,
+                    x: position.x,
+                    y: position.y,
+                    details: data.details,
+                    internal_components: [],
+                    vms: []
+                };
+                addHardware(newNode);
+                return;
+            }
+
             if (targetNode && targetNode.type === 'hardware') {
                 const isServiceDrag = event.dataTransfer.getData('service-drag') === 'true';
 
@@ -234,9 +338,12 @@ function Flow() {
         [screenToFlowPosition, getIntersectingNodes, addHardware, addInternalComponent, addVM, setPendingComponent, setPendingNode],
     );
 
+// Removed misplaced code
+
+// ...
 
     return (
-        <div className="flex h-[calc(100vh-12rem)] border rounded-lg shadow-inner bg-background overflow-hidden relative">
+        <div className="flex h-full border-b bg-background overflow-hidden relative">
             <HardwareToolbox />
 
             <div className="flex-1 h-full relative" ref={reactFlowWrapper}>
@@ -247,6 +354,7 @@ function Flow() {
                     onEdgesChange={onEdgesChange}
                     onConnect={onConnect}
                     nodeTypes={nodeTypes}
+                    edgeTypes={edgeTypes}
                     onDragOver={onDragOver}
                     onDrop={onDrop}
                     onNodeClick={(_, node) => {
@@ -258,17 +366,17 @@ function Flow() {
                     attributionPosition="bottom-right"
                     className="bg-slate-50 dark:bg-slate-900/50"
                     defaultEdgeOptions={{
+                        type: 'custom',
                         animated: true,
                         style: { stroke: '#f97316', strokeWidth: 2 }
                     }}
                     snapToGrid={true}
                     snapGrid={[20, 20]}
-                    deleteKeyCode={null}
                 >
                     <Background gap={20} size={1} />
                     <Controls />
                     
-                    <Panel position="top-left" className="flex gap-2">
+                    <Panel position="top-left" className="flex gap-2 items-center">
                      <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                             <Button variant="outline" size="icon" className="h-10 w-10 bg-background/80 backdrop-blur">
@@ -278,7 +386,7 @@ function Flow() {
                         <DropdownMenuContent align="start" className="w-56">
                             <DropdownMenuLabel>Project Menu</DropdownMenuLabel>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={handleSave}>
+                            <DropdownMenuItem onClick={saveProject}>
                                 <Save className="mr-2 h-4 w-4" /> Save Project <span className="ml-auto text-xs text-muted-foreground opacity-60">Ctrl+S</span>
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
@@ -299,7 +407,16 @@ function Flow() {
                         </DropdownMenuContent>
                     </DropdownMenu>
 
-                    <Button variant="secondary" onClick={() => reassignAllIPs()} title="Fix IP Conflicts" size="sm" className="h-10 bg-background/80 backdrop-blur">
+                    <div className="flex flex-col">
+                        <h2 className="text-sm font-semibold leading-none">{projectName || "Homelab Builder"}</h2>
+                        <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                            {saveStatus === 'saving' && <span className="text-amber-500 flex items-center gap-1"><span className="animate-spin">⟳</span> Saving...</span>}
+                            {saveStatus === 'saved' && <span className="text-green-500 flex items-center gap-1">Cloud Saved</span>}
+                            {saveStatus === 'error' && <span className="text-red-500">Save Failed</span>}
+                        </span>
+                    </div>
+
+                    <Button variant="secondary" onClick={() => reassignAllIPs()} title="Fix IP Conflicts" size="sm" className="h-10 bg-background/80 backdrop-blur ml-4">
                         <Wand2 className="mr-2 h-4 w-4" />
                         Reassign IPs
                     </Button>

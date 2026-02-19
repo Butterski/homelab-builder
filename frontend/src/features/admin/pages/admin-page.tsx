@@ -6,13 +6,20 @@ import { ServicesTable } from "../components/services-table"
 import { AdminHardwareManager } from "../components/hardware-manager"
 import { useState } from "react"
 
+import { useAuth } from "../hooks/use-auth"
+import { Navigate } from "react-router-dom"
+
 export default function AdminPage() {
+  const { user, loading } = useAuth()
   const { data: stats, isLoading: statsLoading } = useAdminStats()
   const { data: services, isLoading: servicesLoading } = useAdminServices()
   const [tab, setTab] = useState<"services" | "hardware">("services")
 
+  if (loading) return <div className="p-8">Loading...</div>
+  if (!user?.is_admin) return <Navigate to="/" replace />
+
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-8 px-6 py-8 max-w-7xl mx-auto">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold tracking-tight">Admin Dashboard</h1>
         {tab === "services" && <ServiceDialog />}

@@ -86,7 +86,7 @@ export default function ShoppingListPage() {
   }
 
   return (
-    <div className="space-y-6 print:space-y-4 max-w-5xl mx-auto py-8">
+    <div className="space-y-6 print:space-y-4 max-w-5xl mx-auto py-8 px-6">
 
       {/* Buy confirmation dialog */}
       {pendingBuy && (

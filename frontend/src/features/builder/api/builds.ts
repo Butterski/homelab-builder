@@ -9,6 +9,12 @@ export interface Build {
     thumbnail?: string;
     created_at: string;
     updated_at: string;
+
+    // Relational Data (Optional, populated by backend Preload)
+    nodes?: any[];
+    edges?: any[];
+    virtual_machines?: any[];
+    service_instances?: any[];
 }
 
 export type CreateBuildParams = {
@@ -36,5 +42,8 @@ export const buildApi = {
     },
     delete: async (id: string) => {
         await api.del(`/api/builds/${id}`);
+    },
+    calculateNetwork: async (id: string) => {
+        await api.post(`/api/builds/${id}/calculate-network`, {});
     },
 };

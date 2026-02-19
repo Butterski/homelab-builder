@@ -222,8 +222,9 @@ function HardwareCard({ item }: { item: HardwareComponent }) {
     const [likeCount, setLikeCount] = useState(item.likes)
     const meta = CATEGORY_META[item.category] ?? { label: item.category, icon: Package, color: "text-gray-500 bg-gray-500/10" }
     const Icon = meta.icon
-    const newOffers = (item.buy_urls || []).filter(u => u.condition === "new")
-    const usedOffers = (item.buy_urls || []).filter(u => u.condition === "used")
+    const urls = Array.isArray(item.buy_urls) ? item.buy_urls : []
+    const newOffers = urls.filter(u => u.condition === "new")
+    const usedOffers = urls.filter(u => u.condition === "used")
 
     const handleLike = async () => {
         if (liked) return
@@ -326,7 +327,7 @@ export default function HardwareCatalogPage() {
     const total = data?.total ?? 0
 
     return (
-        <div className="space-y-6 max-w-7xl mx-auto py-8">
+        <div className="space-y-6 max-w-7xl mx-auto py-8 px-6">
             {showSubmit && <SubmitHardwareModal onClose={() => setShowSubmit(false)} />}
 
             <div className="flex items-start justify-between">

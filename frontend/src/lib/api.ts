@@ -1,11 +1,7 @@
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080';
 
 // Assuming User type is defined elsewhere or needs a placeholder
-interface User {
-    id: string;
-    email: string;
-    // Add other user properties as needed
-}
+
 
 export class ApiError extends Error {
     public status: number;
@@ -45,14 +41,15 @@ export const api = {
     post: <T>(path: string, body: unknown) => request<T>(path, { method: 'POST', body: JSON.stringify(body) }),
     put: <T>(path: string, body: unknown) => request<T>(path, { method: 'PUT', body: JSON.stringify(body) }),
     del: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
-    devLogin: async (email: string) => {
-        const res = await request<{ data: { token: string; user: User } }>('/auth/dev', {
-            method: 'POST',
-            body: JSON.stringify({ email }),
-        });
-        if (res.data?.token) {
-            localStorage.setItem('auth_token', res.data.token);
-        }
+    async devLogin(email: string) {
+        const res = await this.post<{ token: string, user: any }>('/auth/dev', { email });
+        localStorage.setItem('auth_token', res.token);
         return res;
-    }
+    },
+
+    async googleLogin(credential: string) {
+        const res = await this.post<{ token: string, user: any }>('/auth/google', { credential });
+        localStorage.setItem('auth_token', res.token);
+        return res;
+    },
 };

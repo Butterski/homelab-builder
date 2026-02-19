@@ -37,6 +37,7 @@ services:
       DB_SSLMODE: disable
       DB_TYPE: postgres
       JWT_SECRET: change-this-in-production
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
     depends_on:
       postgres:
         condition: service_healthy
@@ -47,7 +48,8 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: http://localhost:3000
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8080}
+        VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID}
     container_name: homelab-builder-frontend
     ports:
       - "3000:80"

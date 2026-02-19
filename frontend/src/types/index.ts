@@ -103,9 +103,10 @@ export type HardwareType =
 
 export interface HardwareSpec {
     model?: string
-    cpu?: string
-    ram?: string
-    storage?: string
+    cpu?: string | number
+    cpu_cores?: number
+    ram?: string | number
+    storage?: string | number
     price_est?: number
     currency?: string
     url?: string

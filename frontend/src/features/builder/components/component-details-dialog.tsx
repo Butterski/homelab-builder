@@ -20,18 +20,56 @@ export function ComponentDetailsDialog({ open, onOpenChange, onConfirm, initialT
     const [model, setModel] = useState(initialDetails?.model || "")
     const [spec, setSpec] = useState<HardwareSpec>(initialDetails || {})
 
+    // Split states for units and CPU
+    const [cpuModel, setCpuModel] = useState("")
+    const [cpuCores, setCpuCores] = useState("")
+    const [ramValue, setRamValue] = useState("")
+    const [ramUnit, setRamUnit] = useState("GB")
+    const [storageValue, setStorageValue] = useState("")
+    const [storageUnit, setStorageUnit] = useState("TB")
+
+    // Helper to parse "32GB" -> ["32", "GB"]
+    const parseValueUnit = (val?: string): [string, string] => {
+        if (!val) return ["", ""]
+        const match = val.match(/^(\d+(\.\d+)?)?\s*(MB|GB|TB|TB)?$/i)
+        if (match) {
+            return [match[1] || "", (match[3] || "").toUpperCase()]
+        }
+        return [val, ""] // Fallback
+    }
+
     useEffect(() => {
         if (open) {
             setName(initialName || "")
             setModel(initialDetails?.model || "")
             setSpec(initialDetails || {})
+
+            setCpuModel(initialDetails?.cpu?.toString() || "")
+            setCpuCores(initialDetails?.cpu_cores?.toString() || "")
+
+            const [rVal, rUnit] = parseValueUnit(initialDetails?.ram?.toString())
+            setRamValue(rVal)
+            if (rUnit) setRamUnit(rUnit) // Keep default if parsing failed/empty
+
+            const [sVal, sUnit] = parseValueUnit(initialDetails?.storage?.toString())
+            setStorageValue(sVal)
+            // Default storage unit logic could be better, but TB default is fine for now
+            if (sUnit) setStorageUnit(sUnit)
         }
     }, [open, initialName, initialDetails])
 
     const handleConfirm = () => {
+        const finalSpec: HardwareSpec = { ...spec, model }
+        
+        if (cpuModel) finalSpec.cpu = cpuModel
+        if (cpuCores) finalSpec.cpu_cores = parseInt(cpuCores, 10)
+        
+        if (ramValue) finalSpec.ram = `${ramValue}${ramUnit}`
+        if (storageValue) finalSpec.storage = `${storageValue}${storageUnit}`
+
         onConfirm({
             name: name || `New ${initialType}`,
-            details: { ...spec, model }
+            details: finalSpec
         })
         onOpenChange(false)
     }
@@ -42,7 +80,12 @@ export function ComponentDetailsDialog({ open, onOpenChange, onConfirm, initialT
                 <DialogHeader>
                     <DialogTitle>{title || `Add ${initialType.toUpperCase()} Component`}</DialogTitle>
                 </DialogHeader>
-                <div className="grid gap-4 py-4">
+                <div className="grid gap-4 py-4" onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleConfirm();
+                    }
+                }}>
                     {/* Name */}
                     <div className="grid grid-cols-4 items-center gap-4">
                         <Label htmlFor="name" className="text-right">Name</Label>
@@ -70,16 +113,29 @@ export function ComponentDetailsDialog({ open, onOpenChange, onConfirm, initialT
 
                     {/* CPU - Compute types */}
                     {['server', 'pc', 'minipc', 'sbc'].includes(initialType) && (
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="cpu" className="text-right">CPU</Label>
-                            <Input
-                                id="cpu"
-                                value={spec.cpu || ''}
-                                onChange={(e) => setSpec({...spec, cpu: e.target.value})}
-                                className="col-span-3"
-                                placeholder="e.g. i7-13700K"
-                            />
-                        </div>
+                        <>
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <Label htmlFor="cpu" className="text-right">CPU Model</Label>
+                                <Input
+                                    id="cpu"
+                                    value={cpuModel}
+                                    onChange={(e) => setCpuModel(e.target.value)}
+                                    className="col-span-3"
+                                    placeholder="e.g. i7-13700K"
+                                />
+                            </div>
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <Label htmlFor="cpu_cores" className="text-right">Cores</Label>
+                                <Input
+                                    id="cpu_cores"
+                                    type="number"
+                                    value={cpuCores}
+                                    onChange={(e) => setCpuCores(e.target.value)}
+                                    className="col-span-3"
+                                    placeholder="e.g. 16"
+                                />
+                            </div>
+                        </>
                     )}
 
                     {/* RAM - Compute + GPU */}
@@ -88,13 +144,24 @@ export function ComponentDetailsDialog({ open, onOpenChange, onConfirm, initialT
                             <Label htmlFor="ram" className="text-right">
                                 {initialType === 'gpu' ? 'VRAM' : 'RAM'}
                             </Label>
-                            <Input
-                                id="ram"
-                                value={spec.ram || ''}
-                                onChange={(e) => setSpec({...spec, ram: e.target.value})}
-                                className="col-span-3"
-                                placeholder={initialType === 'gpu' ? "e.g. 24GB" : "e.g. 32GB"}
-                            />
+                            <div className="col-span-3 flex gap-2">
+                                <Input
+                                    id="ram"
+                                    type="number"
+                                    value={ramValue}
+                                    onChange={(e) => setRamValue(e.target.value)}
+                                    className="flex-1"
+                                    placeholder="32"
+                                />
+                                <select
+                                    className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                    value={ramUnit}
+                                    onChange={(e) => setRamUnit(e.target.value)}
+                                >
+                                    <option value="MB">MB</option>
+                                    <option value="GB">GB</option>
+                                </select>
+                            </div>
                         </div>
                     )}
 
@@ -102,13 +169,24 @@ export function ComponentDetailsDialog({ open, onOpenChange, onConfirm, initialT
                     {['server', 'pc', 'minipc', 'sbc', 'disk', 'nas'].includes(initialType) && (
                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="storage" className="text-right">Storage</Label>
-                            <Input
-                                id="storage"
-                                value={spec.storage || ''}
-                                onChange={(e) => setSpec({...spec, storage: e.target.value})}
-                                className="col-span-3"
-                                placeholder="e.g. 4TB"
-                            />
+                            <div className="col-span-3 flex gap-2">
+                                <Input
+                                    id="storage"
+                                    type="number"
+                                    value={storageValue}
+                                    onChange={(e) => setStorageValue(e.target.value)}
+                                    className="flex-1"
+                                    placeholder="4"
+                                />
+                                <select
+                                    className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                    value={storageUnit}
+                                    onChange={(e) => setStorageUnit(e.target.value)}
+                                >
+                                    <option value="GB">GB</option>
+                                    <option value="TB">TB</option>
+                                </select>
+                            </div>
                         </div>
                     )}
                 </div>

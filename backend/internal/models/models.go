@@ -142,6 +142,77 @@ type Build struct {
 	User      *User     `gorm:"foreignKey:UserID" json:"-"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+
+	// Relational Data (Phase 2 Migration)
+	Nodes []Node `gorm:"foreignKey:BuildID" json:"nodes,omitempty"`
+	Edges []Edge `gorm:"foreignKey:BuildID" json:"edges,omitempty"`
 }
 
 func (Build) TableName() string { return "builds" }
+
+// Node represents a hardware node in the graph
+type Node struct {
+	ID        uuid.UUID  `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
+	BuildID   uuid.UUID  `gorm:"type:uuid;not null;index" json:"build_id"`
+	Type      string     `gorm:"not null" json:"type"` // server, router, switch
+	Name      string     `gorm:"not null" json:"name"`
+	X         float64    `gorm:"not null;default:0" json:"x"`
+	Y         float64    `gorm:"not null;default:0" json:"y"`
+	IP        string     `gorm:"default:''" json:"ip"`
+	Details   string     `gorm:"type:jsonb;default:'{}'" json:"details"` // Hardware specs
+	ParentID  *uuid.UUID `gorm:"type:uuid" json:"parent_id,omitempty"`   // For nested components
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+
+	ServiceInstances []ServiceInstance `gorm:"foreignKey:NodeID" json:"service_instances,omitempty"`
+	VirtualMachines  []VirtualMachine  `gorm:"foreignKey:NodeID" json:"virtual_machines,omitempty"`
+}
+
+func (Node) TableName() string { return "nodes" }
+
+// VirtualMachine represents a nested VM/Container on a node
+type VirtualMachine struct {
+	ID        uuid.UUID `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
+	NodeID    uuid.UUID `gorm:"type:uuid;not null;index" json:"node_id"`
+	Name      string    `gorm:"not null" json:"name"`
+	Type      string    `gorm:"not null" json:"type"` // vm, container, lxc
+	IP        string    `gorm:"default:''" json:"ip"`
+	OS        string    `gorm:"default:''" json:"os"`
+	CPUCores  int       `gorm:"default:0" json:"cpu_cores"`
+	RAMMB     int       `gorm:"default:0" json:"ram_mb"`
+	Status    string    `gorm:"default:'stopped'" json:"status"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func (VirtualMachine) TableName() string { return "virtual_machines" }
+
+// Edge represents a connection between nodes
+type Edge struct {
+	ID           uuid.UUID `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
+	BuildID      uuid.UUID `gorm:"type:uuid;not null;index" json:"build_id"`
+	SourceNodeID uuid.UUID `gorm:"type:uuid;not null" json:"source_node_id"`
+	TargetNodeID uuid.UUID `gorm:"type:uuid;not null" json:"target_node_id"`
+	Type         string    `gorm:"default:'ethernet'" json:"type"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+func (Edge) TableName() string { return "edges" }
+
+// ServiceInstance represents a deployed service on a node (or unassigned in backlog)
+type ServiceInstance struct {
+	ID               uuid.UUID  `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
+	BuildID          uuid.UUID  `gorm:"type:uuid;not null;index" json:"build_id"`
+	NodeID           *uuid.UUID `gorm:"type:uuid;index" json:"node_id,omitempty"` // Null if in backlog
+	CatalogServiceID uuid.UUID  `gorm:"type:uuid;not null" json:"catalog_service_id"`
+	Name             string     `gorm:"not null" json:"name"`
+	IP               string     `gorm:"default:''" json:"ip"`
+	Port             int        `gorm:"default:0" json:"port"`
+	Status           string     `gorm:"default:'stopped'" json:"status"` // running, stopped
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+
+	CatalogService *Service `gorm:"foreignKey:CatalogServiceID" json:"catalog_service,omitempty"`
+}
+
+func (ServiceInstance) TableName() string { return "service_instances" }

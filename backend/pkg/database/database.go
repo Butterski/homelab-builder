@@ -45,6 +45,13 @@ func Connect(cfg *config.Config) (*gorm.DB, error) {
 			&models.ShoppingList{},
 			&models.ShoppingListItem{},
 			&models.Event{},
+			&models.Build{},
+			&models.HardwareComponent{},
+			&models.HardwareReview{},
+			&models.Node{},
+			&models.Edge{},
+			&models.ServiceInstance{},
+			&models.VirtualMachine{},
 		); err != nil {
 			// Don't fail connection on migration error, just log it
 			log.Printf("Warning: failed to auto-migrate database: %v", err)

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/Butterski/homelab-builder/backend/internal/services"
@@ -9,11 +10,15 @@ import (
 )
 
 type BuildHandler struct {
-	service *services.BuildService
+	service   *services.BuildService
+	ipService *services.IPService
 }
 
-func NewBuildHandler(service *services.BuildService) *BuildHandler {
-	return &BuildHandler{service: service}
+func NewBuildHandler(service *services.BuildService, ipService *services.IPService) *BuildHandler {
+	return &BuildHandler{
+		service:   service,
+		ipService: ipService,
+	}
 }
 
 type CreateBuildRequest struct {
@@ -23,7 +28,7 @@ type CreateBuildRequest struct {
 }
 
 func (h *BuildHandler) Create(c *gin.Context) {
-	userID, exists := c.Get("userID")
+	userID, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
@@ -37,6 +42,7 @@ func (h *BuildHandler) Create(c *gin.Context) {
 
 	build, err := h.service.Create(userID.(uuid.UUID), req.Name, req.Data, req.Thumbnail)
 	if err != nil {
+		fmt.Printf("Build Create Error: %v\n", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create build"})
 		return
 	}
@@ -62,7 +68,7 @@ func (h *BuildHandler) Get(c *gin.Context) {
 }
 
 func (h *BuildHandler) List(c *gin.Context) {
-	userID, exists := c.Get("userID")
+	userID, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
@@ -78,7 +84,7 @@ func (h *BuildHandler) List(c *gin.Context) {
 }
 
 func (h *BuildHandler) Update(c *gin.Context) {
-	userID, exists := c.Get("userID")
+	userID, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
@@ -107,7 +113,7 @@ func (h *BuildHandler) Update(c *gin.Context) {
 }
 
 func (h *BuildHandler) Delete(c *gin.Context) {
-	userID, exists := c.Get("userID")
+	userID, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
@@ -126,4 +132,24 @@ func (h *BuildHandler) Delete(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Build deleted"})
+}
+
+func (h *BuildHandler) CalculateNetwork(c *gin.Context) {
+	idParam := c.Param("id")
+	id, err := uuid.Parse(idParam)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+		return
+	}
+
+	// Real implementation (Phase 2)
+	if err := h.ipService.CalculateNetwork(id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to calculate network: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":  "Network calculated successfully",
+		"build_id": id,
+	})
 }

@@ -45,7 +45,7 @@ export default function ServicesPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6 pb-24">
+    <div className="flex flex-col gap-6 pb-24 px-6 md:px-8 py-8">
       <div className="flex flex-col gap-2">
         <h1 className="text-3xl font-bold tracking-tight">Service Catalog</h1>
         <p className="text-muted-foreground">

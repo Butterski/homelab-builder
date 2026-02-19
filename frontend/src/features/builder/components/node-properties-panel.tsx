@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui
 import { Button } from "../../../components/ui/button"
 import { Input } from "../../../components/ui/input"
 import { Label } from "../../../components/ui/label"
-import { X, Trash2, Save, AlertCircle, Wand2 } from "lucide-react"
+import { X, Trash2, AlertCircle, Wand2 } from "lucide-react"
 import { VMManager } from "./vm-manager"
 import { InternalComponentManager } from "./internal-component-manager"
 
@@ -26,19 +26,53 @@ export function NodePropertiesPanel() {
 
     const selectedNode = hardwareNodes.find(n => n.id === selectedNodeId)
 
+    // Sync from store to local state (only if changed to avoid loops)
     useEffect(() => {
         if (selectedNode) {
-            setName(selectedNode.name)
-            setIp(selectedNode.ip || "")
-            setMask(selectedNode.subnet_mask || "")
-            setGateway(selectedNode.gateway || "")
-            setModel(selectedNode.details?.model || "")
-            setCpu(selectedNode.details?.cpu || "")
-            setRam(selectedNode.details?.ram || "")
-            setStorage(selectedNode.details?.storage || "")
+            if (name !== selectedNode.name) setName(selectedNode.name)
+            if (ip !== (selectedNode.ip || "")) setIp(selectedNode.ip || "")
+            if (mask !== (selectedNode.subnet_mask || "")) setMask(selectedNode.subnet_mask || "")
+            if (gateway !== (selectedNode.gateway || "")) setGateway(selectedNode.gateway || "")
+            
+            if (model !== (selectedNode.details?.model || "")) setModel(selectedNode.details?.model || "")
+            if (cpu !== (selectedNode.details?.cpu?.toString() || "")) setCpu(selectedNode.details?.cpu?.toString() || "")
+            if (ram !== (selectedNode.details?.ram?.toString() || "")) setRam(selectedNode.details?.ram?.toString() || "")
+            if (storage !== (selectedNode.details?.storage?.toString() || "")) setStorage(selectedNode.details?.storage?.toString() || "")
+            
             setErrors({})
         }
-    }, [selectedNode])
+    }, [selectedNode]) // Rely on store reference changes
+
+    // Auto-save to store (Debounced)
+    useEffect(() => {
+        if (!selectedNode) return
+
+        const timer = setTimeout(() => {
+            // Validate and Save
+            if (validate()) {
+                // Convert specs to numbers if they are present
+                const cpuVal = cpu ? Number(cpu) : undefined
+                const ramVal = ram ? Number(ram) : undefined
+                const storageVal = storage ? Number(storage) : undefined
+
+                updateHardware(selectedNode.id, { 
+                    name, 
+                    ip, 
+                    subnet_mask: mask, 
+                    gateway,
+                    details: { 
+                        ...selectedNode.details, 
+                        model, 
+                        cpu: cpuVal, 
+                        ram: ramVal, 
+                        storage: storageVal 
+                    }
+                })
+            }
+        }, 500) // 500ms debounce
+
+        return () => clearTimeout(timer)
+    }, [name, ip, mask, gateway, model, cpu, ram, storage])
 
     if (!selectedNode) return null
 
@@ -49,21 +83,6 @@ export function NodePropertiesPanel() {
         if (gateway && !IP_REGEX.test(gateway)) newErrors.gateway = "Invalid gateway"
         setErrors(newErrors)
         return Object.keys(newErrors).length === 0
-    }
-
-    const handleSave = () => {
-        if (!validate()) return
-        updateHardware(selectedNode.id, { 
-            name, 
-            ip, 
-            subnet_mask: mask, 
-            gateway,
-            details: { ...selectedNode.details, model, cpu, ram, storage }
-        })
-    }
-
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter') handleSave()
     }
 
     const handleDelete = () => {
@@ -90,9 +109,14 @@ export function NodePropertiesPanel() {
                         {selectedNode.type}
                     </span>
                 </CardTitle>
-                <Button variant="ghost" size="icon" onClick={() => selectNode(null)} className="h-6 w-6 rounded-full hover:bg-destructive/10 hover:text-destructive">
-                    <X className="h-4 w-4" />
-                </Button>
+                <div className="flex items-center gap-1">
+                     <Button variant="ghost" size="icon" onClick={handleDelete} className="h-6 w-6 rounded-full hover:bg-destructive/10 hover:text-destructive" title="Delete Node">
+                        <Trash2 className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={() => selectNode(null)} className="h-6 w-6 rounded-full hover:bg-muted" title="Close">
+                        <X className="h-4 w-4" />
+                    </Button>
+                </div>
             </CardHeader>
 
             <CardContent className="space-y-4 pt-4 overflow-y-auto flex-1">
@@ -102,7 +126,6 @@ export function NodePropertiesPanel() {
                     <Input
                         id="name" value={name}
                         onChange={e => setName(e.target.value)}
-                        onKeyDown={handleKeyDown}
                         placeholder="e.g. Main Router"
                     />
                 </div>
@@ -127,7 +150,6 @@ export function NodePropertiesPanel() {
                         id="ip"
                         value={ip}
                         onChange={e => setIp(e.target.value)}
-                        onKeyDown={handleKeyDown}
                         placeholder={isRouter ? "192.168.1.1" : (isNetworked ? "auto from router" : "no ip")}
                         className={errors.ip ? "border-destructive focus-visible:ring-destructive" : ""}
                     />
@@ -183,13 +205,16 @@ export function NodePropertiesPanel() {
                     
                     {['server', 'pc', 'minipc', 'sbc', 'nas'].includes(selectedNode.type) && (
                         <div className="space-y-1">
-                            <Label htmlFor="cpu" className="text-xs text-muted-foreground">CPU</Label>
+                            <Label htmlFor="cpu" className="text-xs text-muted-foreground">CPU Cores</Label>
                             <Input
                                 id="cpu"
+                                type="number"
+                                min="1"
+                                step="1"
                                 value={cpu}
                                 onChange={(e) => setCpu(e.target.value)}
                                 className="h-8 text-xs"
-                                placeholder="e.g. i5-12400"
+                                placeholder="e.g. 4"
                             />
                         </div>
                     )}
@@ -197,40 +222,34 @@ export function NodePropertiesPanel() {
                     {['server', 'pc', 'minipc', 'sbc', 'nas', 'gpu'].includes(selectedNode.type) && (
                         <div className="space-y-1">
                             <Label htmlFor="ram" className="text-xs text-muted-foreground">
-                                {selectedNode.type === 'gpu' ? 'VRAM' : 'RAM'}
+                                {selectedNode.type === 'gpu' ? 'VRAM (GB)' : 'RAM (GB)'}
                             </Label>
                             <Input
                                 id="ram"
+                                type="number"
+                                min="1"
                                 value={ram}
                                 onChange={(e) => setRam(e.target.value)}
                                 className="h-8 text-xs"
-                                placeholder={selectedNode.type === 'gpu' ? "e.g. 12GB" : "e.g. 16GB"}
+                                placeholder="e.g. 16"
                             />
                         </div>
                     )}
 
                     {['server', 'pc', 'minipc', 'sbc', 'nas', 'disk'].includes(selectedNode.type) && (
                         <div className="space-y-1">
-                            <Label htmlFor="storage" className="text-xs text-muted-foreground">Storage</Label>
+                            <Label htmlFor="storage" className="text-xs text-muted-foreground">Storage (GB)</Label>
                             <Input
                                 id="storage"
+                                type="number"
+                                min="1"
                                 value={storage}
                                 onChange={(e) => setStorage(e.target.value)}
                                 className="h-8 text-xs"
-                                placeholder="e.g. 512GB NVMe"
+                                placeholder="e.g. 512"
                             />
                         </div>
                     )}
-                </div>
-
-                {/* Save / Delete */}
-                <div className="flex gap-2 border-t pt-4">
-                    <Button onClick={handleSave} className="flex-1" size="sm">
-                        <Save className="h-4 w-4 mr-2" /> Save Changes
-                    </Button>
-                    <Button onClick={handleDelete} variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive hover:bg-destructive/10">
-                        <Trash2 className="h-4 w-4" />
-                    </Button>
                 </div>
 
                 {/* Component Manager (GPUs, Disks, etc) */}

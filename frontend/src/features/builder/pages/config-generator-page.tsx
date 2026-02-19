@@ -1,5 +1,6 @@
-import { useState, useCallback, useMemo } from "react"
+import { useState, useCallback, useMemo, useEffect } from "react"
 import { useBuilderStore } from "../store/builder-store"
+import { buildApi } from "../api/builds"
 import {
     generateDockerCompose,
     generateDotEnv,
@@ -9,14 +10,15 @@ import {
     generateTraefikLabels,
     generateIpPlan,
 } from "../lib/config-generator"
-import { allocateIPs } from "../lib/ip-allocator"
-import type { IpAllocatorOptions } from "../lib/ip-allocator"
+// allocateIPs removed
+import type { IpAllocatorOptions } from "../lib/config-generator" // Use type from lib
 import { Button } from "../../../components/ui/button"
 import { Input } from "../../../components/ui/input"
 import {
     Download, Upload, Copy, Check, FileCode, Server, Settings,
     Globe, Package, AlertCircle, ChevronDown, ChevronUp, Network, Home
 } from "lucide-react"
+import { toast } from "sonner"
 
 type Tab = 'docker-compose' | 'env' | 'ansible-inventory' | 'ansible-playbook' | 'nginx' | 'traefik' | 'ip-plan'
 
@@ -30,57 +32,8 @@ const TABS: { id: Tab; label: string; icon: React.ElementType; ext: string }[] =
     { id: 'ip-plan',            label: 'IP Address Plan',   icon: Network,   ext: 'ip-plan.txt' },
 ]
 
-// ─── IP Zone Legend (dynamic from plan) ──────────────────────────────────────
-const ZONE_COLORS = [
-    'bg-gray-500/10 text-gray-600 dark:text-gray-400',
-    'bg-amber-500/10 text-amber-600 dark:text-amber-400',
-    'bg-blue-500/10 text-blue-600 dark:text-blue-400',
-    'bg-orange-500/10 text-orange-600 dark:text-orange-400',
-    'bg-green-500/10 text-green-600 dark:text-green-400',
-    'bg-violet-500/10 text-violet-600 dark:text-violet-400',
-]
+// IpLegend removed as it relied on client-side calculation
 
-function IpLegend({ ipOpts }: { ipOpts: IpAllocatorOptions }) {
-    const plan = useMemo(() => allocateIPs([], ipOpts), [ipOpts])
-
-    const networkOctets = plan.networkAddress.split('.').map(Number)
-    function offsetToIp(offset: number): string {
-        const base = (networkOctets[0] << 24) | (networkOctets[1] << 16) | (networkOctets[2] << 8) | networkOctets[3]
-        const ip = ((base + offset) >>> 0)
-        return [(ip >>> 24) & 0xFF, (ip >>> 16) & 0xFF, (ip >>> 8) & 0xFF, ip & 0xFF].join('.')
-    }
-
-    return (
-        <div className="rounded-xl border bg-card overflow-hidden">
-            <div className="px-4 py-3 border-b bg-muted/30 flex items-center justify-between">
-                <h3 className="text-sm font-semibold flex items-center gap-2">
-                    <Network className="h-4 w-4 text-primary" />
-                    IP Zone Layout — {plan.networkAddress}/{plan.cidr}
-                    <span className="text-xs font-normal text-muted-foreground ml-1">({plan.totalHosts} usable hosts)</span>
-                </h3>
-                <span className="text-xs text-muted-foreground font-mono">{plan.subnetMask}</span>
-            </div>
-            <div className="divide-y">
-                {plan.zones.map((z, i) => {
-                    const startIp = offsetToIp(z.startOffset)
-                    const endIp = offsetToIp(z.endOffset)
-                    const range = z.startOffset === z.endOffset ? startIp : `${startIp} – ${endIp}`
-                    return (
-                        <div key={z.name} className="flex items-start gap-4 px-4 py-2.5">
-                            <code className={`text-xs font-mono px-2 py-0.5 rounded shrink-0 mt-0.5 ${ZONE_COLORS[i % ZONE_COLORS.length]}`}>
-                                {range}
-                            </code>
-                            <div>
-                                <p className="text-sm font-medium">{z.name}</p>
-                                <p className="text-xs text-muted-foreground">{z.description}</p>
-                            </div>
-                        </div>
-                    )
-                })}
-            </div>
-        </div>
-    )
-}
 
 // ─── Code Block ───────────────────────────────────────────────────────────────
 function CodeBlock({ content, filename }: { content: string; filename: string }) {
@@ -166,26 +119,81 @@ function ImportSection() {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function ConfigGeneratorPage() {
-    const { selectedServices, hardwareNodes, exportLab } = useBuilderStore()
+    const { selectedServices, hardwareNodes, exportLab, loadBuild, clearCurrentBuild } = useBuilderStore()
     const [activeTab, setActiveTab] = useState<Tab>('docker-compose')
     const [domain, setDomain] = useState('homelab.local')
     const [labName, setLabName] = useState('my-homelab')
     const [showSettings, setShowSettings] = useState(false)
+    
+    // Multi-project selection
+    const [builds, setBuilds] = useState<{id: string, name: string}[]>([])
+    const [selectedBuildId, setSelectedBuildId] = useState<string>("")
+    const [loadingBuild, setLoadingBuild] = useState(false)
+
+    // Load project list on mount
+    useEffect(() => {
+        buildApi.list().then(list => {
+            setBuilds(list.map(b => ({ id: b.id, name: b.name })))
+            // If store has a build, try to match it
+            const current = useBuilderStore.getState().currentBuildId
+            if (current) setSelectedBuildId(current)
+            else if (list.length > 0) {
+                 // Optionally load first one automatically? 
+                 // Better to let user choose or stay empty if they navigated here without opening a project
+                 // But user complaint is "chooses first one only", implies auto-selection.
+                 // Let's default to the first one if nothing loaded.
+                 handleSelectBuild(list[0].id)
+            }
+        }).catch(err => console.error("Failed to list builds", err))
+    }, [])
+
+    const handleSelectBuild = async (id: string) => {
+        if (!id) return
+        console.log(`[ConfigGen] Switching to build ID: ${id}`)
+        setLoadingBuild(true)
+        setSelectedBuildId(id)
+        try {
+             const fullBuild = await buildApi.get(id)
+             console.log(`[ConfigGen] Fetched build: ${fullBuild.name}`, fullBuild)
+             let data = {}
+             try {
+                data = JSON.parse(fullBuild.data)
+             } catch (e) {
+                 console.error("[ConfigGen] JSON parse error for build data", e)
+                 toast.error("Failed to parse build data")
+             }
+             
+             console.log(`[ConfigGen] Loading data into store...`, data)
+             console.log(`[ConfigGen] Loading data into store...`, data)
+             loadBuild(fullBuild.id, fullBuild.name, data)
+             setLabName(fullBuild.name.toLowerCase().replace(/[^a-z0-9]/g, '-'))
+             setLabName(fullBuild.name.toLowerCase().replace(/[^a-z0-9]/g, '-'))
+             toast.success(`Loaded project: ${fullBuild.name}`)
+        } catch (e) {
+            console.error("[ConfigGen] Failed to load build", e)
+            toast.error("Failed to load project - it may have been deleted")
+            clearCurrentBuild()
+            setSelectedBuildId("")
+        } finally {
+            setLoadingBuild(false)
+        }
+    }
 
     // IP settings
-    const [baseIp, setBaseIp] = useState('192.168.1.0')
-    const [cidr, setCidr] = useState(24)
-    const [homeRouterMode, setHomeRouterMode] = useState(false)
-    const [homeReserve, setHomeReserve] = useState(50)
+    // IP settings (Defaults)
+    // const [baseIp, setBaseIp] = useState('192.168.1.0')
+    // const [cidr, setCidr] = useState(24)
+    // const [homeRouterMode, setHomeRouterMode] = useState(false)
+    // const [homeReserve, setHomeReserve] = useState(50)
 
 
 
     const ipOpts: IpAllocatorOptions = useMemo(() => ({
-        baseIp,
-        cidr,
-        homeRouterMode,
-        homeReserve,
-    }), [baseIp, cidr, homeRouterMode, homeReserve])
+        baseIp: '192.168.1.0',
+        cidr: 24,
+        homeRouterMode: false,
+        homeReserve: 50,
+    }), [])
 
     // Derive comprehensive service list from both Shopping List (selectedServices) AND Visual Builder placements (hardwareNodes)
     const allServices = useMemo(() => {
@@ -242,7 +250,7 @@ export default function ConfigGeneratorPage() {
     const content = getContent(activeTab)
 
     return (
-        <div className="space-y-6 max-w-6xl mx-auto py-8">
+        <div className="space-y-6 max-w-6xl mx-auto py-8 px-6">
             {/* Header */}
             <div className="flex items-start justify-between flex-wrap gap-4">
                 <div>
@@ -251,7 +259,22 @@ export default function ConfigGeneratorPage() {
                         Generate deployment configs from your Visual Builder design
                     </p>
                 </div>
-                <div className="flex gap-2 flex-wrap">
+                
+                <div className="flex items-center gap-3">
+                     {loadingBuild && <span className="text-xs text-muted-foreground animate-pulse">Loading...</span>}
+                     <select
+                        className="h-9 w-[200px] rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        value={selectedBuildId}
+                        onChange={(e) => handleSelectBuild(e.target.value)}
+                     >
+                         <option value="" disabled>Select Project</option>
+                         {builds.map(b => (
+                             <option key={b.id} value={b.id}>{b.name}</option>
+                         ))}
+                     </select>
+                </div>
+
+                <div className="flex gap-2 flex-wrap mr-16">
                     <ImportSection />
                     <Button variant="outline" size="sm" onClick={() => exportLab(labName)} disabled={!hasContent}>
                         <Download className="h-4 w-4 mr-2" /> Export Lab (.homelab.json)
@@ -289,13 +312,13 @@ export default function ConfigGeneratorPage() {
                         </div>
                         <div className="flex items-center gap-2 rounded-lg border bg-card px-4 py-2 text-sm">
                             <Network className="h-4 w-4 text-primary" />
-                            <span className="font-medium font-mono">{baseIp}/{cidr}</span>
+                            <span className="font-medium font-mono">{ipOpts.baseIp}/{ipOpts.cidr}</span>
                             <span className="text-muted-foreground">subnet</span>
                         </div>
-                        {homeRouterMode && (
+                        {ipOpts.homeRouterMode && (
                             <div className="flex items-center gap-2 rounded-lg border border-amber-300/50 bg-amber-500/10 px-4 py-2 text-sm">
                                 <Home className="h-4 w-4 text-amber-500" />
-                                <span className="text-amber-600 dark:text-amber-400">{homeReserve} IPs reserved for home devices</span>
+                                <span className="text-amber-600 dark:text-amber-400">{ipOpts.homeReserve} IPs reserved for home devices</span>
                             </div>
                         )}
                     </div>
@@ -328,68 +351,15 @@ export default function ConfigGeneratorPage() {
                                     </div>
                                 </div>
 
-                                {/* Row 2: IP settings */}
-                                <div className="rounded-lg border bg-muted/20 p-4 space-y-3">
-                                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">IP Address Settings</p>
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                        <div>
-                                            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Network Address</label>
-                                            <Input value={baseIp} onChange={e => setBaseIp(e.target.value)} placeholder="192.168.1.0" className="h-8 text-sm font-mono" />
-                                            <p className="text-xs text-muted-foreground mt-1">e.g. 192.168.1.0 or 10.0.0.0</p>
-                                        </div>
-                                        <div>
-                                            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Subnet Mask (CIDR)</label>
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-sm text-muted-foreground">/</span>
-                                                <Input
-                                                    type="number" min={8} max={30}
-                                                    value={cidr}
-                                                    onChange={e => setCidr(Math.min(30, Math.max(8, parseInt(e.target.value) || 24)))}
-                                                    className="h-8 text-sm font-mono"
-                                                />
-                                            </div>
-                                            <p className="text-xs text-muted-foreground mt-1">
-                                                /24 = 254 hosts · /16 = 65534 hosts
-                                            </p>
-                                        </div>
-                                        <div>
-                                            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                                                <span className="flex items-center gap-2">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={homeRouterMode}
-                                                        onChange={e => setHomeRouterMode(e.target.checked)}
-                                                        className="rounded"
-                                                    />
-                                                    Home Router Mode
-                                                </span>
-                                            </label>
-                                            {homeRouterMode ? (
-                                                <>
-                                                    <Input
-                                                        type="number" min={10} max={200}
-                                                        value={homeReserve}
-                                                        onChange={e => setHomeReserve(Math.min(200, Math.max(10, parseInt(e.target.value) || 50)))}
-                                                        className="h-8 text-sm font-mono"
-                                                    />
-                                                    <p className="text-xs text-muted-foreground mt-1">IPs reserved for home devices (DHCP)</p>
-                                                </>
-                                            ) : (
-                                                <p className="text-xs text-muted-foreground mt-2">
-                                                    Enable to reserve IPs for regular home devices (phones, laptops, etc.)
-                                                </p>
-                                            )}
-                                        </div>
+                                    {/* IP settings removed as they are now handled by backend */ }
+                                    <div className="text-sm text-muted-foreground italic p-4">
+                                        IP Allocation settings are now managed securely by the backend.
                                     </div>
                                 </div>
-                            </div>
                         )}
                     </div>
 
-                    {/* IP Zone Legend — always visible when hardware nodes exist */}
-                    {hardwareNodes.length > 0 && (
-                        <IpLegend ipOpts={ipOpts} />
-                    )}
+                    {/* IP Zone Legend removed */}
 
                     {/* Tab bar */}
                     <div className="flex flex-wrap gap-2">

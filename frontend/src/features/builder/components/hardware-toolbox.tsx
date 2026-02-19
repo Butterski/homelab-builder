@@ -182,7 +182,7 @@ export function HardwareToolbox() {
     const [activeTab, setActiveTab] = useState<'components' | 'presets' | 'services'>('components')
     const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['Single Board Computers', 'Mini PCs']))
     const [isMinimized, setIsMinimized] = useState(false)
-    const [position, setPosition] = useState({ x: 16, y: 16 })
+    const [position, setPosition] = useState({ x: 16, y: 80 })
     const [isDragging, setIsDragging] = useState(false)
     const dragOffset = useState({ x: 0, y: 0 })[0] // Ref-like state for drag offset
 

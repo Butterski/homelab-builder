@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -9,12 +10,14 @@ import (
 	"github.com/Butterski/homelab-builder/backend/internal/models"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"google.golang.org/api/idtoken"
 	"gorm.io/gorm"
 )
 
 type AuthService struct {
 	db        *gorm.DB
 	jwtSecret []byte
+	clientID  string
 }
 
 func NewAuthService(db *gorm.DB) *AuthService {
@@ -22,11 +25,15 @@ func NewAuthService(db *gorm.DB) *AuthService {
 	if secret == "" {
 		secret = "homelab-builder-dev-secret-change-in-production"
 	}
+	clientID := os.Getenv("GOOGLE_CLIENT_ID")
 	return &AuthService{
 		db:        db,
 		jwtSecret: []byte(secret),
+		clientID:  clientID,
 	}
 }
+
+// ... (TokenClaims struct remains same)
 
 type TokenClaims struct {
 	UserID uuid.UUID `json:"user_id"`
@@ -35,10 +42,7 @@ type TokenClaims struct {
 }
 
 type GoogleLoginInput struct {
-	GoogleID  string `json:"google_id" binding:"required"`
-	Email     string `json:"email" binding:"required"`
-	Name      string `json:"name"`
-	AvatarURL string `json:"avatar_url"`
+	Credential string `json:"credential" binding:"required"` // The ID Token from frontend
 }
 
 type AuthResponse struct {
@@ -47,10 +51,29 @@ type AuthResponse struct {
 }
 
 func (s *AuthService) GoogleLogin(input GoogleLoginInput) (*AuthResponse, error) {
-	// For MVP, we trust the input from frontend (in a real app, verify ID token!)
-	// If we wanted to verify: payload, err := idtoken.Validate(ctx, input.Credential, clientID)
+	if s.clientID == "" {
+		return nil, errors.New("GOOGLE_CLIENT_ID not configured on backend")
+	}
 
-	return s.loginOrRegister(input.Email, input.Name, input.GoogleID, input.AvatarURL)
+	// Verify the ID Token
+	payload, err := idtoken.Validate(context.Background(), input.Credential, s.clientID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid google token: %w", err)
+	}
+
+	// Extract user data from payload
+	email, ok := payload.Claims["email"].(string)
+	if !ok {
+		return nil, errors.New("token missing email")
+	}
+	googleID, ok := payload.Claims["sub"].(string)
+	if !ok {
+		return nil, errors.New("token missing sub (google_id)")
+	}
+	name, _ := payload.Claims["name"].(string)
+	picture, _ := payload.Claims["picture"].(string)
+
+	return s.loginOrRegister(email, name, googleID, picture)
 }
 
 // DevLogin bypasses Google Auth for local development
@@ -69,25 +92,44 @@ func (s *AuthService) DevLogin(email string) (*AuthResponse, error) {
 
 func (s *AuthService) loginOrRegister(email, name, googleID, avatarURL string) (*AuthResponse, error) {
 	var user models.User
+	// 1. Try to find by Google ID
 	result := s.db.Where("google_id = ?", googleID).First(&user)
 
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			// Create new user
-			user = models.User{
-				GoogleID:  googleID,
-				Email:     email,
-				Name:      name,
-				AvatarURL: avatarURL,
-			}
-			if err := s.db.Create(&user).Error; err != nil {
-				return nil, fmt.Errorf("failed to create user: %w", err)
+			// 2. Not found by Google ID — check if email exists
+			result = s.db.Where("email = ?", email).First(&user)
+
+			if result.Error == nil {
+				// Found by email! Link this account to the Google ID
+				// This handles the "Seed User" case where GoogleID was empty
+				user.GoogleID = googleID
+				user.Name = name
+				user.AvatarURL = avatarURL
+				if err := s.db.Save(&user).Error; err != nil {
+					return nil, fmt.Errorf("failed to link existing user: %w", err)
+				}
+			} else if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+				// 3. Not found by Email either — Create new user
+				user = models.User{
+					GoogleID:  googleID,
+					Email:     email,
+					Name:      name,
+					AvatarURL: avatarURL,
+				}
+				if err := s.db.Create(&user).Error; err != nil {
+					return nil, fmt.Errorf("failed to create user: %w", err)
+				}
+			} else {
+				// DB error on email check
+				return nil, fmt.Errorf("database error checking email: %w", result.Error)
 			}
 		} else {
-			return nil, fmt.Errorf("database error: %w", result.Error)
+			// DB error on google_id check
+			return nil, fmt.Errorf("database error checking google_id: %w", result.Error)
 		}
 	} else {
-		// Update existing user
+		// Found by Google ID — Update details
 		updates := map[string]interface{}{
 			"email":      email,
 			"name":       name,

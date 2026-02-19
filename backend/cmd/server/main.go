@@ -14,7 +14,7 @@ import (
 )
 
 func main() {
-	log.Println("Starting Homelab Builder Backend (Built Version)...")
+	log.Println("Starting Homelab Builder Backend (FORCE FIX v2)...")
 	cfg := config.Load()
 
 	db, err := database.Connect(cfg)
@@ -127,12 +127,14 @@ func setupRouter(db *gorm.DB) *gin.Engine {
 
 			// Builds
 			buildService := services.NewBuildService(db)
-			buildHandler := handlers.NewBuildHandler(buildService)
+			ipService := services.NewIPService(db)
+			buildHandler := handlers.NewBuildHandler(buildService, ipService)
 			protected.GET("/builds", buildHandler.List)
 			protected.POST("/builds", buildHandler.Create)
 			protected.GET("/builds/:id", buildHandler.Get)
 			protected.PUT("/builds/:id", buildHandler.Update)
 			protected.DELETE("/builds/:id", buildHandler.Delete)
+			protected.POST("/builds/:id/calculate-network", buildHandler.CalculateNetwork)
 		}
 
 		// Admin routes (require authentication + admin role)
