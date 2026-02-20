@@ -1,12 +1,14 @@
 import React, { useState } from "react"
 import {
-    Router, Server, HardDrive, Wifi, CircuitBoard, Monitor,
-    Cpu, Zap, Package, ChevronDown, ChevronUp, Layers,
-    HardDrive as DiskIcon, Plug, Battery, LayoutGrid, AppWindow
-} from "lucide-react"
+    HardDrive, Router, CircuitBoard, Plug, Layers, Package,
+    Search, Server, ChevronDown, ChevronUp, ExternalLink, Book, Heart,
+    HardDrive as DiskIcon, Monitor, Cpu, Wifi, Battery, LayoutGrid, AppWindow, Zap
+} from 'lucide-react'
+import type { HardwareType } from '../../../types'
 import { Card } from "../../../components/ui/card"
+import { useUserSelections } from '../../catalog/api/use-services'
 import { useBuilderStore } from "../store/builder-store"
-import type { HardwareType } from "../../../types"
+import { Github } from "../../../components/icons/github"
 
 // ─── Basic component types ─────────────────────────────────────────────────────
 const HARDWARE_TOOLS: { type: HardwareType; label: string; icon: React.ElementType; color: string }[] = [
@@ -176,9 +178,9 @@ const PRESETS: {
     },
 ]
 
-// ─── Toolbox component ─────────────────────────────────────────────────────────
 export function HardwareToolbox() {
     const { availableServices, fetchServices } = useBuilderStore()
+    const { data: selectionsData } = useUserSelections()
     
     React.useEffect(() => {
         fetchServices()
@@ -186,6 +188,8 @@ export function HardwareToolbox() {
 
     const [activeTab, setActiveTab] = useState<'components' | 'presets' | 'services'>('components')
     const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['Single Board Computers', 'Mini PCs']))
+    const [collapsedServiceCats, setCollapsedServiceCats] = useState<Set<string>>(new Set())
+    const [searchQuery, setSearchQuery] = useState('')
     const [isMinimized, setIsMinimized] = useState(false)
     const [position, setPosition] = useState({ x: 16, y: 80 })
     const [isDragging, setIsDragging] = useState(false)
@@ -243,13 +247,50 @@ export function HardwareToolbox() {
         })
     }
 
+    const toggleServiceCat = (cat: string) => {
+        setCollapsedServiceCats(prev => {
+            const next = new Set(prev)
+            if (next.has(cat)) next.delete(cat)
+            else next.add(cat)
+            return next
+        })
+    }
+
+    // Filter and group services
+    const favServiceIds = new Set(selectionsData?.data?.map(s => s.service_id) || [])
+
+    const filteredServices = availableServices.filter(svc => 
+        svc.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+        svc.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        svc.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (searchQuery.toLowerCase() === 'favorites' && favServiceIds.has(svc.id))
+    )
+
+    const servicesByCategory = filteredServices.reduce((acc, svc) => {
+        if (!acc[svc.category]) acc[svc.category] = []
+        acc[svc.category].push(svc)
+
+        if (favServiceIds.has(svc.id)) {
+            if (!acc['Favorites']) acc['Favorites'] = []
+            acc['Favorites'].push(svc)
+        }
+        
+        return acc
+    }, {} as Record<string, typeof availableServices>)
+
+    const sortedServiceCategories = Object.entries(servicesByCategory).sort((a,b) => {
+        if (a[0] === 'Favorites') return -1;
+        if (b[0] === 'Favorites') return 1;
+        return a[0].localeCompare(b[0]);
+    })
+
     return (
         <Card
             className="absolute z-50 shadow-xl border-2 flex flex-col overflow-hidden transition-shadow"
             style={{
                 left: position.x,
                 top: position.y,
-                width: isMinimized ? 'auto' : '15rem',
+                width: isMinimized ? 'auto' : '16.5rem',
                 maxHeight: isMinimized ? 'auto' : 'calc(100vh - 8rem)',
                 cursor: isDragging ? 'grabbing' : 'auto'
             }}
@@ -371,49 +412,116 @@ export function HardwareToolbox() {
                         {/* ── Services tab ── */}
                         {activeTab === 'services' && (
                             <div className="space-y-2">
-                                <p className="text-[10px] text-muted-foreground">Drag a service onto a server/PC node to assign it</p>
+                                <p className="text-[10px] text-muted-foreground mb-2">Drag a service to assign to a server/PC node</p>
+                                
+                                <div className="relative mb-3">
+                                    <Search className="absolute left-2 top-1.5 h-3.5 w-3.5 text-muted-foreground" />
+                                    <input
+                                        type="text"
+                                        placeholder="Search services..."
+                                        value={searchQuery}
+                                        onChange={(e) => {
+                                            setSearchQuery(e.target.value)
+                                            // auto-expand all categories when searching
+                                            if (e.target.value.length > 0) {
+                                                setCollapsedServiceCats(new Set())
+                                            }
+                                        }}
+                                        className="pl-7 pr-3 py-1 text-xs w-full bg-background border rounded-md focus:outline-none focus:border-primary/50 transition-colors"
+                                    />
+                                </div>
+
                                 <div className="space-y-1">
-                                    {availableServices.length === 0 && (
+                                     {sortedServiceCategories.length === 0 && (
                                          <div className="text-center py-6 space-y-2">
-                                            <p className="text-xs text-muted-foreground">Loading or no services found...</p>
+                                            <p className="text-xs text-muted-foreground">No services found...</p>
                                         </div>
                                     )}
-                                    {availableServices.map(svc => (
-                                        <div
-                                            key={svc.id}
-                                            className="flex items-center gap-2 px-2.5 py-2 border rounded-lg cursor-grab hover:bg-primary/5 hover:border-primary/50 transition-colors bg-card active:cursor-grabbing"
-                                            onDragStart={e => {
-                                                e.dataTransfer.setData('application/reactflow', 'server')
-                                                e.dataTransfer.setData('service-drag', 'true') // Helper to identify service drag
-                                                e.dataTransfer.setData('application/reactflow-data', JSON.stringify({
-                                                    type: 'server',
-                                                    name: svc.name,
-                                                    details: {
-                                                        model: svc.name,
-                                                        cpu: svc.requirements ? svc.requirements.min_cpu_cores : undefined,
-                                                        ram: svc.requirements ? svc.requirements.min_ram_mb : undefined,
-                                                    },
-                                                    serviceId: svc.id // Pass service ID
-                                                }))
-                                                e.dataTransfer.effectAllowed = 'move'
-                                            }}
-                                            draggable
-                                        >
-                                            <div className="h-6 w-6 rounded bg-primary/10 flex items-center justify-center shrink-0">
-                                                <Zap className="h-3 w-3 text-primary" />
-                                            </div>
-                                            <div className="min-w-0">
-                                                <p className="text-[10px] font-semibold truncate">{svc.name}</p>
-                                                {svc.requirements && (
-                                                    <p className="text-[9px] text-muted-foreground">
-                                                        {svc.requirements.min_cpu_cores}vCPU · {svc.requirements.min_ram_mb >= 1024
-                                                            ? `${(svc.requirements.min_ram_mb / 1024).toFixed(1)}GB`
-                                                            : `${svc.requirements.min_ram_mb}MB`} RAM
-                                                    </p>
+
+                                    {sortedServiceCategories.map(([catName, svcs]) => {
+                                        // Auto-expand if searchQuery is active, else check if NOT in collapsed set
+                                        const isEffectivelyOpen = searchQuery !== '' ? true : (!collapsedServiceCats.has(catName))
+
+                                        return (
+                                            <div key={catName} className="border rounded-lg overflow-hidden">
+                                                <button
+                                                    className="w-full flex items-center justify-between px-2.5 py-2 text-[10px] font-bold uppercase tracking-wide bg-muted/40 hover:bg-muted/70 transition-colors"
+                                                    onClick={() => toggleServiceCat(catName)}
+                                                >
+                                                    <span className="flex items-center gap-1.5 focus:outline-none">
+                                                        {catName === 'Favorites' && <Heart className="h-3 w-3 fill-red-500 text-red-500" />}
+                                                        {catName}
+                                                    </span>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-[9px] text-muted-foreground px-1.5 py-0.5 bg-background rounded-full">{svcs.length}</span>
+                                                        {isEffectivelyOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                                                    </div>
+                                                </button>
+                                                
+                                                {isEffectivelyOpen && (
+                                                    <div className="divide-y divide-border/50">
+                                                        {svcs.map(svc => (
+                                                            <div
+                                                                key={svc.id}
+                                                                className="flex items-center justify-between gap-2 px-2.5 py-2 cursor-grab hover:bg-primary/5 transition-colors bg-card active:cursor-grabbing group"
+                                                                onDragStart={e => {
+                                                                    e.dataTransfer.setData('application/reactflow', 'server')
+                                                                    e.dataTransfer.setData('service-drag', 'true')
+                                                                    e.dataTransfer.setData('application/reactflow-data', JSON.stringify({
+                                                                        type: 'server',
+                                                                        name: svc.name,
+                                                                        details: {
+                                                                            model: svc.name,
+                                                                            cpu: svc.requirements ? svc.requirements.min_cpu_cores : undefined,
+                                                                            ram: svc.requirements ? svc.requirements.min_ram_mb : undefined,
+                                                                        },
+                                                                        serviceId: svc.id
+                                                                    }))
+                                                                    e.dataTransfer.effectAllowed = 'move'
+                                                                }}
+                                                                draggable
+                                                            >
+                                                                <div className="flex items-center gap-2 min-w-0">
+                                                                    <div className="h-6 w-6 rounded bg-primary/10 flex items-center justify-center shrink-0">
+                                                                        {svc.icon ? <Zap className="h-3 w-3 text-primary" /> : <Zap className="h-3 w-3 text-primary" />}
+                                                                    </div>
+                                                                    <div className="min-w-0 flex flex-col">
+                                                                        <p className="text-[10px] font-semibold truncate leading-tight group-hover:text-primary transition-colors">{svc.name}</p>
+                                                                        {svc.requirements && (
+                                                                            <p className="text-[9px] text-muted-foreground truncate leading-tight mt-0.5">
+                                                                                {svc.requirements.min_cpu_cores}vCPU · {svc.requirements.min_ram_mb >= 1024
+                                                                                    ? `${(svc.requirements.min_ram_mb / 1024).toFixed(1)}GB`
+                                                                                    : `${svc.requirements.min_ram_mb}MB`} RAM
+                                                                            </p>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                                
+                                                                {/* Metadata Link Buttons */}
+                                                                <div className="flex items-center gap-1 opacity-10 group-hover:opacity-100 transition-opacity" onMouseDown={(e) => { e.stopPropagation() }}>
+                                                                    {svc.docs_url && (
+                                                                        <a href={svc.docs_url} target="_blank" rel="noopener noreferrer" className="p-1 hover:bg-muted rounded" title="Documentation">
+                                                                            <Book className="h-3 w-3 text-emerald-500" />
+                                                                        </a>
+                                                                    )}
+                                                                    {svc.github_url && (
+                                                                        <a href={svc.github_url} target="_blank" rel="noopener noreferrer" className="p-1 hover:bg-muted rounded" title="GitHub Source">
+                                                                            <Github className="h-3 w-3 text-muted-foreground" />
+                                                                        </a>
+                                                                    )}
+                                                                    {svc.official_website && !svc.github_url && !svc.docs_url && (
+                                                                        <a href={svc.official_website} target="_blank" rel="noopener noreferrer" className="p-1 hover:bg-muted rounded" title="Official Website">
+                                                                            <ExternalLink className="h-3 w-3 text-blue-500" />
+                                                                        </a>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
                                                 )}
                                             </div>
-                                        </div>
-                                    ))}
+                                        )
+                                    })}
                                 </div>
                             </div>
                         )}

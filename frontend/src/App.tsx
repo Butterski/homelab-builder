@@ -8,6 +8,7 @@ import ProjectsPage from './features/builder/pages/projects-page';
 import AdminPage from './features/admin/pages/admin-page';
 import ShoppingListPage from './features/shopping/pages/shopping-list-page';
 import HardwareCatalogPage from './features/catalog/pages/hardware-catalog-page';
+import ServiceCatalogPage from './features/catalog/pages/service-catalog-page';
 import ChecklistPage from './features/setup-guide/pages/checklist-page';
 import ConfigGeneratorPage from './features/builder/pages/config-generator-page';
 import { Sidebar } from './components/layout/sidebar';
@@ -44,9 +45,11 @@ function AppContent() {
             <Route path="/shopping-list" element={<ShoppingListPage />} />
             <Route path="/generate" element={<ConfigGeneratorPage />} />
             <Route path="/admin" element={<AdminPage />} />
+            {/* Catalog routes */}
+            <Route path="/hardware" element={<HardwareCatalogPage />} />
+            <Route path="/services" element={<ServiceCatalogPage />} />
             {/* Redirect legacy routes */}
             <Route path="/checklist" element={<ChecklistPage />} />
-            <Route path="/hardware" element={<HardwareCatalogPage />} />
             </Routes>
         </main>
     </div>

@@ -102,6 +102,7 @@ func setupRouter(db *gorm.DB) *gin.Engine {
 			api.GET("/services", serviceHandler.GetAll)
 			api.GET("/services/:id", serviceHandler.GetByID)
 			api.POST("/services", serviceHandler.Create)
+			api.POST("/services/community", serviceHandler.SubmitCommunity) // community submission
 			api.PUT("/services/:id", serviceHandler.Update)
 			api.DELETE("/services/:id", serviceHandler.Delete)
 

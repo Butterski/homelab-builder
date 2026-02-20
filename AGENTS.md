@@ -9,6 +9,8 @@ IF IT WOULD BE FASTER TO REBUILD THE APP FROM SCRATCH, THEN DO IT.
 DO NOT MAKE ANY "todo later" OR "include in production" CHANGES.
 EVEN THOUGH THIS IS NOT A PRODUCTION THIS NEEDS TO WORK LIKE IT.
 
+Test things in docker since I wanna keep my windows environment clean.
+
 ---
 
 ## Table of Contents

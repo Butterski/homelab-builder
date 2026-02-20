@@ -4,22 +4,31 @@ import { cn } from "../../lib/utils"
 
 // import { Button } from "../ui/button" // Might be used for logout/collapse
 
-const NAV_ITEMS = [
+const BASE_NAV_ITEMS = [
   { label: "Projects", href: "/", icon: LayoutDashboard },
   { label: "Config Generator", href: "/generate", icon: FileCode },
 
   { label: "Hardware Catalog", href: "/hardware", icon: HardDrive },
+  { label: "Service Library", href: "/services", icon: CheckSquare },
   { label: "Shopping List", href: "/shopping-list", icon: ShoppingCart },
   { label: "Setup Guide", href: "/checklist", icon: CheckSquare },
   { label: "Admin", href: "/admin", icon: Settings },
 ]
 
 import { useAuth } from "../../features/admin/hooks/use-auth"
+import { useBuilderStore } from "../../features/builder/store/builder-store"
 import { GoogleLoginButton } from "../auth/google-login-button"
-import { LogOut } from "lucide-react"
+import { LogOut, LayoutTemplate } from "lucide-react"
 
 export function Sidebar({ className }: { className?: string }) {
   const { user, logout } = useAuth()
+  const { currentBuildId } = useBuilderStore()
+  
+  const navItems = [
+    BASE_NAV_ITEMS[0],
+    ...(currentBuildId ? [{ label: "Active Project", href: `/builder/${currentBuildId}`, icon: LayoutTemplate }] : []),
+    ...BASE_NAV_ITEMS.slice(1)
+  ]
   
   return (
     <aside className={cn("hidden md:flex flex-col w-64 border-r bg-card h-full", className)}>
@@ -31,7 +40,7 @@ export function Sidebar({ className }: { className?: string }) {
       <div className="flex-1 overflow-y-auto py-4">
         {/* ... nav items ... */}
         <nav className="grid gap-1 px-2">
-          {NAV_ITEMS.map((item) => (
+          {navItems.map((item) => (
             <NavLink
               key={item.href}
               to={item.href}

@@ -1,6 +1,7 @@
 package models
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -26,6 +27,9 @@ type Service struct {
 	Category        string              `gorm:"not null;default:'other'" json:"category"`
 	Icon            string              `gorm:"default:''" json:"icon"`
 	OfficialWebsite string              `gorm:"default:''" json:"official_website,omitempty"`
+	DocsURL         string              `gorm:"default:''" json:"docs_url,omitempty"`
+	GithubURL       string              `gorm:"default:''" json:"github_url,omitempty"`
+	Tags            string              `gorm:"type:jsonb;default:'[]'" json:"tags"`
 	DockerSupport   bool                `gorm:"default:true" json:"docker_support"`
 	IsActive        bool                `gorm:"default:true" json:"is_active"`
 	Requirements    *ServiceRequirement `gorm:"foreignKey:ServiceID" json:"requirements,omitempty"`
@@ -100,20 +104,20 @@ type Event struct {
 }
 
 type HardwareComponent struct {
-	ID          uuid.UUID  `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
-	Category    string     `gorm:"not null;index" json:"category"`
-	Brand       string     `gorm:"not null;index" json:"brand"`
-	Model       string     `gorm:"not null" json:"model"`
-	Spec        string     `gorm:"type:jsonb;not null;default:'{}'" json:"spec"`
-	PriceEst    float64    `gorm:"default:0" json:"price_est"`
-	Currency    string     `gorm:"default:'EUR'" json:"currency"`
-	BuyURLs     string     `gorm:"type:jsonb;default:'[]'" json:"buy_urls"`
-	ImageURL    string     `gorm:"default:''" json:"image_url"`
-	SubmittedBy *uuid.UUID `gorm:"type:uuid" json:"submitted_by,omitempty"`
-	Approved    bool       `gorm:"default:true;index" json:"approved"`
-	Likes       int        `gorm:"default:0" json:"likes"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	ID          uuid.UUID       `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
+	Category    string          `gorm:"not null;index" json:"category"`
+	Brand       string          `gorm:"not null;index" json:"brand"`
+	Model       string          `gorm:"not null" json:"model"`
+	Spec        json.RawMessage `gorm:"type:jsonb;not null;default:'{}'" json:"spec"`
+	PriceEst    float64         `gorm:"default:0" json:"price_est"`
+	Currency    string          `gorm:"default:'EUR'" json:"currency"`
+	BuyURLs     json.RawMessage `gorm:"type:jsonb;default:'[]'" json:"buy_urls"`
+	ImageURL    string          `gorm:"default:''" json:"image_url"`
+	SubmittedBy *uuid.UUID      `gorm:"type:uuid" json:"submitted_by,omitempty"`
+	Approved    bool            `gorm:"default:true;index" json:"approved"`
+	Likes       int             `gorm:"default:0" json:"likes"`
+	CreatedAt   time.Time       `json:"created_at"`
+	UpdatedAt   time.Time       `json:"updated_at"`
 }
 
 func (HardwareComponent) TableName() string { return "hardware_components" }

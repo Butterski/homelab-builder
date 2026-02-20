@@ -102,6 +102,48 @@ func (h *ServiceHandler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"data": svc})
 }
 
+func (h *ServiceHandler) SubmitCommunity(c *gin.Context) {
+	var input services.CreateServiceInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid request body. Name and category are required.",
+			"code":  "validation_error",
+		})
+		return
+	}
+
+	// Force inactive state for community submissions
+	isActive := false
+	input.IsActive = &isActive
+
+	if errs := validateServiceInput(input.Name, input.Category, input.MinRAMMB, input.RecommendedRAMMB, input.MinCPUCores, input.RecommendedCPUCores, input.MinStorageGB, input.RecommendedStorageGB); len(errs) > 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":  "Validation failed",
+			"code":   "validation_error",
+			"errors": errs,
+		})
+		return
+	}
+
+	svc, err := h.service.Create(input)
+	if err != nil {
+		if strings.Contains(err.Error(), "duplicate") || strings.Contains(err.Error(), "unique") {
+			c.JSON(http.StatusConflict, gin.H{
+				"error": "A service with this name already exists",
+				"code":  "duplicate",
+			})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to submit service. Please try again.",
+			"code":  "internal_error",
+		})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"data": svc, "message": "Service submitted for review"})
+}
+
 func (h *ServiceHandler) Update(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {

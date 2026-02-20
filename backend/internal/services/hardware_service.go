@@ -121,13 +121,13 @@ type CreateHardwareInput struct {
 }
 
 func (s *HardwareService) Create(input CreateHardwareInput, submittedBy *uuid.UUID, autoApprove bool) (*models.HardwareComponent, error) {
-	spec := "{}"
+	spec := json.RawMessage("{}")
 	if input.Spec != nil {
-		spec = string(input.Spec)
+		spec = input.Spec
 	}
-	buyURLs := "[]"
+	buyURLs := json.RawMessage("[]")
 	if input.BuyURLs != nil {
-		buyURLs = string(input.BuyURLs)
+		buyURLs = input.BuyURLs
 	}
 	currency := input.Currency
 	if currency == "" {
@@ -159,11 +159,11 @@ func (s *HardwareService) Update(id uuid.UUID, input CreateHardwareInput) (*mode
 	}
 	spec := c.Spec
 	if input.Spec != nil {
-		spec = string(input.Spec)
+		spec = input.Spec
 	}
 	buyURLs := c.BuyURLs
 	if input.BuyURLs != nil {
-		buyURLs = string(input.BuyURLs)
+		buyURLs = input.BuyURLs
 	}
 	c.Category = input.Category
 	c.Brand = input.Brand
@@ -199,13 +199,13 @@ func (s *HardwareService) Like(id uuid.UUID) error {
 func (s *HardwareService) BulkImport(items []CreateHardwareInput, submittedBy *uuid.UUID) (int, error) {
 	var components []models.HardwareComponent
 	for _, input := range items {
-		spec := "{}"
+		spec := json.RawMessage("{}")
 		if input.Spec != nil {
-			spec = string(input.Spec)
+			spec = input.Spec
 		}
-		buyURLs := "[]"
+		buyURLs := json.RawMessage("[]")
 		if input.BuyURLs != nil {
-			buyURLs = string(input.BuyURLs)
+			buyURLs = input.BuyURLs
 		}
 		currency := input.Currency
 		if currency == "" {

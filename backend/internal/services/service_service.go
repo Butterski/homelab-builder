@@ -33,29 +33,45 @@ func (s *ServiceService) GetByID(id uuid.UUID) (*models.Service, error) {
 }
 
 type CreateServiceInput struct {
-	Name            string  `json:"name" binding:"required"`
-	Description     string  `json:"description"`
-	Category        string  `json:"category" binding:"required"`
-	Icon            string  `json:"icon"`
-	OfficialWebsite string  `json:"official_website"`
-	DockerSupport   bool    `json:"docker_support"`
-	MinRAMMB        int     `json:"min_ram_mb"`
-	RecommendedRAMMB int    `json:"recommended_ram_mb"`
-	MinCPUCores     float32 `json:"min_cpu_cores"`
-	RecommendedCPUCores float32 `json:"recommended_cpu_cores"`
-	MinStorageGB    int     `json:"min_storage_gb"`
-	RecommendedStorageGB int `json:"recommended_storage_gb"`
+	Name                 string  `json:"name" binding:"required"`
+	Description          string  `json:"description"`
+	Category             string  `json:"category" binding:"required"`
+	Icon                 string  `json:"icon"`
+	OfficialWebsite      string  `json:"official_website"`
+	DocsURL              string  `json:"docs_url"`
+	GithubURL            string  `json:"github_url"`
+	Tags                 string  `json:"tags"`
+	IsActive             *bool   `json:"is_active"`
+	DockerSupport        bool    `json:"docker_support"`
+	MinRAMMB             int     `json:"min_ram_mb"`
+	RecommendedRAMMB     int     `json:"recommended_ram_mb"`
+	MinCPUCores          float32 `json:"min_cpu_cores"`
+	RecommendedCPUCores  float32 `json:"recommended_cpu_cores"`
+	MinStorageGB         int     `json:"min_storage_gb"`
+	RecommendedStorageGB int     `json:"recommended_storage_gb"`
 }
 
 func (s *ServiceService) Create(input CreateServiceInput) (*models.Service, error) {
+	isActive := true
+	if input.IsActive != nil {
+		isActive = *input.IsActive
+	}
+
+	if input.Tags == "" {
+		input.Tags = "[]"
+	}
+
 	service := models.Service{
 		Name:            input.Name,
 		Description:     input.Description,
 		Category:        input.Category,
 		Icon:            input.Icon,
 		OfficialWebsite: input.OfficialWebsite,
+		DocsURL:         input.DocsURL,
+		GithubURL:       input.GithubURL,
+		Tags:            input.Tags,
 		DockerSupport:   input.DockerSupport,
-		IsActive:        true,
+		IsActive:        isActive,
 	}
 
 	err := s.db.Transaction(func(tx *gorm.DB) error {
@@ -63,13 +79,18 @@ func (s *ServiceService) Create(input CreateServiceInput) (*models.Service, erro
 			return err
 		}
 
+		// Force the is_active flag to bypass GORM ignoring zero-values with default tags
+		if err := tx.Model(&service).Update("is_active", isActive).Error; err != nil {
+			return err
+		}
+
 		req := models.ServiceRequirement{
-			ServiceID:           service.ID,
-			MinRAMMB:            input.MinRAMMB,
-			RecommendedRAMMB:    input.RecommendedRAMMB,
-			MinCPUCores:         input.MinCPUCores,
-			RecommendedCPUCores: input.RecommendedCPUCores,
-			MinStorageGB:        input.MinStorageGB,
+			ServiceID:            service.ID,
+			MinRAMMB:             input.MinRAMMB,
+			RecommendedRAMMB:     input.RecommendedRAMMB,
+			MinCPUCores:          input.MinCPUCores,
+			RecommendedCPUCores:  input.RecommendedCPUCores,
+			MinStorageGB:         input.MinStorageGB,
 			RecommendedStorageGB: input.RecommendedStorageGB,
 		}
 		if err := tx.Create(&req).Error; err != nil {
@@ -84,18 +105,22 @@ func (s *ServiceService) Create(input CreateServiceInput) (*models.Service, erro
 }
 
 type UpdateServiceInput struct {
-	Name            *string  `json:"name"`
-	Description     *string  `json:"description"`
-	Category        *string  `json:"category"`
-	Icon            *string  `json:"icon"`
-	OfficialWebsite *string  `json:"official_website"`
-	DockerSupport   *bool    `json:"docker_support"`
-	MinRAMMB        *int     `json:"min_ram_mb"`
-	RecommendedRAMMB *int    `json:"recommended_ram_mb"`
-	MinCPUCores     *float32 `json:"min_cpu_cores"`
-	RecommendedCPUCores *float32 `json:"recommended_cpu_cores"`
-	MinStorageGB    *int     `json:"min_storage_gb"`
-	RecommendedStorageGB *int `json:"recommended_storage_gb"`
+	Name                 *string  `json:"name"`
+	Description          *string  `json:"description"`
+	Category             *string  `json:"category"`
+	Icon                 *string  `json:"icon"`
+	OfficialWebsite      *string  `json:"official_website"`
+	DocsURL              *string  `json:"docs_url"`
+	GithubURL            *string  `json:"github_url"`
+	Tags                 *string  `json:"tags"`
+	IsActive             *bool    `json:"is_active"`
+	DockerSupport        *bool    `json:"docker_support"`
+	MinRAMMB             *int     `json:"min_ram_mb"`
+	RecommendedRAMMB     *int     `json:"recommended_ram_mb"`
+	MinCPUCores          *float32 `json:"min_cpu_cores"`
+	RecommendedCPUCores  *float32 `json:"recommended_cpu_cores"`
+	MinStorageGB         *int     `json:"min_storage_gb"`
+	RecommendedStorageGB *int     `json:"recommended_storage_gb"`
 }
 
 func (s *ServiceService) Update(id uuid.UUID, input UpdateServiceInput) (*models.Service, error) {
@@ -120,6 +145,18 @@ func (s *ServiceService) Update(id uuid.UUID, input UpdateServiceInput) (*models
 		}
 		if input.OfficialWebsite != nil {
 			serviceUpdates["official_website"] = *input.OfficialWebsite
+		}
+		if input.DocsURL != nil {
+			serviceUpdates["docs_url"] = *input.DocsURL
+		}
+		if input.GithubURL != nil {
+			serviceUpdates["github_url"] = *input.GithubURL
+		}
+		if input.Tags != nil {
+			serviceUpdates["tags"] = *input.Tags
+		}
+		if input.IsActive != nil {
+			serviceUpdates["is_active"] = *input.IsActive
 		}
 		if input.DockerSupport != nil {
 			serviceUpdates["docker_support"] = *input.DockerSupport

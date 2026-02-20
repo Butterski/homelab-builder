@@ -1,17 +1,33 @@
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { api } from "../../../lib/api"
-import type { Service } from "../../../types" // Assuming types are still in src/types or need to be moved
+import type { Service } from "../../../types"
 
-// We should probably move shared types to src/types or src/lib/types if global, or feature specific.
-// For now, I'll rely on global types if they exist, or re-declare.
-// Let's assume src/types/index.ts exists.
+export interface UserSelection {
+    id: string
+    service_id: string
+    service: Service
+    created_at: string
+}
 
-export const useServices = () => {
-    return useQuery({
-        queryKey: ["services"],
-        queryFn: async () => {
-            const response = await api.get<{ data: Service[] }>("/api/services")
-            return response.data
-        },
+export function useUserSelections() {
+    return useQuery<{ data: UserSelection[] }>({
+        queryKey: ["user-selections"],
+        queryFn: () => api.get<{ data: UserSelection[] }>("/api/selections"),
+    })
+}
+
+export function useAddSelection() {
+    const qc = useQueryClient()
+    return useMutation({
+        mutationFn: (serviceId: string) => api.post("/api/selections", { service_id: serviceId }),
+        onSuccess: () => qc.invalidateQueries({ queryKey: ["user-selections"] }),
+    })
+}
+
+export function useRemoveSelection() {
+    const qc = useQueryClient()
+    return useMutation({
+        mutationFn: (selectionId: string) => api.del(`/api/selections/${selectionId}`),
+        onSuccess: () => qc.invalidateQueries({ queryKey: ["user-selections"] }),
     })
 }

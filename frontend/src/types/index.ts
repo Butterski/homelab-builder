@@ -26,6 +26,9 @@ export interface Service {
     category: string;
     icon: string;
     official_website: string;
+    docs_url?: string;
+    github_url?: string;
+    tags?: string;
     docker_support: boolean;
     is_active: boolean;
     requirements: ServiceRequirement | null;

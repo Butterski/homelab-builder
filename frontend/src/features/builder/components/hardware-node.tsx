@@ -1,5 +1,5 @@
-import { memo } from 'react'
-import { Handle, Position, type NodeProps } from '@xyflow/react'
+import { memo, useEffect } from 'react'
+import { Handle, Position, useUpdateNodeInternals, type NodeProps } from '@xyflow/react'
 import {
     Server, Router, CircuitBoard, HardDrive, Wifi, Monitor,
     Box, Cpu, Container, Layers, Plug, Battery, HardDrive as DiskIcon
@@ -101,7 +101,7 @@ function ComponentChip({ component }: { component: HardwareComponent }) {
 const COMPUTE_TYPES: HardwareType[] = ['server', 'pc', 'minipc', 'sbc']
 const CONTAINER_STEP = 10  // mirrors ROLE_ZONE step for compute types
 
-export const HardwareNode = memo(({ data, selected }: NodeProps) => {
+export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
     const nodeData = data as unknown as HardwareNodeData
     const cfg = TYPE_CONFIG[nodeData.type] ?? FALLBACK_CONFIG
     const Icon = cfg.icon
@@ -110,6 +110,16 @@ export const HardwareNode = memo(({ data, selected }: NodeProps) => {
     const hasVMs = vms.length > 0
     const hasComponents = components.length > 0
     const isCompute = COMPUTE_TYPES.includes(nodeData.type)
+
+    // React flow handles dynamically
+    const updateNodeInternals = useUpdateNodeInternals()
+    const numPorts = (nodeData.type === 'switch' || nodeData.type === 'router') 
+        ? (Number(nodeData.details?.ports) || 4) 
+        : 1;
+
+    useEffect(() => {
+        updateNodeInternals(id)
+    }, [id, numPorts, updateNodeInternals, hasVMs, hasComponents])
 
     // Container pool range hint
     const containerRangeHint = isCompute && nodeData.ip
@@ -122,10 +132,7 @@ export const HardwareNode = memo(({ data, selected }: NodeProps) => {
         : null
 
     // Calculate dynamic width for high-port-count switches
-    const numPorts = (nodeData.type === 'switch' || nodeData.type === 'router') 
-        ? (Number(nodeData.details?.ports) || 4) 
-        : 0;
-    const dynamicMinWidth = numPorts * 16; // 16px per port
+    const dynamicMinWidth = (nodeData.type === 'switch' || nodeData.type === 'router') ? (numPorts * 16) : 0;
 
     return (
         <div className="relative group">
@@ -247,11 +254,10 @@ export const HardwareNode = memo(({ data, selected }: NodeProps) => {
             {/* Source Ports (Bottom, for outgoing cables) */}
             {(() => {
                 if (nodeData.type === 'switch' || nodeData.type === 'router') {
-                    const numPorts = Number(nodeData.details?.ports) || 4;
                     const portSpacing = 100 / (numPorts + 1);
                     return Array.from({ length: numPorts }).map((_, i) => (
                         <Handle
-                            key={`port-${i}`}
+                            key={`port-${numPorts}-${i}`}
                             id={`eth${i}`}
                             type="source"
                             position={Position.Bottom}
