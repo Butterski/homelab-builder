@@ -14,7 +14,7 @@ import (
 )
 
 func main() {
-	log.Println("Starting Homelab Builder Backend (FORCE FIX v2)...")
+	log.Println("Starting Homelab Builder Backend...")
 	cfg := config.Load()
 
 	db, err := database.Connect(cfg)
@@ -26,11 +26,7 @@ func main() {
 		return
 	}
 
-	if db == nil {
-		log.Println("ERROR: DB is nil after Connect, but no error returned!")
-	} else {
-		log.Println("SUCCESS: DB is not nil. Proceeding to setupRouter.")
-	}
+	log.Println("Database connected. Setting up routes...")
 
 	router := setupRouter(db)
 	startServer(router, cfg.ServerPort)
@@ -71,7 +67,6 @@ func setupRouter(db *gorm.DB) *gin.Engine {
 
 	// API routes (require database)
 	if db != nil {
-		log.Println("DEBUG: Registering API routes...")
 		authService := services.NewAuthService(db)
 		serviceService := services.NewServiceService(db)
 		serviceHandler := handlers.NewServiceHandler(serviceService)

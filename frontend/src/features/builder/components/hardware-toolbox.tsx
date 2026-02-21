@@ -2,7 +2,7 @@ import React, { useState } from "react"
 import {
     HardDrive, Router, CircuitBoard, Plug, Layers, Package,
     Search, Server, ChevronDown, ChevronUp, ExternalLink, Book, Heart,
-    HardDrive as DiskIcon, Monitor, Cpu, Wifi, Battery, LayoutGrid, AppWindow, Zap
+    Monitor, Cpu, Wifi, Battery, LayoutGrid, AppWindow, Zap
 } from 'lucide-react'
 import type { HardwareType } from '../../../types'
 import { Card } from "../../../components/ui/card"
@@ -19,7 +19,7 @@ const HARDWARE_TOOLS: { type: HardwareType; label: string; icon: React.ElementTy
     { type: 'minipc',       label: 'Mini PC',  icon: Monitor,     color: 'text-sky-500' },
     { type: 'sbc',          label: 'SBC',      icon: Cpu,         color: 'text-green-500' },
     { type: 'nas',          label: 'NAS',      icon: HardDrive,   color: 'text-emerald-500' },
-    { type: 'disk',         label: 'Disk',     icon: DiskIcon,    color: 'text-gray-400' },
+    { type: 'disk',         label: 'Disk',     icon: HardDrive,   color: 'text-gray-400' },
     { type: 'access_point', label: 'AP',       icon: Wifi,        color: 'text-yellow-500' },
     { type: 'gpu',          label: 'GPU',      icon: Layers,      color: 'text-pink-500' },
     { type: 'hba',          label: 'HBA',      icon: Plug,        color: 'text-indigo-500' },
@@ -161,17 +161,17 @@ const PRESETS: {
         items: [
             {
                 label: 'Seagate Exos 8TB',
-                type: 'disk', icon: DiskIcon, sub: 'HDD · SATA · ~$150',
+                type: 'disk', icon: HardDrive, sub: 'HDD · SATA · ~$150',
                 data: { name: 'Seagate Exos 8TB', details: { model: 'Seagate Exos X18 8TB', storage: 8000, price_est: 150 } }
             },
             {
                 label: 'Samsung 870 EVO 2TB',
-                type: 'disk', icon: DiskIcon, sub: 'SSD · SATA · ~$130',
+                type: 'disk', icon: HardDrive, sub: 'SSD · SATA · ~$130',
                 data: { name: 'Samsung 870 EVO 2TB', details: { model: 'Samsung 870 EVO', storage: 2000, price_est: 130 } }
             },
             {
                 label: 'WD Red Plus 4TB',
-                type: 'disk', icon: DiskIcon, sub: 'HDD · NAS-optimized · ~$90',
+                type: 'disk', icon: HardDrive, sub: 'HDD · NAS-optimized · ~$90',
                 data: { name: 'WD Red Plus 4TB', details: { model: 'WD Red Plus', storage: 4000, price_est: 90 } }
             },
         ]

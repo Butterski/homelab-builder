@@ -27,7 +27,7 @@ export function LiveResourceDashboard() {
         let usedCpuThreads = 0;
         let usedStorageGb = 0;
 
-        const isCompute = (t: HardwareType) => ['server', 'pc', 'minipc', 'sbc', 'nas', 'raspberry_pi', 'mini_pc'].includes(t);
+        const isCompute = (t: HardwareType) => ['server', 'pc', 'minipc', 'sbc', 'nas'].includes(t);
 
         hardwareNodes.forEach(node => {
             if (!isCompute(node.type)) return;

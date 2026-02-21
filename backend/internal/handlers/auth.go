@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/Butterski/homelab-builder/backend/internal/middleware"
@@ -25,18 +25,6 @@ func NewAuthHandler(service *services.AuthService, rateLimiter *middleware.RateL
 func (h *AuthHandler) GoogleLogin(c *gin.Context) {
 	ip := c.ClientIP()
 
-	// Check if IP is locked out — return same error as invalid creds
-	/* TODO: Re-enable rate limiting for production
-	if h.rateLimiter.IsBlocked(ip) {
-		fmt.Printf("Rate limit blocked IP: %s\n", ip)
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "Invalid credentials",
-			"code":  "invalid_credentials",
-		})
-		return
-	}
-	*/
-
 	var input services.GoogleLoginInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		// Record as failed attempt (malformed request = suspicious)
@@ -50,13 +38,12 @@ func (h *AuthHandler) GoogleLogin(c *gin.Context) {
 
 	result, err := h.service.GoogleLogin(input)
 	if err != nil {
-		// Log the error for debugging
-		fmt.Printf("Google Login Error: %v\n", err)
+		log.Printf("Google Login Error: %v", err)
 
 		// Record failure
 		locked := h.rateLimiter.RecordFailure(ip)
 		if locked {
-			fmt.Printf("Rate limit LOCKED IP: %s\n", ip)
+			log.Printf("Rate limit locked IP: %s", ip)
 			// Just locked — return same generic error
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"error": "Invalid credentials",

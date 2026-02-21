@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/Butterski/homelab-builder/backend/internal/services"
@@ -42,7 +42,7 @@ func (h *BuildHandler) Create(c *gin.Context) {
 
 	build, err := h.service.Create(userID.(uuid.UUID), req.Name, req.Data, req.Thumbnail)
 	if err != nil {
-		fmt.Printf("Build Create Error: %v\n", err)
+		log.Printf("Build Create Error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create build"})
 		return
 	}
@@ -105,7 +105,7 @@ func (h *BuildHandler) Update(c *gin.Context) {
 
 	build, err := h.service.Update(id, userID.(uuid.UUID), req.Name, req.Data, req.Thumbnail)
 	if err != nil {
-		fmt.Printf("\n--- BUILD UPDATE ERROR ---\nError: %v\nData: %s\n--------------------------\n", err, req.Data)
+		log.Printf("Build Update Error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update build"})
 		return
 	}
@@ -143,7 +143,6 @@ func (h *BuildHandler) CalculateNetwork(c *gin.Context) {
 		return
 	}
 
-	// Real implementation (Phase 2)
 	if err := h.ipService.CalculateNetwork(id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to calculate network: " + err.Error()})
 		return
@@ -171,7 +170,7 @@ func (h *BuildHandler) Duplicate(c *gin.Context) {
 
 	build, err := h.service.Duplicate(id, userID.(uuid.UUID))
 	if err != nil {
-		fmt.Printf("Build Duplicate Error: %v\n", err)
+		log.Printf("Build Duplicate Error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to duplicate build"})
 		return
 	}

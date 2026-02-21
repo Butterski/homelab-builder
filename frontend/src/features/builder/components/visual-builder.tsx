@@ -77,7 +77,7 @@ function Flow() {
         loadBuild,
         getBuildData,
         currentBuildId,
-        hardwareNodes,  // Added for auto-save dependency
+        hardwareNodes,
         projectName
     } = useBuilderStore();
 
@@ -111,10 +111,6 @@ function Flow() {
                     }));
                 }
 
-                // Removed the code that overwrites data.edges with build.edges. 
-                // data.edges from JSON already contains the correct handles and custom properties.
-                // We trust the frontend blob as the source of truth for visual React Flow structure!
-
                 loadBuild(build.id, build.name, data);
             }).catch(err => {
                 console.error("Failed to load build", err);
@@ -142,7 +138,7 @@ function Flow() {
             await buildApi.update(id, {
                 name: projectName || "Untitled Project", // Use store name
                 data: jsonString,
-                thumbnail: "" 
+                thumbnail: ""
             });
             setSaveStatus('saved');
             lastSaveTime.current = Date.now();

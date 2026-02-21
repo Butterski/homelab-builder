@@ -15,10 +15,6 @@ import type { Service, HardwareNode, VirtualMachine, HardwareType, HardwareCompo
 import { buildApi } from '../api/builds'
 import { api } from '../../../services/api'
 
-// ─── IP Logic moved to Backend (Phase 2) ────────────────────────────────────
-// Local constants removed to prevent "Split Brain" logic.
-// See internal/services/ip_service.go for the Source of Truth.
-
 // Types that never get an IP address
 export const NON_NETWORK_TYPES: HardwareType[] = ['disk', 'gpu', 'hba', 'pcie', 'pdu', 'ups']
 
@@ -90,7 +86,6 @@ interface BuilderState {
 export const useBuilderStore = create<BuilderState>()(
     persist(
         (set, get) => ({
-            selectedServices: [],
             hardwareNodes: [],
             nodes: [],
             edges: [],
@@ -135,23 +130,18 @@ export const useBuilderStore = create<BuilderState>()(
 
             addHardware: (hardwareNode) => {
                 set((state) => {
-                    // Logic removed. Just add the node without IP.
-                    // Backend will assign it eventually.
-                    const nodeWithIP = hardwareNode;
-
                     const reactFlowNode: Node = {
-                        id: nodeWithIP.id,
+                        id: hardwareNode.id,
                         type: 'hardware',
-                        position: { x: nodeWithIP.x, y: nodeWithIP.y },
-                        data: { label: nodeWithIP.name, ...nodeWithIP }
+                        position: { x: hardwareNode.x, y: hardwareNode.y },
+                        data: { label: hardwareNode.name, ...hardwareNode }
                     };
 
                     return {
-                        hardwareNodes: [...state.hardwareNodes, nodeWithIP],
+                        hardwareNodes: [...state.hardwareNodes, hardwareNode],
                         nodes: [...state.nodes, reactFlowNode]
                     };
                 });
-                // No IP assignment on add — IPs are assigned when nodes are connected
             },
 
             removeHardware: (nodeId) =>
@@ -177,16 +167,14 @@ export const useBuilderStore = create<BuilderState>()(
                 const orig = state.hardwareNodes.find(n => n.id === nodeId)
                 if (!orig) return
                 const newId = `node-${Date.now()}`
-                // IP assignment moved to backend
-                const newIp = ''
                 const dup: HardwareNode = {
                     ...orig,
                     id: newId,
                     name: `${orig.name} (copy)`,
-                    ip: newIp,
+                    ip: '',
                     x: orig.x + 40,
                     y: orig.y + 40,
-                    vms: [],  // don't duplicate VMs
+                    vms: [],
                 }
 
                 const rfNode: Node = {

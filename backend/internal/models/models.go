@@ -148,7 +148,7 @@ type Build struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 
-	// Relational Data (Phase 2 Migration)
+	// Relations
 	Nodes []Node `gorm:"foreignKey:BuildID" json:"nodes,omitempty"`
 	Edges []Edge `gorm:"foreignKey:BuildID" json:"edges,omitempty"`
 }

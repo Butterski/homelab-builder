@@ -218,13 +218,10 @@ func (s *BuildService) GetByID(buildID uuid.UUID) (*models.Build, error) {
 		return nil, err
 	}
 
-	// Lazy Migration: If we have Data but no Nodes, parse and migrate
 	if build.Data != "" && build.Data != "{}" && len(build.Nodes) == 0 {
 		if err := s.migrateLegacyData(&build); err != nil {
-			// Log error but don't fail the request, return legacy data
-			// fmt.Printf("Migration failed: %v\n", err)
+			// Migration failed — return legacy data as fallback
 		} else {
-			// Re-fetch to get the new relations
 			_ = s.db.Preload("User").Preload("Nodes").Preload("Nodes.VirtualMachines").Preload("Edges").Preload("Nodes.ServiceInstances").First(&build, "id = ?", buildID)
 		}
 	}
@@ -335,7 +332,7 @@ func (s *BuildService) Duplicate(buildID uuid.UUID, userID uuid.UUID) (*models.B
 	newBuild := &models.Build{
 		UserID:    userID,
 		Name:      build.Name + " (Copy)",
-		Data:      build.Data, // Legacy JSON blob
+		Data:      build.Data,
 		Thumbnail: build.Thumbnail,
 	}
 
@@ -346,43 +343,8 @@ func (s *BuildService) Duplicate(buildID uuid.UUID, userID uuid.UUID) (*models.B
 			return err
 		}
 
-		// Because JSON Data blob still contains the old UUIDs for nodes/edges,
-		// we must call syncDataFromJSON. However, syncDataFromJSON attempts to reuse
-		// node IDs if they exist. We need it to force new UUIDs for everything.
-		// A simple trick: if we just call syncDataFromJSON on it right now,
-		// it might collide with the old nodes because the raw "id" string in the JSON is identical.
-		// To fix this, we clear out the "id" fields from the JSON before syncing.
-
-		var rawData map[string]interface{}
-		if err := json.Unmarshal([]byte(newBuild.Data), &rawData); err == nil {
-			// Clear IDs in hardwareNodes
-			if nodes, ok := rawData["hardwareNodes"].([]interface{}); ok {
-				for _, n := range nodes {
-					if nodeMap, ok := n.(map[string]interface{}); ok {
-						delete(nodeMap, "id")
-						if vms, ok := nodeMap["vms"].([]interface{}); ok {
-							for _, v := range vms {
-								if vmMap, ok := v.(map[string]interface{}); ok {
-									delete(vmMap, "id")
-								}
-							}
-						}
-					}
-				}
-			}
-			// (Edges don't store their own UUID in the Legacy JSON, they just reference Source/Target strings.
-			// The reference strings must stay intact so they map to each other, but syncMap will generate NEW UUIDs
-			// if we pass it custom logic.
-			// Wait, syncDataFromJSON actually uses uuid.Parse() on the node IDs. If the ID is valid it reuses it.
-			// This means we CANNOT reuse syncDataFromJSON easily for duplication unless we rewrite the JSON strings first.
-		}
-
-		// A much safer approach for Duplication:
-		// 1. Generate new UUIDs for every node
-		// 2. String replace the old UUIDs with the new UUIDs in the raw JSON string
-		// 3. Save the modified JSON string
-		// 4. Call syncDataFromJSON (which will now parse the NEW UUIDs and insert them relative to the new buildID)
-
+		// Force new UUIDs by string-replacing old IDs with new ones in the JSON blob,
+		// then call syncDataFromJSON which will insert them against the new buildID.
 		idMap := make(map[string]string)
 
 		// Map node and VM IDs

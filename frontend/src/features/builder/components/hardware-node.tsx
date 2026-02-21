@@ -2,11 +2,12 @@ import { memo, useEffect } from 'react'
 import { Handle, Position, useUpdateNodeInternals, type NodeProps } from '@xyflow/react'
 import {
     Server, Router, CircuitBoard, HardDrive, Wifi, Monitor,
-    Box, Cpu, Container, Layers, Plug, Battery, HardDrive as DiskIcon, AlertTriangle
+    Box, Cpu, Container, Layers, Plug, Battery, AlertTriangle
 } from 'lucide-react'
 import { Card } from '../../../components/ui/card'
 import { cn } from '../../../lib/utils'
 import type { HardwareType, VirtualMachine, HardwareComponent, HardwareSpec } from '../../../types'
+import { NON_NETWORK_TYPES } from '../store/builder-store'
 
 type HardwareNodeData = {
     label: string
@@ -30,13 +31,12 @@ const TYPE_CONFIG: Partial<Record<HardwareType, { icon: React.ElementType; borde
     access_point: { icon: Wifi,        border: 'border-yellow-500',  bg: 'bg-yellow-500/10',  iconColor: 'text-yellow-400' },
     gpu:          { icon: Layers,      border: 'border-pink-500',    bg: 'bg-pink-500/10',    iconColor: 'text-pink-400' },
     hba:          { icon: Plug,        border: 'border-indigo-500',  bg: 'bg-indigo-500/10',  iconColor: 'text-indigo-400' },
-    disk:         { icon: DiskIcon,    border: 'border-gray-500',    bg: 'bg-gray-500/10',    iconColor: 'text-gray-400' },
+    disk:         { icon: HardDrive,  border: 'border-gray-500',    bg: 'bg-gray-500/10',    iconColor: 'text-gray-400' },
     ups:          { icon: Battery,     border: 'border-emerald-500', bg: 'bg-emerald-500/10', iconColor: 'text-emerald-400' },
     pcie:         { icon: Plug,        border: 'border-violet-500',  bg: 'bg-violet-500/10',  iconColor: 'text-violet-400' },
     pdu:          { icon: Plug,        border: 'border-rose-500',    bg: 'bg-rose-500/10',    iconColor: 'text-rose-400' },
 }
 const FALLBACK_CONFIG = { icon: Server, border: 'border-gray-500', bg: 'bg-gray-500/10', iconColor: 'text-gray-400' }
-const NON_NETWORK_TYPES: HardwareType[] = ['disk', 'gpu', 'hba', 'pcie', 'pdu', 'ups']
 
 // ─── VM chip ───────────────────────────────────────────────────────────────────
 const VM_TYPE_ICON: Record<string, React.ElementType> = {
