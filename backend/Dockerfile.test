@@ -1,0 +1,15 @@
+# syntax=docker/dockerfile:1
+FROM golang:1.24-alpine AS test
+
+WORKDIR /app
+
+# Install build dependencies
+RUN apk add --no-cache gcc musl-dev
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+# Run all tests; CGO is required for the sqlite test driver
+CMD ["go", "test", "-v", "-count=1", "./..."]

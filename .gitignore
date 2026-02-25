@@ -6,6 +6,7 @@
 
 # Test binary
 *.test
+!Dockerfile.test
 
 # Output of the go coverage tool
 *.out
