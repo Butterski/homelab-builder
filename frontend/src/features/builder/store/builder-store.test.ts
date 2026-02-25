@@ -23,6 +23,7 @@ vi.mock('../api/builds', () => ({
     buildApi: {
         update: vi.fn().mockResolvedValue({ id: 'build-1', name: 'test', data: '{}' }),
         calculateNetwork: vi.fn().mockResolvedValue(undefined),
+        validateNetwork: vi.fn().mockResolvedValue({ valid: true, errors: [], warnings: [] }),
         get: vi.fn().mockResolvedValue({
             id: 'build-1',
             name: 'test',

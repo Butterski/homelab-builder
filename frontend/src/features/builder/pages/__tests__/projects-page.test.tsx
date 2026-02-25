@@ -16,7 +16,11 @@ vi.mock('../../api/builds', () => ({
         list: vi.fn(),
         create: vi.fn(),
         get: vi.fn(),
-        delete: vi.fn()
+        delete: vi.fn(),
+        duplicate: vi.fn(),
+        update: vi.fn(),
+        calculateNetwork: vi.fn(),
+        validateNetwork: vi.fn(),
     }
 }))
 
@@ -56,16 +60,15 @@ describe('ProjectsPage Export Functionality', () => {
             id: 'build-1',
             user_id: '1',
             name: 'Test Project',
-            data: JSON.stringify({
-                hardwareNodes: [{ id: 'node-1' }],
-                nodes: [{ id: 'react-flow-1' }],
-                edges: [{ id: 'edge-1' }]
-            }),
+            thumbnail: '',
+            nodes: [{ id: 'react-flow-1' }],
+            edges: [{ id: 'edge-1' }],
+            settings: { boughtItems: [], showBought: false },
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
         }
 
-        const mockBuildList = [{ ...mockBuild, data: '{}' }]
+        const mockBuildList = [{ ...mockBuild }]
 
         ;(buildApi.list as any).mockResolvedValue(mockBuildList)
         ;(buildApi.get as any).mockResolvedValue(mockBuild)
@@ -101,7 +104,6 @@ describe('ProjectsPage Export Functionality', () => {
         expect(payload).toHaveProperty('version', 1)
         expect(payload).toHaveProperty('name', 'Test Project')
         expect(payload).toHaveProperty('exportedAt')
-        expect(payload.hardwareNodes).toHaveLength(1)
         expect(payload.nodes).toHaveLength(1)
         expect(payload.edges).toHaveLength(1)
         expect(payload).toHaveProperty('boughtItems')
