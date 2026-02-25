@@ -2,6 +2,8 @@ package services_test
 
 import (
 	"encoding/json"
+	"fmt"
+	"os"
 	"testing"
 
 	"github.com/Butterski/homelab-builder/backend/internal/models"
@@ -14,7 +16,16 @@ import (
 )
 
 func setupTestDB(t *testing.T) *gorm.DB {
-	dsn := "host=homelab-builder-db user=homelab password=homelab_password dbname=homelab_builder port=5432 sslmode=disable"
+	host := os.Getenv("DB_HOST")
+	if host == "" {
+		host = "localhost"
+	}
+	dbName := os.Getenv("TEST_DB_NAME")
+	if dbName == "" {
+		dbName = "homelab_builder_test"
+	}
+
+	dsn := fmt.Sprintf("host=%s user=homelab password=homelab_password dbname=%s port=5432 sslmode=disable", host, dbName)
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
 
@@ -23,6 +34,10 @@ func setupTestDB(t *testing.T) *gorm.DB {
 	t.Cleanup(func() {
 		tx.Rollback()
 	})
+
+	// Run auto-migration for the test database
+	err = tx.AutoMigrate(&models.HardwareComponent{}, &models.Service{}, &models.ServiceRequirement{})
+	require.NoError(t, err)
 
 	return tx
 }
