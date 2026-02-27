@@ -1,7 +1,10 @@
 package services
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/url"
+	"strings"
 
 	"github.com/Butterski/homelab-builder/backend/internal/models"
 	"github.com/google/uuid"
@@ -45,7 +48,7 @@ func (s *ShoppingListService) Generate(req ShoppingListRequest) (*ShoppingListRe
 		return nil, fmt.Errorf("recommendation not found: %w", err)
 	}
 
-	items := generateItems(rec)
+	items := s.generateItems(rec)
 
 	totalCost := 0
 	for _, item := range items {
@@ -61,15 +64,15 @@ func (s *ShoppingListService) Generate(req ShoppingListRequest) (*ShoppingListRe
 
 func (s *ShoppingListService) GenerateFromSpec(spec Spec) *ShoppingListResponse {
 	rec := models.HardwareRecommendation{
-		TotalRAMMB:     spec.TotalRAMMB,
-		TotalCPUCores:  spec.TotalCPUCores,
-		TotalStorageGB: spec.TotalStorageGB,
-		CPUSuggestion:  spec.CPUSuggestion,
-		RAMSuggestion:  spec.RAMSuggestion,
+		TotalRAMMB:        spec.TotalRAMMB,
+		TotalCPUCores:     spec.TotalCPUCores,
+		TotalStorageGB:    spec.TotalStorageGB,
+		CPUSuggestion:     spec.CPUSuggestion,
+		RAMSuggestion:     spec.RAMSuggestion,
 		StorageSuggestion: spec.StorageSuggestion,
 	}
 
-	items := generateItems(rec)
+	items := s.generateItems(rec)
 
 	totalCost := 0
 	for _, item := range items {
@@ -82,7 +85,7 @@ func (s *ShoppingListService) GenerateFromSpec(spec Spec) *ShoppingListResponse 
 	}
 }
 
-func generateItems(rec models.HardwareRecommendation) []ShoppingListItem {
+func (s *ShoppingListService) generateItems(rec models.HardwareRecommendation) []ShoppingListItem {
 	var items []ShoppingListItem
 
 	// CPU
@@ -180,7 +183,72 @@ func generateItems(rec models.HardwareRecommendation) []ShoppingListItem {
 		},
 	})
 
+	// Enhance items with real hardware database BuyURLs if they exist
+	s.enrichWithHardwareDB(items)
 	return items
+}
+
+func (s *ShoppingListService) enrichWithHardwareDB(items []ShoppingListItem) {
+	// Look up steering rules
+	var rules []models.SteeringRule
+	s.db.Find(&rules)
+	ruleMap := make(map[string][]string)
+	for _, r := range rules {
+		var order []string
+		if err := json.Unmarshal(r.RetailerOrder, &order); err == nil {
+			ruleMap[r.Category] = order
+		}
+	}
+
+	// For each item, look for a matching hardware component by category/name
+	for i := range items {
+		item := &items[i]
+		var comp models.HardwareComponent
+
+		// If we find a real component that has BuyURLs, we override the hardcoded ones
+		query := s.db.Where("category = ? AND jsonb_array_length(buy_urls) > 0", item.Category)
+		if item.Category == "cpu" {
+			query = query.Where("model ILIKE ?", "%"+item.Name+"%")
+		}
+
+		if err := query.First(&comp).Error; err == nil {
+			var rawLinks []PurchaseLink
+			if err := json.Unmarshal(comp.BuyURLs, &rawLinks); err == nil && len(rawLinks) > 0 {
+				orderRef, hasRule := ruleMap[item.Category]
+				orderedLinks := applySteering(rawLinks, orderRef, hasRule)
+
+				var finalLinks []PurchaseLink
+				for _, link := range orderedLinks {
+					proxyURL := fmt.Sprintf("https://affiliate.hlb.mock/redirect?ref=hlb&dest=%s&tag=%s", url.QueryEscape(link.URL), url.QueryEscape(comp.AffiliateTag))
+					finalLinks = append(finalLinks, PurchaseLink{Store: link.Store, URL: proxyURL})
+				}
+				item.PurchaseLinks = finalLinks
+			}
+		}
+	}
+}
+
+func applySteering(links []PurchaseLink, order []string, active bool) []PurchaseLink {
+	if !active || len(order) == 0 {
+		return links
+	}
+
+	scoreMap := make(map[string]int)
+	for i, store := range order {
+		scoreMap[strings.ToLower(store)] = len(order) - i // higher score = better
+	}
+
+	// Simple bubble sort for stable store ordering based on scoreMap
+	for i := 0; i < len(links)-1; i++ {
+		for j := i + 1; j < len(links); j++ {
+			s1 := scoreMap[strings.ToLower(links[i].Store)]
+			s2 := scoreMap[strings.ToLower(links[j].Store)]
+			if s2 > s1 {
+				links[i], links[j] = links[j], links[i]
+			}
+		}
+	}
+	return links
 }
 
 func estimateCPUPrice(cores float32) int {

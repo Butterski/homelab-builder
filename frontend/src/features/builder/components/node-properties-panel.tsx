@@ -6,6 +6,7 @@ import { Button } from "../../../components/ui/button"
 import { Input } from "../../../components/ui/input"
 import { Label } from "../../../components/ui/label"
 import { X, Trash2, AlertCircle, Wand2, AlertTriangle, Lock, Unlock, ChevronDown } from "lucide-react"
+import { toast } from "sonner"
 import { VMManager } from "./vm-manager"
 import { InternalComponentManager } from "./internal-component-manager"
 
@@ -139,7 +140,7 @@ export function NodePropertiesPanel() {
     const handleAutoIP = () => {
         const assigned = autoAssignIP(selectedNode.id)
         if (assigned) setIp(assigned)
-        else alert("No router with a configured IP found. Add a Router and set its IP first.")
+        else toast.error("No router with a configured IP found. Add a Router and set its IP first.")
     }
 
     const handleIpChange = (val: string) => {

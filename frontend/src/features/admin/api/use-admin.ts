@@ -65,3 +65,28 @@ export const useCreateService = () => {
         },
     })
 }
+
+export const useUpdateService = () => {
+    const queryClient = useQueryClient()
+    return useMutation({
+        mutationFn: async ({ id, data }: { id: string, data: Partial<Service> }) => {
+            return api.put(`/admin/services/${id}`, data)
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["services"] })
+        },
+    })
+}
+
+export const useDeleteService = () => {
+    const queryClient = useQueryClient()
+    return useMutation({
+        mutationFn: async (id: string) => {
+            return (api as any).del(`/admin/services/${id}`)
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["services"] })
+            queryClient.invalidateQueries({ queryKey: ["admin", "stats"] })
+        },
+    })
+}

@@ -13,8 +13,10 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "../../../components/ui/dialog"
-import { useCreateService } from "../api/use-admin"
-import { useState } from "react"
+import { useCreateService, useUpdateService } from "../api/use-admin"
+import { useState, useEffect } from "react"
+import type { ReactNode } from "react"
+import type { Service } from "../../../types"
 
 const serviceSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
@@ -27,50 +29,83 @@ const serviceSchema = z.object({
 
 type ServiceFormValues = z.infer<typeof serviceSchema>
 
-export function ServiceDialog() {
+interface ServiceDialogProps {
+    initialData?: Service
+    trigger?: ReactNode
+}
+
+export function ServiceDialog({ initialData, trigger }: ServiceDialogProps) {
   const [open, setOpen] = useState(false)
-  const { mutate: createService, isPending } = useCreateService()
+  const { mutate: createService, isPending: isCreating } = useCreateService()
+  const { mutate: updateService, isPending: isUpdating } = useUpdateService()
   
+  const isEditing = !!initialData
+  const isPending = isCreating || isUpdating
+
   const form = useForm<ServiceFormValues>({
     resolver: zodResolver(serviceSchema) as any,
     defaultValues: {
-      name: "",
-      description: "",
-      category: "other",
-      min_cpu_cores: 1,
-      min_ram_mb: 512,
-      min_storage_gb: 10,
+      name: initialData?.name || "",
+      description: initialData?.description || "",
+      category: initialData?.category || "other",
+      min_cpu_cores: initialData?.requirements?.min_cpu_cores || 1,
+      min_ram_mb: initialData?.requirements?.min_ram_mb || 512,
+      min_storage_gb: initialData?.requirements?.min_storage_gb || 10,
     },
   })
 
+  useEffect(() => {
+     if (open && initialData) {
+         form.reset({
+             name: initialData.name,
+             description: initialData.description,
+             category: initialData.category,
+             min_cpu_cores: initialData.requirements?.min_cpu_cores || 1,
+             min_ram_mb: initialData.requirements?.min_ram_mb || 512,
+             min_storage_gb: initialData.requirements?.min_storage_gb || 10,
+         })
+     } else if (open && !initialData) {
+         form.reset({
+            name: "", description: "", category: "other", min_cpu_cores: 1, min_ram_mb: 512, min_storage_gb: 10
+         })
+     }
+  }, [open, initialData, form])
+
   function onSubmit(data: ServiceFormValues) {
-    createService({
+    const payload = {
         name: data.name,
         description: data.description,
-        category: data.category as any, // Cast if needed or use valid category
-        requirements: {
-            min_cpu_cores: data.min_cpu_cores,
-            min_ram_mb: data.min_ram_mb,
-            min_storage_gb: data.min_storage_gb
-        } as any
-    }, {
-      onSuccess: () => {
-        setOpen(false)
-        form.reset()
-      },
-    })
+        category: data.category as any,
+        min_cpu_cores: data.min_cpu_cores,
+        min_ram_mb: data.min_ram_mb,
+        min_storage_gb: data.min_storage_gb
+    }
+
+    if (isEditing && initialData) {
+        updateService({ id: initialData.id, data: payload as any }, {
+            onSuccess: () => {
+                setOpen(false)
+            }
+        })
+    } else {
+        createService(payload as any, {
+            onSuccess: () => {
+                setOpen(false)
+            },
+        })
+    }
   }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button>Add Service</Button>
+        {trigger ? trigger : <Button>Add Service</Button>}
       </DialogTrigger>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Add New Service</DialogTitle>
+          <DialogTitle>{isEditing ? "Edit Service" : "Add New Service"}</DialogTitle>
           <DialogDescription>
-            Create a new service template for the catalog.
+            {isEditing ? "Modify the existing service template." : "Create a new service template for the catalog."}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4 py-4">

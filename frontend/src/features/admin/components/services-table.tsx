@@ -9,6 +9,8 @@ import {
 import type { Service } from "../../../types"
 import { Button } from "../../../components/ui/button"
 import { Edit2, Trash2 } from "lucide-react"
+import { useDeleteService } from "../api/use-admin"
+import { ServiceDialog } from "./service-dialog"
 
 interface ServicesTableProps {
   services: Service[] | undefined
@@ -16,6 +18,8 @@ interface ServicesTableProps {
 }
 
 export function ServicesTable({ services, isLoading }: ServicesTableProps) {
+  const { mutate: deleteService } = useDeleteService()
+
   if (isLoading) {
     return <div>Loading...</div> // Or skeleton rows
   }
@@ -53,10 +57,24 @@ export function ServicesTable({ services, isLoading }: ServicesTableProps) {
               </TableCell>
               <TableCell className="text-right">
                 <div className="flex justify-end gap-2">
-                    <Button variant="ghost" size="icon">
-                        <Edit2 className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="text-destructive">
+                    <ServiceDialog 
+                        initialData={service} 
+                        trigger={
+                            <Button variant="ghost" size="icon">
+                                <Edit2 className="h-4 w-4" />
+                            </Button>
+                        } 
+                    />
+                    <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="text-destructive"
+                        onClick={() => {
+                            if (window.confirm(`Are you sure you want to permanently delete '${service.name}'?`)) {
+                                deleteService(service.id)
+                            }
+                        }}
+                    >
                         <Trash2 className="h-4 w-4" />
                     </Button>
                 </div>

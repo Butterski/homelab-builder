@@ -92,4 +92,27 @@ export const api = {
             method: 'POST',
             body: JSON.stringify(data),
         }),
+
+    // Hardware & Admin
+    getHardwareAdmin: () => request<any>('/admin/hardware?limit=100'),
+    updateHardwareBuyUrls: (id: string, data: { buy_urls: any[], affiliate_tag: string }) =>
+        request<any>(`/admin/hardware/${id}/buy-urls`, {
+            method: 'PATCH',
+            body: JSON.stringify(data)
+        }),
+    getHardwarePublic: () => request<any>('/api/hardware?limit=1000'),
+
+    // Steering Rules
+    getSteeringRules: () => request<any>('/admin/steering'),
+    upsertSteeringRule: (category: string, retailer_order: string[]) => request<any>(`/admin/steering/${category}`, {
+        method: 'PUT',
+        body: JSON.stringify({ retailer_order })
+    }),
+    deleteSteeringRule: (category: string) => request<any>(`/admin/steering/${category}`, { method: 'DELETE' }),
+
+    // Catalog Components / Mass Planner
+    getCatalogComponents: () => request<any>('/admin/catalog-components'),
+    createCatalogComponent: (data: any) => request<any>('/admin/catalog-components', { method: 'POST', body: JSON.stringify(data) }),
+    updateCatalogComponent: (id: string, data: any) => request<any>(`/admin/catalog-components/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deleteCatalogComponent: (id: string) => request<any>(`/admin/catalog-components/${id}`, { method: 'DELETE' }),
 };

@@ -444,16 +444,16 @@ function Flow() {
                     connectionMode={ConnectionMode.Loose}
                     fitView
                     attributionPosition="bottom-right"
-                    className="bg-slate-50 dark:bg-slate-900/50"
+                    className="bg-background"
                     defaultEdgeOptions={{
                         type: 'custom',
                         animated: true,
-                        style: { stroke: '#f97316', strokeWidth: 2 }
+                        style: { stroke: '#3F3F46', strokeWidth: 2 }
                     }}
                     snapToGrid={true}
                     snapGrid={[20, 20]}
                 >
-                    <Background gap={20} size={1} />
+                    <Background gap={20} size={1} color="#A1A1AA" style={{ opacity: 0.08 }} />
                     <Controls />
                     
                     <Panel position="top-left" className="flex gap-2 items-center">

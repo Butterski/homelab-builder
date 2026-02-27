@@ -32,8 +32,8 @@ export function Sidebar({ className }: { className?: string }) {
   ]
   
   return (
-    <aside className={cn("hidden md:flex flex-col w-64 border-r bg-card h-full", className)}>
-      <div className="flex h-16 items-center border-b px-6">
+    <aside className={cn("hidden md:flex flex-col w-64 border-r border-[#27272A] bg-background h-full shadow-none", className)}>
+      <div className="flex h-16 items-center border-b border-[#27272A] px-6">
         <Hammer className="mr-2 h-6 w-6 text-primary" />
         <span className="text-lg font-bold tracking-tight">Homelab Builder</span>
       </div>
@@ -41,7 +41,7 @@ export function Sidebar({ className }: { className?: string }) {
       <div className="flex-1 overflow-y-auto py-4">
         {/* ... nav items ... */}
         <nav className="grid gap-1 px-2">
-          {navItems.map((item) => (
+          {navItems.filter(item => item.label !== "Admin" || user?.is_admin).map((item) => (
             <NavLink
               key={item.href}
               to={item.href}

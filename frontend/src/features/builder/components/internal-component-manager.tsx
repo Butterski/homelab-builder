@@ -5,6 +5,7 @@ import { Badge } from "../../../components/ui/badge"
 import { Trash2, HardDrive, Cpu, ScanLine, CircuitBoard, Component, Zap, Archive, Pencil } from "lucide-react"
 import type { HardwareType, HardwareComponent } from "../../../types"
 import { ComponentDetailsDialog } from "./component-details-dialog"
+import { ConfirmDialog } from "../../../components/ui/confirm-dialog"
 
 const COMPONENT_ICONS: Partial<Record<HardwareType, React.ElementType>> = {
     disk: HardDrive,
@@ -31,6 +32,7 @@ export function InternalComponentManager({ nodeId }: Props) {
     const components = node?.internal_components || []
     
     const [editingComponent, setEditingComponent] = useState<HardwareComponent | null>(null)
+    const [deletingCompId, setDeletingCompId] = useState<string | null>(null)
 
     if (components.length === 0) return null
 
@@ -81,7 +83,7 @@ export function InternalComponentManager({ nodeId }: Props) {
                                     className="h-6 w-6 text-muted-foreground hover:text-destructive"
                                     onClick={(e) => {
                                         e.stopPropagation();
-                                        if(confirm("Remove this component?")) removeInternalComponent(nodeId, comp.id);
+                                        setDeletingCompId(comp.id);
                                     }}
                                     title="Remove component"
                                 >
@@ -110,6 +112,19 @@ export function InternalComponentManager({ nodeId }: Props) {
                     }}
                 />
             )}
+
+            {/* Delete Confirm Dialog */}
+            <ConfirmDialog
+                open={deletingCompId !== null}
+                onOpenChange={(v) => !v && setDeletingCompId(null)}
+                title="Remove component?"
+                description="This action cannot be undone."
+                confirmLabel="Remove"
+                onConfirm={() => {
+                    if (deletingCompId) removeInternalComponent(nodeId, deletingCompId)
+                    setDeletingCompId(null)
+                }}
+            />
         </div>
     )
 }

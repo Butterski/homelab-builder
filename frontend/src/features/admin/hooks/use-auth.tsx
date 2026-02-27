@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"; // Fixed imports
 import { api } from "../../../lib/api";
+import { toast } from "sonner";
 interface User {
     id: string;
     name: string;
@@ -46,7 +47,7 @@ export function useAuth() {
             window.location.reload(); // Reload to refresh all data/states dependent on auth
         } catch (error) {
             console.error("Login failed", error);
-            alert("Login failed. Please try again.");
+            toast.error("Login failed. Please try again.");
         } finally {
             setLoading(false);
         }

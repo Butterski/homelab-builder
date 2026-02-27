@@ -85,6 +85,12 @@ func migrateTestDB(db *gorm.DB) error {
 		&models.VirtualMachine{},
 		&models.Edge{},
 		&models.ServiceInstance{},
+		&models.HardwareComponent{},
+		&models.SteeringRule{},
+		&models.CatalogComponent{},
+		&models.HardwareRecommendation{},
+		&models.ShoppingList{},
+		&models.ShoppingListItem{},
 	)
 }
 

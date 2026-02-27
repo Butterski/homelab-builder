@@ -4,6 +4,9 @@ import { ServiceDialog } from "../components/service-dialog"
 import { Skeleton } from "../../../components/ui/skeleton"
 import { ServicesTable } from "../components/services-table"
 import { AdminHardwareManager } from "../components/hardware-manager"
+import { AffiliateLinksManager } from "../components/affiliate-links-manager"
+import { SteeringRulesManager } from "../components/steering-rules-manager"
+import { CatalogComponentsManager } from "../components/catalog-components-manager"
 import { useState } from "react"
 
 import { useAuth } from "../hooks/use-auth"
@@ -13,7 +16,7 @@ export default function AdminPage() {
   const { user, loading } = useAuth()
   const { data: stats, isLoading: statsLoading } = useAdminStats()
   const { data: services, isLoading: servicesLoading } = useAdminServices()
-  const [tab, setTab] = useState<"services" | "hardware">("services")
+  const [tab, setTab] = useState<"services" | "hardware" | "links" | "steering" | "mass-planner">("services")
 
   if (loading) return <div className="p-8">Loading...</div>
   if (!user?.is_admin) return <Navigate to="/" replace />
@@ -36,8 +39,8 @@ export default function AdminPage() {
       )}
 
       {/* Tab switcher */}
-      <div className="flex gap-1 rounded-lg border p-1 bg-muted/30 w-fit">
-        {(["services", "hardware"] as const).map(t => (
+      <div className="flex gap-1 rounded-lg border p-1 bg-muted/30 flex-wrap">
+        {(["services", "hardware", "links", "steering", "mass-planner"] as const).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -45,20 +48,22 @@ export default function AdminPage() {
               tab === t ? "bg-background shadow-sm" : "hover:bg-muted"
             }`}
           >
-            {t === "services" ? "Service Management" : "Hardware Management"}
+            {t === "services" ? "Service Catalog" : t === "hardware" ? "Commmunity Hardware" : t === "links" ? "Buy Links (Affiliate)" : t === "steering" ? "Store Steering" : "Component Planner"}
           </button>
         ))}
       </div>
 
-      {tab === "services" ? (
+      {tab === "services" && (
         <div className="space-y-4">
           <div className="border rounded-md">
             <ServicesTable services={services} isLoading={servicesLoading} />
           </div>
         </div>
-      ) : (
-        <AdminHardwareManager />
       )}
+      {tab === "hardware" && <AdminHardwareManager />}
+      {tab === "links" && <AffiliateLinksManager />}
+      {tab === "steering" && <SteeringRulesManager />}
+      {tab === "mass-planner" && <CatalogComponentsManager />}
     </div>
   )
 }

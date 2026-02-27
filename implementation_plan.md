@@ -41,10 +41,14 @@ Make the shopping list a killer feature.
 - **International Pricing**: Integrate Amazon PA API (or similar) for USD/EUR pricing.
 - **Catalog Auto-Enrichment**: Add logic to update the hardware catalog with real specs scraped from these sources.
 
-### Sprint 5: Affiliate Link Generation (Mocked for Now)
-Start testing the shopping flow and revenue mechanisms safely.
-- **Mocked Links**: Leave the live affiliate integration for now. Generate realistic-looking mocked affiliate links in the shopping list to test the UI.
-- **File-based Generation**: When a user generates an affiliate link, just edit/save to a local configuration or mock file to simulate the process, keeping it simple for testing.
+### Sprint 5: Affiliate Links & Admin Expansion
+Start testing the shopping flow and revenue mechanisms safely, moving towards a production-ready 1.0 setup.
+- **Production-Ready Links**: Generate real, functional affiliate links in the shopping list instead of mocked ones. The infrastructure will be built to scale for production.
+- **Admin Link Management**: Build an admin UI to manage these affiliate links directly on hardware components.
+- **Admin Dashboard Expansion**: Add full CRUD operations to the Service Catalog directly within the Admin panel (inline edit, delete, resource requirements logic).
+- **Admin Component Mass Planner**: Bulk-define reference component types (disks, GPUs) for consistent use across the canvas.
+- **Link & Service Steering**: Add rules for prioritizing specific retailers globally, controlled via the Admin panel.
+- **Strict Admin Security**: Promotion to the Admin role is a critical security boundary. **There will be no API or UI for promoting admins.** Users will be promoted to the admin role *exclusively* via a secure SQL migration directly against the database (e.g., `012_promote_initial_admin.up.sql`). The Admin Panel button in the frontend will be strictly hidden from any user where `!user.is_admin`.
 
 ### Sprint 6: hlbIPAM Microservice - Core Logic & Architecture (completed and testing)
 Build the standalone, stateless IP assignment engine as a new service, explicitly designed to be easily open-sourced as a standalone repository later.

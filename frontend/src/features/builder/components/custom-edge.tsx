@@ -180,13 +180,25 @@ export function CustomEdge({
         strokeWidth={20}
         className="cursor-pointer"
       />
+      {/* Base tracking line */}
+      <BaseEdge 
+        path={finalEdgePath} 
+        style={{
+          stroke: '#3F3F46',
+          strokeWidth: 2,
+        }} 
+      />
+      {/* Animated Dash overlay */}
       <BaseEdge 
         path={finalEdgePath} 
         markerEnd={markerEnd} 
+        className="react-flow__edge-path"
         style={{
           ...style,
           stroke: edgeColor,
           strokeWidth: selected ? Math.max(Number(style.strokeWidth || 2), 4) : (style.strokeWidth || 2),
+          strokeDasharray: '4 8',
+          animationDuration: '1.5s',
           transition: 'stroke 0.2s, stroke-width 0.2s',
           filter: selected ? 'brightness(1.2)' : 'none'
         }} 

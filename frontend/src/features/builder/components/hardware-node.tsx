@@ -166,20 +166,27 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
 
     return (
         <div className="relative group">
+            {/* Spotlight Effect for selected nodes */}
+            {selected && (
+                <div className={cn("absolute -inset-16 -z-10 rounded-full blur-3xl opacity-20 pointer-events-none", cfg.bg.replace('/10', ''))} />
+            )}
+            
             <Card 
                 className={cn(
-                    'transition-all duration-200 border-2 shadow-sm',
+                    'transition-all duration-200 border shadow-none bg-card overflow-hidden',
                     (hasVMs || hasComponents) ? 'w-56' : 'w-48',
-                    cfg.border, cfg.bg,
-                    hasWarning ? 'border-destructive' : '',
-                    hasIpError ? 'shadow-[0_0_15px_rgba(239,68,68,0.5)] border-destructive bg-destructive/5' : '',
-                    selected ? 'ring-2 ring-primary shadow-lg scale-105' : 'hover:border-primary/50'
+                    hasWarning ? 'border-destructive' : 'border-border',
+                    hasIpError ? 'border-destructive bg-destructive/5' : '',
+                    selected ? 'border-primary scale-[1.02]' : 'hover:border-primary/50'
                 )}
                 style={dynamicMinWidth > 192 ? { minWidth: `${dynamicMinWidth}px` } : undefined}
             >
+                {/* Thin top colored indicator line */}
+                <div className={cn("absolute top-0 left-0 right-0 h-[2px]", cfg.bg.replace('/10', ''))} />
+
                 {/* Header */}
                 <div className={cn(
-                    'px-3 py-2 flex items-center gap-2 border-b bg-background/50 backdrop-blur-sm',
+                    'px-3 py-2 flex items-center gap-2 border-b border-border bg-background/50 backdrop-blur-sm',
                     hasWarning ? 'bg-destructive/10' : (selected ? 'bg-primary/5' : '')
                 )}>
                     <Icon className={cn('h-4 w-4 shrink-0', cfg.iconColor)} />
@@ -209,11 +216,11 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
 
                         {/* IP Address - Only for networked devices */}
                         {!NON_NETWORK_TYPES.includes(nodeData.type) && (
-                            <div className="text-xs font-mono flex items-center justify-between gap-2">
-                                <span className="text-muted-foreground shrink-0">IP</span>
+                            <div className="flex items-center justify-between gap-2 pt-1 px-1">
+                                <span className="text-[11px] text-muted-foreground tracking-wide font-medium">IP:</span>
                                 <span className={cn(
-                                    'truncate',
-                                    nodeData.ip ? 'text-foreground font-medium' : 'italic opacity-40 text-muted-foreground'
+                                    'font-mono text-[12px]',
+                                    nodeData.ip ? 'text-foreground' : 'italic opacity-40 text-muted-foreground'
                                 )}>
                                     {nodeData.ip || 'unassigned'}
                                 </span>
@@ -222,11 +229,11 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
 
                         {/* Container pool hint */}
                         {containerRangeHint && (
-                            <div className="text-[10px] font-mono flex items-center justify-between gap-2 opacity-60">
-                                <span className="text-muted-foreground shrink-0 flex items-center gap-1">
-                                    <Container className="h-2.5 w-2.5" /> pool
+                            <div className="flex items-center justify-between gap-2 px-1 opacity-60">
+                                <span className="text-[11px] text-muted-foreground flex items-center gap-1 font-medium">
+                                    <Container className="h-2.5 w-2.5" /> Pool:
                                 </span>
-                                <span className="truncate text-blue-400">{containerRangeHint}</span>
+                                <span className="font-mono text-[10px] text-blue-400 truncate">{containerRangeHint}</span>
                             </div>
                         )}
 
@@ -256,8 +263,8 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
                         )}
 
                         {hasComponents && (
-                            <div className="space-y-1 pt-1.5 border-t border-border/50">
-                                <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">
+                            <div className="space-y-1 pt-2 border-t border-border">
+                                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium px-1">
                                     Components
                                 </p>
                                 <div className="space-y-1">
@@ -270,8 +277,8 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
 
                         {/* VMs / Containers */}
                         {hasVMs && (
-                            <div className="space-y-1 pt-1.5 border-t border-border/50">
-                                <p className="text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">
+                            <div className="space-y-1 pt-2 border-t border-border">
+                                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium px-1">
                                     {vms.length} container{vms.length !== 1 ? 's' : ''}
                                 </p>
                                 <div className="space-y-1 max-h-36 overflow-y-auto">

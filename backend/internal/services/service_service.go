@@ -211,3 +211,15 @@ func (s *ServiceService) Delete(id uuid.UUID) error {
 		Where("id = ?", id).
 		Update("is_active", false).Error
 }
+
+func (s *ServiceService) HardDelete(id uuid.UUID) error {
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("service_id = ?", id).Delete(&models.ServiceRequirement{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("id = ?", id).Delete(&models.Service{}).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+}

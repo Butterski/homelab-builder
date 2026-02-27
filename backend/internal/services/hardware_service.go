@@ -110,14 +110,15 @@ func (s *HardwareService) GetBrands(category string) ([]string, error) {
 }
 
 type CreateHardwareInput struct {
-	Category string          `json:"category" binding:"required"`
-	Brand    string          `json:"brand" binding:"required"`
-	Model    string          `json:"model" binding:"required"`
-	Spec     json.RawMessage `json:"spec"`
-	PriceEst float64         `json:"price_est"`
-	Currency string          `json:"currency"`
-	BuyURLs  json.RawMessage `json:"buy_urls"`
-	ImageURL string          `json:"image_url"`
+	Category     string          `json:"category" binding:"required"`
+	Brand        string          `json:"brand" binding:"required"`
+	Model        string          `json:"model" binding:"required"`
+	Spec         json.RawMessage `json:"spec"`
+	PriceEst     float64         `json:"price_est"`
+	Currency     string          `json:"currency"`
+	AffiliateTag string          `json:"affiliate_tag"`
+	BuyURLs      json.RawMessage `json:"buy_urls"`
+	ImageURL     string          `json:"image_url"`
 }
 
 func (s *HardwareService) Create(input CreateHardwareInput, submittedBy *uuid.UUID, autoApprove bool) (*models.HardwareComponent, error) {
@@ -135,16 +136,17 @@ func (s *HardwareService) Create(input CreateHardwareInput, submittedBy *uuid.UU
 	}
 
 	c := models.HardwareComponent{
-		Category:    input.Category,
-		Brand:       input.Brand,
-		Model:       input.Model,
-		Spec:        spec,
-		PriceEst:    input.PriceEst,
-		Currency:    currency,
-		BuyURLs:     buyURLs,
-		ImageURL:    input.ImageURL,
-		SubmittedBy: submittedBy,
-		Approved:    autoApprove,
+		Category:     input.Category,
+		Brand:        input.Brand,
+		Model:        input.Model,
+		Spec:         spec,
+		PriceEst:     input.PriceEst,
+		Currency:     currency,
+		AffiliateTag: input.AffiliateTag,
+		BuyURLs:      buyURLs,
+		ImageURL:     input.ImageURL,
+		SubmittedBy:  submittedBy,
+		Approved:     autoApprove,
 	}
 	if err := s.db.Create(&c).Error; err != nil {
 		return nil, err
@@ -171,6 +173,7 @@ func (s *HardwareService) Update(id uuid.UUID, input CreateHardwareInput) (*mode
 	c.Spec = spec
 	c.PriceEst = input.PriceEst
 	c.Currency = input.Currency
+	c.AffiliateTag = input.AffiliateTag
 	c.BuyURLs = buyURLs
 	c.ImageURL = input.ImageURL
 	if err := s.db.Save(&c).Error; err != nil {
@@ -183,6 +186,15 @@ func (s *HardwareService) Approve(id uuid.UUID, approved bool) error {
 	return s.db.Model(&models.HardwareComponent{}).
 		Where("id = ?", id).
 		Update("approved", approved).Error
+}
+
+func (s *HardwareService) UpdateBuyURLs(id uuid.UUID, buyURLs json.RawMessage, affiliateTag string) error {
+	return s.db.Model(&models.HardwareComponent{}).
+		Where("id = ?", id).
+		Updates(map[string]interface{}{
+			"buy_urls":      buyURLs,
+			"affiliate_tag": affiliateTag,
+		}).Error
 }
 
 func (s *HardwareService) Delete(id uuid.UUID) error {
@@ -212,16 +224,17 @@ func (s *HardwareService) BulkImport(items []CreateHardwareInput, submittedBy *u
 			currency = "EUR"
 		}
 		components = append(components, models.HardwareComponent{
-			Category:    input.Category,
-			Brand:       input.Brand,
-			Model:       input.Model,
-			Spec:        spec,
-			PriceEst:    input.PriceEst,
-			Currency:    currency,
-			BuyURLs:     buyURLs,
-			ImageURL:    input.ImageURL,
-			SubmittedBy: submittedBy,
-			Approved:    true,
+			Category:     input.Category,
+			Brand:        input.Brand,
+			Model:        input.Model,
+			Spec:         spec,
+			PriceEst:     input.PriceEst,
+			Currency:     currency,
+			AffiliateTag: input.AffiliateTag,
+			BuyURLs:      buyURLs,
+			ImageURL:     input.ImageURL,
+			SubmittedBy:  submittedBy,
+			Approved:     true,
 		})
 	}
 	if err := s.db.CreateInBatches(&components, 50).Error; err != nil {

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 
@@ -228,4 +229,34 @@ func (h *HardwareHandler) Like(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Liked"})
+}
+
+// PATCH /api/admin/hardware/:id/buy-urls
+func (h *HardwareHandler) AdminUpdateBuyURLs(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+		return
+	}
+
+	var body struct {
+		BuyURLs      json.RawMessage `json:"buy_urls"`
+		AffiliateTag string          `json:"affiliate_tag"`
+	}
+
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	if body.BuyURLs == nil {
+		body.BuyURLs = json.RawMessage("[]")
+	}
+
+	err = h.svc.UpdateBuyURLs(id, body.BuyURLs, body.AffiliateTag)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update BuyURLs"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Updated"})
 }

@@ -80,6 +80,10 @@ func setupRouter(db *gorm.DB) *gin.Engine {
 		adminHandler := handlers.NewAdminHandler(db, serviceService)
 		hardwareService := services.NewHardwareService(db)
 		hardwareHandler := handlers.NewHardwareHandler(hardwareService)
+		steeringService := services.NewSteeringService(db)
+		steeringHandler := handlers.NewSteeringHandler(steeringService)
+		catalogCompService := services.NewCatalogComponentService(db)
+		catalogCompHandler := handlers.NewCatalogComponentHandler(catalogCompService)
 		_ = services.NewAnalyticsService(db) // available for future handler integration
 
 		// Auth routes (public & protected user)
@@ -112,6 +116,9 @@ func setupRouter(db *gorm.DB) *gin.Engine {
 			api.GET("/hardware/:id", hardwareHandler.GetByID)
 			api.POST("/hardware/:id/like", hardwareHandler.Like)
 			api.POST("/hardware", hardwareHandler.Create) // community submission
+
+			// Component Catalog
+			api.GET("/catalog-components", catalogCompHandler.GetAll)
 		}
 
 		// Protected API routes (require authentication)
@@ -150,6 +157,8 @@ func setupRouter(db *gorm.DB) *gin.Engine {
 			admin.GET("/users", adminHandler.ListUsers)
 			admin.GET("/services", adminHandler.ListAllServices)
 			admin.POST("/services/:id/toggle", adminHandler.ToggleServiceActive)
+			admin.PUT("/services/:id", adminHandler.UpdateServiceFull)
+			admin.DELETE("/services/:id", adminHandler.DeleteService)
 			admin.GET("/events", adminHandler.RecentEvents)
 
 			// Hardware admin
@@ -158,7 +167,19 @@ func setupRouter(db *gorm.DB) *gin.Engine {
 			admin.PUT("/hardware/:id", hardwareHandler.AdminUpdate)
 			admin.DELETE("/hardware/:id", hardwareHandler.AdminDelete)
 			admin.PATCH("/hardware/:id/approve", hardwareHandler.AdminApprove)
+			admin.PATCH("/hardware/:id/buy-urls", hardwareHandler.AdminUpdateBuyURLs)
 			admin.POST("/hardware/bulk-import", hardwareHandler.AdminBulkImport)
+
+			// Steering rules
+			admin.GET("/steering", steeringHandler.GetAll)
+			admin.PUT("/steering/:category", steeringHandler.Upsert)
+			admin.DELETE("/steering/:category", steeringHandler.Delete)
+
+			// Catalog Components (Mass Planner)
+			admin.GET("/catalog-components", catalogCompHandler.GetAll)
+			admin.POST("/catalog-components", catalogCompHandler.Create)
+			admin.PUT("/catalog-components/:id", catalogCompHandler.Update)
+			admin.DELETE("/catalog-components/:id", catalogCompHandler.Delete)
 		}
 	}
 

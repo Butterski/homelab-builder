@@ -95,3 +95,42 @@ func (h *AdminHandler) RecentEvents(c *gin.Context) {
 	h.db.Order("created_at DESC").Limit(50).Find(&events)
 	c.JSON(http.StatusOK, gin.H{"data": events})
 }
+
+// UpdateServiceFull - full PUT for an existing service (including requirements)
+func (h *AdminHandler) UpdateServiceFull(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid service ID"})
+		return
+	}
+
+	var input services.UpdateServiceInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	service, err := h.serviceService.Update(id, input)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update service"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": service, "message": "Service updated"})
+}
+
+// DeleteService - hard delete for a service
+func (h *AdminHandler) DeleteService(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid service ID"})
+		return
+	}
+
+	if err := h.serviceService.HardDelete(id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete service"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Service permanently deleted"})
+}

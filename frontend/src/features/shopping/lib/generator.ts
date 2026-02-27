@@ -1,5 +1,5 @@
 
-import type { Service, HardwareNode } from "../../../types"
+import type { Service, HardwareNode, CatalogComponent } from "../../../types"
 import { HARDWARE_CATALOG } from "../data/hardware-catalog"
 import { linkGenerator, type ShoppingLocale } from "./link-generator"
 
@@ -118,7 +118,8 @@ function accessPointSpec(node: HardwareNode): { name: string; spec: string; pric
 export function generateShoppingList(
     services: Service[],
     hardwareNodes: HardwareNode[] = [],
-    locale: ShoppingLocale = 'en-US'
+    locale: ShoppingLocale = 'en-US',
+    catalog: CatalogComponent[] = []
 ): ShoppingItem[] {
     const items: ShoppingItem[] = []
 
@@ -202,6 +203,28 @@ export function generateShoppingList(
             offers: buildOffers(rec.name, rec.price, locale)
         })
     })
+
+    // Now, enrich standard generated items with real catalog proxy URLs if they exist!
+    for (const item of items) {
+        // Try to find a match in the real catalog by checking type and name
+        const match = catalog.find(c => {
+            const tMatch = c.category?.toLowerCase() === item.category.toLowerCase()
+            const nMatch = item.name.toLowerCase().includes(c.model.toLowerCase())
+            return tMatch && nMatch && c.buy_urls?.length > 0;
+        })
+
+        if (match) {
+            // Replace offers completely with mapped buy_urls from the database!
+            item.offers = match.buy_urls.map(urlObj => ({
+                store: urlObj.store,
+                price: match.price_est, // estimate
+                currency: match.currency as any,
+                condition: 'new',
+                url: urlObj.url,
+                isMock: false
+            }))
+        }
+    }
 
     return items
 }

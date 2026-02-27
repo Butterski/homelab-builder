@@ -105,20 +105,21 @@ type Event struct {
 }
 
 type HardwareComponent struct {
-	ID          uuid.UUID       `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
-	Category    string          `gorm:"not null;index" json:"category"`
-	Brand       string          `gorm:"not null;index" json:"brand"`
-	Model       string          `gorm:"not null" json:"model"`
-	Spec        json.RawMessage `gorm:"type:jsonb;not null;default:'{}'" json:"spec"`
-	PriceEst    float64         `gorm:"default:0" json:"price_est"`
-	Currency    string          `gorm:"default:'EUR'" json:"currency"`
-	BuyURLs     json.RawMessage `gorm:"type:jsonb;default:'[]'" json:"buy_urls"`
-	ImageURL    string          `gorm:"default:''" json:"image_url"`
-	SubmittedBy *uuid.UUID      `gorm:"type:uuid" json:"submitted_by,omitempty"`
-	Approved    bool            `gorm:"default:true;index" json:"approved"`
-	Likes       int             `gorm:"default:0" json:"likes"`
-	CreatedAt   time.Time       `json:"created_at"`
-	UpdatedAt   time.Time       `json:"updated_at"`
+	ID           uuid.UUID       `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
+	Category     string          `gorm:"not null;index" json:"category"`
+	Brand        string          `gorm:"not null;index" json:"brand"`
+	Model        string          `gorm:"not null" json:"model"`
+	Spec         json.RawMessage `gorm:"type:jsonb;not null;default:'{}'" json:"spec"`
+	PriceEst     float64         `gorm:"default:0" json:"price_est"`
+	Currency     string          `gorm:"default:'EUR'" json:"currency"`
+	AffiliateTag string          `gorm:"default:''" json:"affiliate_tag"`
+	BuyURLs      json.RawMessage `gorm:"type:jsonb;default:'[]'" json:"buy_urls"`
+	ImageURL     string          `gorm:"default:''" json:"image_url"`
+	SubmittedBy  *uuid.UUID      `gorm:"type:uuid" json:"submitted_by,omitempty"`
+	Approved     bool            `gorm:"default:true;index" json:"approved"`
+	Likes        int             `gorm:"default:0" json:"likes"`
+	CreatedAt    time.Time       `json:"created_at"`
+	UpdatedAt    time.Time       `json:"updated_at"`
 }
 
 func (HardwareComponent) TableName() string { return "hardware_components" }
@@ -136,6 +137,16 @@ type HardwareReview struct {
 }
 
 func (HardwareReview) TableName() string { return "hardware_reviews" }
+
+type SteeringRule struct {
+	ID            uuid.UUID       `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
+	Category      string          `gorm:"not null;uniqueIndex" json:"category"`
+	RetailerOrder json.RawMessage `gorm:"type:jsonb;default:'[]'" json:"retailer_order"`
+	CreatedAt     time.Time       `json:"created_at"`
+	UpdatedAt     time.Time       `json:"updated_at"`
+}
+
+func (SteeringRule) TableName() string { return "steering_rules" }
 
 // Build represents a saved visual builder project
 type Build struct {
@@ -188,6 +199,18 @@ type NodeComponent struct {
 }
 
 func (NodeComponent) TableName() string { return "node_components" }
+
+// CatalogComponent represents a template/reference for NodeComponent creation
+type CatalogComponent struct {
+	ID        uuid.UUID       `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
+	Type      string          `gorm:"not null;index" json:"type"` // disk, gpu, ram, etc.
+	Name      string          `gorm:"not null" json:"name"`
+	Details   json.RawMessage `gorm:"type:jsonb;default:'{}'" json:"details"`
+	CreatedAt time.Time       `json:"created_at"`
+	UpdatedAt time.Time       `json:"updated_at"`
+}
+
+func (CatalogComponent) TableName() string { return "catalog_components" }
 
 // VirtualMachine represents a nested VM/Container on a node
 type VirtualMachine struct {

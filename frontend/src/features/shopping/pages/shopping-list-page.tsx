@@ -1,4 +1,6 @@
 import { useState } from "react"
+import { useQuery } from "@tanstack/react-query"
+import { api } from "../../../services/api"
 import { useBuilderStore } from "../../builder/store/builder-store"
 import { generateShoppingList } from "../lib/generator"
 import type { ShoppingLocale } from "../lib/link-generator"
@@ -51,7 +53,13 @@ export default function ShoppingListPage() {
   const [locale, setLocale] = useState<ShoppingLocale>('en-US')
   const [pendingBuy, setPendingBuy] = useState<{ itemName: string; url: string } | null>(null)
 
-  const allItems = generateShoppingList([], hardwareNodes, locale)
+  const { data: catResponse } = useQuery({
+      queryKey: ["public-hardware"],
+      queryFn: () => api.getHardwarePublic()
+  })
+
+  const catalog = catResponse?.data || []
+  const allItems = generateShoppingList([], hardwareNodes, locale, catalog)
   const items = showBought ? allItems : allItems.filter(item => !boughtItems.includes(item.name))
   const boughtCount = allItems.filter(item => boughtItems.includes(item.name)).length
 
