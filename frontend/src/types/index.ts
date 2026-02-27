@@ -43,6 +43,7 @@ export interface CatalogComponent {
     spec: Record<string, any>;
     price_est: number;
     currency: string;
+    affiliate_tag: string;
     buy_urls: PurchaseLink[];
     image_url: string;
     submitted_by?: string;

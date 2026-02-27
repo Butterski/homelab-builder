@@ -36,7 +36,7 @@ export function AffiliateLinksManager() {
         updateLinksMut.mutate({ 
             id: comp.id, 
             buy_urls: [...currentLinks, newLinkObj],
-            affiliate_tag: (comp as any).affiliate_tag || "hlb-default-tag"
+            affiliate_tag: comp.affiliate_tag || "hlb-default-tag"
         })
     }
 
@@ -53,7 +53,7 @@ export function AffiliateLinksManager() {
         updateLinksMut.mutate({ 
             id: comp.id, 
             buy_urls: newLinks,
-            affiliate_tag: (comp as any).affiliate_tag || ""
+            affiliate_tag: comp.affiliate_tag || ""
         })
     }
 

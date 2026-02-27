@@ -123,7 +123,7 @@ export function CatalogComponentsManager() {
                                 <Textarea 
                                     className="font-mono text-xs h-32" 
                                     value={formState.details} 
-                                    onChange={e => setFormState(prev => ({...prev, details: e.target.value}))} 
+                                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setFormState(prev => ({...prev, details: e.target.value}))} 
                                 />
                             </div>
                             <Button className="w-full" onClick={handleSave} disabled={createMut.isPending || updateMut.isPending}>

@@ -4,7 +4,7 @@ import { api } from "../../../services/api"
 import { Button } from "../../../components/ui/button"
 import { Input } from "../../../components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../../components/ui/table"
-import { Trash2, Save, ArrowUp, ArrowDown } from "lucide-react"
+import { Trash2, ArrowUp, ArrowDown } from "lucide-react"
 
 export interface SteeringRule {
     category: string
