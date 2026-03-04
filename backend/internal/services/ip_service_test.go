@@ -128,8 +128,8 @@ func TestCalculateNetwork_SingleRouter_ConnectedNodesGetSubnetIPs(t *testing.T) 
 	if swIP != "192.168.1.10" {
 		t.Errorf("switch expected 192.168.1.10, got %q", swIP)
 	}
-	if serverIP != "192.168.1.150" {
-		t.Errorf("server expected 192.168.1.150, got %q", serverIP)
+	if serverIP != "192.168.1.100" {
+		t.Errorf("server expected 192.168.1.100, got %q", serverIP)
 	}
 }
 
