@@ -115,4 +115,10 @@ export const api = {
     createCatalogComponent: (data: any) => request<any>('/admin/catalog-components', { method: 'POST', body: JSON.stringify(data) }),
     updateCatalogComponent: (id: string, data: any) => request<any>(`/admin/catalog-components/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     deleteCatalogComponent: (id: string) => request<any>(`/admin/catalog-components/${id}`, { method: 'DELETE' }),
+
+    // BETA_SURVEY - Remove after beta ends
+    getSurvey: () => request<any>('/api/survey'),
+    submitSurvey: (data: any) => request<any>('/api/survey', { method: 'POST', body: JSON.stringify(data) }),
+    updateSurvey: (data: any) => request<any>('/api/survey', { method: 'PUT', body: JSON.stringify(data) }),
+    // END BETA_SURVEY
 };

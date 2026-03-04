@@ -145,6 +145,12 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 			protected.POST("/builds/:id/calculate-network", buildHandler.CalculateNetwork)
 			protected.POST("/builds/:id/validate-network", buildHandler.ValidateNetwork)
 			protected.POST("/builds/:id/generate-config", configHandler.GenerateConfig)
+
+			// Beta Survey (BETA_SURVEY - remove after beta)
+			surveyHandler := handlers.NewSurveyHandler(db)
+			protected.GET("/survey", surveyHandler.GetSurvey)
+			protected.POST("/survey", surveyHandler.SubmitSurvey)
+			protected.PUT("/survey", surveyHandler.UpdateSurvey)
 		}
 
 		// Admin routes (require authentication + admin role)

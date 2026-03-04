@@ -262,3 +262,27 @@ type ServiceInstance struct {
 }
 
 func (ServiceInstance) TableName() string { return "service_instances" }
+
+// ─── BETA_SURVEY ──────────────────────────────────────────────────────────────
+// BetaSurvey stores one response per user for the open-beta feedback survey.
+// Remove this model and migrate away after beta ends.
+type BetaSurvey struct {
+	ID                 uuid.UUID `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
+	UserID             uuid.UUID `gorm:"type:uuid;not null;uniqueIndex" json:"user_id"` // 1 per user
+	Rating             int       `gorm:"default:0" json:"rating"`                       // 1-5
+	WillUseApp         string    `gorm:"default:''" json:"will_use_app"`                // yes | no | maybe
+	FeatureWishlist    string    `gorm:"type:text;default:''" json:"feature_wishlist"`
+	OpenSourceInterest string    `gorm:"default:''" json:"open_source_interest"` // yes | no
+	ContributionIntent string    `gorm:"default:''" json:"contribution_intent"`  // contribute | selfhost
+	DiscordHandle      string    `gorm:"default:''" json:"discord_handle"`
+	HearAboutUs        string    `gorm:"default:''" json:"hear_about_us"`    // reddit | github | friend | other
+	ExperienceLevel    string    `gorm:"default:''" json:"experience_level"` // beginner | intermediate | expert
+	PrimaryUseCase     string    `gorm:"default:''" json:"primary_use_case"` // homeserver | development | learning | other
+	IsCompany          bool      `gorm:"default:false" json:"is_company"`
+	CompanyContact     string    `gorm:"type:text;default:''" json:"company_contact"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
+}
+
+func (BetaSurvey) TableName() string { return "beta_surveys" } // BETA_SURVEY
+// ─── END BETA_SURVEY ──────────────────────────────────────────────────────────

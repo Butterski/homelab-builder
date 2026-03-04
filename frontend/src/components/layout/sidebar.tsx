@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { NavLink, useNavigate } from "react-router-dom"
-import { LayoutDashboard, CheckSquare, Settings, HardDrive, FileCode, ChevronsLeft, ChevronsRight, Heart, Globe, X } from "lucide-react"
+import { LayoutDashboard, CheckSquare, Settings, HardDrive, FileCode, ChevronsLeft, ChevronsRight, Heart, Globe, X, ClipboardList, CheckCircle2 } from "lucide-react"
 import { Github } from "../icons/github"
 import { cn } from "../../lib/utils"
 import { useAuth } from "../../features/admin/hooks/use-auth"
@@ -8,6 +8,9 @@ import { useBuilderStore } from "../../features/builder/store/builder-store"
 import { GoogleLoginButton } from "../auth/google-login-button"
 import { LayoutTemplate } from "lucide-react"
 import { Logo } from "../ui/logo"
+// BETA_SURVEY
+import { useSurvey } from "../../features/survey/api/use-survey"
+import { SurveyModal } from "../../features/survey/components/survey-modal"
 
 const STORAGE_KEY = "sidebar-collapsed"
 
@@ -25,6 +28,10 @@ export function Sidebar({ className }: { className?: string }) {
   const { user } = useAuth()
   const { currentBuildId } = useBuilderStore()
   const navigate = useNavigate()
+  // BETA_SURVEY
+  const [showSurvey, setShowSurvey] = useState(false)
+  const { data: survey } = useSurvey()
+  const surveyDone = !!survey
 
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem(STORAGE_KEY) === "true" } catch { return false }
@@ -41,6 +48,7 @@ export function Sidebar({ className }: { className?: string }) {
   ]
 
   return (
+    <>
     <aside
       className={cn(
         "hidden md:flex flex-col border-r border-[#27272A] bg-background h-full transition-all duration-300 ease-in-out overflow-hidden",
@@ -155,6 +163,38 @@ export function Sidebar({ className }: { className?: string }) {
         </a>
       </div>
 
+      {/* BETA_SURVEY - Glowing survey button */}
+      {user && (
+        <div className="border-t px-2 py-2 shrink-0">
+          <button
+            onClick={() => setShowSurvey(true)}
+            title="Beta Feedback Survey"
+            className={cn(
+              "relative w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200",
+              surveyDone
+                ? "text-muted-foreground hover:bg-accent hover:text-foreground"
+                : "text-primary hover:bg-primary/10",
+              collapsed && "justify-center px-2"
+            )}
+          >
+            {/* Glow ring - only if not done */}
+            {!surveyDone && (
+              <span className="absolute inset-0 rounded-lg animate-pulse ring-2 ring-primary/50 ring-offset-1 ring-offset-background pointer-events-none" />
+            )}
+            {surveyDone
+              ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+              : <ClipboardList className="h-4 w-4 shrink-0" />}
+            <span className={cn(
+              "whitespace-nowrap transition-all duration-300",
+              collapsed ? "opacity-0 w-0 overflow-hidden" : "opacity-100"
+            )}>
+              {surveyDone ? "Survey done ✓" : "Beta Survey"}
+            </span>
+          </button>
+        </div>
+      )}
+      {/* END BETA_SURVEY */}
+
       {/* Collapse toggle */}
       <div className="border-t p-2 flex justify-center shrink-0">
         <button
@@ -166,5 +206,8 @@ export function Sidebar({ className }: { className?: string }) {
         </button>
       </div>
     </aside>
+    {/* BETA_SURVEY modal portal */}
+    {showSurvey && <SurveyModal onClose={() => setShowSurvey(false)} />}
+    </>
   )
 }
