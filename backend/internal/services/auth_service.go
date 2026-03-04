@@ -77,6 +77,35 @@ func (s *AuthService) GoogleLogin(input GoogleLoginInput) (*AuthResponse, error)
 	return s.loginOrRegister(email, name, googleID, picture)
 }
 
+// GetOrCreateLocalAdmin provides a static user for self-hosted instances with AuthDisabled=true
+func (s *AuthService) GetOrCreateLocalAdmin() (*models.User, error) {
+	const localEmail = "local@homelab.local"
+	const localName = "Local Admin"
+	const localGoogleID = "local-auth-disabled"
+	const localAvatarURL = "https://api.dicebear.com/7.x/avataaars/svg?seed=local-admin"
+
+	var user models.User
+	err := s.db.Where("email = ?", localEmail).First(&user).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			user = models.User{
+				GoogleID:  localGoogleID,
+				Email:     localEmail,
+				Name:      localName,
+				AvatarURL: localAvatarURL,
+			}
+			if createErr := s.db.Create(&user).Error; createErr != nil {
+				return nil, fmt.Errorf("failed to create local admin: %w", createErr)
+			}
+			return &user, nil
+		}
+		return nil, fmt.Errorf("database error checking local admin: %w", err)
+	}
+
+	// Local admin already exists
+	return &user, nil
+}
+
 // DevLogin bypasses Google Auth for local development
 func (s *AuthService) DevLogin(email string) (*AuthResponse, error) {
 	if email == "" {

@@ -44,7 +44,7 @@ A sophisticated, stateless backend microservice manages network addressing:
 ---
 
 ## 🏗️ Architecture Overview
-For detailed information on the codebase architecture, folder structure, testing infrastructure, and known pitfalls, please refer to [AGENTS.md](./AGENTS.md). 
+For detailed information on the codebase architecture, folder structure, testing infrastructure, and known pitfalls, please refer to [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md). 
 For the feature roadmap and future ideas, see [ROADMAP.md](./ROADMAP.md).
 
 ---

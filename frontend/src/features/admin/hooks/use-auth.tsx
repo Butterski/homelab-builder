@@ -22,10 +22,10 @@ export function useAuth() {
     async function checkAuth() {
         try {
             const token = localStorage.getItem('auth_token');
-            if (token) {
-                // Determine if we need to fetch user separately or trust token claims
-                // For now, let's fetch 'me'
-                // Backend now returns user object directly without "data" wrapper
+            const isAuthDisabled = !import.meta.env.VITE_GOOGLE_CLIENT_ID;
+
+            if (token || isAuthDisabled) {
+                // In local mode without a client ID, backend will automatically return the Local Admin
                 const user = await api.get<User>('/auth/me');
                 setUser(user);
             }

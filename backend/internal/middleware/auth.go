@@ -11,8 +11,21 @@ import (
 	"gorm.io/gorm"
 )
 
-func AuthMiddleware(authService *services.AuthService) gin.HandlerFunc {
+func AuthMiddleware(authService *services.AuthService, authDisabled bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if authDisabled {
+			user, err := authService.GetOrCreateLocalAdmin()
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to provision local admin"})
+				c.Abort()
+				return
+			}
+			c.Set("user_id", user.ID)
+			c.Set("email", user.Email)
+			c.Next()
+			return
+		}
+
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
@@ -43,8 +56,22 @@ func AuthMiddleware(authService *services.AuthService) gin.HandlerFunc {
 
 // AuthMiddlewareWithUser is like AuthMiddleware but also loads the full User model
 // into context. Required for admin checks and role-based access.
-func AuthMiddlewareWithUser(authService *services.AuthService, db *gorm.DB) gin.HandlerFunc {
+func AuthMiddlewareWithUser(authService *services.AuthService, db *gorm.DB, authDisabled bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if authDisabled {
+			user, err := authService.GetOrCreateLocalAdmin()
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to provision local admin"})
+				c.Abort()
+				return
+			}
+			c.Set("user_id", user.ID)
+			c.Set("email", user.Email)
+			c.Set("user", user)
+			c.Next()
+			return
+		}
+
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})

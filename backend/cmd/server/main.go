@@ -21,14 +21,14 @@ func main() {
 	if err != nil {
 		log.Printf("Warning: Failed to connect to database: %v", err)
 		log.Println("Starting server without database connection...")
-		router := setupRouter(nil)
+		router := setupRouter(cfg, nil)
 		startServer(router, cfg.ServerPort)
 		return
 	}
 
 	log.Println("Database connected. Setting up routes...")
 
-	router := setupRouter(db)
+	router := setupRouter(cfg, db)
 	startServer(router, cfg.ServerPort)
 }
 
@@ -40,7 +40,7 @@ func startServer(router *gin.Engine, port string) {
 	}
 }
 
-func setupRouter(db *gorm.DB) *gin.Engine {
+func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 	router := gin.Default()
 
 	// CORS middleware
@@ -92,8 +92,8 @@ func setupRouter(db *gorm.DB) *gin.Engine {
 			// Apply rate limiting to login
 			auth.POST("/google", middleware.RateLimitMiddleware(rateLimiter), authHandler.GoogleLogin)
 			auth.POST("/dev", authHandler.DevLogin) // Backdoor for local development
-			auth.GET("/me", middleware.AuthMiddleware(authService), authHandler.GetCurrentUser)
-			auth.PUT("/preferences", middleware.AuthMiddleware(authService), authHandler.UpdatePreferences)
+			auth.GET("/me", middleware.AuthMiddleware(authService, cfg.AuthDisabled), authHandler.GetCurrentUser)
+			auth.PUT("/preferences", middleware.AuthMiddleware(authService, cfg.AuthDisabled), authHandler.UpdatePreferences)
 		}
 
 		// Public API routes
@@ -123,7 +123,7 @@ func setupRouter(db *gorm.DB) *gin.Engine {
 
 		// Protected API routes (require authentication)
 		protected := api.Group("")
-		protected.Use(middleware.AuthMiddleware(authService))
+		protected.Use(middleware.AuthMiddleware(authService, cfg.AuthDisabled))
 		{
 			protected.GET("/selections", selectionHandler.GetSelections)
 			protected.POST("/selections", selectionHandler.AddSelection)
@@ -150,7 +150,7 @@ func setupRouter(db *gorm.DB) *gin.Engine {
 		// Admin routes (require authentication + admin role)
 		admin := router.Group("/admin")
 		// Use AuthMiddlewareWithUser to load the full User model so is_admin check works
-		admin.Use(middleware.AuthMiddlewareWithUser(authService, db))
+		admin.Use(middleware.AuthMiddlewareWithUser(authService, db, cfg.AuthDisabled))
 		admin.Use(middleware.AdminRequired())
 		{
 			admin.GET("/dashboard", adminHandler.Dashboard)
