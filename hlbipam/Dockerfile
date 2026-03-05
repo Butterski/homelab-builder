@@ -8,8 +8,13 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /hlbipam ./cmd/server
 
 FROM alpine:3.19
-RUN apk add --no-cache ca-certificates
+RUN apk add --no-cache ca-certificates && \
+    adduser -D -g '' appuser
+
 COPY --from=builder /hlbipam /hlbipam
+
+# Run as non-root user
+USER appuser
 
 EXPOSE 8081
 ENTRYPOINT ["/hlbipam"]

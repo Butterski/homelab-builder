@@ -43,6 +43,13 @@ func startServer(router *gin.Engine, port string) {
 func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 	router := gin.Default()
 
+	// SECURITY FIX: Prevent IP spoofing in Rate Limiter.
+	// We only trust the X-Forwarded-For header if it comes from our internal Nginx Docker network.
+	err := router.SetTrustedProxies([]string{"127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"})
+	if err != nil {
+		log.Printf("Warning: Failed to set trusted proxies: %v", err)
+	}
+
 	// CORS middleware
 	router.Use(func(c *gin.Context) {
 		if gin.Mode() == gin.ReleaseMode {
