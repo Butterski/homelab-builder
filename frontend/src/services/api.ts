@@ -14,9 +14,11 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
         if (res.status === 401) {
             // Token expired or invalid
             localStorage.removeItem('auth_token');
-            // Only redirect if we're not already on the login page or checking /me
-            if (window.location.pathname !== '/login' && path !== '/auth/me') {
-                window.location.href = '/login';
+            // Only redirect if we're not on a public page or checking /me
+            const publicPaths = ['/', '/login', '/privacy', '/terms', '/hardware', '/services'];
+            const isPublicPage = publicPaths.includes(window.location.pathname);
+            if (!isPublicPage && path !== '/auth/me') {
+                window.location.href = '/';
             }
         }
 
