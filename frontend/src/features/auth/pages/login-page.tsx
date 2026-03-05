@@ -1,12 +1,13 @@
 import { GoogleLoginButton } from "../../../components/auth/google-login-button"
-import { Hammer, Server, ShoppingCart, CheckSquare } from "lucide-react"
+import { Server, ShoppingCart, CheckSquare } from "lucide-react"
 import { Link } from "react-router-dom"
+import { AnimatedLogo } from "../../../components/ui/animated-logo"
 
 export default function LoginPage() {
     return (
         <div className="flex flex-col items-center justify-center min-h-[80vh] px-4 text-center">
-            <div className="mb-8 p-4 bg-primary/10 rounded-2xl">
-                <Hammer className="h-16 w-16 text-primary" />
+            <div className="mb-6">
+                <AnimatedLogo className="h-32 w-auto text-primary drop-shadow-[0_10px_15px_rgba(0,0,0,0.1)] dark:drop-shadow-[0_10px_15px_rgba(255,255,255,0.05)]" />
             </div>
             
             <h1 className="text-4xl font-bold tracking-tight mb-3">HLBuilder</h1>
