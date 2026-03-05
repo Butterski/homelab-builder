@@ -176,7 +176,7 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 		api.GET("/donations", donateHandler.GetProgress)
 
 		// Admin routes (require authentication + admin role)
-		admin := router.Group("/admin")
+		admin := api.Group("/admin")
 		// Use AuthMiddlewareWithUser to load the full User model so is_admin check works
 		admin.Use(middleware.AuthMiddlewareWithUser(authService, db, cfg.AuthDisabled))
 		admin.Use(middleware.AdminRequired())

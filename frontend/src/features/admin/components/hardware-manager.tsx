@@ -22,7 +22,7 @@ function useAdminHardware(approved?: boolean, search = "") {
     params.set("limit", "200")
     return useQuery<AdminHardwareResult>({
         queryKey: ["admin-hardware", approved, search],
-        queryFn: () => api.get<AdminHardwareResult>(`/admin/hardware?${params}`),
+        queryFn: () => api.get<AdminHardwareResult>(`/api/admin/hardware?${params}`),
         staleTime: 30_000,
     })
 }
@@ -31,7 +31,7 @@ function useAdminHardware(approved?: boolean, search = "") {
 function ApproveButton({ id, approved }: { id: string; approved: boolean }) {
     const qc = useQueryClient()
     const mut = useMutation({
-        mutationFn: (val: boolean) => api.post(`/admin/hardware/${id}/approve`, { approved: val }),
+        mutationFn: (val: boolean) => api.post(`/api/admin/hardware/${id}/approve`, { approved: val }),
         onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin-hardware"] }); qc.invalidateQueries({ queryKey: ["hardware"] }) },
     })
     return approved ? (
@@ -52,7 +52,7 @@ function DeleteButton({ id }: { id: string }) {
     const qc = useQueryClient()
     const [confirm, setConfirm] = useState(false)
     const mut = useMutation({
-        mutationFn: () => api.del(`/admin/hardware/${id}`),
+        mutationFn: () => api.del(`/api/admin/hardware/${id}`),
         onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin-hardware"] }); qc.invalidateQueries({ queryKey: ["hardware"] }) },
     })
     if (confirm) return (
@@ -84,7 +84,7 @@ function BulkImportPanel() {
             let items
             try { items = JSON.parse(text) } catch { setResult({ error: "Invalid JSON" }); setLoading(false); return }
             if (!Array.isArray(items)) { setResult({ error: "Expected a JSON array" }); setLoading(false); return }
-            const res = await api.post<{ imported: number }>("/admin/hardware/bulk-import", items)
+            const res = await api.post<{ imported: number }>("/api/admin/hardware/bulk-import", items)
             setResult({ imported: res.imported })
             setText("")
             qc.invalidateQueries({ queryKey: ["admin-hardware"] })

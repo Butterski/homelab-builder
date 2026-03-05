@@ -78,13 +78,13 @@ export const api = {
 
     // Admin
     getAdminStats: () =>
-        request<{ data: { total_users: number; total_services: number; total_selections: number } }>('/admin/dashboard'),
+        request<{ data: { total_users: number; total_services: number; total_selections: number } }>('/api/admin/dashboard'),
 
     getUsers: () =>
-        request<{ data: import('../types').User[] }>('/admin/users'),
+        request<{ data: import('../types').User[] }>('/api/admin/users'),
 
     toggleService: (id: string, active: boolean) =>
-        request<{ message: string }>(`/admin/services/${id}/toggle`, {
+        request<{ message: string }>(`/api/admin/services/${id}/toggle`, {
             method: 'POST',
             body: JSON.stringify({ active }),
         }),
@@ -96,27 +96,27 @@ export const api = {
         }),
 
     // Hardware & Admin
-    getHardwareAdmin: () => request<any>('/admin/hardware?limit=100'),
+    getHardwareAdmin: () => request<any>('/api/admin/hardware?limit=100'),
     updateHardwareBuyUrls: (id: string, data: { buy_urls: any[], affiliate_tag: string }) =>
-        request<any>(`/admin/hardware/${id}/buy-urls`, {
+        request<any>(`/api/admin/hardware/${id}/buy-urls`, {
             method: 'PATCH',
             body: JSON.stringify(data)
         }),
     getHardwarePublic: () => request<any>('/api/hardware?limit=1000'),
 
     // Steering Rules
-    getSteeringRules: () => request<any>('/admin/steering'),
-    upsertSteeringRule: (category: string, retailer_order: string[]) => request<any>(`/admin/steering/${category}`, {
+    getSteeringRules: () => request<any>('/api/admin/steering'),
+    upsertSteeringRule: (category: string, retailer_order: string[]) => request<any>(`/api/admin/steering/${category}`, {
         method: 'PUT',
         body: JSON.stringify({ retailer_order })
     }),
-    deleteSteeringRule: (category: string) => request<any>(`/admin/steering/${category}`, { method: 'DELETE' }),
+    deleteSteeringRule: (category: string) => request<any>(`/api/admin/steering/${category}`, { method: 'DELETE' }),
 
     // Catalog Components / Mass Planner
-    getCatalogComponents: () => request<any>('/admin/catalog-components'),
-    createCatalogComponent: (data: any) => request<any>('/admin/catalog-components', { method: 'POST', body: JSON.stringify(data) }),
-    updateCatalogComponent: (id: string, data: any) => request<any>(`/admin/catalog-components/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-    deleteCatalogComponent: (id: string) => request<any>(`/admin/catalog-components/${id}`, { method: 'DELETE' }),
+    getCatalogComponents: () => request<any>('/api/admin/catalog-components'),
+    createCatalogComponent: (data: any) => request<any>('/api/admin/catalog-components', { method: 'POST', body: JSON.stringify(data) }),
+    updateCatalogComponent: (id: string, data: any) => request<any>(`/api/admin/catalog-components/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    deleteCatalogComponent: (id: string) => request<any>(`/api/admin/catalog-components/${id}`, { method: 'DELETE' }),
 
     // BETA_SURVEY - Remove after beta ends
     getSurvey: () => request<any>('/api/survey'),
@@ -126,5 +126,5 @@ export const api = {
 
     // Donations
     getDonationProgress: () => request<{ data: { id: string; current: number; target: number; updated_at: string } }>('/api/donations'),
-    updateDonationProgress: (data: { current: number; target?: number }) => request<any>('/admin/donations', { method: 'PUT', body: JSON.stringify(data) }),
+    updateDonationProgress: (data: { current: number; target?: number }) => request<any>('/api/admin/donations', { method: 'PUT', body: JSON.stringify(data) }),
 };
