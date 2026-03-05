@@ -33,7 +33,7 @@ services:
       DB_NAME: homelab_builder
       DB_SSLMODE: disable
       DB_TYPE: postgres
-      JWT_SECRET: change-this-in-production
+      JWT_SECRET: ${JWT_SECRET}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       IPAM_URL: http://hlbipam:8081
     depends_on:
