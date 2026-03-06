@@ -53,6 +53,28 @@ function ShortcutHints() {
       </span>
       <span className="opacity-30">·</span>
       <span>
+        <kbd className="font-mono bg-muted px-1 rounded">Ctrl+Z</kbd> undo
+      </span>
+      <span className="opacity-30">·</span>
+      <span>
+        <kbd className="font-mono bg-muted px-1 rounded">Ctrl+Y</kbd> redo
+      </span>
+      <span className="opacity-30">·</span>
+      <span>        <kbd className="font-mono bg-muted px-1 rounded">Ctrl+Z</kbd> undo
+      </span>
+      <span className="opacity-30">·</span>
+      <span>
+        <kbd className="font-mono bg-muted px-1 rounded">Ctrl+Y</kbd> redo
+      </span>
+      <span className="opacity-30">·</span>
+      <span>        <kbd className="font-mono bg-muted px-1 rounded">Ctrl+C</kbd> copy
+      </span>
+      <span className="opacity-30">·</span>
+      <span>
+        <kbd className="font-mono bg-muted px-1 rounded">Ctrl+V</kbd> paste
+      </span>
+      <span className="opacity-30">·</span>
+      <span>
         <kbd className="font-mono bg-muted px-1 rounded">Ctrl+D</kbd> duplicate
       </span>
       <span className="opacity-30">·</span>
@@ -142,6 +164,8 @@ function Flow() {
     validateNetwork,
     edgePreferences,
     setEdgePreferences,
+    undo,
+    redo,
   } = useBuilderStore();
 
   const { screenToFlowPosition, getIntersectingNodes } = useReactFlow();
@@ -162,6 +186,7 @@ function Flow() {
   }, [id, currentBuildId, loadBuild, navigate]);
 
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
+  const [clipboardNodeId, setClipboardNodeId] = useState<string | null>(null);
   const isFirstRender = useRef(true);
   const lastSaveTime = useRef(Date.now());
 
@@ -282,6 +307,18 @@ function Flow() {
         return;
       }
 
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        e.preventDefault();
+        undo();
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) {
+        e.preventDefault();
+        redo();
+        return;
+      }
+
       if (e.key === 'Delete' || e.key === 'Backspace') {
         const selectedEdges = getEdges().filter(edge => edge.selected);
         if (selectedEdges.length > 0) {
@@ -303,6 +340,19 @@ function Flow() {
         return;
       }
 
+      if (e.key === 'c' && (e.ctrlKey || e.metaKey) && selectedNodeId) {
+        e.preventDefault();
+        setClipboardNodeId(selectedNodeId);
+        toast.success('Node copied');
+        return;
+      }
+
+      if (e.key === 'v' && (e.ctrlKey || e.metaKey) && clipboardNodeId) {
+        e.preventDefault();
+        duplicateHardware(clipboardNodeId);
+        return;
+      }
+
       if (e.key === 'Escape') {
         selectNode(null);
       }
@@ -312,6 +362,9 @@ function Flow() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
     selectedNodeId,
+    clipboardNodeId,
+    undo,
+    redo,
     removeHardware,
     duplicateHardware,
     selectNode,

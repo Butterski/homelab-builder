@@ -25,6 +25,8 @@ import { api } from '../../../services/api';
 // Types that never get an IP address
 export const NON_NETWORK_TYPES: HardwareType[] = ['disk', 'gpu', 'hba', 'pcie', 'pdu', 'ups'];
 
+type Snapshot = { nodes: Node[]; edges: Edge[]; hardwareNodes: HardwareNode[] };
+
 interface BuilderState {
   // Data Logic
   availableServices: Service[];
@@ -96,13 +98,19 @@ interface BuilderState {
   projectThumbnail: string;
   setProjectName: (name: string) => void;
 
-  loadBuild: (id: string, name: string, data: any) => void;
+  loadBuild: (id: string, name: string, data: Build) => void;
   getBuildData: () => any;
 
   // Computed getters
   totalCpu: () => number;
   totalRam: () => number;
   totalStorage: () => number;
+
+  // Undo / Redo
+  historyPast: Snapshot[];
+  historyFuture: Snapshot[];
+  undo: () => void;
+  redo: () => void;
 }
 
 export const useBuilderStore = create<BuilderState>()(
@@ -114,6 +122,8 @@ export const useBuilderStore = create<BuilderState>()(
       selectedNodeId: null,
       boughtItems: [],
       showBought: false,
+      historyPast: [],
+      historyFuture: [],
       edgePreferences: {
         routingEngine: 'direct',
         connectionStyle: 'strict',
@@ -140,10 +150,41 @@ export const useBuilderStore = create<BuilderState>()(
       currentBuildId: null,
 
       onNodesChange: changes => {
-        set({ nodes: applyNodeChanges(changes, get().nodes) });
+        const dragEnds = changes.filter(c => c.type === 'position' && !(c as any).dragging);
+        const removals = changes.filter(c => c.type === 'remove');
+        if (dragEnds.length > 0 || removals.length > 0) {
+          const state = get();
+          const snap: Snapshot = {
+            nodes: state.nodes,
+            edges: state.edges,
+            hardwareNodes: state.hardwareNodes,
+          };
+          set({
+            historyPast: [...state.historyPast, snap].slice(-50),
+            historyFuture: [],
+            nodes: applyNodeChanges(changes, state.nodes),
+          });
+        } else {
+          set({ nodes: applyNodeChanges(changes, get().nodes) });
+        }
       },
       onEdgesChange: changes => {
-        set({ edges: applyEdgeChanges(changes, get().edges) });
+        const removals = changes.filter(c => c.type === 'remove');
+        if (removals.length > 0) {
+          const state = get();
+          const snap: Snapshot = {
+            nodes: state.nodes,
+            edges: state.edges,
+            hardwareNodes: state.hardwareNodes,
+          };
+          set({
+            historyPast: [...state.historyPast, snap].slice(-50),
+            historyFuture: [],
+            edges: applyEdgeChanges(changes, state.edges),
+          });
+        } else {
+          set({ edges: applyEdgeChanges(changes, get().edges) });
+        }
       },
       updateEdge: (id, updates) => {
         set(state => ({
@@ -152,9 +193,18 @@ export const useBuilderStore = create<BuilderState>()(
       },
       onConnect: (connection: Connection) => {
         const state = get();
+        const snap: Snapshot = {
+          nodes: state.nodes,
+          edges: state.edges,
+          hardwareNodes: state.hardwareNodes,
+        };
         // Default new edges to custom type
         const newEdges = addEdge({ ...connection, type: 'custom' }, state.edges);
-        set({ edges: newEdges });
+        set({
+          historyPast: [...state.historyPast, snap].slice(-50),
+          historyFuture: [],
+          edges: newEdges,
+        });
 
         // Trigger graph-aware IP recalculation whenever a new edge is drawn
         setTimeout(() => get().reassignAllIPs(), 0);
@@ -164,6 +214,11 @@ export const useBuilderStore = create<BuilderState>()(
 
       addHardware: hardwareNode => {
         set(state => {
+          const snap: Snapshot = {
+            nodes: state.nodes,
+            edges: state.edges,
+            hardwareNodes: state.hardwareNodes,
+          };
           const reactFlowNode: Node = {
             id: hardwareNode.id,
             type: 'hardware',
@@ -172,6 +227,8 @@ export const useBuilderStore = create<BuilderState>()(
           };
 
           return {
+            historyPast: [...state.historyPast, snap].slice(-50),
+            historyFuture: [],
             hardwareNodes: [...state.hardwareNodes, hardwareNode],
             nodes: [...state.nodes, reactFlowNode],
           };
@@ -179,12 +236,21 @@ export const useBuilderStore = create<BuilderState>()(
       },
 
       removeHardware: nodeId =>
-        set(state => ({
-          hardwareNodes: state.hardwareNodes.filter(n => n.id !== nodeId),
-          nodes: state.nodes.filter(n => n.id !== nodeId),
-          edges: state.edges.filter(e => e.source !== nodeId && e.target !== nodeId),
-          selectedNodeId: state.selectedNodeId === nodeId ? null : state.selectedNodeId,
-        })),
+        set(state => {
+          const snap: Snapshot = {
+            nodes: state.nodes,
+            edges: state.edges,
+            hardwareNodes: state.hardwareNodes,
+          };
+          return {
+            historyPast: [...state.historyPast, snap].slice(-50),
+            historyFuture: [],
+            hardwareNodes: state.hardwareNodes.filter(n => n.id !== nodeId),
+            nodes: state.nodes.filter(n => n.id !== nodeId),
+            edges: state.edges.filter(e => e.source !== nodeId && e.target !== nodeId),
+            selectedNodeId: state.selectedNodeId === nodeId ? null : state.selectedNodeId,
+          };
+        }),
 
       updateHardware: (nodeId, updates) =>
         set(state => ({
@@ -217,7 +283,14 @@ export const useBuilderStore = create<BuilderState>()(
           position: { x: dup.x, y: dup.y },
           data: { label: dup.name, ...dup },
         };
+        const snap: Snapshot = {
+          nodes: state.nodes,
+          edges: state.edges,
+          hardwareNodes: state.hardwareNodes,
+        };
         set({
+          historyPast: [...state.historyPast, snap].slice(-50),
+          historyFuture: [],
           hardwareNodes: [...state.hardwareNodes, dup],
           nodes: [...state.nodes, rfNode],
           selectedNodeId: newId,
@@ -226,12 +299,19 @@ export const useBuilderStore = create<BuilderState>()(
 
       addInternalComponent: (nodeId, component) => {
         set(state => {
+          const snap: Snapshot = {
+            nodes: state.nodes,
+            edges: state.edges,
+            hardwareNodes: state.hardwareNodes,
+          };
           const updated = state.hardwareNodes.map(n =>
             n.id === nodeId
               ? { ...n, internal_components: [...(n.internal_components || []), component] }
               : n,
           );
           return {
+            historyPast: [...state.historyPast, snap].slice(-50),
+            historyFuture: [],
             hardwareNodes: updated,
             nodes: state.nodes.map(n =>
               n.id === nodeId
@@ -250,6 +330,11 @@ export const useBuilderStore = create<BuilderState>()(
 
       removeInternalComponent: (nodeId, componentId) => {
         set(state => {
+          const snap: Snapshot = {
+            nodes: state.nodes,
+            edges: state.edges,
+            hardwareNodes: state.hardwareNodes,
+          };
           const updated = state.hardwareNodes.map(n =>
             n.id === nodeId
               ? {
@@ -261,6 +346,8 @@ export const useBuilderStore = create<BuilderState>()(
               : n,
           );
           return {
+            historyPast: [...state.historyPast, snap].slice(-50),
+            historyFuture: [],
             hardwareNodes: updated,
             nodes: state.nodes.map(n =>
               n.id === nodeId
@@ -309,6 +396,11 @@ export const useBuilderStore = create<BuilderState>()(
       // ── VM Management ──────────────────────────────────────────────────
       addVM: (nodeId, vm) => {
         set(state => {
+          const snap: Snapshot = {
+            nodes: state.nodes,
+            edges: state.edges,
+            hardwareNodes: state.hardwareNodes,
+          };
           let updatedNodes = [...state.hardwareNodes];
           const hostIndex = updatedNodes.findIndex(n => n.id === nodeId);
           if (hostIndex === -1) return state;
@@ -322,6 +414,8 @@ export const useBuilderStore = create<BuilderState>()(
           updatedNodes[hostIndex] = finalHost;
 
           return {
+            historyPast: [...state.historyPast, snap].slice(-50),
+            historyFuture: [],
             hardwareNodes: updatedNodes,
             // Sync React Flow node data so the card re-renders
             nodes: state.nodes.map(n =>
@@ -345,10 +439,17 @@ export const useBuilderStore = create<BuilderState>()(
 
       removeVM: (nodeId, vmId) => {
         set(state => {
+          const snap: Snapshot = {
+            nodes: state.nodes,
+            edges: state.edges,
+            hardwareNodes: state.hardwareNodes,
+          };
           const updated = state.hardwareNodes.map(n =>
             n.id === nodeId ? { ...n, vms: (n.vms || []).filter(v => v.id !== vmId) } : n,
           );
           return {
+            historyPast: [...state.historyPast, snap].slice(-50),
+            historyFuture: [],
             hardwareNodes: updated,
             nodes: state.nodes.map(n =>
               n.id === nodeId
@@ -384,6 +485,44 @@ export const useBuilderStore = create<BuilderState>()(
         // Deprecated. Backend only.
         get().reassignAllIPs();
         return null;
+      },
+
+      undo: () => {
+        const state = get();
+        if (state.historyPast.length === 0) return;
+        const past = [...state.historyPast];
+        const snap = past.pop()!;
+        const current: Snapshot = {
+          nodes: state.nodes,
+          edges: state.edges,
+          hardwareNodes: state.hardwareNodes,
+        };
+        set({
+          historyPast: past,
+          historyFuture: [current, ...state.historyFuture].slice(0, 50),
+          nodes: snap.nodes,
+          edges: snap.edges,
+          hardwareNodes: snap.hardwareNodes,
+        });
+      },
+
+      redo: () => {
+        const state = get();
+        if (state.historyFuture.length === 0) return;
+        const future = [...state.historyFuture];
+        const snap = future.shift()!;
+        const current: Snapshot = {
+          nodes: state.nodes,
+          edges: state.edges,
+          hardwareNodes: state.hardwareNodes,
+        };
+        set({
+          historyPast: [...state.historyPast, current].slice(-50),
+          historyFuture: future,
+          nodes: snap.nodes,
+          edges: snap.edges,
+          hardwareNodes: snap.hardwareNodes,
+        });
       },
 
       reassignAllIPs: async () => {
@@ -524,7 +663,7 @@ export const useBuilderStore = create<BuilderState>()(
         // Map relational `nodes` back into flattened array structure
         const hardwareNodes: HardwareNode[] = (build.nodes || []).map((n: any) => ({
           id: n.id,
-          type: n.type as any,
+          type: n.type as HardwareType,
           name: n.name,
           ip: n.ip,
           x: n.x || 0,

@@ -1,3 +1,5 @@
+import type { Position } from '@xyflow/react';
+
 export interface ServiceRequirement {
   id: string;
   service_id: string;
@@ -187,4 +189,14 @@ export type HardwareNodeValidationIssue = {
   node_id: string;
   message: string;
   type: 'error' | 'warning';
+};
+
+export type EdgeParams = {
+  sourceX: number;
+  sourceY: number;
+  sourcePosition: Position;
+  targetX: number;
+  targetY: number;
+  targetPosition: Position;
+  borderRadius?: number;
 };
