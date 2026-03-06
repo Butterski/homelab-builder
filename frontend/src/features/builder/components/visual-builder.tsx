@@ -377,78 +377,78 @@ function Flow() {
 
   const isValidConnection = useCallback(
     (connection: any) => {
-      // Read directly from store so we always have the latest edges/nodes,
-      // regardless of whether the React render cycle has flushed yet.
+      // Always read live state so this never operates on stale closures.
       const { edges: currentEdges, hardwareNodes: currentNodes } = useBuilderStore.getState();
-
-      const sourceNode = currentNodes.find(n => n.id === connection.source);
-      const targetNode = currentNodes.find(n => n.id === connection.target);
-
-      if (!sourceNode || !targetNode) return false;
 
       // Self-loop guard
       if (connection.source === connection.target) return false;
 
-      // A physical port can only have one cable — check both edge directions.
-      const portUsed = (nodeId: string, handleId: string | null | undefined) => {
-        if (handleId == null) return false;
-        return currentEdges.some(
-          e =>
-            (e.source === nodeId && e.sourceHandle === handleId) ||
-            (e.target === nodeId && e.targetHandle === handleId),
-        );
-      };
+      const sourceNode = currentNodes.find(n => n.id === connection.source);
+      const targetNode = currentNodes.find(n => n.id === connection.target);
+      if (!sourceNode || !targetNode) return false;
 
-      if (portUsed(connection.source, connection.sourceHandle)) {
+      // Port exclusivity — each physical handle can carry at most one cable.
+      const sourceHandleUsed = currentEdges.some(
+        e =>
+          (e.source === connection.source && e.sourceHandle === connection.sourceHandle) ||
+          (e.target === connection.source && e.targetHandle === connection.sourceHandle),
+      );
+      if (sourceHandleUsed) {
         toast.error('Source port is already in use.');
         return false;
       }
-      if (portUsed(connection.target, connection.targetHandle)) {
+      const targetHandleUsed = currentEdges.some(
+        e =>
+          (e.source === connection.target && e.sourceHandle === connection.targetHandle) ||
+          (e.target === connection.target && e.targetHandle === connection.targetHandle),
+      );
+      if (targetHandleUsed) {
         toast.error('Target port is already in use.');
         return false;
       }
 
-      // Cycle detection: BFS from target — if we can reach source through
-      // existing edges, this connection would close a loop.
-      const adjacency = new Map<string, Set<string>>();
+      // Cycle detection — BFS from source through the existing (undirected) graph.
+      // If target is already reachable, adding this edge would form a cycle.
+      const adj = new Map<string, Set<string>>();
       for (const e of currentEdges) {
-        if (!adjacency.has(e.source)) adjacency.set(e.source, new Set());
-        if (!adjacency.has(e.target)) adjacency.set(e.target, new Set());
-        adjacency.get(e.source)!.add(e.target);
-        adjacency.get(e.target)!.add(e.source);
+        if (!adj.has(e.source)) adj.set(e.source, new Set());
+        if (!adj.has(e.target)) adj.set(e.target, new Set());
+        adj.get(e.source)!.add(e.target);
+        adj.get(e.target)!.add(e.source);
       }
       const visited = new Set<string>();
-      const queue = [connection.target as string];
+      const queue = [connection.source];
+      visited.add(connection.source);
       while (queue.length > 0) {
         const current = queue.shift()!;
-        if (current === connection.source) {
-          toast.error('This connection would create a loop.');
+        if (current === connection.target) {
+          toast.error('Connection would create a loop.');
           return false;
         }
-        if (visited.has(current)) continue;
-        visited.add(current);
-        adjacency.get(current)?.forEach(n => {
-          if (!visited.has(n)) queue.push(n);
-        });
+        for (const neighbor of adj.get(current) ?? []) {
+          if (!visited.has(neighbor)) {
+            visited.add(neighbor);
+            queue.push(neighbor);
+          }
+        }
       }
 
-      // A router, switch and hba can connect to anything
+      // Type restriction — non-switch/router devices must connect via a switch or router.
       if (
-        sourceNode.type === 'switch' ||
-        sourceNode.type === 'router' ||
-        targetNode.type === 'switch' ||
-        targetNode.type === 'router' ||
-        sourceNode.type === 'hba' ||
-        targetNode.type === 'hba'
+        sourceNode.type !== 'switch' &&
+        sourceNode.type !== 'router' &&
+        sourceNode.type !== 'hba' &&
+        targetNode.type !== 'switch' &&
+        targetNode.type !== 'router' &&
+        targetNode.type !== 'hba'
       ) {
-        return true;
+        toast.error('Devices must connect through a Switch or Router.');
+        return false;
       }
 
-      // Otherwise (e.g. PC to PC or PC to Server without a switch), it's invalid
-      toast.error('Invalid connection. Devices must connect through a Switch or Router.');
-      return false;
+      return true;
     },
-    [], // no deps — reads live state via getState() instead of closed-over variables
+    [], // no deps — reads live state via getState()
   );
 
   // ...
