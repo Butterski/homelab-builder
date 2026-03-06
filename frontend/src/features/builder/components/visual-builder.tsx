@@ -427,7 +427,9 @@ function Flow() {
         }
         if (visited.has(current)) continue;
         visited.add(current);
-        adjacency.get(current)?.forEach(n => { if (!visited.has(n)) queue.push(n); });
+        adjacency.get(current)?.forEach(n => {
+          if (!visited.has(n)) queue.push(n);
+        });
       }
 
       // A router, switch and hba can connect to anything

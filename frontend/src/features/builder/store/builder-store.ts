@@ -199,7 +199,7 @@ export const useBuilderStore = create<BuilderState>()(
         const state = get();
         const orig = state.hardwareNodes.find(n => n.id === nodeId);
         if (!orig) return;
-        const newId = `node-${Date.now()}`;
+        const newId = crypto.randomUUID();
         const dup: HardwareNode = {
           ...orig,
           id: newId,
