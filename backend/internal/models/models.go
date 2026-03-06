@@ -116,7 +116,7 @@ type HardwareComponent struct {
 	BuyURLs      json.RawMessage `gorm:"type:jsonb;default:'[]'" json:"buy_urls"`
 	ImageURL     string          `gorm:"default:''" json:"image_url"`
 	SubmittedBy  *uuid.UUID      `gorm:"type:uuid" json:"submitted_by,omitempty"`
-	Approved     bool            `gorm:"default:true;index" json:"approved"`
+	Approved     *bool           `gorm:"default:false;index" json:"approved"`
 	Likes        int             `gorm:"default:0" json:"likes"`
 	CreatedAt    time.Time       `json:"created_at"`
 	UpdatedAt    time.Time       `json:"updated_at"`

@@ -146,7 +146,7 @@ func (s *HardwareService) Create(input CreateHardwareInput, submittedBy *uuid.UU
 		BuyURLs:      buyURLs,
 		ImageURL:     input.ImageURL,
 		SubmittedBy:  submittedBy,
-		Approved:     autoApprove,
+		Approved:     &autoApprove,
 	}
 	if err := s.db.Create(&c).Error; err != nil {
 		return nil, err
@@ -223,6 +223,7 @@ func (s *HardwareService) BulkImport(items []CreateHardwareInput, submittedBy *u
 		if currency == "" {
 			currency = "EUR"
 		}
+		approvedTrue := true
 		components = append(components, models.HardwareComponent{
 			Category:     input.Category,
 			Brand:        input.Brand,
@@ -234,7 +235,7 @@ func (s *HardwareService) BulkImport(items []CreateHardwareInput, submittedBy *u
 			BuyURLs:      buyURLs,
 			ImageURL:     input.ImageURL,
 			SubmittedBy:  submittedBy,
-			Approved:     true,
+			Approved:     &approvedTrue,
 		})
 	}
 	if err := s.db.CreateInBatches(&components, 50).Error; err != nil {
