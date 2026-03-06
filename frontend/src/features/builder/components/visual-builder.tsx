@@ -462,6 +462,7 @@ function Flow() {
         showSkipButton={true}
         showProgress={true}
         callback={handleJoyrideCallback}
+        locale={{ last: 'Close' }}
         styles={{
           options: {
             primaryColor: '#f97316',
@@ -470,9 +471,7 @@ function Flow() {
         }}
       />
 
-      <div className="tour-toolbox">
-        <HardwareToolbox />
-      </div>
+      <HardwareToolbox />
 
       <div className="flex-1 h-full relative" ref={reactFlowWrapper}>
         <LiveResourceDashboard />
@@ -568,7 +567,7 @@ function Flow() {
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-10 bg-card w-[150px]">
+                <Button variant="outline" size="sm" className="h-10 bg-card w-37.5">
                   <Route className="mr-2 h-4 w-4 shrink-0" />
                   Edge Settings
                 </Button>
@@ -579,7 +578,7 @@ function Flow() {
                 </DropdownMenuLabel>
                 <DropdownMenuRadioGroup
                   value={edgePreferences.routingEngine}
-                  onValueChange={(v: any) => handlePrefChange('routingEngine', v)}
+                  onValueChange={(v: string) => handlePrefChange('routingEngine', v)}
                 >
                   <DropdownMenuRadioItem value="smart">Smart (Avoids Nodes)</DropdownMenuRadioItem>
                   <DropdownMenuRadioItem value="direct">Direct (Flyover)</DropdownMenuRadioItem>
@@ -592,7 +591,7 @@ function Flow() {
                 </DropdownMenuLabel>
                 <DropdownMenuRadioGroup
                   value={edgePreferences.connectionStyle}
-                  onValueChange={(v: any) => handlePrefChange('connectionStyle', v)}
+                  onValueChange={(v: string) => handlePrefChange('connectionStyle', v)}
                 >
                   <DropdownMenuRadioItem value="floating">Floating (Chassis)</DropdownMenuRadioItem>
                   <DropdownMenuRadioItem value="strict">Strict (RJ45 Port)</DropdownMenuRadioItem>
@@ -605,7 +604,7 @@ function Flow() {
                 </DropdownMenuLabel>
                 <DropdownMenuRadioGroup
                   value={edgePreferences.lineStyle}
-                  onValueChange={(v: any) => handlePrefChange('lineStyle', v)}
+                  onValueChange={(v: string) => handlePrefChange('lineStyle', v)}
                 >
                   <DropdownMenuRadioItem value="bezier">Bezier (Curve)</DropdownMenuRadioItem>
                   <DropdownMenuRadioItem value="step">Step (Orthogonal)</DropdownMenuRadioItem>

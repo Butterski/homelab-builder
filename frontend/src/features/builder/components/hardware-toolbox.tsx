@@ -498,7 +498,7 @@ export function HardwareToolbox() {
             })}
           </div>
 
-          <div className="overflow-y-auto flex-1 p-3">
+          <div className="tour-toolbox overflow-y-auto flex-1 p-3">
             {/* ── Components tab ── */}
             {activeTab === 'components' && (
               <div className="space-y-2">
