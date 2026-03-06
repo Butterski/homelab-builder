@@ -397,7 +397,7 @@ export function NodePropertiesPanel() {
 
         {/* Hardware Specs (Model, CPU, RAM, Storage, Ports) */}
         <div className="space-y-3 pt-2 border-t">
-          {(selectedNode.type === 'switch' || isRouter) && (
+          {(selectedNode.type === 'switch' || isRouter || selectedNode.type === 'ups') && (
             <div className="space-y-1">
               <Label htmlFor="ports" className="text-xs text-muted-foreground">
                 Number of Ports

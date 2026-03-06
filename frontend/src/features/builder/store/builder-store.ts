@@ -17,6 +17,7 @@ import type {
   VirtualMachine,
   HardwareType,
   HardwareComponent,
+  HardwareNodeValidationIssue,
 } from '../../../types';
 import { buildApi, type Build } from '../api/builds';
 import { api } from '../../../services/api';
@@ -81,7 +82,7 @@ interface BuilderState {
   setEdgePreferences: (prefs: Partial<BuilderState['edgePreferences']>) => void;
 
   // Network Validation
-  validationIssues: { node_id: string; message: string; type: 'error' | 'warning' }[];
+  validationIssues: HardwareNodeValidationIssue[];
   validateNetwork: () => Promise<void>;
 
   clear: () => void;
@@ -478,7 +479,7 @@ export const useBuilderStore = create<BuilderState>()(
           // Ensure response is the nested JSON from hlbIPAM (it might be wrapped by our API)
           const data = response.data || response;
 
-          const issues: { node_id: string; message: string; type: 'error' | 'warning' }[] = [];
+          const issues: HardwareNodeValidationIssue[] = [];
 
           if (data.errors && Array.isArray(data.errors)) {
             data.errors.forEach((e: any) => issues.push({ ...e, type: 'error' }));

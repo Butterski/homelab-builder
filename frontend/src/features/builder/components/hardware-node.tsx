@@ -1,10 +1,5 @@
 import { memo, useEffect } from 'react';
-import {
-  Handle,
-  Position,
-  useUpdateNodeInternals,
-  type NodeProps,
-} from '@xyflow/react';
+import { Handle, Position, useUpdateNodeInternals, type NodeProps } from '@xyflow/react';
 import {
   Server,
   Router,
@@ -22,7 +17,13 @@ import {
 } from 'lucide-react';
 import { Card } from '../../../components/ui/card';
 import { cn } from '../../../lib/utils';
-import type { HardwareType, VirtualMachine, HardwareComponent, HardwareSpec } from '../../../types';
+import type {
+  HardwareType,
+  VirtualMachine,
+  HardwareComponent,
+  HardwareSpec,
+  HardwareNodeValidationIssue,
+} from '../../../types';
 import { useBuilderStore, NON_NETWORK_TYPES } from '../store/builder-store';
 
 type HardwareNodeData = {
@@ -174,7 +175,7 @@ function VmChip({ vm }: { vm: VirtualMachine }) {
     >
       <Icon className="h-2.5 w-2.5 shrink-0" />
       <div className="min-w-0 flex-1">
-        <div className="truncate font-semibold max-w-[80px]" title={vm.name}>
+        <div className="truncate font-semibold max-w-20" title={vm.name}>
           {vm.name}
         </div>
         <div className={cn('text-[9px]', vm.ip ? 'opacity-90' : 'opacity-40 italic')}>
@@ -207,7 +208,7 @@ function ComponentChip({ component }: { component: HardwareComponent }) {
     >
       <Icon className={cn('h-2.5 w-2.5 shrink-0', cfg.iconColor)} />
       <div className="min-w-0 flex-1">
-        <div className="truncate font-semibold max-w-[90px]" title={component.name}>
+        <div className="truncate font-semibold max-w-22.5" title={component.name}>
           {component.name}
         </div>
         {component.details?.model && (
@@ -233,16 +234,18 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
   const isCompute = COMPUTE_TYPES.includes(nodeData.type);
 
   const validationIssues = useBuilderStore(s => s.validationIssues);
-  const nodeIssues = validationIssues.filter((i: any) => i.node_id === id);
-  const hasIpError = nodeIssues.some((i: any) => i.type === 'error');
-  const hasIpWarning = nodeIssues.some((i: any) => i.type === 'warning');
+  const nodeIssues = validationIssues.filter((i: HardwareNodeValidationIssue) => i.node_id === id);
+  const hasIpError = nodeIssues.some((i: HardwareNodeValidationIssue) => i.type === 'error');
+  const hasIpWarning = nodeIssues.some((i: HardwareNodeValidationIssue) => i.type === 'warning');
 
   // React flow handles dynamically
   const updateNodeInternals = useUpdateNodeInternals();
   const numPorts =
     nodeData.type === 'switch' || nodeData.type === 'router'
       ? Math.max(1, (Number(nodeData.details?.ports) || 4) - 1)
-      : 1;
+      : nodeData.type === 'ups'
+        ? Math.max(1, (Number(nodeData.details?.ports) || 2) - 1)
+        : 1;
 
   // Resource calculations
   let usedCpu = 0;
@@ -275,13 +278,13 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
   } else if (
     maxResourceUsage >= 1 ||
     hasResourceWarning ||
-    nodeIssues.some((i: any) => i.type === 'error')
+    nodeIssues.some((i: HardwareNodeValidationIssue) => i.type === 'error')
   ) {
     lightColor = 'bg-red-500';
     pingColor = 'bg-red-400 animate-ping';
   } else if (
     maxResourceUsage >= 0.8 ||
-    nodeIssues.some((i: any) => i.type === 'warning') ||
+    nodeIssues.some((i: HardwareNodeValidationIssue) => i.type === 'warning') ||
     nodeData.status === 'warning'
   ) {
     lightColor = 'bg-orange-500';
@@ -298,7 +301,9 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
     tooltipLabel += `High resource usage\nCPU: ${usedCpu}/${totalCpu}\nRAM: ${Math.round(usedRam / 1024)}GB/${Math.round(totalRamMB / 1024)}GB\n`;
   }
   if (nodeIssues.length > 0) {
-    tooltipLabel += nodeIssues.map((i: any) => `${i.type.toUpperCase()}: ${i.message}`).join('\n');
+    tooltipLabel += nodeIssues
+      .map((i: HardwareNodeValidationIssue) => `${i.type.toUpperCase()}: ${i.message}`)
+      .join('\n');
   }
 
   // Count edges connected to this node so updateNodeInternals re-fires when
@@ -341,7 +346,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
       {/* Animated ring on selection — uses device accent color */}
       {selected && (
         <div
-          className="absolute -inset-[4px] -z-10 rounded-[16px] pointer-events-none node-selected-ring"
+          className="absolute -inset-1 -z-10 rounded-2xl pointer-events-none node-selected-ring"
           style={{ '--node-accent': cfg.color } as React.CSSProperties}
         />
       )}
@@ -529,12 +534,12 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
         type="target"
         position={Position.Top}
         id="target-0"
-        className="!bg-muted-foreground w-3 h-1.5 !border !border-background !rounded-sm hover:!bg-primary hover:scale-125 transition-all"
+        className="bg-muted-foreground! w-3 h-1.5 border! border-background! rounded-sm! hover:bg-primary! hover:scale-125 transition-all"
       />
 
       {/* Source Ports (Bottom, for outgoing cables) */}
       {(() => {
-        if (nodeData.type === 'switch' || nodeData.type === 'router') {
+        if (nodeData.type === 'switch' || nodeData.type === 'router' || nodeData.type === 'ups') {
           const portSpacing = 100 / (numPorts + 1);
           return Array.from({ length: numPorts }).map((_, i) => (
             <Handle
@@ -543,7 +548,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
               type="source"
               position={Position.Bottom}
               style={{ left: `${portSpacing * (i + 1)}%` }}
-              className="!bg-muted-foreground w-2 h-2 !border !border-background !rounded-sm hover:!bg-primary hover:scale-125 transition-all"
+              className="bg-muted-foreground! w-2 h-2 border! border-background! rounded-sm! hover:bg-primary! hover:scale-125 transition-all"
               title={`eth${i}`}
             />
           ));
@@ -555,7 +560,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
             id="eth0"
             type="source"
             position={Position.Bottom}
-            className="!bg-muted-foreground w-3 h-3 !border-2 !border-background !rounded-sm hover:!bg-primary hover:scale-125 transition-all"
+            className="bg-muted-foreground! w-3 h-3 border-2! border-background! rounded-sm! hover:bg-primary! hover:scale-125 transition-all"
             title="eth0"
           />
         );

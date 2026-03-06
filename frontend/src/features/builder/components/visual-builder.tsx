@@ -5,6 +5,7 @@ import {
   Background,
   Controls,
   useReactFlow,
+  useUpdateNodeInternals,
   type NodeTypes,
   ReactFlowProvider,
   Panel,
@@ -216,24 +217,52 @@ function Flow() {
   };
 
   const { getEdges, deleteElements } = useReactFlow();
+  const updateNodeInternals = useUpdateNodeInternals();
 
-  // When a switch/router's port count decreases, delete edges whose source handle
-  // no longer exists (ethN where N >= newPortCount). This must go through
-  // deleteElements so ReactFlow's internal edge renderer is properly notified.
+  const prevPortsRef = useRef<Map<string, number>>(new Map());
+
+  // Effect 1 — delete orphaned edges when port count shrinks.
+  // Does NOT call updateNodeInternals here; that happens in Effect 2.
   useEffect(() => {
     hardwareNodes.forEach(node => {
-      if (node.type !== 'switch' && node.type !== 'router') return;
-      const portCount = Number(node.details?.ports) || 4;
-      const orphaned = edges.filter(e => {
-        if (e.source !== node.id || !e.sourceHandle) return false;
-        const match = e.sourceHandle.match(/^eth(\d+)$/);
-        return match !== null && parseInt(match[1], 10) >= portCount;
-      });
-      if (orphaned.length > 0) {
-        deleteElements({ edges: orphaned });
+      if (node.type !== 'switch' && node.type !== 'router' && node.type !== 'ups') return;
+      const raw = Number(node.details?.ports) || (node.type === 'ups' ? 2 : 4);
+      const numPorts = Math.max(1, raw - 1);
+      const prev = prevPortsRef.current.get(node.id);
+      if (prev !== undefined && prev !== numPorts) {
+        const orphaned = edges.filter(e => {
+          if (e.source !== node.id || !e.sourceHandle) return false;
+          const match = e.sourceHandle.match(/^eth(\d+)$/);
+          return match !== null && parseInt(match[1], 10) >= numPorts;
+        });
+        if (orphaned.length > 0) deleteElements({ edges: orphaned });
       }
+      prevPortsRef.current.set(node.id, numPorts);
     });
   }, [hardwareNodes, edges, deleteElements]);
+
+  // Effect 2 — always resync handle positions for port-bearing nodes whenever
+  // hardwareNodes changes (covers increases, decreases, and first render).
+  // Running after every hardwareNodes change is cheap and ensures the triple-rAF
+  // fires after *all* state updates (including the deleteElements re-render from
+  // Effect 1) have settled.
+  useEffect(() => {
+    const portNodeIds = hardwareNodes
+      .filter(n => n.type === 'switch' || n.type === 'router' || n.type === 'ups')
+      .map(n => n.id);
+    if (portNodeIds.length === 0) return;
+
+    const r1 = requestAnimationFrame(() => {
+      const r2 = requestAnimationFrame(() => {
+        const r3 = requestAnimationFrame(() => {
+          portNodeIds.forEach(nid => updateNodeInternals(nid));
+        });
+        return () => cancelAnimationFrame(r3);
+      });
+      return () => cancelAnimationFrame(r2);
+    });
+    return () => cancelAnimationFrame(r1);
+  }, [hardwareNodes, updateNodeInternals]);
 
   const handlePrefChange = (key: string, val: string) => {
     setEdgePreferences({ [key]: val });
@@ -387,54 +416,62 @@ function Flow() {
       const targetNode = currentNodes.find(n => n.id === connection.target);
       if (!sourceNode || !targetNode) return false;
 
-      // Port exclusivity — each physical handle can carry at most one cable.
-      const sourceHandleUsed = currentEdges.some(
-        e =>
-          (e.source === connection.source && e.sourceHandle === connection.sourceHandle) ||
-          (e.target === connection.source && e.targetHandle === connection.sourceHandle),
-      );
-      if (sourceHandleUsed) {
-        toast.error('Source port is already in use.');
-        return false;
-      }
-      const targetHandleUsed = currentEdges.some(
-        e =>
-          (e.source === connection.target && e.sourceHandle === connection.targetHandle) ||
-          (e.target === connection.target && e.targetHandle === connection.targetHandle),
-      );
-      if (targetHandleUsed) {
-        toast.error('Target port is already in use.');
-        return false;
-      }
+      const isUPS = sourceNode.type === 'ups' || targetNode.type === 'ups';
 
-      // Cycle detection — BFS from source through the existing (undirected) graph.
-      // If target is already reachable, adding this edge would form a cycle.
-      const adj = new Map<string, Set<string>>();
-      for (const e of currentEdges) {
-        if (!adj.has(e.source)) adj.set(e.source, new Set());
-        if (!adj.has(e.target)) adj.set(e.target, new Set());
-        adj.get(e.source)!.add(e.target);
-        adj.get(e.target)!.add(e.source);
-      }
-      const visited = new Set<string>();
-      const queue = [connection.source];
-      visited.add(connection.source);
-      while (queue.length > 0) {
-        const current = queue.shift()!;
-        if (current === connection.target) {
-          toast.error('Connection would create a loop.');
+      // Port exclusivity — each physical handle can carry at most one cable.
+      // UPS connections are power cables and share ports with network connections.
+      if (!isUPS) {
+        const sourceHandleUsed = currentEdges.some(
+          e =>
+            (e.source === connection.source && e.sourceHandle === connection.sourceHandle) ||
+            (e.target === connection.source && e.targetHandle === connection.sourceHandle),
+        );
+        if (sourceHandleUsed) {
+          toast.error('Source port is already in use.');
           return false;
         }
-        for (const neighbor of adj.get(current) ?? []) {
-          if (!visited.has(neighbor)) {
-            visited.add(neighbor);
-            queue.push(neighbor);
+        const targetHandleUsed = currentEdges.some(
+          e =>
+            (e.source === connection.target && e.sourceHandle === connection.targetHandle) ||
+            (e.target === connection.target && e.targetHandle === connection.targetHandle),
+        );
+        if (targetHandleUsed) {
+          toast.error('Target port is already in use.');
+          return false;
+        }
+      }
+
+      // Cycle detection — BFS through the existing undirected graph (skip for UPS).
+      if (!isUPS) {
+        const adj = new Map<string, Set<string>>();
+        for (const e of currentEdges) {
+          if (!adj.has(e.source)) adj.set(e.source, new Set());
+          if (!adj.has(e.target)) adj.set(e.target, new Set());
+          adj.get(e.source)!.add(e.target);
+          adj.get(e.target)!.add(e.source);
+        }
+        const visited = new Set<string>();
+        const queue = [connection.source];
+        visited.add(connection.source);
+        while (queue.length > 0) {
+          const current = queue.shift()!;
+          if (current === connection.target) {
+            toast.error('Connection would create a loop.');
+            return false;
+          }
+          for (const neighbor of adj.get(current) ?? []) {
+            if (!visited.has(neighbor)) {
+              visited.add(neighbor);
+              queue.push(neighbor);
+            }
           }
         }
       }
 
       // Type restriction — non-switch/router devices must connect via a switch or router.
+      // UPS can connect to anything.
       if (
+        !isUPS &&
         sourceNode.type !== 'switch' &&
         sourceNode.type !== 'router' &&
         sourceNode.type !== 'hba' &&
