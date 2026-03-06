@@ -17,7 +17,6 @@ import { useBuilderStore } from '../store/builder-store';
 import { HardwareToolbox } from './hardware-toolbox';
 import { HardwareNode as HardwareNodeComponent } from './hardware-node';
 import { NodePropertiesPanel } from './node-properties-panel';
-import { ComponentDetailsDialog } from './component-details-dialog';
 import { LiveResourceDashboard } from './live-resource-dashboard';
 import { Button } from '../../../components/ui/button';
 import { Wand2, Menu, Save, Folder, Download, LogOut, Route } from 'lucide-react';
@@ -279,42 +278,6 @@ function Flow() {
     event.dataTransfer.dropEffect = 'move';
   }, []);
 
-  const [pendingComponent, setPendingComponent] = useState<{
-    nodeId: string;
-    type: HardwareType;
-    name?: string;
-    details?: any;
-  } | null>(null);
-  const [pendingNode, setPendingNode] = useState<{
-    type: HardwareType;
-    position: { x: number; y: number };
-  } | null>(null);
-
-  const handleComponentConfirm = (data: { name: string; details: any }) => {
-    if (pendingComponent) {
-      addInternalComponent(pendingComponent.nodeId, {
-        id: `comp-${Date.now()}`,
-        type: pendingComponent.type,
-        name: data.name,
-        details: data.details,
-      });
-      setPendingComponent(null);
-    } else if (pendingNode) {
-      const newNode: HardwareNode = {
-        id: `node-${Date.now()}`,
-        type: pendingNode.type,
-        name: data.name,
-        x: pendingNode.position.x,
-        y: pendingNode.position.y,
-        details: data.details,
-        internal_components: [],
-        vms: [],
-      };
-      addHardware(newNode);
-      setPendingNode(null);
-    }
-  };
-
   const onDrop = useCallback(
     (event: React.DragEvent) => {
       event.preventDefault();
@@ -369,37 +332,27 @@ function Flow() {
         return;
       }
 
-      // Direct add if it's a preset (has details) OR if it's a known preset structure
-      // We check for details.model to assume it's a preset
-      if (data.details && Object.keys(data.details).length > 0 && !pendingComponent) {
-        const newNode: HardwareNode = {
-          id: `node-${Date.now()}`,
-          type: data.type as HardwareType,
-          name: data.name,
-          x: position.x,
-          y: position.y,
-          details: data.details,
-          internal_components: [],
-          vms: [],
-        };
-        addHardware(newNode);
-        return;
-      }
-
       if (targetNode && targetNode.type === 'hardware') {
-        setPendingComponent({
-          nodeId: targetNode.id,
+        addInternalComponent(targetNode.id, {
+          id: `comp-${Date.now()}`,
           type: data.type,
-          name: data.name,
-          details: data.details,
+          name: data.name || `New ${data.type}`,
+          details: data.details || {},
         });
         return;
       }
 
-      setPendingNode({
+      const newNode: HardwareNode = {
+        id: `node-${Date.now()}`,
         type: data.type as HardwareType,
-        position,
-      });
+        name: data.name || `New ${data.type}`,
+        x: position.x,
+        y: position.y,
+        details: data.details || {},
+        internal_components: [],
+        vms: [],
+      };
+      addHardware(newNode);
     },
     [
       screenToFlowPosition,
@@ -407,8 +360,6 @@ function Flow() {
       addHardware,
       addInternalComponent,
       addVM,
-      setPendingComponent,
-      setPendingNode,
     ],
   );
 
@@ -631,23 +582,6 @@ function Flow() {
           <ShortcutHints />
         </ReactFlow>
       </div>
-
-      <ComponentDetailsDialog
-        open={!!pendingComponent}
-        onOpenChange={v => !v && setPendingComponent(null)}
-        initialType={pendingComponent?.type || 'disk'}
-        initialName={pendingComponent?.name}
-        initialDetails={pendingComponent?.details}
-        onConfirm={handleComponentConfirm}
-      />
-
-      <ComponentDetailsDialog
-        open={!!pendingNode}
-        onOpenChange={v => !v && setPendingNode(null)}
-        initialType={pendingNode?.type || 'server'}
-        title="New Node Details"
-        onConfirm={handleComponentConfirm}
-      />
     </div>
   );
 }
