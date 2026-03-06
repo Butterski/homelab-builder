@@ -3,6 +3,7 @@ import { NavLink, useNavigate, Link } from "react-router-dom"
 import { LayoutDashboard, CheckSquare, Settings, HardDrive, FileCode, ChevronsLeft, ChevronsRight, Heart, Globe, ClipboardList, CheckCircle2 } from "lucide-react"
 import { Github } from "../icons/github"
 import { Discord } from "../icons/discord"
+import { BuyMeACoffee } from "../icons/buymeacoffee"
 import { cn } from "../../lib/utils"
 import { useAuth } from "../../features/admin/hooks/use-auth"
 import { useBuilderStore } from "../../features/builder/store/builder-store"
@@ -167,6 +168,9 @@ export function Sidebar({ className }: { className?: string }) {
         </a>
         <a href="https://discord.gg/8PQb2M2fBB" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-indigo-500 transition-colors" title="Discord">
           <Discord className="h-4 w-4" />
+        </a>
+        <a href="https://buymeacoffee.com/butterski" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-yellow-500 transition-colors" title="Buy Me a Coffee">
+          <BuyMeACoffee className="h-4 w-4" />
         </a>
       </div>
 

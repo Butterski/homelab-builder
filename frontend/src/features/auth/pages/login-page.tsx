@@ -4,6 +4,7 @@ import { Link } from "react-router-dom"
 import { AnimatedLogo } from "../../../components/ui/animated-logo"
 import { Github } from "../../../components/icons/github"
 import { Discord } from "../../../components/icons/discord"
+import { BuyMeACoffee } from "../../../components/icons/buymeacoffee"
 
 export default function LoginPage() {
     return (
@@ -62,6 +63,9 @@ export default function LoginPage() {
                 </a>
                 <a href="https://discord.gg/8PQb2M2fBB" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-indigo-500 transition-colors" title="Discord">
                     <Discord className="h-4 w-4" />
+                </a>
+                <a href="https://buymeacoffee.com/butterski" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-yellow-500 transition-colors" title="Buy Me a Coffee">
+                    <BuyMeACoffee className="h-4 w-4" />
                 </a>
             </div>
 
