@@ -123,8 +123,4 @@ export const api = {
     submitSurvey: (data: any) => request<any>('/api/survey', { method: 'POST', body: JSON.stringify(data) }),
     updateSurvey: (data: any) => request<any>('/api/survey', { method: 'PUT', body: JSON.stringify(data) }),
     // END BETA_SURVEY
-
-    // Donations
-    getDonationProgress: () => request<{ data: { id: string; current: number; target: number; updated_at: string } }>('/api/donations'),
-    updateDonationProgress: (data: { current: number; target?: number }) => request<any>('/api/admin/donations', { method: 'PUT', body: JSON.stringify(data) }),
 };
