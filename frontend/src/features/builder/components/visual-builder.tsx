@@ -103,6 +103,15 @@ function Flow() {
     }
   }, []);
 
+  // Defensive cleanup: strip any scroll locks left behind by Radix dialogs or Joyride
+  useEffect(() => {
+    return () => {
+      document.body.removeAttribute('data-scroll-locked');
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    };
+  }, []);
+
   const handleJoyrideCallback = (data: CallBackProps) => {
     const { status } = data;
     if ([STATUS.FINISHED, STATUS.SKIPPED].includes(status as any)) {
