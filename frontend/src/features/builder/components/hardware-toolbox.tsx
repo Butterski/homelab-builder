@@ -334,11 +334,6 @@ export function HardwareToolbox() {
                                 >
                                     <Icon className="h-3.5 w-3.5" />
                                     {tab.label}
-                                    {tab.id === 'services' && availableServices.length > 0 && (
-                                        <span className="absolute top-1 right-1 bg-primary text-primary-foreground text-[8px] rounded-full w-3.5 h-3.5 flex items-center justify-center">
-                                            {availableServices.length}
-                                        </span>
-                                    )}
                                 </button>
                             )
                         })}
