@@ -1,5 +1,5 @@
-@import "tailwindcss";
-@import "tw-animate-css";
+@import 'tailwindcss';
+@import 'tw-animate-css';
 
 @layer base {
   * {
@@ -19,7 +19,7 @@
   --radius-2xl: calc(var(--radius) + 8px);
   --radius-3xl: calc(var(--radius) + 12px);
   --radius-4xl: calc(var(--radius) + 16px);
-  
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -51,7 +51,7 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-  
+
   --radius: 0.5rem;
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
@@ -93,54 +93,70 @@
 }
 
 .dark {
-  --background: #0B0B0E;
-  --foreground: #FAFAFA;
+  --background: #0b0b0e;
+  --foreground: #fafafa;
   --card: #111113;
-  --card-foreground: #FAFAFA;
+  --card-foreground: #fafafa;
   --popover: #111113;
-  --popover-foreground: #FAFAFA;
-  --primary: #FAFAFA;
-  --primary-foreground: #0B0B0E;
-  --secondary: #27272A;
-  --secondary-foreground: #FAFAFA;
-  --muted: #18181B;
-  --muted-foreground: #A1A1AA;
-  --accent: #27272A;
-  --accent-foreground: #FAFAFA;
+  --popover-foreground: #fafafa;
+  --primary: #fafafa;
+  --primary-foreground: #0b0b0e;
+  --secondary: #27272a;
+  --secondary-foreground: #fafafa;
+  --muted: #18181b;
+  --muted-foreground: #a1a1aa;
+  --accent: #27272a;
+  --accent-foreground: #fafafa;
   --destructive: oklch(0.704 0.191 22.216);
-  --border: #27272A;
-  --input: #27272A;
-  --ring: #3F3F46;
+  --border: #27272a;
+  --input: #27272a;
+  --ring: #3f3f46;
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: #0B0B0E;
-  --sidebar-foreground: #FAFAFA;
-  --sidebar-primary: #FAFAFA;
-  --sidebar-primary-foreground: #0B0B0E;
-  --sidebar-accent: #18181B;
-  --sidebar-accent-foreground: #FAFAFA;
-  --sidebar-border: #27272A;
-  --sidebar-ring: #3F3F46;
+  --sidebar: #0b0b0e;
+  --sidebar-foreground: #fafafa;
+  --sidebar-primary: #fafafa;
+  --sidebar-primary-foreground: #0b0b0e;
+  --sidebar-accent: #18181b;
+  --sidebar-accent-foreground: #fafafa;
+  --sidebar-border: #27272a;
+  --sidebar-ring: #3f3f46;
 }
 
 /* ─── Micro-Animations ──────────────────────────────────────────────────────── */
 
 @keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes scaleIn {
-  from { opacity: 0; transform: scale(0.95); }
-  to   { opacity: 1; transform: scale(1); }
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 @keyframes shimmer {
-  0%   { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
 }
 
 /* Entrance animations for cards and panels */
@@ -156,18 +172,36 @@
 .stagger-children > * {
   animation: fadeInUp 0.3s ease-out both;
 }
-.stagger-children > *:nth-child(1) { animation-delay: 0ms; }
-.stagger-children > *:nth-child(2) { animation-delay: 40ms; }
-.stagger-children > *:nth-child(3) { animation-delay: 80ms; }
-.stagger-children > *:nth-child(4) { animation-delay: 120ms; }
-.stagger-children > *:nth-child(5) { animation-delay: 160ms; }
-.stagger-children > *:nth-child(6) { animation-delay: 200ms; }
-.stagger-children > *:nth-child(7) { animation-delay: 240ms; }
-.stagger-children > *:nth-child(8) { animation-delay: 280ms; }
+.stagger-children > *:nth-child(1) {
+  animation-delay: 0ms;
+}
+.stagger-children > *:nth-child(2) {
+  animation-delay: 40ms;
+}
+.stagger-children > *:nth-child(3) {
+  animation-delay: 80ms;
+}
+.stagger-children > *:nth-child(4) {
+  animation-delay: 120ms;
+}
+.stagger-children > *:nth-child(5) {
+  animation-delay: 160ms;
+}
+.stagger-children > *:nth-child(6) {
+  animation-delay: 200ms;
+}
+.stagger-children > *:nth-child(7) {
+  animation-delay: 240ms;
+}
+.stagger-children > *:nth-child(8) {
+  animation-delay: 280ms;
+}
 
 /* Interactive hover lift for cards */
 .hover-lift {
-  transition: transform 0.2s ease, border-color 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    border-color 0.2s ease;
 }
 .hover-lift:hover {
   transform: translateY(-1px);
@@ -180,12 +214,41 @@
 
 /* Node selection ring — animated accent border */
 @keyframes node-ring-pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50%       { opacity: 0.5; transform: scale(1.01); }
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.01);
+  }
 }
 
 .node-selected-ring {
-  border: 3px solid var(--node-accent, #FAFAFA);
+  border: 3px solid var(--node-accent, #fafafa);
   animation: node-ring-pulse 2s ease-in-out infinite;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--node-accent, #FAFAFA) 15%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--node-accent, #fafafa) 15%, transparent);
+}
+
+/* ─── ReactFlow Controls dark mode ─────────────────────────────────────────── */
+
+.dark .react-flow__controls {
+  background: #111113;
+  border-color: #27272a;
+}
+
+.dark .react-flow__controls-button {
+  background: #111113;
+  border-color: #27272a;
+  color: #fafafa;
+  fill: #fafafa;
+}
+
+.dark .react-flow__controls-button:hover {
+  background: #27272a;
+}
+
+.dark .react-flow__controls-button svg {
+  fill: #fafafa;
 }
