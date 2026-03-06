@@ -47,13 +47,14 @@ func TestRecommendationService_Generate(t *testing.T) {
 	svcService := services.NewRecommendationService(db)
 
 	// Seed Hardware Components
+	approvedTrue := true
 	hw1 := models.HardwareComponent{
 		ID:       uuid.New(),
 		Category: "server",
 		Brand:    "Dell",
 		Model:    "R720",
 		PriceEst: 100,
-		Approved: true,
+		Approved: &approvedTrue,
 		Spec:     json.RawMessage(`{"cpu":"2x Intel Xeon E5-2660v2","ram":"32GB DDR3"}`),
 	}
 	hw2 := models.HardwareComponent{
@@ -62,7 +63,7 @@ func TestRecommendationService_Generate(t *testing.T) {
 		Brand:    "Intel",
 		Model:    "NUC",
 		PriceEst: 500,
-		Approved: true,
+		Approved: &approvedTrue,
 		Spec:     json.RawMessage(`{"cpu":"Intel Core i5-1340P 12-core","ram":"16GB DDR4"}`),
 	}
 	hw3 := models.HardwareComponent{
@@ -71,7 +72,7 @@ func TestRecommendationService_Generate(t *testing.T) {
 		Brand:    "Raspberry Pi",
 		Model:    "5",
 		PriceEst: 80,
-		Approved: true,
+		Approved: &approvedTrue,
 		Spec:     json.RawMessage(`{"cpu":"ARM 4-core","ram":"8GB"}`),
 	}
 	require.NoError(t, db.Create(&[]models.HardwareComponent{hw1, hw2, hw3}).Error)
