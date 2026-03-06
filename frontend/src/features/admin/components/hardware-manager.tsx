@@ -31,7 +31,7 @@ function useAdminHardware(approved?: boolean, search = "") {
 function ApproveButton({ id, approved }: { id: string; approved: boolean }) {
     const qc = useQueryClient()
     const mut = useMutation({
-        mutationFn: (val: boolean) => api.post(`/api/admin/hardware/${id}/approve`, { approved: val }),
+        mutationFn: (val: boolean) => api.patch(`/api/admin/hardware/${id}/approve`, { approved: val }),
         onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin-hardware"] }); qc.invalidateQueries({ queryKey: ["hardware"] }) },
     })
     return approved ? (
