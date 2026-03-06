@@ -7,6 +7,7 @@ on:
   pull_request:
     branches:
       - master
+      - dev
 
 jobs:
   test-frontend:
@@ -59,3 +60,21 @@ jobs:
         # We rely on the docker-compose.test.yml file to build and run the tests.
         # It handles starting postgres, hlbipam, and the backend test runner.
         run: docker compose -f docker-compose.test.yml up --build --abort-on-container-exit
+
+  # Gate job — all test jobs must pass for this to succeed.
+  # Use this as the single required status check in GitHub branch protection.
+  all-tests-pass:
+    name: All Tests Pass
+    runs-on: ubuntu-latest
+    needs: [test-frontend, test-hlbipam, test-backend]
+    if: always()
+    steps:
+      - name: Check test results
+        run: |
+          if [ "${{ needs.test-frontend.result }}" != "success" ] || \
+             [ "${{ needs.test-hlbipam.result }}" != "success" ] || \
+             [ "${{ needs.test-backend.result }}" != "success" ]; then
+            echo "One or more test jobs failed."
+            exit 1
+          fi
+          echo "All tests passed!"

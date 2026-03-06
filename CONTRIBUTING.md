@@ -72,6 +72,19 @@ We strictly follow a "One PR = One Feature/Fix" philosophy to keep reviews fast 
 5. If you have modified backend service logic, you MUST write an accompanying test in `*_test.go`.
 6. Keep PRs focused — avoid mixing unrelated changes in a single PR.
 
+### CI Checks (Required)
+
+Every PR automatically runs the following GitHub Actions checks — **all must pass** before the PR can be merged:
+
+| Check | What it runs |
+|-------|-------------|
+| **Frontend Tests** | `npm test` (Vitest) in `frontend/` |
+| **hlbIPAM Tests** | `go test ./...` in `hlbipam/` |
+| **Backend Tests** | Docker Compose integration tests against PostgreSQL |
+| **Security Analysis** | Gosec (Go) + npm audit (frontend) |
+
+A summary gate job (**"All Tests Pass"**) aggregates the results — branch protection is configured to require this check. If any test suite fails, the PR is blocked from merging.
+
 ## Code of Conduct
 
 Help us keep HLBuilder open and inclusive. Please read and follow our [Code of Conduct](CODE_OF_CONDUCT.md).
