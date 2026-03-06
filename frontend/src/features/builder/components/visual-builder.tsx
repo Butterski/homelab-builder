@@ -372,13 +372,7 @@ function Flow() {
       };
       addHardware(newNode);
     },
-    [
-      screenToFlowPosition,
-      getIntersectingNodes,
-      addHardware,
-      addInternalComponent,
-      addVM,
-    ],
+    [screenToFlowPosition, getIntersectingNodes, addHardware, addInternalComponent, addVM],
   );
 
   const isValidConnection = useCallback(
