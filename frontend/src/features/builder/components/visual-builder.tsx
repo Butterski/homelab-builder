@@ -217,6 +217,24 @@ function Flow() {
 
   const { getEdges, deleteElements } = useReactFlow();
 
+  // When a switch/router's port count decreases, delete edges whose source handle
+  // no longer exists (ethN where N >= newPortCount). This must go through
+  // deleteElements so ReactFlow's internal edge renderer is properly notified.
+  useEffect(() => {
+    hardwareNodes.forEach(node => {
+      if (node.type !== 'switch' && node.type !== 'router') return;
+      const portCount = Number(node.details?.ports) || 4;
+      const orphaned = edges.filter(e => {
+        if (e.source !== node.id || !e.sourceHandle) return false;
+        const match = e.sourceHandle.match(/^eth(\d+)$/);
+        return match !== null && parseInt(match[1], 10) >= portCount;
+      });
+      if (orphaned.length > 0) {
+        deleteElements({ edges: orphaned });
+      }
+    });
+  }, [hardwareNodes, edges, deleteElements]);
+
   const handlePrefChange = (key: string, val: string) => {
     setEdgePreferences({ [key]: val });
     // @ts-ignore - useAuth user preferences object might be untyped in this strict context
