@@ -4,6 +4,7 @@ import { Card, CardContent } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';
 import { Progress } from '../../../components/ui/progress';
 import { Activity, ChevronDown, ChevronUp, Cpu, HardDrive, Package } from 'lucide-react';
+import { cn } from '../../../lib/utils';
 import type { HardwareType } from '../../../types';
 
 // Helper to safely parse strings like "16GB" to numbers
@@ -89,6 +90,25 @@ export function LiveResourceDashboard() {
 
     if (!stats.hasCompute) return null;
 
+    const maxPercent = Math.max(stats.cpuPercent, stats.ramPercent, stats.storagePercent);
+
+    let lightColor = 'bg-green-500';
+    let pingColor = 'bg-green-400 animate-ping';
+    let cardBorder = 'border-border';
+
+    if (maxPercent >= 90) {
+        lightColor = 'bg-red-500';
+        pingColor = 'bg-red-400 animate-ping';
+        cardBorder = 'border-destructive shadow-[0_0_10px_rgba(239,68,68,0.3)]';
+    } else if (maxPercent >= 75) {
+        lightColor = 'bg-orange-500';
+        pingColor = 'bg-orange-400 animate-ping';
+        cardBorder = 'border-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.3)]';
+    } else if (maxPercent >= 60) {
+        lightColor = 'bg-yellow-500';
+        pingColor = 'bg-yellow-400 animate-ping';
+    }
+
     const getProgressColor = (percent: number) => {
         if (percent >= 90) return "bg-destructive";
         if (percent >= 75) return "bg-amber-500";
@@ -97,14 +117,18 @@ export function LiveResourceDashboard() {
 
     return (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 pointer-events-auto">
-            <Card className={`shadow-none border-border bg-card overflow-hidden transition-all duration-300 ${isExpanded ? 'w-[320px]' : 'w-[200px]'}`}>
+            <Card className={cn(`shadow-none overflow-hidden transition-all duration-300 bg-card ${isExpanded ? 'w-[320px]' : 'w-[200px]'}`, cardBorder)}>
                 <div 
                     className="flex justify-between items-center p-2 px-3 cursor-pointer hover:bg-muted/50"
                     onClick={() => setIsExpanded(!isExpanded)}
                 >
                     <div className="flex items-center gap-2 text-sm font-semibold">
-                        <Activity className="h-4 w-4 text-primary" />
+                        <Activity className={cn("h-4 w-4", maxPercent >= 90 ? "text-destructive" : maxPercent >= 75 ? "text-orange-500" : "text-primary")} />
                         Resource Usage
+                        <span className="relative flex h-2 w-2 shrink-0 ml-1">
+                            <span className={cn("absolute inline-flex h-full w-full rounded-full opacity-75", pingColor)} />
+                            <span className={cn("relative inline-flex rounded-full h-2 w-2", lightColor)} />
+                        </span>
                     </div>
                     <Button variant="ghost" size="icon" className="h-6 w-6">
                         {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
