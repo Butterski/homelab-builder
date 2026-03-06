@@ -10,7 +10,6 @@ import { useBuilderStore } from "../../features/builder/store/builder-store"
 import { GoogleLoginButton } from "../auth/google-login-button"
 import { LayoutTemplate } from "lucide-react"
 import { Logo } from "../ui/logo"
-import { useDonationProgress } from "../../features/donate/api/use-donate"
 // BETA_SURVEY
 import { useSurvey } from "../../features/survey/api/use-survey"
 import { SurveyModal } from "../../features/survey/components/survey-modal"
@@ -31,10 +30,6 @@ export function Sidebar({ className }: { className?: string }) {
   const { user } = useAuth()
   const { currentBuildId } = useBuilderStore()
   const navigate = useNavigate()
-  
-  const { data: donation } = useDonationProgress()
-  const donationGoal = 100
-  const donationCurrent = donation?.current || 0
 
   // BETA_SURVEY
   const [showSurvey, setShowSurvey] = useState(false)
@@ -206,17 +201,9 @@ export function Sidebar({ className }: { className?: string }) {
             collapsed ? "opacity-0 w-0" : "opacity-100"
           )}>
             <div className="flex justify-between items-center w-full">
-              <span>Donate</span>
-              <span className="text-xs opacity-80">${donationCurrent} / ${donationGoal}</span>
+              <span className="font-semibold ml-2">Support HLBuilder</span>
             </div>
-            {/* Mini progress bar under text */}
-            <div className="h-1 w-full bg-pink-500/20 rounded-full mt-1 overflow-hidden">
-              <div 
-                className="h-full bg-pink-500 transition-all duration-1000" 
-                style={{ width: `${Math.min(100, Math.max(0, (donationCurrent / donationGoal) * 100))}%` }} 
-              />
-            </div>
-          </div>
+</div>
         </NavLink>
       </div>
 
