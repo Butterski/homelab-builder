@@ -388,9 +388,10 @@ function Flow() {
             return false;
         }
 
-        // A router or switch can connect to anything
+        // A router switch and hba can connect to anything
         if (sourceNode.type === 'switch' || sourceNode.type === 'router' ||
-            targetNode.type === 'switch' || targetNode.type === 'router') {
+            targetNode.type === 'switch' || targetNode.type === 'router' ||
+            sourceNode.type === 'hba' || targetNode.type === 'hba') {
             return true;
         }
 

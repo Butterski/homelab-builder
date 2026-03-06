@@ -137,11 +137,35 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
     const cpuWarning = totalCpu > 0 && usedCpu > totalCpu;
     const ramWarning = totalRamMB > 0 && usedRam > totalRamMB;
     const hasResourceWarning = cpuWarning || ramWarning;
-    const hasWarning = hasResourceWarning || hasIpError || hasIpWarning;
+
+    const cpuUsageRatio = totalCpu > 0 ? usedCpu / totalCpu : 0;
+    const ramUsageRatio = totalRamMB > 0 ? usedRam / totalRamMB : 0;
+    const maxResourceUsage = Math.max(cpuUsageRatio, ramUsageRatio);
+
+    const hasWarning = hasResourceWarning || maxResourceUsage >= 0.8 || hasIpError || hasIpWarning;
+
+    let lightColor = 'bg-green-500';
+    let pingColor = 'bg-green-400 animate-ping';
+    
+    if (nodeData.status === 'offline') {
+        lightColor = 'bg-gray-500';
+        pingColor = 'hidden';
+    } else if (maxResourceUsage >= 1 || hasResourceWarning || nodeIssues.some((i: any) => i.type === 'error')) {
+        lightColor = 'bg-red-500';
+        pingColor = 'bg-red-400 animate-ping';
+    } else if (maxResourceUsage >= 0.8 || nodeIssues.some((i: any) => i.type === 'warning') || nodeData.status === 'warning') {
+        lightColor = 'bg-orange-500';
+        pingColor = 'bg-orange-400 animate-ping';
+    } else if (maxResourceUsage >= 0.6) {
+        lightColor = 'bg-yellow-500';
+        pingColor = 'bg-yellow-400 animate-ping';
+    }
 
     let tooltipLabel = '';
     if (hasResourceWarning) {
         tooltipLabel += `Resource limit exceeded!\nCPU: ${usedCpu}/${totalCpu}\nRAM: ${Math.round(usedRam/1024)}GB/${Math.round(totalRamMB/1024)}GB\n`;
+    } else if (maxResourceUsage >= 0.8) {
+        tooltipLabel += `High resource usage\nCPU: ${usedCpu}/${totalCpu}\nRAM: ${Math.round(usedRam/1024)}GB/${Math.round(totalRamMB/1024)}GB\n`;
     }
     if (nodeIssues.length > 0) {
         tooltipLabel += nodeIssues.map((i: any) => (`${i.type.toUpperCase()}: ${i.message}`)).join('\n');
@@ -178,8 +202,9 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
                 className={cn(
                     'transition-all duration-200 ease-out border shadow-none bg-card overflow-hidden border-t-2',
                     (hasVMs || hasComponents) ? 'w-56' : 'w-48',
-                    hasWarning ? 'border-destructive' : 'border-border',
-                    hasIpError ? 'border-destructive bg-destructive/5' : '',
+                    (hasResourceWarning || hasIpError) ? 'border-destructive shadow-[0_0_10px_rgba(239,68,68,0.3)]' : 
+                    (maxResourceUsage >= 0.8 || hasIpWarning) ? 'border-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.3)]' : 'border-border',
+                    hasIpError ? 'bg-destructive/5' : '',
                     selected ? 'scale-[1.02]' : 'hover:border-primary/50'
                 )}
                 style={{ 
@@ -191,7 +216,9 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
                 {/* Header */}
                 <div className={cn(
                     'px-3 py-2 flex items-center gap-2 border-b border-border bg-card',
-                    hasWarning ? 'bg-destructive/10' : (selected ? 'bg-primary/5' : '')
+                    (hasResourceWarning || hasIpError) ? 'bg-destructive/10' : 
+                    (maxResourceUsage >= 0.8 || hasIpWarning) ? 'bg-orange-500/10' : 
+                    (selected ? 'bg-primary/5' : '')
                 )}>
                     <Icon className={cn('h-4 w-4 shrink-0', cfg.iconColor)} />
                     <span className="font-semibold text-sm truncate flex-1" title={nodeData.label}>
@@ -200,13 +227,13 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
                     
                     {hasWarning && (
                         <div title={tooltipLabel.trim()}>
-                            <AlertTriangle className={cn("h-3.5 w-3.5 shrink-0 cursor-help", hasIpError ? "text-destructive animate-pulse" : "text-yellow-500")} />
+                            <AlertTriangle className={cn("h-3.5 w-3.5 shrink-0 cursor-help", (hasResourceWarning || hasIpError) ? "text-destructive animate-pulse" : "text-orange-500")} />
                         </div>
                     )}
 
                     <span className="relative flex h-2 w-2 shrink-0">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+                        <span className={cn("absolute inline-flex h-full w-full rounded-full opacity-75", pingColor)} />
+                        <span className={cn("relative inline-flex rounded-full h-2 w-2", lightColor)} />
                     </span>
                 </div>
 
