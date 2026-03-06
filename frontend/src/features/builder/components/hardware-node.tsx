@@ -4,7 +4,6 @@ import {
   Position,
   useUpdateNodeInternals,
   type NodeProps,
-  type IsValidConnection,
 } from '@xyflow/react';
 import {
   Server,
@@ -302,8 +301,6 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
     tooltipLabel += nodeIssues.map((i: any) => `${i.type.toUpperCase()}: ${i.message}`).join('\n');
   }
 
-  const noSelfLoop: IsValidConnection = connection => connection.source !== connection.target;
-
   // Count edges connected to this node so updateNodeInternals re-fires when
   // a new connection is made (otherwise new edges render at center-bottom).
   const connectedEdgeCount = useBuilderStore(s =>
@@ -532,7 +529,6 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
         type="target"
         position={Position.Top}
         id="target-0"
-        isValidConnection={noSelfLoop}
         className="!bg-muted-foreground w-3 h-1.5 !border !border-background !rounded-sm hover:!bg-primary hover:scale-125 transition-all"
       />
 
@@ -547,7 +543,6 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
               type="source"
               position={Position.Bottom}
               style={{ left: `${portSpacing * (i + 1)}%` }}
-              isValidConnection={noSelfLoop}
               className="!bg-muted-foreground w-2 h-2 !border !border-background !rounded-sm hover:!bg-primary hover:scale-125 transition-all"
               title={`eth${i}`}
             />
@@ -560,7 +555,6 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
             id="eth0"
             type="source"
             position={Position.Bottom}
-            isValidConnection={noSelfLoop}
             className="!bg-muted-foreground w-3 h-3 !border-2 !border-background !rounded-sm hover:!bg-primary hover:scale-125 transition-all"
             title="eth0"
           />

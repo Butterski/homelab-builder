@@ -377,34 +377,60 @@ function Flow() {
 
   const isValidConnection = useCallback(
     (connection: any) => {
-      const sourceNode = hardwareNodes.find(n => n.id === connection.source);
-      const targetNode = hardwareNodes.find(n => n.id === connection.target);
+      // Read directly from store so we always have the latest edges/nodes,
+      // regardless of whether the React render cycle has flushed yet.
+      const { edges: currentEdges, hardwareNodes: currentNodes } = useBuilderStore.getState();
+
+      const sourceNode = currentNodes.find(n => n.id === connection.source);
+      const targetNode = currentNodes.find(n => n.id === connection.target);
 
       if (!sourceNode || !targetNode) return false;
 
-      // Ensure physical port is not already occupied on the SOURCE side
-      const isSourceHandleUsed = edges.some(
-        e =>
-          (e.source === connection.source && e.sourceHandle === connection.sourceHandle) ||
-          (e.target === connection.source && e.targetHandle === connection.sourceHandle),
-      );
-      if (isSourceHandleUsed) {
+      // Self-loop guard
+      if (connection.source === connection.target) return false;
+
+      // A physical port can only have one cable — check both edge directions.
+      const portUsed = (nodeId: string, handleId: string | null | undefined) => {
+        if (handleId == null) return false;
+        return currentEdges.some(
+          e =>
+            (e.source === nodeId && e.sourceHandle === handleId) ||
+            (e.target === nodeId && e.targetHandle === handleId),
+        );
+      };
+
+      if (portUsed(connection.source, connection.sourceHandle)) {
         toast.error('Source port is already in use.');
         return false;
       }
-
-      // Ensure physical port is not already occupied on the TARGET side
-      const isTargetHandleUsed = edges.some(
-        e =>
-          (e.source === connection.target && e.sourceHandle === connection.targetHandle) ||
-          (e.target === connection.target && e.targetHandle === connection.targetHandle),
-      );
-      if (isTargetHandleUsed) {
+      if (portUsed(connection.target, connection.targetHandle)) {
         toast.error('Target port is already in use.');
         return false;
       }
 
-      // A router switch and hba can connect to anything
+      // Cycle detection: BFS from target — if we can reach source through
+      // existing edges, this connection would close a loop.
+      const adjacency = new Map<string, Set<string>>();
+      for (const e of currentEdges) {
+        if (!adjacency.has(e.source)) adjacency.set(e.source, new Set());
+        if (!adjacency.has(e.target)) adjacency.set(e.target, new Set());
+        adjacency.get(e.source)!.add(e.target);
+        adjacency.get(e.target)!.add(e.source);
+      }
+      const visited = new Set<string>();
+      const queue = [connection.target as string];
+      while (queue.length > 0) {
+        const current = queue.shift()!;
+        if (current === connection.source) {
+          toast.error('This connection would create a loop.');
+          return false;
+        }
+        if (visited.has(current)) continue;
+        visited.add(current);
+        adjacency.get(current)?.forEach(n => { if (!visited.has(n)) queue.push(n); });
+      }
+
+      // A router, switch and hba can connect to anything
       if (
         sourceNode.type === 'switch' ||
         sourceNode.type === 'router' ||
@@ -420,7 +446,7 @@ function Flow() {
       toast.error('Invalid connection. Devices must connect through a Switch or Router.');
       return false;
     },
-    [hardwareNodes, edges],
+    [], // no deps — reads live state via getState() instead of closed-over variables
   );
 
   // ...
