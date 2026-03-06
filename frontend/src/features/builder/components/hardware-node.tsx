@@ -241,7 +241,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
   const updateNodeInternals = useUpdateNodeInternals();
   const numPorts =
     nodeData.type === 'switch' || nodeData.type === 'router'
-      ? Number(nodeData.details?.ports) || 4
+      ? Math.max(1, (Number(nodeData.details?.ports) || 4) - 1)
       : 1;
 
   // Resource calculations
