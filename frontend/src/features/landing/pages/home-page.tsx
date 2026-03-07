@@ -1,6 +1,6 @@
-import { Button } from "../../../components/ui/button"
-import { ArrowRight, Server, Shield, Zap } from "lucide-react"
-import { Link } from "react-router-dom"
+import { Button } from '../../../components/ui/button';
+import { ArrowRight, Server, Shield, Zap } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 export default function HomePage() {
   return (
@@ -9,12 +9,12 @@ export default function HomePage() {
         <h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl md:text-6xl text-primary">
           Build Your Perfect Homelab
         </h1>
-        <p className="mx-auto max-w-[700px] text-lg text-muted-foreground">
-          Select the services you want to run, and we'll tell you exactly what hardware you need. 
+        <p className="mx-auto max-w-175 text-lg text-muted-foreground">
+          Select the services you want to run, and we'll tell you exactly what hardware you need.
           Stop guessing, start building.
         </p>
       </div>
-      
+
       <div className="flex flex-col sm:flex-row gap-4">
         <Button size="lg" asChild>
           <Link to="/services">
@@ -31,7 +31,8 @@ export default function HomePage() {
           <Server className="h-10 w-10 text-primary mb-2" />
           <h3 className="text-xl font-bold">Smart Recommendations</h3>
           <p className="text-muted-foreground">
-            Our algorithm analyzes CPU, RAM, and Storage requirements to suggest the best hardware tier.
+            Our algorithm analyzes CPU, RAM, and Storage requirements to suggest the best hardware
+            tier.
           </p>
         </div>
         <div className="flex flex-col gap-2 p-6 border rounded-xl hover:border-primary/40 transition-colors">
@@ -50,5 +51,5 @@ export default function HomePage() {
         </div>
       </div>
     </div>
-  )
+  );
 }

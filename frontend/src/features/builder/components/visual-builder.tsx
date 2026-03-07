@@ -5,6 +5,7 @@ import {
   Background,
   Controls,
   useReactFlow,
+  useUpdateNodeInternals,
   type NodeTypes,
   ReactFlowProvider,
   Panel,
@@ -44,20 +45,35 @@ const edgeTypes = {
   custom: CustomEdge,
 };
 
+type Shortcut = { combination: string; name: string };
+
+const shortcuts: Shortcut[] = [
+  { combination: 'Del', name: 'delete' },
+  { combination: 'Ctrl+Z', name: 'undo' },
+  { combination: 'Ctrl+Y', name: 'redo' },
+  { combination: 'Ctrl+C', name: 'copy' },
+  { combination: 'Ctrl+V', name: 'paste' },
+  { combination: 'Ctrl+D', name: 'duplicate' },
+  { combination: 'Esc', name: 'deselect' },
+];
+
 function ShortcutHints() {
   return (
     <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 flex items-center gap-3 px-3 py-1.5 rounded-full bg-card border border-border text-[10px] text-muted-foreground pointer-events-none select-none">
-      <span>
-        <kbd className="font-mono bg-muted px-1 rounded">Del</kbd> delete
-      </span>
-      <span className="opacity-30">·</span>
-      <span>
-        <kbd className="font-mono bg-muted px-1 rounded">Ctrl+D</kbd> duplicate
-      </span>
-      <span className="opacity-30">·</span>
-      <span>
-        <kbd className="font-mono bg-muted px-1 rounded">Esc</kbd> deselect
-      </span>
+      {shortcuts.map((sh: Shortcut, iter: number) =>
+        iter === shortcuts.length - 1 ? (
+          <span className="flex flex-col items-center">
+            <kbd className="font-mono bg-muted px-1 rounded">{sh.combination}</kbd> {sh.name}
+          </span>
+        ) : (
+          <>
+            <span className="flex flex-col items-center">
+              <kbd className="font-mono bg-muted px-1 rounded">{sh.combination}</kbd> {sh.name}
+            </span>
+            <span className="opacity-30">·</span>
+          </>
+        ),
+      )}
     </div>
   );
 }
@@ -141,6 +157,8 @@ function Flow() {
     validateNetwork,
     edgePreferences,
     setEdgePreferences,
+    undo,
+    redo,
   } = useBuilderStore();
 
   const { screenToFlowPosition, getIntersectingNodes } = useReactFlow();
@@ -161,6 +179,7 @@ function Flow() {
   }, [id, currentBuildId, loadBuild, navigate]);
 
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
+  const [clipboardNodeId, setClipboardNodeId] = useState<string | null>(null);
   const isFirstRender = useRef(true);
   const lastSaveTime = useRef(Date.now());
 
@@ -216,6 +235,52 @@ function Flow() {
   };
 
   const { getEdges, deleteElements } = useReactFlow();
+  const updateNodeInternals = useUpdateNodeInternals();
+
+  const prevPortsRef = useRef<Map<string, number>>(new Map());
+
+  // Effect 1 — delete orphaned edges when port count shrinks.
+  // Does NOT call updateNodeInternals here; that happens in Effect 2.
+  useEffect(() => {
+    hardwareNodes.forEach(node => {
+      if (node.type !== 'switch' && node.type !== 'router' && node.type !== 'ups') return;
+      const raw = Number(node.details?.ports) || (node.type === 'ups' ? 2 : 4);
+      const numPorts = Math.max(1, raw - 1);
+      const prev = prevPortsRef.current.get(node.id);
+      if (prev !== undefined && prev !== numPorts) {
+        const orphaned = edges.filter(e => {
+          if (e.source !== node.id || !e.sourceHandle) return false;
+          const match = e.sourceHandle.match(/^eth(\d+)$/);
+          return match !== null && parseInt(match[1], 10) >= numPorts;
+        });
+        if (orphaned.length > 0) deleteElements({ edges: orphaned });
+      }
+      prevPortsRef.current.set(node.id, numPorts);
+    });
+  }, [hardwareNodes, edges, deleteElements]);
+
+  // Effect 2 — always resync handle positions for port-bearing nodes whenever
+  // hardwareNodes changes (covers increases, decreases, and first render).
+  // Running after every hardwareNodes change is cheap and ensures the triple-rAF
+  // fires after *all* state updates (including the deleteElements re-render from
+  // Effect 1) have settled.
+  useEffect(() => {
+    const portNodeIds = hardwareNodes
+      .filter(n => n.type === 'switch' || n.type === 'router' || n.type === 'ups')
+      .map(n => n.id);
+    if (portNodeIds.length === 0) return;
+
+    const r1 = requestAnimationFrame(() => {
+      const r2 = requestAnimationFrame(() => {
+        const r3 = requestAnimationFrame(() => {
+          portNodeIds.forEach(nid => updateNodeInternals(nid));
+        });
+        return () => cancelAnimationFrame(r3);
+      });
+      return () => cancelAnimationFrame(r2);
+    });
+    return () => cancelAnimationFrame(r1);
+  }, [hardwareNodes, updateNodeInternals]);
 
   const handlePrefChange = (key: string, val: string) => {
     setEdgePreferences({ [key]: val });
@@ -232,6 +297,18 @@ function Flow() {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
         handleManualSave();
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        e.preventDefault();
+        undo();
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) {
+        e.preventDefault();
+        redo();
         return;
       }
 
@@ -256,6 +333,19 @@ function Flow() {
         return;
       }
 
+      if (e.key === 'c' && (e.ctrlKey || e.metaKey) && selectedNodeId) {
+        e.preventDefault();
+        setClipboardNodeId(selectedNodeId);
+        toast.success('Node copied');
+        return;
+      }
+
+      if (e.key === 'v' && (e.ctrlKey || e.metaKey) && clipboardNodeId) {
+        e.preventDefault();
+        duplicateHardware(clipboardNodeId);
+        return;
+      }
+
       if (e.key === 'Escape') {
         selectNode(null);
       }
@@ -265,6 +355,9 @@ function Flow() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
     selectedNodeId,
+    clipboardNodeId,
+    undo,
+    redo,
     removeHardware,
     duplicateHardware,
     selectNode,
@@ -354,54 +447,91 @@ function Flow() {
       };
       addHardware(newNode);
     },
-    [
-      screenToFlowPosition,
-      getIntersectingNodes,
-      addHardware,
-      addInternalComponent,
-      addVM,
-    ],
+    [screenToFlowPosition, getIntersectingNodes, addHardware, addInternalComponent, addVM],
   );
 
   const isValidConnection = useCallback(
     (connection: any) => {
-      const sourceNode = hardwareNodes.find(n => n.id === connection.source);
-      const targetNode = hardwareNodes.find(n => n.id === connection.target);
+      // Always read live state so this never operates on stale closures.
+      const { edges: currentEdges, hardwareNodes: currentNodes } = useBuilderStore.getState();
 
+      // Self-loop guard
+      if (connection.source === connection.target) return false;
+
+      const sourceNode = currentNodes.find(n => n.id === connection.source);
+      const targetNode = currentNodes.find(n => n.id === connection.target);
       if (!sourceNode || !targetNode) return false;
 
-        // Ensure physical port is not already occupied on the SOURCE side
-        const isSourceHandleUsed = edges.some(e => 
+      const isUPS = sourceNode.type === 'ups' || targetNode.type === 'ups';
+
+      // Port exclusivity — each physical handle can carry at most one cable.
+      // UPS connections are power cables and share ports with network connections.
+      if (!isUPS) {
+        const sourceHandleUsed = currentEdges.some(
+          e =>
             (e.source === connection.source && e.sourceHandle === connection.sourceHandle) ||
-            (e.target === connection.source && e.targetHandle === connection.sourceHandle)
+            (e.target === connection.source && e.targetHandle === connection.sourceHandle),
         );
-        if (isSourceHandleUsed) {
-            toast.error("Source port is already in use.");
-            return false;
+        if (sourceHandleUsed) {
+          toast.error('Source port is already in use.');
+          return false;
         }
-
-        // Ensure physical port is not already occupied on the TARGET side
-        const isTargetHandleUsed = edges.some(e => 
+        const targetHandleUsed = currentEdges.some(
+          e =>
             (e.source === connection.target && e.sourceHandle === connection.targetHandle) ||
-            (e.target === connection.target && e.targetHandle === connection.targetHandle)
+            (e.target === connection.target && e.targetHandle === connection.targetHandle),
         );
-        if (isTargetHandleUsed) {
-            toast.error("Target port is already in use.");
+        if (targetHandleUsed) {
+          toast.error('Target port is already in use.');
+          return false;
+        }
+      }
+
+      // Cycle detection — BFS through the existing undirected graph (skip for UPS).
+      if (!isUPS) {
+        const adj = new Map<string, Set<string>>();
+        for (const e of currentEdges) {
+          if (!adj.has(e.source)) adj.set(e.source, new Set());
+          if (!adj.has(e.target)) adj.set(e.target, new Set());
+          adj.get(e.source)!.add(e.target);
+          adj.get(e.target)!.add(e.source);
+        }
+        const visited = new Set<string>();
+        const queue = [connection.source];
+        visited.add(connection.source);
+        while (queue.length > 0) {
+          const current = queue.shift()!;
+          if (current === connection.target) {
+            toast.error('Connection would create a loop.');
             return false;
+          }
+          for (const neighbor of adj.get(current) ?? []) {
+            if (!visited.has(neighbor)) {
+              visited.add(neighbor);
+              queue.push(neighbor);
+            }
+          }
         }
+      }
 
-        // A router switch and hba can connect to anything
-        if (sourceNode.type === 'switch' || sourceNode.type === 'router' ||
-            targetNode.type === 'switch' || targetNode.type === 'router' ||
-            sourceNode.type === 'hba' || targetNode.type === 'hba') {
-            return true;
-        }
+      // Type restriction — non-switch/router devices must connect via a switch or router.
+      // UPS can connect to anything.
+      if (
+        !isUPS &&
+        sourceNode.type !== 'switch' &&
+        sourceNode.type !== 'router' &&
+        sourceNode.type !== 'hba' &&
+        targetNode.type !== 'switch' &&
+        targetNode.type !== 'router' &&
+        targetNode.type !== 'hba'
+      ) {
+        toast.error('Devices must connect through a Switch or Router.');
+        return false;
+      }
 
-      // Otherwise (e.g. PC to PC or PC to Server without a switch), it's invalid
-      toast.error('Invalid connection. Devices must connect through a Switch or Router.');
-      return false;
+      return true;
     },
-    [hardwareNodes, edges],
+    [], // no deps — reads live state via getState()
   );
 
   // ...
@@ -415,6 +545,7 @@ function Flow() {
         showSkipButton={true}
         showProgress={true}
         callback={handleJoyrideCallback}
+        locale={{ last: 'Close' }}
         styles={{
           options: {
             primaryColor: '#f97316',
@@ -423,9 +554,7 @@ function Flow() {
         }}
       />
 
-      <div className="tour-toolbox">
-        <HardwareToolbox />
-      </div>
+      <HardwareToolbox />
 
       <div className="flex-1 h-full relative" ref={reactFlowWrapper}>
         <LiveResourceDashboard />
@@ -521,7 +650,7 @@ function Flow() {
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-10 bg-card w-[150px]">
+                <Button variant="outline" size="sm" className="h-10 bg-card w-37.5">
                   <Route className="mr-2 h-4 w-4 shrink-0" />
                   Edge Settings
                 </Button>
@@ -532,7 +661,7 @@ function Flow() {
                 </DropdownMenuLabel>
                 <DropdownMenuRadioGroup
                   value={edgePreferences.routingEngine}
-                  onValueChange={(v: any) => handlePrefChange('routingEngine', v)}
+                  onValueChange={(v: string) => handlePrefChange('routingEngine', v)}
                 >
                   <DropdownMenuRadioItem value="smart">Smart (Avoids Nodes)</DropdownMenuRadioItem>
                   <DropdownMenuRadioItem value="direct">Direct (Flyover)</DropdownMenuRadioItem>
@@ -545,7 +674,7 @@ function Flow() {
                 </DropdownMenuLabel>
                 <DropdownMenuRadioGroup
                   value={edgePreferences.connectionStyle}
-                  onValueChange={(v: any) => handlePrefChange('connectionStyle', v)}
+                  onValueChange={(v: string) => handlePrefChange('connectionStyle', v)}
                 >
                   <DropdownMenuRadioItem value="floating">Floating (Chassis)</DropdownMenuRadioItem>
                   <DropdownMenuRadioItem value="strict">Strict (RJ45 Port)</DropdownMenuRadioItem>
@@ -558,7 +687,7 @@ function Flow() {
                 </DropdownMenuLabel>
                 <DropdownMenuRadioGroup
                   value={edgePreferences.lineStyle}
-                  onValueChange={(v: any) => handlePrefChange('lineStyle', v)}
+                  onValueChange={(v: string) => handlePrefChange('lineStyle', v)}
                 >
                   <DropdownMenuRadioItem value="bezier">Bezier (Curve)</DropdownMenuRadioItem>
                   <DropdownMenuRadioItem value="step">Step (Orthogonal)</DropdownMenuRadioItem>

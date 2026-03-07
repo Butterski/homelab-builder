@@ -51,6 +51,15 @@ export function NodePropertiesPanel() {
 
   const selectedNode = hardwareNodes.find(n => n.id === selectedNodeId);
 
+  const validate = () => {
+    const newErrors: typeof errors = {};
+    if (ip && !IP_REGEX.test(ip)) newErrors.ip = 'Invalid IPv4';
+    if (mask && !IP_REGEX.test(mask)) newErrors.mask = 'Invalid mask';
+    if (gateway && !IP_REGEX.test(gateway)) newErrors.gateway = 'Invalid gateway';
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   // Sync from store to local state (only if changed to avoid loops)
   useEffect(() => {
     if (selectedNode) {
@@ -158,15 +167,6 @@ export function NodePropertiesPanel() {
   ]);
 
   if (!selectedNode) return null;
-
-  const validate = () => {
-    const newErrors: typeof errors = {};
-    if (ip && !IP_REGEX.test(ip)) newErrors.ip = 'Invalid IPv4';
-    if (mask && !IP_REGEX.test(mask)) newErrors.mask = 'Invalid mask';
-    if (gateway && !IP_REGEX.test(gateway)) newErrors.gateway = 'Invalid gateway';
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
 
   const handleDelete = () => {
     removeHardware(selectedNode.id);
@@ -397,7 +397,7 @@ export function NodePropertiesPanel() {
 
         {/* Hardware Specs (Model, CPU, RAM, Storage, Ports) */}
         <div className="space-y-3 pt-2 border-t">
-          {(selectedNode.type === 'switch' || isRouter) && (
+          {(selectedNode.type === 'switch' || isRouter || selectedNode.type === 'ups') && (
             <div className="space-y-1">
               <Label htmlFor="ports" className="text-xs text-muted-foreground">
                 Number of Ports

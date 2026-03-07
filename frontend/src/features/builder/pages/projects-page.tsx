@@ -115,7 +115,7 @@ export default function ProjectsPage() {
         if (!baseName) baseName = 'Imported Project';
         setNewProjectName(baseName);
         setIsCreateOpen(true);
-      } catch (err) {
+      } catch (_) {
         toast.error('Failed to parse JSON');
       }
     };
@@ -198,7 +198,7 @@ export default function ProjectsPage() {
       a.click();
       URL.revokeObjectURL(url);
       toast.success('Project exported');
-    } catch (err) {
+    } catch (_) {
       toast.error('Failed to export project');
     }
   };
