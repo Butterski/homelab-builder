@@ -247,7 +247,7 @@ export function Sidebar({ className }: { className?: string }) {
             <Link to="/privacy" className="hover:text-muted-foreground transition-colors">
               Privacy
             </Link>
-            <span>·</span>
+            <span>Â·</span>
             <Link to="/terms" className="hover:text-muted-foreground transition-colors">
               Terms
             </Link>
@@ -321,7 +321,7 @@ export function Sidebar({ className }: { className?: string }) {
                   collapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100',
                 )}
               >
-                {surveyDone ? 'Survey done ✓' : 'Beta Survey'}
+                {surveyDone ? 'Survey done âœ“' : 'Beta Survey'}
               </span>
             </button>
           </div>
