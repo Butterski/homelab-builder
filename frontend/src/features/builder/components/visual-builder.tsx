@@ -45,42 +45,35 @@ const edgeTypes = {
   custom: CustomEdge,
 };
 
+type Shortcut = { combination: string; name: string };
+
+const shortcuts: Shortcut[] = [
+  { combination: 'Del', name: 'delete' },
+  { combination: 'Ctrl+Z', name: 'undo' },
+  { combination: 'Ctrl+Y', name: 'redo' },
+  { combination: 'Ctrl+C', name: 'copy' },
+  { combination: 'Ctrl+V', name: 'paste' },
+  { combination: 'Ctrl+D', name: 'duplicate' },
+  { combination: 'Esc', name: 'deselect' },
+];
+
 function ShortcutHints() {
   return (
     <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 flex items-center gap-3 px-3 py-1.5 rounded-full bg-card border border-border text-[10px] text-muted-foreground pointer-events-none select-none">
-      <span>
-        <kbd className="font-mono bg-muted px-1 rounded">Del</kbd> delete
-      </span>
-      <span className="opacity-30">·</span>
-      <span>
-        <kbd className="font-mono bg-muted px-1 rounded">Ctrl+Z</kbd> undo
-      </span>
-      <span className="opacity-30">·</span>
-      <span>
-        <kbd className="font-mono bg-muted px-1 rounded">Ctrl+Y</kbd> redo
-      </span>
-      <span className="opacity-30">·</span>
-      <span>        <kbd className="font-mono bg-muted px-1 rounded">Ctrl+Z</kbd> undo
-      </span>
-      <span className="opacity-30">·</span>
-      <span>
-        <kbd className="font-mono bg-muted px-1 rounded">Ctrl+Y</kbd> redo
-      </span>
-      <span className="opacity-30">·</span>
-      <span>        <kbd className="font-mono bg-muted px-1 rounded">Ctrl+C</kbd> copy
-      </span>
-      <span className="opacity-30">·</span>
-      <span>
-        <kbd className="font-mono bg-muted px-1 rounded">Ctrl+V</kbd> paste
-      </span>
-      <span className="opacity-30">·</span>
-      <span>
-        <kbd className="font-mono bg-muted px-1 rounded">Ctrl+D</kbd> duplicate
-      </span>
-      <span className="opacity-30">·</span>
-      <span>
-        <kbd className="font-mono bg-muted px-1 rounded">Esc</kbd> deselect
-      </span>
+      {shortcuts.map((sh: Shortcut, iter: number) =>
+        iter === shortcuts.length - 1 ? (
+          <span className="flex flex-col items-center">
+            <kbd className="font-mono bg-muted px-1 rounded">{sh.combination}</kbd> {sh.name}
+          </span>
+        ) : (
+          <>
+            <span className="flex flex-col items-center">
+              <kbd className="font-mono bg-muted px-1 rounded">{sh.combination}</kbd> {sh.name}
+            </span>
+            <span className="opacity-30">·</span>
+          </>
+        ),
+      )}
     </div>
   );
 }
