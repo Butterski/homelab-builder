@@ -23,7 +23,7 @@ import { Button } from '../../../components/ui/button';
 import { Wand2, Menu, Save, Folder, Download, LogOut, Route } from 'lucide-react';
 import type { HardwareType, HardwareNode } from '../../../types';
 import { buildApi } from '../api/builds';
-import { nodeHasDynamicPorts, canNodeBeNested, canNodeHostNested } from '../../../lib/hardware-config';
+import { nodeHasDynamicPorts, canNodeBeNested, canNodeHostNested, canNodeConnectToAny } from '../../../lib/hardware-config';
 import { useAuth } from '../../admin/hooks/use-auth';
 import {
   DropdownMenu,
@@ -525,18 +525,14 @@ function Flow() {
         }
       }
 
-      // Type restriction — non-switch/router devices must connect via a switch or router.
-      // UPS can connect to anything.
-      if (
-        !isUPS &&
-        sourceNode.type !== 'switch' &&
-        sourceNode.type !== 'router' &&
-        sourceNode.type !== 'hba' &&
-        targetNode.type !== 'switch' &&
-        targetNode.type !== 'router' &&
-        targetNode.type !== 'hba'
-      ) {
-        toast.error('Devices must connect through a Switch or Router.');
+      // Devices generally shouldn't connect directly to each other (e.g. server to server).
+      // They should connect through a device that has 'canConnectToAny' (like a switch, router, modem, hba)
+      // Devices like IoT and UPS also bypass this and can connect anywhere directly.
+      const sourceCanConnectToAny = canNodeConnectToAny(sourceNode.type as HardwareType);
+      const targetCanConnectToAny = canNodeConnectToAny(targetNode.type as HardwareType);
+
+      if (!sourceCanConnectToAny && !targetCanConnectToAny) {
+        toast.error('Devices generally must connect through a network hub (Switch, Router, Modem, etc).');
         return false;
       }
 

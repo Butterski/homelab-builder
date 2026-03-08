@@ -10,25 +10,26 @@ export interface HardwareFeatures {
   isNetworked: boolean; // Assigned IPs by IPAM
   canBeNested: boolean; // Can be dragged into other nodes as an internal component
   canHostNested: boolean; // Can host other nested components inside it
+  canConnectToAny: boolean; // Can connect directly to any other node without needing a network hub
 }
 
 export const HARDWARE_FEATURES: Record<HardwareType, HardwareFeatures> = {
-  server:       { hasCPU: true,  hasRAM: true,  hasStorage: true,  canHostVMs: true,  isCompute: true,  hasDynamicPorts: false, isNetworked: true,  canBeNested: false, canHostNested: true },
-  pc:           { hasCPU: true,  hasRAM: true,  hasStorage: true,  canHostVMs: true,  isCompute: true,  hasDynamicPorts: false, isNetworked: true,  canBeNested: false, canHostNested: true },
-  minipc:       { hasCPU: true,  hasRAM: true,  hasStorage: true,  canHostVMs: true,  isCompute: true,  hasDynamicPorts: false, isNetworked: true,  canBeNested: false, canHostNested: true },
-  sbc:          { hasCPU: true,  hasRAM: true,  hasStorage: true,  canHostVMs: true,  isCompute: true,  hasDynamicPorts: false, isNetworked: true,  canBeNested: false, canHostNested: true },
-  iot:          { hasCPU: true,  hasRAM: true,  hasStorage: true,  canHostVMs: true,  isCompute: true,  hasDynamicPorts: false, isNetworked: true,  canBeNested: false, canHostNested: true },
-  nas:          { hasCPU: true,  hasRAM: true,  hasStorage: true,  canHostVMs: true,  isCompute: true,  hasDynamicPorts: false, isNetworked: true,  canBeNested: false, canHostNested: true },
-  router:       { hasCPU: false, hasRAM: false, hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: true,  isNetworked: true,  canBeNested: false, canHostNested: false },
-  switch:       { hasCPU: false, hasRAM: false, hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: true,  isNetworked: true,  canBeNested: false, canHostNested: false },
-  modem:        { hasCPU: false, hasRAM: false, hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: true,  isNetworked: true,  canBeNested: false, canHostNested: false },
-  ups:          { hasCPU: false, hasRAM: false, hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: true,  isNetworked: false, canBeNested: false, canHostNested: false },
-  disk:         { hasCPU: false, hasRAM: false, hasStorage: true,  canHostVMs: false, isCompute: false, hasDynamicPorts: false, isNetworked: false, canBeNested: true,  canHostNested: false },
-  gpu:          { hasCPU: false, hasRAM: true,  hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: false, isNetworked: false, canBeNested: true,  canHostNested: false }, // expects VRAM
-  pdu:          { hasCPU: false, hasRAM: false, hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: false, isNetworked: false, canBeNested: false, canHostNested: false },
-  access_point: { hasCPU: false, hasRAM: false, hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: false, isNetworked: true,  canBeNested: false, canHostNested: false },
-  hba:          { hasCPU: false, hasRAM: false, hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: false, isNetworked: false, canBeNested: true,  canHostNested: false },
-  pcie:         { hasCPU: false, hasRAM: false, hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: false, isNetworked: false, canBeNested: true,  canHostNested: false },
+  server:       { hasCPU: true,  hasRAM: true,  hasStorage: true,  canHostVMs: true,  isCompute: true,  hasDynamicPorts: false, isNetworked: true,  canBeNested: false, canHostNested: true,  canConnectToAny: false },
+  pc:           { hasCPU: true,  hasRAM: true,  hasStorage: true,  canHostVMs: true,  isCompute: true,  hasDynamicPorts: false, isNetworked: true,  canBeNested: false, canHostNested: true,  canConnectToAny: false },
+  minipc:       { hasCPU: true,  hasRAM: true,  hasStorage: true,  canHostVMs: true,  isCompute: true,  hasDynamicPorts: false, isNetworked: true,  canBeNested: false, canHostNested: true,  canConnectToAny: false },
+  sbc:          { hasCPU: true,  hasRAM: true,  hasStorage: true,  canHostVMs: true,  isCompute: true,  hasDynamicPorts: false, isNetworked: true,  canBeNested: false, canHostNested: true,  canConnectToAny: false },
+  iot:          { hasCPU: true,  hasRAM: true,  hasStorage: true,  canHostVMs: true,  isCompute: true,  hasDynamicPorts: false, isNetworked: true,  canBeNested: false, canHostNested: true,  canConnectToAny: true },
+  nas:          { hasCPU: true,  hasRAM: true,  hasStorage: true,  canHostVMs: true,  isCompute: true,  hasDynamicPorts: false, isNetworked: true,  canBeNested: false, canHostNested: true,  canConnectToAny: false },
+  router:       { hasCPU: false, hasRAM: false, hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: true,  isNetworked: true,  canBeNested: false, canHostNested: false, canConnectToAny: true },
+  switch:       { hasCPU: false, hasRAM: false, hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: true,  isNetworked: true,  canBeNested: false, canHostNested: false, canConnectToAny: true },
+  modem:        { hasCPU: false, hasRAM: false, hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: true,  isNetworked: true,  canBeNested: false, canHostNested: false, canConnectToAny: true },
+  ups:          { hasCPU: false, hasRAM: false, hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: true,  isNetworked: false, canBeNested: false, canHostNested: false, canConnectToAny: true },
+  disk:         { hasCPU: false, hasRAM: false, hasStorage: true,  canHostVMs: false, isCompute: false, hasDynamicPorts: false, isNetworked: false, canBeNested: true,  canHostNested: false, canConnectToAny: false },
+  gpu:          { hasCPU: false, hasRAM: true,  hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: false, isNetworked: false, canBeNested: true,  canHostNested: false, canConnectToAny: false },
+  pdu:          { hasCPU: false, hasRAM: false, hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: false, isNetworked: false, canBeNested: false, canHostNested: false, canConnectToAny: false },
+  access_point: { hasCPU: false, hasRAM: false, hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: false, isNetworked: true,  canBeNested: false, canHostNested: false, canConnectToAny: false },
+  hba:          { hasCPU: false, hasRAM: false, hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: false, isNetworked: false, canBeNested: true,  canHostNested: false, canConnectToAny: true },
+  pcie:         { hasCPU: false, hasRAM: false, hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: false, isNetworked: false, canBeNested: true,  canHostNested: false, canConnectToAny: false },
 };
 
 export const nodeHasCPU = (type: HardwareType) => HARDWARE_FEATURES[type]?.hasCPU ?? false;
@@ -40,3 +41,4 @@ export const nodeHasDynamicPorts = (type: HardwareType) => HARDWARE_FEATURES[typ
 export const isNetworkNode = (type: HardwareType) => HARDWARE_FEATURES[type]?.isNetworked ?? false;
 export const canNodeBeNested = (type: HardwareType) => HARDWARE_FEATURES[type]?.canBeNested ?? false;
 export const canNodeHostNested = (type: HardwareType) => HARDWARE_FEATURES[type]?.canHostNested ?? false;
+export const canNodeConnectToAny = (type: HardwareType) => HARDWARE_FEATURES[type]?.canConnectToAny ?? false;
