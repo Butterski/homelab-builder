@@ -511,7 +511,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
                 <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium px-1">
                   {vms.length} container{vms.length !== 1 ? 's' : ''}
                 </p>
-                <div className="space-y-1 max-h-36 overflow-y-auto">
+                <div className="space-y-1 h-fit overflow-y-auto">
                   {vms.map(vm => (
                     <VmChip key={vm.id} vm={vm} />
                   ))}
