@@ -135,7 +135,9 @@ export type HardwareType =
   | 'ups'
   | 'pdu'
   | 'sbc'
-  | 'minipc';
+  | 'minipc'
+  | 'iot'
+  | 'modem';
 
 export interface HardwareSpec {
   model?: string;

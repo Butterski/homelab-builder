@@ -14,6 +14,8 @@ import {
   Plug,
   Battery,
   AlertTriangle,
+  Printer,
+  Globe,
 } from 'lucide-react';
 import { Card } from '../../../components/ui/card';
 import { cn } from '../../../lib/utils';
@@ -24,7 +26,8 @@ import type {
   HardwareSpec,
   HardwareNodeValidationIssue,
 } from '../../../types';
-import { useBuilderStore, NON_NETWORK_TYPES } from '../store/builder-store';
+import { isComputeNode, nodeHasDynamicPorts, isNetworkNode } from '../../../lib/hardware-config';
+import { useBuilderStore } from '../store/builder-store';
 
 type HardwareNodeData = {
   label: string;
@@ -141,6 +144,20 @@ const TYPE_CONFIG: Partial<
     iconColor: 'text-rose-400',
     color: '#f43f5e',
   },
+  iot: {
+    icon: Printer,
+    border: 'border-border',
+    bg: 'bg-yellow-600',
+    iconColor: 'text-yellow-600',
+    color: '#ca8a04',
+  },
+  modem: {
+    icon: Globe,
+    border: 'border-border',
+    bg: 'bg-blue-600',
+    iconColor: 'text-blue-600',
+    color: '#2563eb',
+  },
 };
 const FALLBACK_CONFIG = {
   icon: Server,
@@ -220,7 +237,6 @@ function ComponentChip({ component }: { component: HardwareComponent }) {
 }
 
 // ─── Main node card ────────────────────────────────────────────────────────────
-const COMPUTE_TYPES: HardwareType[] = ['server', 'pc', 'minipc', 'sbc'];
 const CONTAINER_STEP = 10; // mirrors ROLE_ZONE step for compute types
 
 export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
@@ -231,7 +247,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
   const components = nodeData.internal_components ?? [];
   const hasVMs = vms.length > 0;
   const hasComponents = components.length > 0;
-  const isCompute = COMPUTE_TYPES.includes(nodeData.type);
+  const isCompute = isComputeNode(nodeData.type);
 
   const validationIssues = useBuilderStore(s => s.validationIssues);
   const nodeIssues = validationIssues.filter((i: HardwareNodeValidationIssue) => i.node_id === id);
@@ -240,12 +256,9 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
 
   // React flow handles dynamically
   const updateNodeInternals = useUpdateNodeInternals();
-  const numPorts =
-    nodeData.type === 'switch' || nodeData.type === 'router'
-      ? Math.max(1, (Number(nodeData.details?.ports) || 4) - 1)
-      : nodeData.type === 'ups'
-        ? Math.max(1, (Number(nodeData.details?.ports) || 2) - 1)
-        : 1;
+  const numPorts = nodeHasDynamicPorts(nodeData.type)
+      ? Math.max(1, (Number(nodeData.details?.ports) || (nodeData.type === 'ups' ? 2 : 4)) - 1)
+      : 1;
 
   // Resource calculations
   let usedCpu = 0;
@@ -337,9 +350,8 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
         })()
       : null;
 
-  // Calculate dynamic width for high-port-count switches
-  const dynamicMinWidth =
-    nodeData.type === 'switch' || nodeData.type === 'router' ? numPorts * 16 : 0;
+  // Calculate dynamic width for high-port-count switches/routers/etc
+  const dynamicMinWidth = nodeHasDynamicPorts(nodeData.type) ? numPorts * 16 : 0;
 
   return (
     <div className="relative group">
@@ -412,7 +424,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
 
         {/* Body */}
         {(nodeData.details?.model ||
-          !NON_NETWORK_TYPES.includes(nodeData.type) ||
+          !isNetworkNode(nodeData.type) ||
           hasComponents ||
           hasVMs ||
           nodeData.details?.cpu ||
@@ -426,7 +438,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
             )}
 
             {/* IP Address - Only for networked devices */}
-            {!NON_NETWORK_TYPES.includes(nodeData.type) && (
+            {isNetworkNode(nodeData.type) && (
               <div className="flex items-center justify-between gap-2 pt-1 px-1">
                 <span className="text-[11px] text-muted-foreground tracking-wide font-medium">
                   IP:
@@ -538,8 +550,8 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
       />
 
       {/* Source Ports (Bottom, for outgoing cables) */}
-      {(() => {
-        if (nodeData.type === 'switch' || nodeData.type === 'router' || nodeData.type === 'ups') {
+      {nodeHasDynamicPorts(nodeData.type) ? (
+        (() => {
           const portSpacing = 100 / (numPorts + 1);
           return Array.from({ length: numPorts }).map((_, i) => (
             <Handle
@@ -552,19 +564,17 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
               title={`eth${i}`}
             />
           ));
-        }
-
+        })()
+      ) : (
         // 1 Port for all other components (servers, PCs, UPS, HBA, GPU)
-        return (
-          <Handle
-            id="eth0"
-            type="source"
-            position={Position.Bottom}
-            className="bg-muted-foreground! w-3 h-3 border-2! border-background! rounded-sm! hover:bg-primary! hover:scale-125 transition-all"
-            title="eth0"
-          />
-        );
-      })()}
+        <Handle
+          id="eth0"
+          type="source"
+          position={Position.Bottom}
+          className="bg-muted-foreground! w-3 h-3 border-2! border-background! rounded-sm! hover:bg-primary! hover:scale-125 transition-all"
+          title="eth0"
+        />
+      )}
     </div>
   );
 });

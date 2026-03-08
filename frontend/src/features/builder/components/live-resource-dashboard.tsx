@@ -6,6 +6,7 @@ import { Progress } from '../../../components/ui/progress';
 import { Activity, ChevronDown, ChevronUp, Cpu, HardDrive, Package } from 'lucide-react';
 import { cn } from '../../../lib/utils';
 import type { HardwareType } from '../../../types';
+import { isComputeNode, nodeHasStorage } from '../../../lib/hardware-config';
 
 // Helper to safely parse strings like "16GB" to numbers
 const parseSpec = (val?: string | number): number => {
@@ -28,10 +29,8 @@ export function LiveResourceDashboard() {
     let usedCpuThreads = 0;
     let usedStorageGb = 0;
 
-    const isCompute = (t: HardwareType) => ['server', 'pc', 'minipc', 'sbc', 'nas'].includes(t);
-
     hardwareNodes.forEach(node => {
-      if (!isCompute(node.type)) return;
+      if (!isComputeNode(node.type)) return;
 
       // Capacity based on node details
       if (node.details) {
@@ -53,8 +52,8 @@ export function LiveResourceDashboard() {
       if (node.internal_components) {
         node.internal_components.forEach(comp => {
           if (!comp.details) return;
-          // Disks, NAS, HBA contribute storage
-          if (['disk', 'nas', 'hba'].includes(comp.type)) {
+          // Disks, NAS, etc contribute storage
+          if (nodeHasStorage(comp.type as HardwareType)) {
             totalStorageGb += parseSpec(String(comp.details.storage));
           }
           // GPUs contribute VRAM as dedicated RAM

@@ -22,8 +22,7 @@ import type {
 import { buildApi, type Build } from '../api/builds';
 import { api } from '../../../services/api';
 
-// Types that never get an IP address
-export const NON_NETWORK_TYPES: HardwareType[] = ['disk', 'gpu', 'hba', 'pcie', 'pdu', 'ups'];
+// Removed hardcoded NON_NETWORK_TYPES and using isNetworkNode instead.
 
 type Snapshot = { nodes: Node[]; edges: Edge[]; hardwareNodes: HardwareNode[] };
 

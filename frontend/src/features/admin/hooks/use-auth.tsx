@@ -38,6 +38,21 @@ export function useAuth() {
         }
     }
 
+    async function loginWithDev() {
+        setLoading(true);
+        try {
+            const data = await api.devLogin('admin@example.com');
+            localStorage.setItem('auth_token', data.token);
+            setUser(data.user);
+            window.location.reload();
+        } catch (error) {
+            console.error("Dev Login failed", error);
+            toast.error("Dev Login failed. Please try again.");
+        } finally {
+            setLoading(false);
+        }
+    }
+
     async function loginWithGoogle(credential: string) {
         setLoading(true);
         try {
@@ -69,6 +84,7 @@ export function useAuth() {
         user,
         loading,
         loginWithGoogle,
+        loginWithDev,
         updatePreferences,
         logout: () => {
              localStorage.removeItem('auth_token');

@@ -10,6 +10,7 @@ import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { Label } from '../../../components/ui/label';
 import type { HardwareType, HardwareSpec } from '../../../types';
+import { nodeHasCPU, nodeHasRAM, nodeHasStorage } from '../../../lib/hardware-config';
 
 interface Props {
   open: boolean;
@@ -164,7 +165,7 @@ export function ComponentDetailsDialog({
           </div>
 
           {/* CPU - Compute types */}
-          {['server', 'pc', 'minipc', 'sbc'].includes(initialType) && (
+          {nodeHasCPU(initialType) && (
             <>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="cpu_cores" className="text-right">
@@ -183,7 +184,7 @@ export function ComponentDetailsDialog({
           )}
 
           {/* RAM - Compute + GPU */}
-          {['server', 'pc', 'minipc', 'sbc', 'gpu', 'nas'].includes(initialType) && (
+          {nodeHasRAM(initialType) && (
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="ram" className="text-right">
                 {initialType === 'gpu' ? 'VRAM' : 'RAM'}
@@ -210,7 +211,7 @@ export function ComponentDetailsDialog({
           )}
 
           {/* Storage - Compute + Disk + NAS */}
-          {['server', 'pc', 'minipc', 'sbc', 'disk', 'nas'].includes(initialType) && (
+          {nodeHasStorage(initialType) && (
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="storage" className="text-right">
                 Storage

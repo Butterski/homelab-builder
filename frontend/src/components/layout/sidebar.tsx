@@ -247,7 +247,7 @@ export function Sidebar({ className }: { className?: string }) {
             <Link to="/privacy" className="hover:text-muted-foreground transition-colors">
               Privacy
             </Link>
-            <span>Â·</span>
+            <span> | </span>
             <Link to="/terms" className="hover:text-muted-foreground transition-colors">
               Terms
             </Link>
