@@ -102,6 +102,15 @@ func (s *BuildService) syncGraph(tx *gorm.DB, buildID uuid.UUID, input SyncGraph
 		}
 		idMap[n.ID] = uid
 
+		if n.Details == nil {
+			n.Details = make(map[string]any)
+		}
+		if n.SubnetMask != "" {
+			n.Details["subnet_mask"] = n.SubnetMask
+		}
+		if n.Gateway != "" {
+			n.Details["gateway"] = n.Gateway
+		}
 		detailsJSON, _ := json.Marshal(n.Details)
 
 		node := models.Node{
@@ -238,6 +247,8 @@ type NodeDTO struct {
 	X                  float64        `json:"x"`
 	Y                  float64        `json:"y"`
 	IP                 string         `json:"ip"`
+	SubnetMask         string         `json:"subnet_mask,omitempty"`
+	Gateway            string         `json:"gateway,omitempty"`
 	Details            map[string]any `json:"details"`
 	VMs                []VMDTO        `json:"vms"`
 	InternalComponents []ComponentDTO `json:"internal_components"`

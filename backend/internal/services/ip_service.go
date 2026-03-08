@@ -173,14 +173,21 @@ func (s *IPService) CalculateNetwork(buildID uuid.UUID) error {
 			nid := n.ID.String()
 			if n.Type == "router" {
 				var details struct {
-					DHCPEnabled bool `json:"dhcp_enabled"`
-					DHCPLocked  bool `json:"dhcp_locked"`
+					DHCPEnabled bool   `json:"dhcp_enabled"`
+					DHCPLocked  bool   `json:"dhcp_locked"`
+					SubnetMask  string `json:"subnet_mask"`
 				}
 				_ = json.Unmarshal([]byte(n.Details), &details)
+
+				subnet := ""
+				if n.IP != "" && details.SubnetMask != "" {
+					subnet = n.IP + "/" + details.SubnetMask // IPAM can parse IP and Mask
+				}
 
 				req.Routers = append(req.Routers, ipamRouter{
 					ID:          nid,
 					GatewayIP:   n.IP,
+					Subnet:      subnet,
 					DHCPEnabled: details.DHCPEnabled,
 				})
 			} else {
