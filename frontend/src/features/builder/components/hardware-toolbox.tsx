@@ -19,6 +19,8 @@ import {
   LayoutGrid,
   AppWindow,
   Zap,
+  Printer,
+  Globe,
 } from 'lucide-react';
 import type { HardwareType } from '../../../types';
 import { Card } from '../../../components/ui/card';
@@ -45,6 +47,8 @@ const HARDWARE_TOOLS: {
   { type: 'gpu', label: 'GPU', icon: Layers, color: 'text-pink-500' },
   { type: 'hba', label: 'HBA', icon: Plug, color: 'text-indigo-500' },
   { type: 'ups', label: 'UPS', icon: Battery, color: 'text-lime-500' },
+  { type: 'iot', label: 'IoT', icon: Printer, color: 'text-yellow-600' },
+  { type: 'modem', label: 'Modem', icon: Globe, color: 'text-blue-600' },
 ];
 
 // ─── Preset library ────────────────────────────────────────────────────────────
@@ -227,6 +231,16 @@ const PRESETS: {
         },
       },
       {
+        label: 'Cable Modem',
+        type: 'modem',
+        icon: Globe,
+        sub: 'DOCSIS 3.1 · 1-port · ~$150',
+        data: {
+          name: 'Cable Modem',
+          details: { model: 'Arris S33', ports: 1, price_est: 150 },
+        },
+      },
+      {
         label: 'Unifi USW-24-PoE',
         type: 'switch',
         icon: CircuitBoard,
@@ -314,6 +328,31 @@ const PRESETS: {
         data: {
           name: 'WD Red Plus 4TB',
           details: { model: 'WD Red Plus', storage: 4000, price_est: 90 },
+        },
+      },
+    ],
+  },
+  {
+    category: 'IoT & Peripherals',
+    items: [
+      {
+        label: 'Network Printer',
+        type: 'iot',
+        icon: Printer,
+        sub: 'Laser · Ethernet/Wi-Fi',
+        data: {
+          name: 'Printer',
+          details: { model: 'Brother HL-L2390DW', price_est: 150 },
+        },
+      },
+      {
+        label: 'Smart Hub',
+        type: 'iot',
+        icon: Printer,
+        sub: 'Zigbee/Z-Wave',
+        data: {
+          name: 'Home Assistant Hub',
+          details: { model: 'Home Assistant Yellow', price_est: 120 },
         },
       },
     ],

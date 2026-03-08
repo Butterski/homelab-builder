@@ -23,6 +23,7 @@ import { Button } from '../../../components/ui/button';
 import { Wand2, Menu, Save, Folder, Download, LogOut, Route } from 'lucide-react';
 import type { HardwareType, HardwareNode } from '../../../types';
 import { buildApi } from '../api/builds';
+import { nodeHasDynamicPorts, canNodeBeNested, canNodeHostNested } from '../../../lib/hardware-config';
 import { useAuth } from '../../admin/hooks/use-auth';
 import {
   DropdownMenu,
@@ -266,7 +267,7 @@ function Flow() {
   // Effect 1) have settled.
   useEffect(() => {
     const portNodeIds = hardwareNodes
-      .filter(n => n.type === 'switch' || n.type === 'router' || n.type === 'ups')
+      .filter(n => nodeHasDynamicPorts(n.type))
       .map(n => n.id);
     if (portNodeIds.length === 0) return;
 
@@ -420,19 +421,29 @@ function Flow() {
             ram_mb: ramVal || undefined,
           });
         } else {
-          toast.error('Please drag services directly onto a Server or PC node.');
+          toast.error('Please drag services directly onto a hardware node.');
         }
         return;
       }
 
       if (targetNode && targetNode.type === 'hardware') {
-        addInternalComponent(targetNode.id, {
-          id: `comp-${Date.now()}`,
-          type: data.type,
-          name: data.name || `New ${data.type}`,
-          details: data.details || {},
-        });
-        return;
+        const targetType = targetNode.data?.type as HardwareType | undefined;
+        const canHost = targetType ? canNodeHostNested(targetType) : false;
+
+        if (canHost && canNodeBeNested(data.type)) {
+          addInternalComponent(targetNode.id, {
+            id: `comp-${Date.now()}`,
+            type: data.type,
+            name: data.name || `New ${data.type}`,
+            details: data.details || {},
+          });
+          return;
+        } else if (targetType && !canHost && canNodeBeNested(data.type)) {
+          toast.error(`Cannot add nested components to ${targetType}.`);
+          return;
+        } else if (canHost && !canNodeBeNested(data.type)) {
+          // It's a full hardware node dropped on another, let it drop onto the canvas instead
+        }
       }
 
       const newNode: HardwareNode = {

@@ -25,13 +25,15 @@ var DefaultDeviceZones = map[string]ZoneConfig{
 	"gpu":          {BaseOffset: 190, Step: 1, CanHostVMs: false, Label: "GPU"},
 	"hba":          {BaseOffset: 195, Step: 1, CanHostVMs: false, Label: "HBA"},
 	"pcie":         {BaseOffset: 198, Step: 1, CanHostVMs: false, Label: "PCIe"},
+	"iot":          {BaseOffset: 200, Step: 10, CanHostVMs: true, Label: "IoT"},
+	"modem":        {BaseOffset: 5, Step: 1, CanHostVMs: false, Label: "Modem"},
 }
 
-var FallbackZone = ZoneConfig{BaseOffset: 200, Step: 1, CanHostVMs: false, Label: "Device"}
+var FallbackZone = ZoneConfig{BaseOffset: 220, Step: 1, CanHostVMs: false, Label: "Device"}
 
 // VMHostTypeOrder defines the deterministic order in which VM-hosting
 // device types are laid out in the address space. Core infra first.
-var VMHostTypeOrder = []string{"nas", "server", "pc", "minipc", "sbc"}
+var VMHostTypeOrder = []string{"nas", "server", "pc", "minipc", "sbc", "iot"}
 
 // NonNetworkTypes are device types that don't receive an IP address.
 var NonNetworkTypes = map[string]bool{

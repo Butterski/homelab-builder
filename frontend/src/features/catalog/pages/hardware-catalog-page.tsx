@@ -43,6 +43,8 @@ const CATEGORY_META: Record<string, { label: string; icon: React.ElementType; co
   accessory: { label: 'Accessories', icon: Package, color: 'text-gray-500 bg-gray-500/10' },
   rack: { label: 'Racks', icon: Server, color: 'text-amber-500 bg-amber-500/10' },
   pdu: { label: 'PDUs', icon: Zap, color: 'text-lime-500 bg-lime-500/10' },
+  iot: { label: 'IoT', icon: Package, color: 'text-yellow-600 bg-yellow-600/10' },
+  modem: { label: 'Modems', icon: Network, color: 'text-blue-600 bg-blue-600/10' },
 };
 
 // ─── Submit Hardware Modal ────────────────────────────────────────────────────

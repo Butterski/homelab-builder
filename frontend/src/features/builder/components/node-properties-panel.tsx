@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useBuilderStore, NON_NETWORK_TYPES } from '../store/builder-store';
+import { useBuilderStore } from '../store/builder-store';
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
@@ -17,6 +17,7 @@ import {
 import { toast } from 'sonner';
 import { VMManager } from './vm-manager';
 import { InternalComponentManager } from './internal-component-manager';
+import { canNodeHostVMs, nodeHasCPU, nodeHasRAM, nodeHasStorage, isNetworkNode } from '../../../lib/hardware-config';
 
 const IP_REGEX =
   /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
@@ -189,8 +190,8 @@ export function NodePropertiesPanel() {
   };
 
   const isRouter = selectedNode.type === 'router';
-  const supportsVMs = ['server', 'pc', 'nas', 'minipc', 'sbc'].includes(selectedNode.type);
-  const isNetworked = !NON_NETWORK_TYPES.includes(selectedNode.type);
+  const supportsVMs = canNodeHostVMs(selectedNode.type);
+  const isNetworked = isNetworkNode(selectedNode.type);
 
   // Resource limit calculations
   let usedCpu = 0;
@@ -209,7 +210,7 @@ export function NodePropertiesPanel() {
   let totalGpuRamMB = 0;
   (selectedNode.internal_components || []).forEach(comp => {
     if (!comp.details) return;
-    if (['disk', 'nas', 'hba'].includes(comp.type)) {
+    if (nodeHasStorage(comp.type as HardwareType)) {
       totalStorageGB += Number(comp.details.storage) || 0;
     }
     if (comp.type === 'gpu') {
@@ -427,7 +428,7 @@ export function NodePropertiesPanel() {
             />
           </div>
 
-          {['server', 'pc', 'minipc', 'sbc', 'nas'].includes(selectedNode.type) && (
+          {nodeHasCPU(selectedNode.type) && (
             <div className="space-y-1">
               <Label htmlFor="cpu" className="text-xs text-muted-foreground">
                 CPU Cores
@@ -445,7 +446,7 @@ export function NodePropertiesPanel() {
             </div>
           )}
 
-          {['server', 'pc', 'minipc', 'sbc', 'nas', 'gpu'].includes(selectedNode.type) && (
+          {nodeHasRAM(selectedNode.type) && (
             <div className="space-y-1">
               <Label htmlFor="ram" className="text-xs text-muted-foreground">
                 {selectedNode.type === 'gpu' ? 'VRAM' : 'RAM'} capacity
@@ -472,7 +473,7 @@ export function NodePropertiesPanel() {
             </div>
           )}
 
-          {['server', 'pc', 'minipc', 'sbc', 'nas', 'disk'].includes(selectedNode.type) && (
+          {nodeHasStorage(selectedNode.type) && (
             <div className="space-y-1">
               <Label htmlFor="storage" className="text-xs text-muted-foreground">
                 Storage capacity
