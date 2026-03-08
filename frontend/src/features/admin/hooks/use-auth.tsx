@@ -22,7 +22,8 @@ export function useAuth() {
     async function checkAuth() {
         try {
             const token = localStorage.getItem('auth_token');
-            const isAuthDisabled = !import.meta.env.VITE_GOOGLE_CLIENT_ID;
+            const rawClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+            const isAuthDisabled = !rawClientId || rawClientId === "your-client-id" || rawClientId === "your_client_id_here";
 
             if (token || isAuthDisabled) {
                 // In local mode without a client ID, backend will automatically return the Local Admin

@@ -1,4 +1,11 @@
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+// Dynamically resolve API base.
+let defaultApiBase = 'http://localhost:8080';
+if (typeof window !== 'undefined') {
+    defaultApiBase = `${window.location.protocol}//${window.location.hostname}:8080`;
+}
+
+const rawApiUrl = import.meta.env.VITE_API_URL;
+const API_BASE = rawApiUrl && rawApiUrl !== 'http://localhost:8080' ? rawApiUrl : defaultApiBase;
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
     const token = localStorage.getItem('auth_token');
