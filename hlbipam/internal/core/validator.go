@@ -2,13 +2,12 @@ package core
 
 import (
 	"fmt"
+	"net"
 
 	"github.com/Butterski/hlbipam/internal/models"
 	"github.com/Butterski/hlbipam/internal/utils"
 )
 
-// Validate checks an existing (partially or fully assigned) topology for
-// correctness without modifying any IPs.
 func Validate(req models.AllocateRequest) models.ValidateResponse {
 	resp := models.ValidateResponse{
 		Valid:    true,
@@ -43,10 +42,12 @@ func Validate(req models.AllocateRequest) models.ValidateResponse {
 		if r.GatewayIP == "" {
 			r.GatewayIP = fmt.Sprintf("192.168.%d.1", i+1)
 		}
+		if r.Subnet == "" {
+			r.Subnet = fmt.Sprintf("%s/24", r.GatewayIP)
+		}
 		routerSubnet[r.ID] = i
 	}
 
-	// Global duplicate tracker: ip → ownerNodeID
 	globalIPs := make(map[string]string, totalNodes*2)
 
 	for i := range req.Routers {
@@ -69,12 +70,12 @@ func Validate(req models.AllocateRequest) models.ValidateResponse {
 		}
 		visited[r.ID] = true
 
-		prefix := utils.SubnetPrefix(r.GatewayIP)
-		dhcpStart, dhcpEnd := 0, 0
-		if r.DHCPEnabled {
-			dhcpStart = DefaultDHCPStart
-			dhcpEnd = DefaultDHCPEnd
+		network, capacity, _, err := utils.ParseCIDR(r.Subnet)
+		if err != nil {
+			network, capacity, _, _ = utils.ParseCIDR(r.GatewayIP + "/24")
 		}
+		
+		sa := NewSubnetAllocator(r.Subnet, r.GatewayIP, zones, r.DHCPEnabled)
 
 		queue := make([]string, 0, totalNodes)
 		queue = append(queue, r.ID)
@@ -114,26 +115,14 @@ func Validate(req models.AllocateRequest) models.ValidateResponse {
 					continue
 				}
 
-				if utils.SubnetPrefix(ip) != prefix {
-					addError(&resp, n.ID, fmt.Sprintf("IP %s is outside subnet %s.0/24 (reachable from router %s)", ip, prefix, r.ID))
+				ipUint := utils.IPToUint32(net.ParseIP(ip))
+
+				if ipUint < network || ipUint >= network+capacity {
+					addError(&resp, n.ID, fmt.Sprintf("IP %s is outside subnet %s", ip, r.Subnet))
 				}
 
-				zone := GetZone(n.Type, zones)
-				octet := utils.ParseLastOctet(ip)
-
-				// Only infrastructure types keep their fixed base offsets.
-				// VM hosts are packed dynamically, so their offsets varies.
-				if !zone.CanHostVMs && octet >= 0 {
-					if octet < zone.BaseOffset || octet >= zone.BaseOffset+zone.Step*10 {
-						resp.Warnings = append(resp.Warnings, models.Issue{
-							NodeID:  n.ID,
-							Message: fmt.Sprintf("IP %s (octet .%d) is outside recommended fixed zone for %s (expected .%d+)", ip, octet, n.Type, zone.BaseOffset),
-						})
-					}
-				}
-
-				if dhcpStart > 0 && octet >= dhcpStart && octet <= dhcpEnd {
-					addError(&resp, n.ID, fmt.Sprintf("IP %s falls within DHCP range .%d–.%d; use a static address outside this range", ip, dhcpStart, dhcpEnd))
+				if sa.DHCPStart > 0 && ipUint >= sa.DHCPStart && ipUint <= sa.DHCPEnd {
+					addError(&resp, n.ID, fmt.Sprintf("IP %s falls within DHCP range %s–%s", ip, utils.Uint32ToIP(sa.DHCPStart), utils.Uint32ToIP(sa.DHCPEnd)))
 				}
 
 				if owner, exists := globalIPs[ip]; exists {
@@ -152,14 +141,12 @@ func Validate(req models.AllocateRequest) models.ValidateResponse {
 						addError(&resp, vm.ID, fmt.Sprintf("invalid IPv4 address: %s", vmIP))
 						continue
 					}
-					if utils.SubnetPrefix(vmIP) != prefix {
-						addError(&resp, vm.ID, fmt.Sprintf("VM IP %s is outside subnet %s.0/24", vmIP, prefix))
+					vmUint := utils.IPToUint32(net.ParseIP(vmIP))
+					if vmUint < network || vmUint >= network+capacity {
+						addError(&resp, vm.ID, fmt.Sprintf("VM IP %s is outside subnet %s", vmIP, r.Subnet))
 					}
-					if dhcpStart > 0 {
-						vmOctet := utils.ParseLastOctet(vmIP)
-						if vmOctet >= dhcpStart && vmOctet <= dhcpEnd {
-							addError(&resp, vm.ID, fmt.Sprintf("VM IP %s falls within DHCP range .%d–.%d", vmIP, dhcpStart, dhcpEnd))
-						}
+					if sa.DHCPStart > 0 && vmUint >= sa.DHCPStart && vmUint <= sa.DHCPEnd {
+						addError(&resp, vm.ID, fmt.Sprintf("VM IP %s falls within DHCP range %s–%s", vmIP, utils.Uint32ToIP(sa.DHCPStart), utils.Uint32ToIP(sa.DHCPEnd)))
 					}
 					if owner, exists := globalIPs[vmIP]; exists {
 						addError(&resp, vm.ID, fmt.Sprintf("VM IP %s conflicts with %s", vmIP, owner))
