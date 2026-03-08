@@ -131,8 +131,10 @@ function AppContent() {
 }
 
 function App() {
-  return (
-    <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID || ''}>
+  const rawClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+  const isAuthDisabled = !rawClientId || rawClientId === "your-client-id" || rawClientId === "your_client_id_here";
+
+  const appProviders = (
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>
           <Router>
@@ -141,6 +143,15 @@ function App() {
           </Router>
         </ThemeProvider>
       </QueryClientProvider>
+  );
+
+  if (isAuthDisabled) {
+      return appProviders;
+  }
+
+  return (
+    <GoogleOAuthProvider clientId={rawClientId}>
+        {appProviders}
     </GoogleOAuthProvider>
   );
 }

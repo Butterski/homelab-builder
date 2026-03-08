@@ -19,6 +19,9 @@ type Config struct {
 }
 
 func Load() *Config {
+	clientId := getEnv("GOOGLE_CLIENT_ID", "")
+	isAuthDisabled := clientId == "" || clientId == "your-client-id" || clientId == "your_client_id_here"
+
 	return &Config{
 		ServerPort:   getEnv("SERVER_PORT", "8080"),
 		DBHost:       getEnv("DB_HOST", "localhost"),
@@ -29,7 +32,7 @@ func Load() *Config {
 		DBSSLMode:    getEnv("DB_SSLMODE", "disable"),
 		DBType:       getEnv("DB_TYPE", "sqlite"), // Default to sqlite
 		DBFile:       getEnv("DB_FILE", "homelab.db"),
-		AuthDisabled: getEnv("GOOGLE_CLIENT_ID", "") == "", // Disable auth if no Google client ID
+		AuthDisabled: isAuthDisabled,
 	}
 }
 
