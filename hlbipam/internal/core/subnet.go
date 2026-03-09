@@ -1,113 +1,94 @@
 package core
 
 import (
+	"net"
+
 	"github.com/Butterski/hlbipam/internal/utils"
 )
 
-// SubnetAllocator tracks IP allocation within a single /24 subnet.
-// It uses a fixed-size [256]bool bitmap for O(1) reserve/check operations
-// with zero heap allocations per lookup.
 type SubnetAllocator struct {
-	Prefix    string                // e.g. "192.168.1"
-	Gateway   int                   // last octet of the gateway, e.g. 1
-	Used      [256]bool             // bitmap: Used[offset] = true means occupied
-	DHCPStart int                   // start of DHCP exclusion range (inclusive)
-	DHCPEnd   int                   // end of DHCP exclusion range (inclusive)
-	Zones     map[string]ZoneConfig // device-type zones (may include user overrides)
+	Network   uint32
+	Capacity  uint32
+	Mask      uint32
+	Gateway   uint32
+	Used      map[uint32]bool
+	DHCPStart uint32
+	DHCPEnd   uint32
+	Zones     map[string]ZoneConfig
 }
 
-// NewSubnetAllocator creates an allocator for the given gateway IP.
-// It pre-reserves the gateway, network (.0), and broadcast (.255) addresses,
-// plus the DHCP exclusion range.
-func NewSubnetAllocator(gatewayIP string, zones map[string]ZoneConfig, dhcpStart, dhcpEnd int) *SubnetAllocator {
-	prefix := utils.SubnetPrefix(gatewayIP)
-	gwOctet := utils.ParseLastOctet(gatewayIP)
-	if gwOctet < 0 {
-		gwOctet = 1
+func NewSubnetAllocator(subnetStr string, gatewayIP string, zones map[string]ZoneConfig, reqDHCPEnabled bool) *SubnetAllocator {
+	network, capacity, mask, err := utils.ParseCIDR(subnetStr)
+	if err != nil {
+		network, capacity, mask, _ = utils.ParseCIDR(gatewayIP + "/24")
 	}
+
+	gwUint := utils.IPToUint32(net.ParseIP(gatewayIP))
 
 	sa := &SubnetAllocator{
-		Prefix:    prefix,
-		Gateway:   gwOctet,
-		DHCPStart: dhcpStart,
-		DHCPEnd:   dhcpEnd,
-		Zones:     zones,
+		Network:  network,
+		Capacity: capacity,
+		Mask:     mask,
+		Gateway:  gwUint,
+		Used:     make(map[uint32]bool),
+		Zones:    zones,
 	}
 
-	// Reserve network, broadcast, and gateway
-	sa.Used[0] = true
-	sa.Used[255] = true
-	sa.Used[gwOctet] = true
+	sa.Used[network] = true
+	if capacity > 0 {
+		sa.Used[network+capacity] = true
+	}
+	if gwUint > 0 {
+		sa.Used[gwUint] = true
+	}
 
-	// Reserve the DHCP exclusion range
-	if dhcpStart > 0 && dhcpEnd > 0 {
-		for i := dhcpStart; i <= dhcpEnd && i < 255; i++ {
+	if reqDHCPEnabled {
+		var startOffset uint32 = 50
+		if capacity < 100 {
+			startOffset = capacity / 4
+		}
+		poolSize := capacity / 3
+		if poolSize < 10 {
+			poolSize = capacity / 2
+		}
+		
+		sa.DHCPStart = network + startOffset
+		sa.DHCPEnd = sa.DHCPStart + poolSize
+		
+		for i := sa.DHCPStart; i <= sa.DHCPEnd; i++ {
 			sa.Used[i] = true
 		}
+	} else {
+		sa.DHCPStart = 0
+		sa.DHCPEnd = 0
 	}
 
 	return sa
 }
 
-// Reserve marks an offset as occupied. Returns false if already taken.
-func (sa *SubnetAllocator) Reserve(offset int) bool {
-	if offset < 0 || offset > 255 || sa.Used[offset] {
+func (sa *SubnetAllocator) Reserve(ipUint uint32) bool {
+	if ipUint < sa.Network || ipUint >= sa.Network+sa.Capacity || sa.Used[ipUint] {
 		return false
 	}
-	sa.Used[offset] = true
+	sa.Used[ipUint] = true
 	return true
 }
 
-// IsAvailable checks whether an offset is free.
-func (sa *SubnetAllocator) IsAvailable(offset int) bool {
-	return offset >= 0 && offset <= 255 && !sa.Used[offset]
-}
-
-// AllocateBlock finds the first free contiguous block of `step` offsets
-// starting from `baseOffset`, scanning up to octet 254.
-// Returns the starting offset of the found block, or -1 if exhausted.
-func (sa *SubnetAllocator) AllocateBlock(baseOffset, step int) int {
-	for offset := baseOffset; offset+step-1 < 255; offset++ {
-		free := true
-		for k := 0; k < step; k++ {
-			if sa.Used[offset+k] {
-				free = false
-				break
-			}
-		}
-		if free {
-			return offset
+func (sa *SubnetAllocator) AllocateSlot(baseOffset int) uint32 {
+	startIP := sa.Network + uint32(baseOffset)
+	for ip := startIP; ip < sa.Network+sa.Capacity; ip++ {
+		if !sa.Used[ip] {
+			return ip
 		}
 	}
-	return -1
-}
-
-// ReserveBlock marks a contiguous block of offsets as used.
-func (sa *SubnetAllocator) ReserveBlock(start, step int) {
-	for k := 0; k < step && start+k < 256; k++ {
-		sa.Used[start+k] = true
-	}
-}
-
-// AllocateSlot finds the first single free offset starting from baseOffset.
-// Unlike AllocateBlock, it does NOT require a contiguous block of `step` offsets.
-// Returns the offset, or -1 if the subnet is exhausted.
-func (sa *SubnetAllocator) AllocateSlot(baseOffset int) int {
-	for offset := baseOffset; offset < 255; offset++ {
-		if !sa.Used[offset] {
-			return offset
+	for ip := sa.Network + 1; ip < startIP; ip++ {
+		if !sa.Used[ip] {
+			return ip
 		}
 	}
-	// Wrap around to beginning of the active subnet range
-	for offset := 1; offset < baseOffset; offset++ {
-		if !sa.Used[offset] {
-			return offset
-		}
-	}
-	return -1
+	return 0
 }
 
-// FormatIP combines this allocator's prefix with an offset into "x.x.x.offset".
-func (sa *SubnetAllocator) FormatIP(offset int) string {
-	return utils.FormatIP(sa.Prefix, offset)
+func (sa *SubnetAllocator) FormatIP(ipUint uint32) string {
+	return utils.Uint32ToIP(ipUint)
 }

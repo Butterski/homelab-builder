@@ -25,7 +25,7 @@ func TestAllocate_SingleRouterLinearTopology(t *testing.T) {
 	assertIP(t, resp, "sw1", "192.168.1.10")
 	// VMHostTypeOrder: nas, server, pc, minipc, sbc
 	assertIP(t, resp, "srv1", "192.168.1.100")
-	assertIP(t, resp, "pc1", "192.168.1.120")
+	assertIP(t, resp, "pc1", "192.168.1.150")
 
 	vmIPs := findVMIPs(resp, "srv1")
 	if len(vmIPs) != 2 {
@@ -100,7 +100,7 @@ func TestAllocate_DHCPExclusionRange(t *testing.T) {
 	if findNodeIP(resp, "ap1") != "192.168.1.20" {
 		t.Errorf("ap1 expected .20, got %s", findNodeIP(resp, "ap1"))
 	}
-	if findNodeIP(resp, "nas1") != "192.168.1.100" {
+	if findNodeIP(resp, "nas1") != "192.168.1.136" {
 		t.Errorf("nas1 expected .100, got %s", findNodeIP(resp, "nas1"))
 	}
 }

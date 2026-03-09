@@ -14,7 +14,7 @@ export interface HardwareFeatures {
 }
 
 export const HARDWARE_FEATURES: Record<HardwareType, HardwareFeatures> = {
-  server:       { hasCPU: true,  hasRAM: true,  hasStorage: true,  canHostVMs: true,  isCompute: true,  hasDynamicPorts: false, isNetworked: true,  canBeNested: false, canHostNested: true,  canConnectToAny: false },
+  server:       { hasCPU: true,  hasRAM: true,  hasStorage: true,  canHostVMs: true,  isCompute: true,  hasDynamicPorts: true, isNetworked: true,  canBeNested: false, canHostNested: true,  canConnectToAny: false },
   pc:           { hasCPU: true,  hasRAM: true,  hasStorage: true,  canHostVMs: true,  isCompute: true,  hasDynamicPorts: false, isNetworked: true,  canBeNested: false, canHostNested: true,  canConnectToAny: false },
   minipc:       { hasCPU: true,  hasRAM: true,  hasStorage: true,  canHostVMs: true,  isCompute: true,  hasDynamicPorts: false, isNetworked: true,  canBeNested: false, canHostNested: true,  canConnectToAny: false },
   sbc:          { hasCPU: true,  hasRAM: true,  hasStorage: true,  canHostVMs: true,  isCompute: true,  hasDynamicPorts: false, isNetworked: true,  canBeNested: false, canHostNested: true,  canConnectToAny: false },

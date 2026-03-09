@@ -1,6 +1,5 @@
 package core
 
-// ZoneConfig defines the IP offset range for a device type within a /24 subnet.
 type ZoneConfig struct {
 	BaseOffset int    `json:"base_offset"`
 	Step       int    `json:"step"`
@@ -8,8 +7,6 @@ type ZoneConfig struct {
 	Label      string `json:"label"`
 }
 
-// DefaultDeviceZones are the built-in role-based IP zones.
-// Users can override these per-request via the allocate payload.
 var DefaultDeviceZones = map[string]ZoneConfig{
 	"router":       {BaseOffset: 1, Step: 1, CanHostVMs: false, Label: "Router"},
 	"switch":       {BaseOffset: 10, Step: 1, CanHostVMs: false, Label: "Switch"},
@@ -31,20 +28,12 @@ var DefaultDeviceZones = map[string]ZoneConfig{
 
 var FallbackZone = ZoneConfig{BaseOffset: 220, Step: 1, CanHostVMs: false, Label: "Device"}
 
-// VMHostTypeOrder defines the deterministic order in which VM-hosting
-// device types are laid out in the address space. Core infra first.
 var VMHostTypeOrder = []string{"nas", "server", "pc", "minipc", "sbc", "iot"}
 
-// NonNetworkTypes are device types that don't receive an IP address.
 var NonNetworkTypes = map[string]bool{
 	"disk": true, "gpu": true, "hba": true, "pcie": true, "pdu": true, "ups": true,
 }
 
-// DefaultDHCPRange defines the DHCP pool that should be excluded from static allocation.
-var DefaultDHCPStart = 30
-var DefaultDHCPEnd = 99
-
-// GetZone returns the zone config for a device type, falling back to FallbackZone.
 func GetZone(deviceType string, zones map[string]ZoneConfig) ZoneConfig {
 	if zones != nil {
 		if z, ok := zones[deviceType]; ok {
@@ -57,39 +46,25 @@ func GetZone(deviceType string, zones map[string]ZoneConfig) ZoneConfig {
 	return FallbackZone
 }
 
-const (
-	// MaxDynamicStep is the upper bound for pool size per VM-hosting device.
-	MaxDynamicStep = 20
-	// MinDynamicStep is the lower bound — every host gets at least 1 VM slot.
-	MinDynamicStep = 2
-	// ReservedInfra is the number of addresses set aside for infrastructure
-	// (gateway, switches, APs, broadcast, etc.) when calculating dynamic steps.
-	ReservedInfra = 30
-	// VMHostStartOffset is where VM-hosting devices begin packing contiguously.
-	// Infrastructure devices (router, switch, AP, etc.) live below this.
-	VMHostStartOffset = 100
-)
+const VMHostStartOffset = 100
 
-// CalculateDynamicStep calculates the optimal per-device pool step size based
-// on how many VM-hosting devices exist in the subnet and how much address
-// space is available. Fewer devices → bigger pools; many devices → smaller pools.
-func CalculateDynamicStep(vmHostCount int, dhcpReserved int) int {
+func CalculateDynamicStep(vmHostCount int, capacity uint32, dhcpReserved uint32) int {
 	if vmHostCount <= 0 {
-		return MaxDynamicStep
+		return 20
 	}
-
-	// Total usable addresses in a /24: 254 (1–254), minus gateway(1), broadcast is already excluded
-	usable := 254 - ReservedInfra - dhcpReserved
-	if usable < vmHostCount*MinDynamicStep {
-		return MinDynamicStep
+	var usable uint32 = 0
+	if capacity > 30+dhcpReserved {
+		usable = capacity - 30 - dhcpReserved
 	}
-
-	step := usable / vmHostCount
-	if step > MaxDynamicStep {
-		return MaxDynamicStep
+	if usable < uint32(vmHostCount)*2 {
+		return 2
 	}
-	if step < MinDynamicStep {
-		return MinDynamicStep
+	step := usable / uint32(vmHostCount)
+	if step > 50 {
+		return 50
 	}
-	return step
+	if step < 2 {
+		return 2
+	}
+	return int(step)
 }

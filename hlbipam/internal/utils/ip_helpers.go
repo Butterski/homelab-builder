@@ -1,46 +1,68 @@
 package utils
 
 import (
+	"encoding/binary"
 	"fmt"
 	"net"
-	"strconv"
 	"strings"
 )
 
-// SubnetPrefix returns the first three octets of an IPv4 address, e.g. "192.168.1".
-func SubnetPrefix(ip string) string {
-	parts := strings.Split(ip, ".")
-	if len(parts) >= 3 {
-		return strings.Join(parts[0:3], ".")
+func IPToUint32(ip net.IP) uint32 {
+	if len(ip) == 16 {
+		ip = ip.To4()
 	}
-	return "192.168.1"
+	if len(ip) != 4 || ip == nil {
+		return 0
+	}
+	return binary.BigEndian.Uint32(ip)
 }
 
-// ParseLastOctet extracts the last octet of an IPv4 address as an integer.
-func ParseLastOctet(ip string) int {
-	parts := strings.Split(ip, ".")
-	if len(parts) != 4 {
-		return -1
-	}
-	val, err := strconv.Atoi(parts[3])
-	if err != nil {
-		return -1
-	}
-	return val
+func Uint32ToIP(n uint32) string {
+	ip := make(net.IP, 4)
+	binary.BigEndian.PutUint32(ip, n)
+	return ip.String()
 }
 
-// FormatIP builds an IPv4 string from a /24 prefix and a last octet.
-func FormatIP(prefix string, lastOctet int) string {
-	return fmt.Sprintf("%s.%d", prefix, lastOctet)
+func ParseCIDR(subnet string) (network uint32, capacity uint32, mask uint32, err error) {
+	parts := strings.Split(subnet, "/")
+	if len(parts) == 2 {
+		ipStr := parts[0]
+		maskStr := parts[1]
+		ip := net.ParseIP(ipStr)
+		if ip == nil {
+			return 0, 0, 0, fmt.Errorf("invalid IP")
+		}
+		
+		var maskIP net.IP
+		if strings.Contains(maskStr, ".") {
+			maskIP = net.ParseIP(maskStr)
+			if maskIP != nil && maskIP.To4() != nil {
+				maskUint := IPToUint32(maskIP.To4())
+				netIP := IPToUint32(ip.To4()) & maskUint
+				cap := ^maskUint
+				return netIP, cap, maskUint, nil
+			}
+		}
+	}
+	
+	ip, ipnet, err := net.ParseCIDR(subnet)
+	if err == nil {
+		netIP := IPToUint32(ipnet.IP.To4())
+		maskUint := IPToUint32(net.IP(ipnet.Mask).To4())
+		cap := ^maskUint
+		return netIP, cap, maskUint, nil
+	}
+
+	ip = net.ParseIP(subnet)
+	if ip != nil {
+		netIP := IPToUint32(ip.To4()) & 0xFFFFFF00
+		return netIP, 255, 0xFFFFFF00, nil
+	}
+	
+	return 0, 0, 0, fmt.Errorf("invalid subnet format: %s", subnet)
 }
 
-// IsValidIPv4 checks whether a string is a valid IPv4 address.
 func IsValidIPv4(ip string) bool {
 	parsed := net.ParseIP(ip)
 	return parsed != nil && parsed.To4() != nil
-}
-
-// IPsInSameSubnet checks whether two IPs share the same /24 prefix.
-func IPsInSameSubnet(a, b string) bool {
-	return SubnetPrefix(a) == SubnetPrefix(b)
 }
