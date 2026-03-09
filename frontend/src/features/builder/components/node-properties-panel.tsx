@@ -18,8 +18,9 @@ import { toast } from 'sonner';
 import type { HardwareType } from '../../../types';
 import { VMManager } from './vm-manager';
 import { InternalComponentManager } from './internal-component-manager';
-import { canNodeHostVMs, nodeHasCPU, nodeHasRAM, nodeHasStorage, isNetworkNode } from '../../../lib/hardware-config';
+import { canNodeHostVMs, nodeHasCPU, nodeHasDynamicPorts, nodeHasRAM, nodeHasStorage, isNetworkNode } from '../../../lib/hardware-config';
 import { getVmResourceUsage } from '../lib/resource-usage';
+import { getNodePortCount, parsePortCount } from '../lib/port-count';
 
 const IP_REGEX =
   /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
@@ -110,8 +111,12 @@ export function NodePropertiesPanel() {
         setStorageUnit('GB');
       }
 
-      if (ports !== (selectedNode.details?.ports?.toString() || ''))
-        setPorts(selectedNode.details?.ports?.toString() || '');
+      const portValue = selectedNode.details?.ports;
+      const normalizedPorts =
+        portValue === undefined
+          ? ''
+          : String(parsePortCount(portValue) ?? getNodePortCount(selectedNode.type, portValue));
+      if (ports !== normalizedPorts) setPorts(normalizedPorts);
 
       setErrors({});
     }
@@ -395,7 +400,7 @@ export function NodePropertiesPanel() {
 
         {/* Hardware Specs (Model, CPU, RAM, Storage, Ports) */}
         <div className="space-y-3 pt-2 border-t">
-          {(selectedNode.type === 'switch' || isRouter || selectedNode.type === 'ups') && (
+          {nodeHasDynamicPorts(selectedNode.type) && (
             <div className="space-y-1">
               <Label htmlFor="ports" className="text-xs text-muted-foreground">
                 Number of Ports
@@ -404,7 +409,7 @@ export function NodePropertiesPanel() {
                 id="ports"
                 type="number"
                 min={1}
-                max={48}
+                max={96}
                 value={ports}
                 onChange={e => setPorts(e.target.value)}
                 className="h-8 text-xs"

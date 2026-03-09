@@ -29,6 +29,7 @@ import type {
 import { isComputeNode, nodeHasDynamicPorts, isNetworkNode } from '../../../lib/hardware-config';
 import { useBuilderStore } from '../store/builder-store';
 import { getVmResourceUsage } from '../lib/resource-usage';
+import { getNodePortCount } from '../lib/port-count';
 
 type HardwareNodeData = {
   label: string;
@@ -258,7 +259,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
   // React flow handles dynamically
   const updateNodeInternals = useUpdateNodeInternals();
   const numPorts = nodeHasDynamicPorts(nodeData.type)
-      ? Math.max(1, (Number(nodeData.details?.ports) || (nodeData.type === 'ups' ? 2 : 4)) - 1)
+      ? Math.max(1, getNodePortCount(nodeData.type, nodeData.details?.ports) - 1)
       : 1;
 
   // Resource calculations

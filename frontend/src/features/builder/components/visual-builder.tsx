@@ -24,6 +24,7 @@ import { Wand2, Menu, Save, Folder, Download, LogOut, Route } from 'lucide-react
 import type { HardwareType, HardwareNode } from '../../../types';
 import { buildApi } from '../api/builds';
 import { nodeHasDynamicPorts, canNodeBeNested, canNodeHostNested, canNodeConnectToAny } from '../../../lib/hardware-config';
+import { getNodePortCount } from '../lib/port-count';
 import { useAuth } from '../../admin/hooks/use-auth';
 import {
   DropdownMenu,
@@ -244,9 +245,8 @@ function Flow() {
   // Does NOT call updateNodeInternals here; that happens in Effect 2.
   useEffect(() => {
     hardwareNodes.forEach(node => {
-      if (node.type !== 'switch' && node.type !== 'router' && node.type !== 'ups') return;
-      const raw = Number(node.details?.ports) || (node.type === 'ups' ? 2 : 4);
-      const numPorts = Math.max(1, raw - 1);
+      if (!nodeHasDynamicPorts(node.type)) return;
+      const numPorts = Math.max(1, getNodePortCount(node.type, node.details?.ports) - 1);
       const prev = prevPortsRef.current.get(node.id);
       if (prev !== undefined && prev !== numPorts) {
         const orphaned = edges.filter(e => {

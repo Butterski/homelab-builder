@@ -1,6 +1,8 @@
 package services
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/Butterski/homelab-builder/backend/internal/models"
@@ -43,13 +45,13 @@ func TestBuildService_Update(t *testing.T) {
 	user := models.User{Email: uuid.NewString() + "@t.com"}
 	tx.Create(&user)
 
-	build, _ := svc.Create(user.ID, SyncGraphInput{Name: "B1", Nodes: []NodeDTO{{ID: "n1", Name: "A"}}})
+	build, _ := svc.Create(user.ID, SyncGraphInput{Name: "B1", Nodes: []NodeDTO{{ID: "n1", Name: "A", Details: map[string]any{"model": "R1"}}}})
 
 	_, err := svc.Update(build.ID, user.ID, SyncGraphInput{
 		Name: "Updated",
 		Nodes: []NodeDTO{
-			{ID: build.Nodes[0].ID.String(), Name: "A-Updated"}, // Keep ID
-			{ID: "n2", Name: "B"},                               // New
+			{ID: build.Nodes[0].ID.String(), Name: "A-Updated", Details: map[string]any{"model": "R2"}}, // Keep ID
+			{ID: "n2", Name: "B"},                                                                     // New
 		},
 	})
 	if err != nil {
@@ -65,6 +67,14 @@ func TestBuildService_Update(t *testing.T) {
 	}
 	if loaded.Nodes[0].Name != "A-Updated" {
 		t.Errorf("expected old node to be updated, got %s", loaded.Nodes[0].Name)
+	}
+
+	serialized, err := json.Marshal(loaded)
+	if err != nil {
+		t.Fatalf("marshal failed: %v", err)
+	}
+	if !strings.Contains(string(serialized), `"details":{"model":"R2"}`) {
+		t.Fatalf("expected node details to serialize as object, got %s", string(serialized))
 	}
 }
 

@@ -1,6 +1,7 @@
 package services
 
 import (
+	"encoding/json"
 	"os"
 	"testing"
 
@@ -27,7 +28,7 @@ func createNode(t *testing.T, db *gorm.DB, buildID uuid.UUID, hwType, name, ip s
 		Type:    hwType,
 		Name:    name,
 		IP:      ip,
-		Details: "{}",
+		Details: json.RawMessage("{}"),
 	}
 	if err := db.Create(&n).Error; err != nil {
 		t.Fatalf("createNode(%s): %v", name, err)

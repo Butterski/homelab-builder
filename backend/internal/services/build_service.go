@@ -121,7 +121,7 @@ func (s *BuildService) syncGraph(tx *gorm.DB, buildID uuid.UUID, input SyncGraph
 			X:       n.X,
 			Y:       n.Y,
 			IP:      n.IP,
-			Details: string(detailsJSON),
+			Details: detailsJSON,
 		}
 		if n.ParentID != nil && *n.ParentID != "" {
 			if parsed, err := uuid.Parse(*n.ParentID); err == nil {

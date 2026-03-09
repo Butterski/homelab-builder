@@ -177,7 +177,7 @@ func (s *IPService) CalculateNetwork(buildID uuid.UUID) error {
 					DHCPLocked  bool   `json:"dhcp_locked"`
 					SubnetMask  string `json:"subnet_mask"`
 				}
-				_ = json.Unmarshal([]byte(n.Details), &details)
+				_ = json.Unmarshal(n.Details, &details)
 
 				subnet := ""
 				if n.IP != "" && details.SubnetMask != "" {
@@ -194,7 +194,7 @@ func (s *IPService) CalculateNetwork(buildID uuid.UUID) error {
 				var details struct {
 					DHCPLocked bool `json:"dhcp_locked"`
 				}
-				_ = json.Unmarshal([]byte(n.Details), &details)
+				_ = json.Unmarshal(n.Details, &details)
 			}
 
 			vms := make([]ipamVM, 0, len(n.VirtualMachines))
@@ -211,7 +211,7 @@ func (s *IPService) CalculateNetwork(buildID uuid.UUID) error {
 			var details struct {
 				DHCPLocked bool `json:"dhcp_locked"`
 			}
-			_ = json.Unmarshal([]byte(n.Details), &details)
+			_ = json.Unmarshal(n.Details, &details)
 
 			if nonNetworkTypes[n.Type] {
 				// Don't send existing IP for non-network types
@@ -350,7 +350,7 @@ func (s *IPService) ValidateNetwork(buildID uuid.UUID) (json.RawMessage, error) 
 			var details struct {
 				DHCPEnabled bool `json:"dhcp_enabled"`
 			}
-			_ = json.Unmarshal([]byte(n.Details), &details)
+			_ = json.Unmarshal(n.Details, &details)
 
 			req.Routers = append(req.Routers, ipamRouter{
 				ID:          nid,

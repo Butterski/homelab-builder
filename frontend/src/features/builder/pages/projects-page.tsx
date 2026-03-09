@@ -42,6 +42,33 @@ import { formatDistanceToNow } from 'date-fns';
 import { FastStartWizard } from '../components/fast-start-wizard';
 import { generateFastStartPayload } from '../../../lib/templates';
 
+const parseDetailsObject = (value: unknown) => {
+  if (!value) {
+    return {};
+  }
+
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  return typeof value === 'object' ? value : {};
+};
+
+const normalizeNodesForSync = (nodes: any[] = []) =>
+  nodes.map(node => ({
+    ...node,
+    details: parseDetailsObject(node.details),
+    internal_components: (node.internal_components || []).map((component: any) => ({
+      ...component,
+      details: parseDetailsObject(component.details),
+    })),
+  }));
+
 export default function ProjectsPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -258,7 +285,7 @@ export default function ProjectsPage() {
       const updated = await buildApi.update(projectToRename.id, {
         name: newName,
         thumbnail: fullBuild.thumbnail,
-        nodes: fullBuild.nodes || [],
+        nodes: normalizeNodesForSync(fullBuild.nodes || []),
         edges: fullBuild.edges || [],
         services: [],
         settings: fullBuild.settings || {},
