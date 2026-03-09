@@ -321,7 +321,7 @@ export function Sidebar({ className }: { className?: string }) {
                   collapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100',
                 )}
               >
-                {surveyDone ? 'Survey done âœ“' : 'Beta Survey'}
+                {surveyDone ? 'Survey done' : 'Beta Survey'}
               </span>
             </button>
           </div>
