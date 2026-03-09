@@ -168,17 +168,17 @@ func (Build) TableName() string { return "builds" }
 
 // Node represents a hardware node in the graph
 type Node struct {
-	ID        uuid.UUID  `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
-	BuildID   uuid.UUID  `gorm:"type:uuid;not null;index" json:"build_id"`
-	Type      string     `gorm:"not null" json:"type"` // server, router, switch
-	Name      string     `gorm:"not null" json:"name"`
-	X         float64    `gorm:"not null;default:0" json:"x"`
-	Y         float64    `gorm:"not null;default:0" json:"y"`
-	IP        string     `gorm:"default:''" json:"ip"`
+	ID        uuid.UUID       `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
+	BuildID   uuid.UUID       `gorm:"type:uuid;not null;index" json:"build_id"`
+	Type      string          `gorm:"not null" json:"type"` // server, router, switch
+	Name      string          `gorm:"not null" json:"name"`
+	X         float64         `gorm:"not null;default:0" json:"x"`
+	Y         float64         `gorm:"not null;default:0" json:"y"`
+	IP        string          `gorm:"default:''" json:"ip"`
 	Details   json.RawMessage `gorm:"type:jsonb;default:'{}'" json:"details"` // Hardware specs
-	ParentID  *uuid.UUID `gorm:"type:uuid" json:"parent_id,omitempty"`   // For nested components
-	CreatedAt time.Time  `json:"created_at"`
-	UpdatedAt time.Time  `json:"updated_at"`
+	ParentID  *uuid.UUID      `gorm:"type:uuid" json:"parent_id,omitempty"`   // For nested components
+	CreatedAt time.Time       `json:"created_at"`
+	UpdatedAt time.Time       `json:"updated_at"`
 
 	ServiceInstances   []ServiceInstance `gorm:"foreignKey:NodeID;constraint:OnDelete:CASCADE;" json:"service_instances,omitempty"`
 	VirtualMachines    []VirtualMachine  `gorm:"foreignKey:NodeID;constraint:OnDelete:CASCADE;" json:"virtual_machines,omitempty"`

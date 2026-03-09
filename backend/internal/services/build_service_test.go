@@ -51,7 +51,7 @@ func TestBuildService_Update(t *testing.T) {
 		Name: "Updated",
 		Nodes: []NodeDTO{
 			{ID: build.Nodes[0].ID.String(), Name: "A-Updated", Details: map[string]any{"model": "R2"}}, // Keep ID
-			{ID: "n2", Name: "B"},                                                                     // New
+			{ID: "n2", Name: "B"}, // New
 		},
 	})
 	if err != nil {
