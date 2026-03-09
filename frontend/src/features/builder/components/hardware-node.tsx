@@ -28,6 +28,7 @@ import type {
 } from '../../../types';
 import { isComputeNode, nodeHasDynamicPorts, isNetworkNode } from '../../../lib/hardware-config';
 import { useBuilderStore } from '../store/builder-store';
+import { getVmResourceUsage } from '../lib/resource-usage';
 
 type HardwareNodeData = {
   label: string;
@@ -261,12 +262,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
       : 1;
 
   // Resource calculations
-  let usedCpu = 0;
-  let usedRam = 0;
-  vms.forEach(vm => {
-    usedCpu += vm.cpu_cores || 1;
-    usedRam += vm.ram_mb || 512;
-  });
+  const { cpu: usedCpu, ramMb: usedRam } = getVmResourceUsage(vms);
 
   const totalCpu = Number(nodeData.details?.cpu) || 0;
   const totalRamGB = Number(nodeData.details?.ram) || 0;

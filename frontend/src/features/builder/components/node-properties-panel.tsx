@@ -19,6 +19,7 @@ import type { HardwareType } from '../../../types';
 import { VMManager } from './vm-manager';
 import { InternalComponentManager } from './internal-component-manager';
 import { canNodeHostVMs, nodeHasCPU, nodeHasRAM, nodeHasStorage, isNetworkNode } from '../../../lib/hardware-config';
+import { getVmResourceUsage } from '../lib/resource-usage';
 
 const IP_REGEX =
   /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
@@ -195,12 +196,7 @@ export function NodePropertiesPanel() {
   const isNetworked = isNetworkNode(selectedNode.type);
 
   // Resource limit calculations
-  let usedCpu = 0;
-  let usedRam = 0;
-  (selectedNode.vms || []).forEach(vm => {
-    usedCpu += vm.cpu_cores || 1;
-    usedRam += vm.ram_mb || 512;
-  });
+  const { cpu: usedCpu, ramMb: usedRam } = getVmResourceUsage(selectedNode.vms || []);
 
   const totalCpu = Number(selectedNode.details?.cpu) || 0;
   const totalRamGB = Number(selectedNode.details?.ram) || 0;

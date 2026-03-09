@@ -7,6 +7,7 @@ import { Activity, ChevronDown, ChevronUp, Cpu, HardDrive, Package } from 'lucid
 import { cn } from '../../../lib/utils';
 import type { HardwareType } from '../../../types';
 import { isComputeNode, nodeHasStorage } from '../../../lib/hardware-config';
+import { getVmResourceUsage } from '../lib/resource-usage';
 
 // Helper to safely parse strings like "16GB" to numbers
 const parseSpec = (val?: string | number): number => {
@@ -66,12 +67,10 @@ export function LiveResourceDashboard() {
 
       // Usage based on deployed VMs/Services
       if (node.vms) {
-        node.vms.forEach(vm => {
-          usedCpuThreads += vm.cpu_cores || 1;
-          usedRamMb += vm.ram_mb || 512;
-          // Mock storage for now as services don't strictly define it yet in vms
-          usedStorageGb += 10;
-        });
+        const usage = getVmResourceUsage(node.vms);
+        usedCpuThreads += usage.cpu;
+        usedRamMb += usage.ramMb;
+        usedStorageGb += usage.storageGb;
       }
     });
 
