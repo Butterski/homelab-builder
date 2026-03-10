@@ -111,6 +111,8 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 				auth.POST("/dev", authHandler.DevLogin)
 			}
 			auth.GET("/me", middleware.AuthMiddleware(authService, cfg.AuthDisabled), authHandler.GetCurrentUser)
+			auth.GET("/themes", middleware.AuthMiddleware(authService, cfg.AuthDisabled), authHandler.GetThemeSettings)
+			auth.PUT("/themes", middleware.AuthMiddleware(authService, cfg.AuthDisabled), authHandler.UpdateThemeSettings)
 			auth.PUT("/preferences", middleware.AuthMiddleware(authService, cfg.AuthDisabled), authHandler.UpdatePreferences)
 		}
 

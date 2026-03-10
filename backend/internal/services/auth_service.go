@@ -2,7 +2,6 @@ package services
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -201,19 +200,9 @@ func (s *AuthService) GetCurrentUser(userID uuid.UUID) (*models.User, error) {
 }
 
 func (s *AuthService) UpdatePreferences(userID uuid.UUID, prefs map[string]interface{}) (*models.User, error) {
-	var user models.User
-	if err := s.db.First(&user, "id = ?", userID).Error; err != nil {
+	user, existingPrefs, err := s.loadUserPreferences(userID)
+	if err != nil {
 		return nil, err
-	}
-
-	// Unmarshal existing preferences to merge
-	var existingPrefs map[string]interface{}
-	if len(user.Preferences) > 0 {
-		if err := json.Unmarshal(user.Preferences, &existingPrefs); err != nil {
-			existingPrefs = make(map[string]interface{})
-		}
-	} else {
-		existingPrefs = make(map[string]interface{})
 	}
 
 	// Merge incoming prefs
@@ -221,17 +210,15 @@ func (s *AuthService) UpdatePreferences(userID uuid.UUID, prefs map[string]inter
 		existingPrefs[k] = v
 	}
 
-	rawPrefs, err := json.Marshal(existingPrefs)
-	if err != nil {
-		return nil, fmt.Errorf("invalid preferences payload: %w", err)
+	if err := normalizeThemePreferences(existingPrefs); err != nil {
+		return nil, err
 	}
 
-	user.Preferences = rawPrefs
-	if err := s.db.Save(&user).Error; err != nil {
-		return nil, fmt.Errorf("failed to save preferences: %w", err)
+	if err := s.saveUserPreferences(user, existingPrefs); err != nil {
+		return nil, err
 	}
 
-	return &user, nil
+	return user, nil
 }
 
 func (s *AuthService) generateToken(user models.User) (string, error) {

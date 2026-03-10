@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"log"
 	"net/http"
 
@@ -129,9 +130,67 @@ func (h *AuthHandler) UpdatePreferences(c *gin.Context) {
 
 	user, err := h.service.UpdatePreferences(userID, input.Preferences)
 	if err != nil {
+		if errors.Is(err, services.ErrInvalidThemeSettings) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusOK, user)
+}
+
+func (h *AuthHandler) GetThemeSettings(c *gin.Context) {
+	userIDStr, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+		return
+	}
+
+	userID, ok := userIDStr.(uuid.UUID)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user session"})
+		return
+	}
+
+	themeSettings, err := h.service.GetThemeSettings(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, themeSettings)
+}
+
+func (h *AuthHandler) UpdateThemeSettings(c *gin.Context) {
+	userIDStr, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+		return
+	}
+
+	userID, ok := userIDStr.(uuid.UUID)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user session"})
+		return
+	}
+
+	var input services.ThemeSettings
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Theme settings payload is required"})
+		return
+	}
+
+	themeSettings, err := h.service.UpdateThemeSettings(userID, input)
+	if err != nil {
+		if errors.Is(err, services.ErrInvalidThemeSettings) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, themeSettings)
 }

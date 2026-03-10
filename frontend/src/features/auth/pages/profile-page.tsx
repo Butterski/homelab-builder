@@ -13,6 +13,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '../../../components/ui/dialog';
+import { ThemeSettingsCard } from '../components/theme-settings-card';
 
 export default function ProfilePage() {
   const { user, logout } = useAuth();
@@ -47,10 +48,10 @@ export default function ProfilePage() {
         Back
       </button>
 
-      <div className="max-w-xl mx-auto w-full space-y-6">
+      <div className="max-w-4xl mx-auto w-full space-y-6">
         {/* Avatar + Name */}
         <Card className="overflow-hidden">
-          <div className="h-24 bg-gradient-to-br from-primary/30 via-primary/10 to-background" />
+          <div className="h-24 bg-linear-to-br from-primary/30 via-primary/10 to-background" />
           <CardContent className="pt-0 pb-6 relative">
             <div className="flex items-end gap-4 -mt-12">
               <div className="rounded-full border-4 border-background overflow-hidden h-20 w-20 shrink-0 bg-muted">
@@ -118,6 +119,8 @@ export default function ProfilePage() {
             </div>
           </CardContent>
         </Card>
+
+        <ThemeSettingsCard />
 
         {/* Danger Zone */}
         <Card className="border-destructive/30">
