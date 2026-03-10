@@ -234,21 +234,21 @@
 /* ─── ReactFlow Controls dark mode ─────────────────────────────────────────── */
 
 .dark .react-flow__controls {
-  background: #111113;
-  border-color: #27272a;
+  background: var(--card);
+  border-color: var(--border);
 }
 
 .dark .react-flow__controls-button {
-  background: #111113;
-  border-color: #27272a;
-  color: #fafafa;
-  fill: #fafafa;
+  background: var(--card);
+  border-color: var(--border);
+  color: var(--foreground);
+  fill: var(--foreground);
 }
 
 .dark .react-flow__controls-button:hover {
-  background: #27272a;
+  background: var(--accent);
 }
 
 .dark .react-flow__controls-button svg {
-  fill: #fafafa;
+  fill: var(--foreground);
 }

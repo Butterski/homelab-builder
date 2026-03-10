@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"; // Fixed imports
 import { api } from "../../../lib/api";
 import { toast } from "sonner";
+import type { ThemeSettings } from "../../../lib/theme-registry";
 interface User {
     id: string;
     name: string;
@@ -77,6 +78,39 @@ export function useAuth() {
             return updatedUser;
         } catch (error) {
             console.error("Failed to update preferences", error);
+            throw error;
+        }
+    }
+
+    async function getThemeSettings() {
+        if (!user) return;
+        try {
+            return await api.getThemeSettings();
+        } catch (error) {
+            console.error("Failed to load theme settings", error);
+            throw error;
+        }
+    }
+
+    async function updateThemeSettings(themeSettings: ThemeSettings) {
+        if (!user) return;
+        try {
+            const updatedThemeSettings = await api.updateThemeSettings(themeSettings);
+            setUser(prev => {
+                if (!prev) return prev;
+                return {
+                    ...prev,
+                    preferences: {
+                        ...(prev.preferences ?? {}),
+                        theme: updatedThemeSettings.activeThemeId,
+                        themeSettings: updatedThemeSettings,
+                    },
+                };
+            });
+            return updatedThemeSettings;
+        } catch (error) {
+            console.error("Failed to update theme settings", error);
+            throw error;
         }
     }
 
@@ -86,6 +120,8 @@ export function useAuth() {
         loginWithGoogle,
         loginWithDev,
         updatePreferences,
+        getThemeSettings,
+        updateThemeSettings,
         logout: () => {
              localStorage.removeItem('auth_token');
              setUser(null);

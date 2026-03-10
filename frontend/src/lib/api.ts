@@ -1,4 +1,6 @@
 // Dynamically resolve API base. If not explicitly set or heavily defaulted, assume standard backend port 8080 relative to current host
+import type { ThemeSettings } from './theme-registry';
+
 let defaultApiBase = 'http://localhost:8080';
 if (typeof window !== 'undefined') {
     defaultApiBase = `${window.location.protocol}//${window.location.hostname}:8080`;
@@ -61,4 +63,8 @@ export const api = {
         localStorage.setItem('auth_token', res.token);
         return res;
     },
+
+    getThemeSettings: () => request<ThemeSettings>('/auth/themes', { method: 'GET' }),
+    updateThemeSettings: (themeSettings: ThemeSettings) =>
+        request<ThemeSettings>('/auth/themes', { method: 'PUT', body: JSON.stringify(themeSettings) }),
 };

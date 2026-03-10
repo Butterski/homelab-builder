@@ -4,7 +4,7 @@ import { useTheme } from '../theme-provider';
 
 export function GoogleLoginButton() {
     const { loginWithGoogle, loginWithDev } = useAuth();
-    const { theme } = useTheme();
+    const { resolvedMode } = useTheme();
 
     const rawClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
     const isAuthDisabled = !rawClientId || rawClientId === "your-client-id" || rawClientId === "your_client_id_here";
@@ -33,7 +33,7 @@ export function GoogleLoginButton() {
                 onError={() => {
                     console.log('Login Failed');
                 }}
-                theme={theme === 'dark' ? 'filled_black' : 'outline'}
+                theme={resolvedMode === 'dark' ? 'filled_black' : 'outline'}
                 shape="pill"
             />
         </div>
