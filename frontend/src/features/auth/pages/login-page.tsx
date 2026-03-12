@@ -1,5 +1,5 @@
 import { GoogleLoginButton } from "../../../components/auth/google-login-button"
-import { Server, ShoppingCart, CheckSquare, Globe, Heart } from "lucide-react"
+import { Server, ShoppingCart, CheckSquare, Globe, Heart, BookOpen } from "lucide-react"
 import { Link } from "react-router-dom"
 import { AnimatedLogo } from "../../../components/ui/animated-logo"
 import { Github } from "../../../components/icons/github"
@@ -25,7 +25,7 @@ export default function LoginPage() {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-16 max-w-4xl text-left">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8 mt-16 max-w-5xl text-left">
                 <div className="space-y-2 opacity-50 cursor-not-allowed" title="Requires Login">
                     <div className="flex items-center gap-2 font-semibold">
                         <Server className="h-5 w-5 text-blue-500" />
@@ -48,6 +48,14 @@ export default function LoginPage() {
                         <span>Hardware Catalog</span>
                     </div>
                     <p className="text-sm text-muted-foreground">Browse 100+ community curated components with specs and pricing.</p>
+                </Link>
+
+                <Link to="/how-to-build-a-homelab" className="space-y-2 hover:opacity-80 transition-opacity block">
+                    <div className="flex items-center gap-2 font-semibold">
+                        <BookOpen className="h-5 w-5 text-cyan-500" />
+                        <span>Homelab Guide</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground">Read a public guide on planning hardware, networking, and using HLBuilder effectively.</p>
                 </Link>
             </div>
 

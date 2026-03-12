@@ -4,9 +4,10 @@ import { api } from "../../../services/api"
 
 export const SURVEY_QUERY_KEY = ["beta-survey"] // BETA_SURVEY
 
-export function useSurvey() { // BETA_SURVEY
+export function useSurvey(options?: { enabled?: boolean }) { // BETA_SURVEY
     return useQuery({
         queryKey: SURVEY_QUERY_KEY,
+        enabled: options?.enabled ?? true,
         queryFn: async () => {
             try {
                 const res = await api.getSurvey()

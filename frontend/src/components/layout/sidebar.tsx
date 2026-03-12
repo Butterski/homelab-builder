@@ -5,6 +5,7 @@ import {
   CheckSquare,
   Settings,
   HardDrive,
+  BookOpen,
   FileCode,
   ChevronsLeft,
   ChevronsRight,
@@ -34,6 +35,7 @@ const BASE_NAV_ITEMS = [
   { label: 'Config Generator', href: '/generate', icon: FileCode },
   { label: 'Hardware Catalog', href: '/hardware', icon: HardDrive },
   { label: 'Service Library', href: '/services', icon: AppWindow },
+  { label: 'Homelab Guide', href: '/how-to-build-a-homelab', icon: BookOpen },
   // { label: "Shopping List", href: "/shopping-list", icon: ShoppingCart }, // Hidden for Open Beta
   { label: 'Setup Guide', href: '/checklist', icon: CheckSquare },
   { label: 'Admin', href: '/admin', icon: Settings },
@@ -46,7 +48,7 @@ export function Sidebar({ className }: { className?: string }) {
 
   // BETA_SURVEY
   const [showSurvey, setShowSurvey] = useState(false);
-  const { data: survey } = useSurvey();
+  const { data: survey } = useSurvey({ enabled: !!user });
   const surveyDone = !!survey;
 
   const [collapsed, setCollapsed] = useState(() => {
@@ -60,7 +62,9 @@ export function Sidebar({ className }: { className?: string }) {
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, String(collapsed));
-    } catch {}
+    } catch {
+      return;
+    }
   }, [collapsed]);
 
   const navItems = [
