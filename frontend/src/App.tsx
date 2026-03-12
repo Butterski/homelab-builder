@@ -13,6 +13,7 @@ const AdminPage = lazy(() => import('./features/admin/pages/admin-page'));
 const HardwareCatalogPage = lazy(() => import('./features/catalog/pages/hardware-catalog-page'));
 const ServiceCatalogPage = lazy(() => import('./features/catalog/pages/service-catalog-page'));
 const ChecklistPage = lazy(() => import('./features/setup-guide/pages/checklist-page'));
+const HomelabGuidePage = lazy(() => import('./features/guides/pages/homelab-guide-page'));
 const ConfigGeneratorPage = lazy(() => import('./features/builder/pages/config-generator-page'));
 const ProfilePage = lazy(() => import('./features/auth/pages/profile-page'));
 const DonatePage = lazy(() => import('./features/donate/pages/donate-page'));
@@ -143,6 +144,7 @@ function AppContent() {
             {/* Public catalog routes */}
             <Route path="/hardware" element={<HardwareCatalogPage />} />
             <Route path="/services" element={<ServiceCatalogPage />} />
+            <Route path="/how-to-build-a-homelab" element={<HomelabGuidePage />} />
             <Route path="/privacy" element={<PrivacyPolicyPage />} />
             <Route path="/terms" element={<TermsOfServicePage />} />
           </Routes>

@@ -22,7 +22,15 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
             // Token expired or invalid
             localStorage.removeItem('auth_token');
             // Only redirect if we're not on a public page or checking /me
-            const publicPaths = ['/', '/login', '/privacy', '/terms', '/hardware', '/services'];
+            const publicPaths = [
+                '/',
+                '/login',
+                '/privacy',
+                '/terms',
+                '/hardware',
+                '/services',
+                '/how-to-build-a-homelab',
+            ];
             const isPublicPage = publicPaths.includes(window.location.pathname);
             if (!isPublicPage && path !== '/auth/me') {
                 window.location.href = '/';
