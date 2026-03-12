@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/Butterski/homelab-builder/backend/internal/config"
 	"github.com/Butterski/homelab-builder/backend/internal/handlers"
@@ -17,19 +18,35 @@ func main() {
 	log.Println("Starting HLBuilder Backend...")
 	cfg := config.Load()
 
-	db, err := database.Connect(cfg)
+	db, err := connectDatabaseWithRetry(cfg, 10, 3*time.Second)
 	if err != nil {
-		log.Printf("Warning: Failed to connect to database: %v", err)
-		log.Println("Starting server without database connection...")
-		router := setupRouter(cfg, nil)
-		startServer(router, cfg.ServerPort)
-		return
+		log.Fatalf("Failed to connect to database after retries: %v", err)
 	}
 
 	log.Println("Database connected. Setting up routes...")
 
 	router := setupRouter(cfg, db)
 	startServer(router, cfg.ServerPort)
+}
+
+func connectDatabaseWithRetry(cfg *config.Config, maxAttempts int, delay time.Duration) (*gorm.DB, error) {
+	var lastErr error
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		db, err := database.Connect(cfg)
+		if err == nil {
+			return db, nil
+		}
+
+		lastErr = err
+		log.Printf("Database connection attempt %d/%d failed: %v", attempt, maxAttempts, err)
+
+		if attempt < maxAttempts {
+			time.Sleep(delay)
+		}
+	}
+
+	return nil, lastErr
 }
 
 func startServer(router *gin.Engine, port string) {
