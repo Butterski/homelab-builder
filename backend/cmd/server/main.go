@@ -123,8 +123,8 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 			// Apply rate limiting to login
 			auth.POST("/google", middleware.RateLimitMiddleware(rateLimiter), authHandler.GoogleLogin)
 
-			// Backdoor for local development - disable in production
-			if gin.Mode() != gin.ReleaseMode {
+			// Backdoor for local development or self-hosted auth-disabled mode.
+			if gin.Mode() != gin.ReleaseMode || cfg.AuthDisabled {
 				auth.POST("/dev", authHandler.DevLogin)
 			}
 			auth.GET("/me", middleware.AuthMiddleware(authService, cfg.AuthDisabled), authHandler.GetCurrentUser)

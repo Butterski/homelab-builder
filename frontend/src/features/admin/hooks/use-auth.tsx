@@ -47,8 +47,17 @@ export function useAuth() {
             setUser(data.user);
             window.location.reload();
         } catch (error) {
-            console.error("Dev Login failed", error);
-            toast.error("Dev Login failed. Please try again.");
+            // Fallback for self-hosted auth-disabled mode where /auth/dev may be unavailable.
+            try {
+                const localUser = await api.get<User>('/auth/me');
+                setUser(localUser);
+                window.location.reload();
+                return;
+            } catch (fallbackError) {
+                console.error("Dev Login failed", error);
+                console.error("Self-host fallback (/auth/me) failed", fallbackError);
+                toast.error("Local login failed. Check backend auth mode configuration.");
+            }
         } finally {
             setLoading(false);
         }
