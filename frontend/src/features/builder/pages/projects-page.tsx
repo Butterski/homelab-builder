@@ -41,6 +41,7 @@ import { useBuilderStore } from '../store/builder-store';
 import { formatDistanceToNow } from 'date-fns';
 import { FastStartWizard } from '../components/fast-start-wizard';
 import { generateFastStartPayload } from '../../../lib/templates';
+import { ApiError } from '../../../lib/api';
 
 const parseDetailsObject = (value: unknown) => {
   if (!value) {
@@ -68,6 +69,53 @@ const normalizeNodesForSync = (nodes: any[] = []) =>
       details: parseDetailsObject(component.details),
     })),
   }));
+
+const summarizeInvalidEdges = (invalidEdges: Array<{ source: string; target: string }>) => {
+  if (invalidEdges.length === 0) {
+    return null;
+  }
+
+  const maxExamples = 3;
+  const examples = invalidEdges
+    .slice(0, maxExamples)
+    .map(edge => `${edge.source} -> ${edge.target}`)
+    .join(', ');
+  const extraCount = invalidEdges.length - maxExamples;
+  return extraCount > 0
+    ? `${invalidEdges.length} invalid edge(s) were skipped (${examples}, +${extraCount} more).`
+    : `${invalidEdges.length} invalid edge(s) were skipped (${examples}).`;
+};
+
+const sanitizeImportPayload = (parsed: any) => {
+  const rawNodes = parsed.nodes || parsed.hardwareNodes || [];
+  const normalizedNodes = normalizeNodesForSync(rawNodes);
+  const rawEdges = Array.isArray(parsed.edges) ? parsed.edges : [];
+
+  const nodeIdSet = new Set(normalizedNodes.map(node => node.id));
+  const validEdges: any[] = [];
+  const invalidEdges: Array<{ source: string; target: string }> = [];
+
+  for (const edge of rawEdges) {
+    if (nodeIdSet.has(edge.source) && nodeIdSet.has(edge.target)) {
+      validEdges.push(edge);
+      continue;
+    }
+    invalidEdges.push({
+      source: String(edge.source ?? ''),
+      target: String(edge.target ?? ''),
+    });
+  }
+
+  return {
+    payload: {
+      nodes: normalizedNodes,
+      edges: validEdges,
+      services: parsed.services || [],
+      settings: parsed.settings || {},
+    },
+    warning: summarizeInvalidEdges(invalidEdges),
+  };
+};
 
 export default function ProjectsPage() {
   const navigate = useNavigate();
@@ -101,7 +149,13 @@ export default function ProjectsPage() {
 
   // Import states
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [importData, setImportData] = useState<string | null>(null);
+  const [importPayload, setImportPayload] = useState<{
+    nodes: any[];
+    edges: any[];
+    services: any[];
+    settings: any;
+  } | null>(null);
+  const [importWarning, setImportWarning] = useState<string | null>(null);
 
   const fetchBuilds = async () => {
     try {
@@ -116,7 +170,8 @@ export default function ProjectsPage() {
   };
 
   const handleCreateNew = () => {
-    setImportData(null);
+    setImportPayload(null);
+    setImportWarning(null);
     setNewProjectName('New Project');
     setIsCreateOpen(true);
   };
@@ -137,7 +192,12 @@ export default function ProjectsPage() {
           toast.error('Invalid .homelab.json file');
           return;
         }
-        setImportData(text);
+        const { payload, warning } = sanitizeImportPayload(parsed);
+        setImportPayload(payload);
+        setImportWarning(warning);
+        if (warning) {
+          toast.warning(`Import warning: ${warning}`);
+        }
         let baseName = file.name.replace('.homelab.json', '').replace('.json', '');
         if (!baseName) baseName = 'Imported Project';
         setNewProjectName(baseName);
@@ -152,26 +212,42 @@ export default function ProjectsPage() {
 
   const confirmCreate = async () => {
     try {
-      const name = newProjectName.trim() || (importData ? 'Imported Project' : 'New Project');
-      const parsedData = importData ? JSON.parse(importData) : {};
+      const name = newProjectName.trim() || (importPayload ? 'Imported Project' : 'New Project');
+      const payload = importPayload || { nodes: [], edges: [], services: [], settings: {} };
       const newBuild = await buildApi.create({
         name: name,
         thumbnail: '',
-        nodes: parsedData.nodes || [],
-        edges: parsedData.edges || [],
-        services: parsedData.services || [],
-        settings: parsedData.settings || {},
+        nodes: payload.nodes,
+        edges: payload.edges,
+        services: payload.services,
+        settings: payload.settings,
       });
 
-      loadBuild(newBuild.id, newBuild.name, importData ? JSON.parse(importData) : {});
-      toast.success(importData ? 'Project imported successfully' : 'Project created successfully');
+      const buildForStore = importPayload
+        ? ({
+            ...newBuild,
+            nodes: payload.nodes,
+            edges: payload.edges,
+            settings: payload.settings,
+          } as Build)
+        : newBuild;
+      loadBuild(newBuild.id, newBuild.name, buildForStore);
+      toast.success(importPayload ? 'Project imported successfully' : 'Project created successfully');
+      if (importPayload && importWarning) {
+        toast.warning(`Import completed with warnings: ${importWarning}`);
+      }
       navigate(`/builder/${newBuild.id}`);
     } catch (error) {
       console.error('Failed to create', error);
-      toast.error('Failed to create project');
+      if (error instanceof ApiError && error.message.includes('invalid edge references')) {
+        toast.error('Import failed: wiring references missing nodes. Re-export and retry.');
+      } else {
+        toast.error('Failed to create project');
+      }
     } finally {
       setIsCreateOpen(false);
-      setImportData(null);
+      setImportPayload(null);
+      setImportWarning(null);
     }
   };
 

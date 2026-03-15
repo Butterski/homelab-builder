@@ -3,6 +3,8 @@ package services
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 
 	"github.com/Butterski/homelab-builder/backend/internal/models"
 	"github.com/google/uuid"
@@ -73,6 +75,10 @@ func (s *BuildService) Update(buildID uuid.UUID, userID uuid.UUID, input SyncGra
 }
 
 func (s *BuildService) syncGraph(tx *gorm.DB, buildID uuid.UUID, input SyncGraphInput) error {
+	if err := validateEdgeEndpoints(input.Nodes, input.Edges); err != nil {
+		return err
+	}
+
 	// 1. Delete existing nodes/edges/services (cleanup)
 	if err := tx.Where("build_id = ?", buildID).Delete(&models.Edge{}).Error; err != nil {
 		return err
@@ -215,6 +221,48 @@ func (s *BuildService) syncGraph(tx *gorm.DB, buildID uuid.UUID, input SyncGraph
 	}
 
 	return nil
+}
+
+func validateEdgeEndpoints(nodes []NodeDTO, edges []EdgeDTO) error {
+	nodeIDs := make(map[string]struct{}, len(nodes))
+	for _, node := range nodes {
+		nodeIDs[node.ID] = struct{}{}
+	}
+
+	invalidRefs := make([]string, 0)
+	for _, edge := range edges {
+		_, hasSource := nodeIDs[edge.Source]
+		_, hasTarget := nodeIDs[edge.Target]
+		if hasSource && hasTarget {
+			continue
+		}
+
+		if !hasSource && !hasTarget {
+			invalidRefs = append(invalidRefs, fmt.Sprintf("%s->%s (missing source and target)", edge.Source, edge.Target))
+			continue
+		}
+		if !hasSource {
+			invalidRefs = append(invalidRefs, fmt.Sprintf("%s->%s (missing source)", edge.Source, edge.Target))
+			continue
+		}
+		invalidRefs = append(invalidRefs, fmt.Sprintf("%s->%s (missing target)", edge.Source, edge.Target))
+	}
+
+	if len(invalidRefs) == 0 {
+		return nil
+	}
+
+	maxExamples := 5
+	if len(invalidRefs) < maxExamples {
+		maxExamples = len(invalidRefs)
+	}
+
+	examples := strings.Join(invalidRefs[:maxExamples], "; ")
+	if len(invalidRefs) > maxExamples {
+		examples += fmt.Sprintf("; ... +%d more", len(invalidRefs)-maxExamples)
+	}
+
+	return fmt.Errorf("invalid edge references: %d edge(s) reference missing node(s): %s", len(invalidRefs), examples)
 }
 
 func (s *BuildService) GetByID(buildID uuid.UUID) (*models.Build, error) {

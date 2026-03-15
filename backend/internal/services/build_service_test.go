@@ -128,3 +128,51 @@ func TestBuildService_Delete(t *testing.T) {
 		t.Errorf("expected error fetching deleted build")
 	}
 }
+
+func TestBuildService_Update_InvalidEdgeReferenceRollsBack(t *testing.T) {
+	tx := testTx(t)
+	svc := NewBuildService(tx)
+	user := models.User{Email: uuid.NewString() + "@t.com", Name: "Tester", GoogleID: uuid.NewString()}
+	tx.Create(&user)
+
+	initial, err := svc.Create(user.ID, SyncGraphInput{
+		Name: "Original",
+		Nodes: []NodeDTO{
+			{ID: "router-1", Type: "router", Name: "Router"},
+			{ID: "switch-1", Type: "switch", Name: "Switch"},
+		},
+		Edges: []EdgeDTO{{Source: "router-1", Target: "switch-1", Speed: "1 GbE"}},
+	})
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	_, err = svc.Update(initial.ID, user.ID, SyncGraphInput{
+		Name: "Should Fail",
+		Nodes: []NodeDTO{
+			{ID: "router-1", Type: "router", Name: "Router Updated"},
+		},
+		Edges: []EdgeDTO{{Source: "router-1", Target: "missing-switch", Speed: "10 GbE"}},
+	})
+	if err == nil {
+		t.Fatalf("expected validation error for invalid edge reference")
+	}
+	if !strings.Contains(err.Error(), "invalid edge references") {
+		t.Fatalf("expected invalid edge references error, got: %v", err)
+	}
+
+	reloaded, err := svc.GetByID(initial.ID)
+	if err != nil {
+		t.Fatalf("GetByID failed: %v", err)
+	}
+
+	if reloaded.Name != "Original" {
+		t.Fatalf("expected build name rollback to Original, got %q", reloaded.Name)
+	}
+	if len(reloaded.Nodes) != 2 {
+		t.Fatalf("expected original nodes to remain, got %d", len(reloaded.Nodes))
+	}
+	if len(reloaded.Edges) != 1 {
+		t.Fatalf("expected original edge to remain, got %d", len(reloaded.Edges))
+	}
+}
