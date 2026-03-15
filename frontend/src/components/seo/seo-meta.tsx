@@ -49,7 +49,6 @@ export function SeoMeta({
   structuredData,
 }: SeoMetaProps) {
   useEffect(() => {
-    const previousTitle = document.title;
     const updates: Array<() => void> = [];
 
     document.title = title;
@@ -288,7 +287,6 @@ export function SeoMeta({
     }
 
     return () => {
-      document.title = previousTitle;
       for (let index = updates.length - 1; index >= 0; index -= 1) {
         updates[index]();
       }

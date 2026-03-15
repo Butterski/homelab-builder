@@ -240,6 +240,7 @@ function ComponentChip({ component }: { component: HardwareComponent }) {
 
 // ─── Main node card ────────────────────────────────────────────────────────────
 const CONTAINER_STEP = 10; // mirrors ROLE_ZONE step for compute types
+const POOL_HINT_NODE_TYPES: HardwareType[] = ['server', 'pc', 'minipc', 'sbc', 'nas'];
 
 export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
   const nodeData = data as unknown as HardwareNodeData;
@@ -338,7 +339,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
 
   // Container pool range hint
   const containerRangeHint =
-    isCompute && nodeData.ip
+    isCompute && nodeData.ip && POOL_HINT_NODE_TYPES.includes(nodeData.type)
       ? (() => {
           const parts = nodeData.ip.split('.');
           const last = parseInt(parts[3] ?? '0', 10);
@@ -425,7 +426,8 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
           hasComponents ||
           hasVMs ||
           nodeData.details?.cpu ||
-          nodeData.details?.ram) && (
+          nodeData.details?.ram ||
+          (isNetworkNode(nodeData.type) && !!nodeData.ip)) && (
           <div className="p-2.5 bg-card space-y-1.5">
             {/* Model subtitle */}
             {nodeData.details?.model && (
