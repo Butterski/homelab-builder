@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useBuilderStore } from '../../builder/store/builder-store';
+import { SeoMeta } from '../../../components/seo/seo-meta';
 import { Card, CardContent, CardTitle, CardDescription } from '../../../components/ui/card';
 import { Badge } from '../../../components/ui/badge';
 import { Button } from '../../../components/ui/button';
@@ -194,7 +195,7 @@ export default function ChecklistPage() {
     }
 
     return s;
-  }, [hasHardware, hasServer, hasRouter, hasSwitch, hasDockerServices, hasPihole, hasProxy]);
+  }, [hasServer, hasRouter, hasSwitch, hasDockerServices, hasPihole, hasProxy]);
 
   const toggleStep = (id: string) => {
     setExpandedSteps(prev => {
@@ -210,20 +211,32 @@ export default function ChecklistPage() {
 
   if (!hasHardware) {
     return (
-      <div className="flex flex-col items-center justify-center p-12 text-center border rounded-lg bg-muted/20 min-h-100">
-        <ClipboardList className="h-16 w-16 mb-6 text-muted-foreground/50" />
-        <h3 className="text-xl font-bold mb-2">Build your lab first</h3>
-        <p className="text-muted-foreground mb-6 max-w-md">
-          Your setup instructions will be dynamically generated here based on the hardware and
-          services you add in the Visual Builder.
-        </p>
-        <Button onClick={() => (window.location.href = '/builder')}>Go to Visual Builder</Button>
-      </div>
+      <>
+        <SeoMeta
+          title="Custom Setup Guide | HLBuilder"
+          description="Step-by-step setup checklist generated from your homelab design in HLBuilder."
+          path="/checklist"
+        />
+        <div className="flex flex-col items-center justify-center p-12 text-center border rounded-lg bg-muted/20 min-h-100">
+          <ClipboardList className="h-16 w-16 mb-6 text-muted-foreground/50" />
+          <h3 className="text-xl font-bold mb-2">Build your lab first</h3>
+          <p className="text-muted-foreground mb-6 max-w-md">
+            Your setup instructions will be dynamically generated here based on the hardware and
+            services you add in the Visual Builder.
+          </p>
+          <Button onClick={() => (window.location.href = '/builder')}>Go to Visual Builder</Button>
+        </div>
+      </>
     );
   }
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 py-8 px-6">
+      <SeoMeta
+        title="Custom Setup Guide | HLBuilder"
+        description="Step-by-step setup checklist generated from your homelab design in HLBuilder."
+        path="/checklist"
+      />
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div className="space-y-2">
           <h1 className="text-3xl font-bold tracking-tight">Custom Setup Guide</h1>

@@ -5,6 +5,8 @@ import ProjectsPage from '../projects-page'
 import { BrowserRouter } from 'react-router-dom'
 import { buildApi } from '../../api/builds'
 import { useAuth } from '../../../admin/hooks/use-auth'
+import { toast } from 'sonner'
+import { ApiError } from '../../../../lib/api'
 
 // Mock dependencies
 vi.mock('../../../admin/hooks/use-auth', () => ({
@@ -29,6 +31,14 @@ vi.mock('../../../../components/ui/dropdown-menu', () => ({
     DropdownMenuTrigger: ({ children }: any) => <div>{children}</div>,
     DropdownMenuContent: ({ children }: any) => <div>{children}</div>,
     DropdownMenuItem: ({ children, onClick }: any) => <button onClick={(e) => { e.stopPropagation(); if (onClick) onClick(e); }}>{children}</button>
+}))
+
+vi.mock('sonner', () => ({
+    toast: {
+        success: vi.fn(),
+        error: vi.fn(),
+        warning: vi.fn(),
+    },
 }))
 
 vi.mock('../store/builder-store', () => ({
@@ -108,5 +118,99 @@ describe('ProjectsPage Export Functionality', () => {
         expect(payload.edges).toHaveLength(1)
         expect(payload).toHaveProperty('boughtItems')
         expect(payload).toHaveProperty('showBought')
+    })
+
+    it('filters invalid imported edges and warns while allowing partial import', async () => {
+        ;(buildApi.list as any).mockResolvedValue([])
+        ;(buildApi.create as any).mockResolvedValue({ id: 'new-build', name: 'Imported Build' })
+
+        const { container } = render(
+            <BrowserRouter>
+                <ProjectsPage />
+            </BrowserRouter>
+        )
+
+        const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+        expect(fileInput).toBeTruthy()
+
+        const readAsTextSpy = vi
+            .spyOn(FileReader.prototype, 'readAsText')
+            .mockImplementation(function () {
+                const payload = JSON.stringify({
+                    nodes: [
+                        { id: 'router-1', type: 'router', name: 'Router' },
+                        { id: 'pc-1', type: 'pc', name: 'PC' },
+                    ],
+                    edges: [
+                        { source: 'router-1', target: 'pc-1', speed: '1 GbE' },
+                        { source: 'router-1', target: 'missing-node', speed: '1 GbE' },
+                    ],
+                })
+                this.onload?.({ target: { result: payload } } as any)
+            })
+
+        const importFile = new File(['ignored'], 'import.homelab.json', { type: 'application/json' })
+        fireEvent.change(fileInput, { target: { files: [importFile] } })
+
+        await waitFor(() => {
+            expect(screen.getByText('Create New Project')).toBeInTheDocument()
+        })
+
+        fireEvent.click(screen.getAllByText('Create Project').at(-1) as HTMLElement)
+
+        await waitFor(() => {
+            expect(buildApi.create).toHaveBeenCalled()
+        })
+
+        const createArgs = (buildApi.create as any).mock.calls[0][0]
+        expect(createArgs.nodes).toHaveLength(2)
+        expect(createArgs.edges).toHaveLength(1)
+        expect(createArgs.edges[0].target).toBe('pc-1')
+        expect(toast.warning).toHaveBeenCalled()
+
+        readAsTextSpy.mockRestore()
+    })
+
+    it('shows a specific error when backend rejects invalid edge references', async () => {
+        ;(buildApi.list as any).mockResolvedValue([])
+        ;(buildApi.create as any).mockRejectedValue(
+            new ApiError(400, 'UNKNOWN', 'invalid edge references: 1 edge(s) reference missing node(s)')
+        )
+
+        const { container } = render(
+            <BrowserRouter>
+                <ProjectsPage />
+            </BrowserRouter>
+        )
+
+        const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+
+        const readAsTextSpy = vi
+            .spyOn(FileReader.prototype, 'readAsText')
+            .mockImplementation(function () {
+                const payload = JSON.stringify({
+                    nodes: [{ id: 'router-1', type: 'router', name: 'Router' }],
+                    edges: [],
+                })
+                this.onload?.({ target: { result: payload } } as any)
+            })
+
+        fireEvent.change(fileInput, {
+            target: { files: [new File(['ignored'], 'import.homelab.json', { type: 'application/json' })] },
+        })
+
+        await waitFor(() => {
+            expect(screen.getByText('Create New Project')).toBeInTheDocument()
+        })
+
+        fireEvent.click(screen.getAllByText('Create Project').at(-1) as HTMLElement)
+
+        await waitFor(() => {
+            expect(toast.error).toHaveBeenCalledWith(
+                'Import failed: wiring references missing nodes. Re-export and retry.'
+            )
+        })
+
+        readAsTextSpy.mockRestore()
     })
 })

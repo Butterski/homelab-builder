@@ -230,6 +230,44 @@ describe('removeHardware', () => {
     })
 })
 
+describe('getBuildData edge sanitization', () => {
+    beforeEach(() => resetStoreWithBuildId())
+
+    it('filters out edges that reference missing node IDs', () => {
+        useBuilderStore.setState({
+            nodes: [
+                {
+                    id: 'router-1',
+                    type: 'hardware',
+                    position: { x: 0, y: 0 },
+                    data: { type: 'router', name: 'Router' },
+                },
+            ],
+            edges: [
+                {
+                    id: 'valid-edge',
+                    source: 'router-1',
+                    target: 'router-1',
+                    type: 'custom',
+                    data: { speed: '1 GbE', subnet: '' },
+                },
+                {
+                    id: 'dangling-edge',
+                    source: 'router-1',
+                    target: 'missing-node',
+                    type: 'custom',
+                    data: { speed: '10 GbE', subnet: 'VLAN 10' },
+                },
+            ] as any,
+        })
+
+        const payload = useBuilderStore.getState().getBuildData()
+        expect(payload.edges).toHaveLength(1)
+        expect(payload.edges[0].source).toBe('router-1')
+        expect(payload.edges[0].target).toBe('router-1')
+    })
+})
+
 describe('addVM / removeVM', () => {
     beforeEach(() => resetStoreWithBuildId())
     afterEach(() => vi.clearAllMocks())

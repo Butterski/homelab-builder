@@ -736,9 +736,14 @@ export const useBuilderStore = create<BuilderState>()(
           subnet: (e.data?.subnet as string) || '',
         }));
 
+        const validNodeIDs = new Set(nodesPayload.map(n => n.id));
+        const sanitizedEdgesPayload = edgesPayload.filter(
+          e => validNodeIDs.has(e.source) && validNodeIDs.has(e.target),
+        );
+
         return {
           nodes: nodesPayload,
-          edges: edgesPayload,
+          edges: sanitizedEdgesPayload,
           services: [],
           settings: {
             boughtItems: state.boughtItems,
