@@ -106,12 +106,18 @@ const sanitizeImportPayload = (parsed: any) => {
     });
   }
 
+  const settings = {
+    ...(parsed.settings || {}),
+    ...(parsed.boughtItems !== undefined ? { boughtItems: parsed.boughtItems } : {}),
+    ...(parsed.showBought !== undefined ? { showBought: parsed.showBought } : {}),
+  };
+
   return {
     payload: {
       nodes: normalizedNodes,
       edges: validEdges,
       services: parsed.services || [],
-      settings: parsed.settings || {},
+      settings,
     },
     warning: summarizeInvalidEdges(invalidEdges),
   };
