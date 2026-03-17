@@ -15,6 +15,8 @@ type BuildService struct {
 	db *gorm.DB
 }
 
+var ErrInvalidEdgeReferences = errors.New("invalid edge references")
+
 func NewBuildService(db *gorm.DB) *BuildService {
 	return &BuildService{db: db}
 }
@@ -262,7 +264,7 @@ func validateEdgeEndpoints(nodes []NodeDTO, edges []EdgeDTO) error {
 		examples += fmt.Sprintf("; ... +%d more", len(invalidRefs)-maxExamples)
 	}
 
-	return fmt.Errorf("invalid edge references: %d edge(s) reference missing node(s): %s", len(invalidRefs), examples)
+	return fmt.Errorf("%w: %d edge(s) reference missing node(s): %s", ErrInvalidEdgeReferences, len(invalidRefs), examples)
 }
 
 func (s *BuildService) GetByID(buildID uuid.UUID) (*models.Build, error) {
