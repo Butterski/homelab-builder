@@ -96,13 +96,24 @@ const sanitizeImportPayload = (parsed: any) => {
   const invalidEdges: Array<{ source: string; target: string }> = [];
 
   for (const edge of rawEdges) {
-    if (nodeIdSet.has(edge.source) && nodeIdSet.has(edge.target)) {
-      validEdges.push(edge);
+    // Support both frontend-style ({ source, target }) and backend-style
+    // ({ source_node_id, target_node_id }) edge shapes.
+    const source = edge.source ?? edge.source_node_id;
+    const target = edge.target ?? edge.target_node_id;
+
+    if (nodeIdSet.has(source) && nodeIdSet.has(target)) {
+      // Ensure returned edges always have canonical source/target fields.
+      validEdges.push({
+        ...edge,
+        source,
+        target,
+      });
       continue;
     }
+
     invalidEdges.push({
-      source: String(edge.source ?? ''),
-      target: String(edge.target ?? ''),
+      source: String(source ?? ''),
+      target: String(target ?? ''),
     });
   }
 
