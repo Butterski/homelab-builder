@@ -177,12 +177,14 @@ export function CustomEdge({
       <path
         d={finalEdgePath}
         fill="none"
-        strokeOpacity={0}
-        strokeWidth={20}
+        stroke="transparent"
+        strokeWidth={24}
+        pointerEvents="stroke"
         className="cursor-pointer"
       />
       {/* Base tracking line */}
       <BaseEdge
+        id={id}
         path={finalEdgePath}
         style={{
           stroke: '#3F3F46',
@@ -191,6 +193,7 @@ export function CustomEdge({
       />
       {/* Animated Dash overlay */}
       <BaseEdge
+        id={id}
         path={finalEdgePath}
         markerEnd={markerEnd}
         className="react-flow__edge-path"
