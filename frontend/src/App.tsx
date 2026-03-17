@@ -32,7 +32,7 @@ import { useLocation } from 'react-router-dom';
 import { useAuth } from './features/admin/hooks/use-auth';
 import { useTheme } from './components/theme-provider';
 import { useBuilderStore } from './features/builder/store/builder-store';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { themeSettingsFromPreferences } from './lib/theme-registry';
 
 const LoginPage = lazy(() => import('./features/auth/pages/login-page'));
@@ -42,13 +42,20 @@ function AppContent() {
   const { user, getThemeSettings } = useAuth();
   const { replaceThemeSettings } = useTheme();
   const setEdgePreferences = useBuilderStore(s => s.setEdgePreferences);
+  const loadedPrefsFor = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
     if (!user) {
+      loadedPrefsFor.current = null;
       return;
     }
+
+    if (loadedPrefsFor.current === user.id) {
+      return;
+    }
+    loadedPrefsFor.current = user.id;
 
     if (user.preferences?.edgePreferences) {
       setEdgePreferences(user.preferences.edgePreferences);
