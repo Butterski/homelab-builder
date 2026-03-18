@@ -283,7 +283,7 @@ function Flow() {
     return () => cancelAnimationFrame(r1);
   }, [hardwareNodes, updateNodeInternals]);
 
-  const handlePrefChange = (key: string, val: string) => {
+  const handlePrefChange = (key: string, val: any) => {
     setEdgePreferences({ [key]: val });
     // @ts-ignore - useAuth user preferences object might be untyped in this strict context
     if (updatePreferences)
@@ -499,7 +499,7 @@ function Flow() {
       }
 
       // Cycle detection — BFS through the existing undirected graph (skip for UPS).
-      if (!isUPS) {
+      if (!isUPS && !useBuilderStore.getState().edgePreferences.ignoreNetworkLoops) {
         const adj = new Map<string, Set<string>>();
         for (const e of currentEdges) {
           if (!adj.has(e.source)) adj.set(e.source, new Set());
@@ -700,6 +700,24 @@ function Flow() {
                   <DropdownMenuRadioItem value="step">Step (Orthogonal)</DropdownMenuRadioItem>
                   <DropdownMenuRadioItem value="straight">Straight (Linear)</DropdownMenuRadioItem>
                 </DropdownMenuRadioGroup>
+
+                <DropdownMenuSeparator />
+
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handlePrefChange('ignoreNetworkLoops', !edgePreferences.ignoreNetworkLoops as any);
+                  }}
+                  className="flex items-center justify-between cursor-pointer"
+                >
+                  <span>Ignore Network Loops</span>
+                  <input
+                    type="checkbox"
+                    checked={edgePreferences.ignoreNetworkLoops}
+                    readOnly
+                    className="pointer-events-none"
+                  />
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </Panel>
