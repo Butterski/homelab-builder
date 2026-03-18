@@ -260,7 +260,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
   // React flow handles dynamically
   const updateNodeInternals = useUpdateNodeInternals();
   const numPorts = nodeHasDynamicPorts(nodeData.type)
-      ? Math.max(1, getNodePortCount(nodeData.type, nodeData.details?.ports) - 1)
+      ? Math.max(1, getNodePortCount(nodeData.type, nodeData.details?.ports))
       : 1;
 
   // Resource calculations

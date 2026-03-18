@@ -246,7 +246,7 @@ function Flow() {
   useEffect(() => {
     hardwareNodes.forEach(node => {
       if (!nodeHasDynamicPorts(node.type)) return;
-      const numPorts = Math.max(1, getNodePortCount(node.type, node.details?.ports) - 1);
+      const numPorts = Math.max(1, getNodePortCount(node.type, node.details?.ports));
       const prev = prevPortsRef.current.get(node.id);
       if (prev !== undefined && prev !== numPorts) {
         const orphaned = edges.filter(e => {
