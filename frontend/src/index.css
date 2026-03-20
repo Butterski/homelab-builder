@@ -231,6 +231,84 @@
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--node-accent, #fafafa) 15%, transparent);
 }
 
+/* ─── Demo Preview ─────────────────────────────────────────────────────────── */
+
+@keyframes demo-border-spin {
+  0% { --demo-angle: 0deg; }
+  100% { --demo-angle: 360deg; }
+}
+
+@keyframes demo-float {
+  0%, 100% { transform: perspective(1200px) rotateX(2deg) translateY(0); }
+  50% { transform: perspective(1200px) rotateX(2deg) translateY(-6px); }
+}
+
+@property --demo-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+.demo-preview-wrapper {
+  position: relative;
+  width: 100%;
+  max-width: 56rem;
+  aspect-ratio: 16 / 10;
+  border-radius: var(--radius-xl);
+  animation: demo-float 6s ease-in-out infinite;
+  transition: transform 0.4s ease;
+}
+
+.demo-preview-wrapper:hover {
+  animation-play-state: paused;
+  transform: perspective(1200px) rotateX(1deg) scale(1.01);
+}
+
+.demo-glow-border {
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background: conic-gradient(
+    from var(--demo-angle),
+    #6366f1,
+    #8b5cf6,
+    #a855f7,
+    #ec4899,
+    #f43f5e,
+    #f97316,
+    #eab308,
+    #22c55e,
+    #06b6d4,
+    #3b82f6,
+    #6366f1
+  );
+  animation: demo-border-spin 6s linear infinite;
+  opacity: 0.6;
+  filter: blur(6px);
+  z-index: 0;
+  transition: opacity 0.4s ease;
+}
+
+.demo-preview-wrapper:hover .demo-glow-border {
+  opacity: 0.9;
+}
+
+.demo-preview-card {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  overflow: hidden;
+  background: var(--card);
+  border: 1px solid var(--border);
+}
+
+/* Hide ReactFlow attribution in demo */
+.demo-preview-card .react-flow__attribution {
+  display: none !important;
+}
+
 /* ─── ReactFlow Controls dark mode ─────────────────────────────────────────── */
 
 .dark .react-flow__controls {

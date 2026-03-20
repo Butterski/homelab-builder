@@ -1,10 +1,14 @@
 import { GoogleLoginButton } from "../../../components/auth/google-login-button"
-import { Server, ShoppingCart, CheckSquare, Globe, Heart, BookOpen } from "lucide-react"
+import { Server, ShoppingCart, CheckSquare, Globe, Heart, BookOpen, Eye, Sparkles } from "lucide-react"
 import { Link } from "react-router-dom"
 import { AnimatedLogo } from "../../../components/ui/animated-logo"
 import { Github } from "../../../components/icons/github"
 import { Discord } from "../../../components/icons/discord"
 import { BuyMeACoffee } from "../../../components/icons/buymeacoffee"
+import { lazy, Suspense } from "react"
+
+const BuilderDemoPreview = lazy(() => import("../../builder/components/builder-demo-preview").then(m => ({ default: m.BuilderDemoPreview })))
+
 
 export default function LoginPage() {
     return (
@@ -57,6 +61,33 @@ export default function LoginPage() {
                     </div>
                     <p className="text-sm text-muted-foreground">Read a public guide on planning hardware, networking, and using HLBuilder effectively.</p>
                 </Link>
+            </div>
+
+            {/* ── Demo Showcase ────────────────────────────────── */}
+            <div className="mt-20 flex flex-col items-center gap-4 w-full max-w-5xl animate-fade-in-up" style={{ animationDelay: '200ms' }}>
+                <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+                    <Eye className="h-4 w-4" />
+                    <span>See It In Action</span>
+                    <Sparkles className="h-4 w-4" />
+                </div>
+                <p className="text-sm text-muted-foreground/70 mb-2">
+                    A preview of the drag‑and‑drop visual builder you get after signing in.
+                </p>
+
+                <Suspense
+                    fallback={
+                        <div className="demo-preview-wrapper">
+                            <div className="demo-glow-border" />
+                            <div className="demo-preview-card flex items-center justify-center">
+                                <span className="text-sm text-muted-foreground animate-pulse">Loading preview…</span>
+                            </div>
+                        </div>
+                    }
+                >
+                    <BuilderDemoPreview />
+                </Suspense>
+
+                <p className="text-xs text-muted-foreground/50 mt-1">Sign in above to start building your own</p>
             </div>
 
             <div className="mt-12 flex items-center justify-center gap-5">
