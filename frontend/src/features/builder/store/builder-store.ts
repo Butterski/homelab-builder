@@ -79,6 +79,7 @@ interface BuilderState {
     routingEngine: 'smart' | 'direct';
     connectionStyle: 'floating' | 'strict';
     lineStyle: 'bezier' | 'step' | 'straight';
+    ignoreNetworkLoops: boolean;
   };
   setEdgePreferences: (prefs: Partial<BuilderState['edgePreferences']>) => void;
 
@@ -127,6 +128,7 @@ export const useBuilderStore = create<BuilderState>()(
         routingEngine: 'direct',
         connectionStyle: 'strict',
         lineStyle: 'step',
+        ignoreNetworkLoops: false,
       },
       validationIssues: [],
       availableServices: [],
