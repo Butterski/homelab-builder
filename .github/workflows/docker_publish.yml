@@ -67,13 +67,11 @@ jobs:
         with:
           images: ${{ env.IMAGE_PREFIX }}-${{ matrix.image_suffix }}
           tags: |
-            # Tag pushes to master as :latest
             type=raw,value=latest,enable={{is_default_branch}}
-            # Tag semver releases as :v1.2.3, :v1.2, :v1
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
-            # Tag every commit with its short SHA
             type=sha,prefix=sha-
 
       - name: Build and push ${{ matrix.service }} image
