@@ -22,6 +22,7 @@ import { canNodeHostVMs, nodeHasCPU, nodeHasDynamicPorts, nodeHasRAM, nodeHasSto
 import { getVmResourceUsage } from '../lib/resource-usage';
 import { getNodePortCount, parsePortCount } from '../lib/port-count';
 import { DEFAULT_DEVICE_U } from './rack-node';
+import { useHardware } from '../../catalog/api/use-hardware';
 
 const IP_REGEX =
   /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
@@ -53,8 +54,63 @@ export function NodePropertiesPanel() {
 
   const [errors, setErrors] = useState<{ ip?: string; mask?: string; gateway?: string }>({});
   const [netOpen, setNetOpen] = useState(false);
+  const [modelSearchOpen, setModelSearchOpen] = useState(false);
 
   const selectedNode = hardwareNodes.find(n => n.id === selectedNodeId);
+
+  const { data: hardwareResponse } = useHardware(
+    selectedNode ? { category: selectedNode.type, limit: 100 } : {}
+  );
+  
+  const parseHardwareSpecString = (spec: Record<string, any>) => {
+    let cpu = undefined;
+    if (spec.cpu) {
+      const cpuStr = String(spec.cpu).toLowerCase();
+      const matchCoreNum = cpuStr.match(/(\d+)\s*-core/);
+      if (matchCoreNum) cpu = parseInt(matchCoreNum[1], 10);
+      else if (cpuStr.includes('quad-core')) cpu = 4;
+      else if (cpuStr.includes('dual-core')) cpu = 2;
+      else if (cpuStr.includes('octa-core') || cpuStr.includes('8-core')) cpu = 8;
+      const multiMatch = cpuStr.match(/^(\d+)x/);
+      if (multiMatch && cpu) {
+        cpu *= parseInt(multiMatch[1], 10);
+      }
+    }
+  
+    let ramGB = undefined;
+    if (spec.ram) {
+      const ramStr = String(spec.ram).toUpperCase();
+      const gbMatch = ramStr.match(/(\d+(?:\.\d+)?)\s*GB/);
+      const mbMatch = ramStr.match(/(\d+)\s*MB/);
+      if (gbMatch) ramGB = parseFloat(gbMatch[1]);
+      else if (mbMatch) ramGB = parseInt(mbMatch[1], 10) / 1024;
+    }
+  
+    let storageGB = undefined;
+    if (spec.storage || spec.capacity) {
+      const storageStr = String(spec.storage || spec.capacity).toUpperCase();
+      const gbMatch = storageStr.match(/(\d+(?:\.\d+)?)\s*GB/);
+      const tbMatch = storageStr.match(/(\d+(?:\.\d+)?)\s*TB/);
+      
+      let base = 0;
+      if (gbMatch) base = parseFloat(gbMatch[1]);
+      else if (tbMatch) base = parseFloat(tbMatch[1]) * 1024;
+      
+      const multiMatch = storageStr.match(/^(\d+)X/);
+      if (multiMatch && base) base *= parseInt(multiMatch[1], 10);
+      if (base > 0) storageGB = base;
+    }
+  
+    let rackUnits = undefined;
+    if (spec.form_factor || spec.units) {
+      const ffStr = String(spec.form_factor || spec.units).toLowerCase();
+      const ruMatch = ffStr.match(/(\d+)u\s*rack/);
+      if (ruMatch) rackUnits = parseInt(ruMatch[1], 10);
+      else if (spec.units) rackUnits = parseInt(String(spec.units), 10); 
+    }
+  
+    return { cpu, ram: ramGB, storage: storageGB, rackUnits };
+  };
 
   const validate = () => {
     const newErrors: typeof errors = {};
@@ -550,17 +606,88 @@ export function NodePropertiesPanel() {
               />
             </div>
           )}
-          <div className="space-y-1">
+          <div className="space-y-1 relative">
             <Label htmlFor="model" className="text-xs text-muted-foreground">
               Model
             </Label>
             <Input
               id="model"
               value={model}
-              onChange={e => setModel(e.target.value)}
+              onChange={e => {
+                setModel(e.target.value);
+                setModelSearchOpen(true);
+              }}
+              onFocus={() => setModelSearchOpen(true)}
+              onBlur={() => setTimeout(() => setModelSearchOpen(false), 200)}
               className="h-8 text-xs"
               placeholder="e.g. Raspberry Pi 4"
+              autoComplete="off"
             />
+            {modelSearchOpen && hardwareResponse?.data && (
+              <div className="absolute top-full left-0 right-0 z-50 mt-1 max-h-48 overflow-auto rounded-md border bg-popover text-popover-foreground shadow-md outline-none animate-in fade-in zoom-in-95">
+                {hardwareResponse.data.filter(
+                  p =>
+                    (p.brand + ' ' + p.model).toLowerCase().includes(model.toLowerCase()) &&
+                    (p.brand + ' ' + p.model).toLowerCase() !== model.toLowerCase()
+                ).length > 0 ? (
+                  <ul className="py-1 text-xs">
+                    {hardwareResponse.data.filter(
+                      p =>
+                        (p.brand + ' ' + p.model).toLowerCase().includes(model.toLowerCase()) &&
+                        (p.brand + ' ' + p.model).toLowerCase() !== model.toLowerCase()
+                    ).map(item => (
+                      <li
+                        key={item.id}
+                        className="relative flex w-full cursor-pointer select-none flex-col rounded-sm py-1.5 px-2 hover:bg-accent hover:text-accent-foreground outline-none"
+                        onClick={() => {
+                          const fullName = `${item.brand} ${item.model}`;
+                          setModel(fullName);
+                          
+                          const parsed = parseHardwareSpecString(item.spec);
+                          
+                          if (parsed.cpu !== undefined) setCpu(String(parsed.cpu));
+                          if (parsed.ram !== undefined) {
+                            if (parsed.ram >= 1000 && parsed.ram % 1000 === 0) {
+                              setRam(String(parsed.ram / 1000));
+                              setRamUnit('TB');
+                            } else {
+                              setRam(String(parsed.ram));
+                              setRamUnit('GB');
+                            }
+                          }
+                          if (parsed.storage !== undefined) {
+                            if (parsed.storage >= 1000 && parsed.storage % 1000 === 0) {
+                              setStorage(String(parsed.storage / 1000));
+                              setStorageUnit('TB');
+                            } else {
+                              setStorage(String(parsed.storage));
+                              setStorageUnit('GB');
+                            }
+                          }
+                          if (item.spec.ports !== undefined) {
+                            const pCount = parsePortCount(item.spec.ports);
+                            if (pCount !== undefined) setPorts(String(pCount));
+                          }
+                          if (parsed.rackUnits !== undefined && selectedNode.parent_id) {
+                            updateHardware(selectedNode.id, {
+                              details: { ...selectedNode.details, rack_units: parsed.rackUnits },
+                            });
+                          }
+                          setModelSearchOpen(false);
+                        }}
+                      >
+                        <span className="font-semibold">{item.brand} {item.model}</span>
+                        {item.price_est > 0 && <span className="opacity-70 text-[9px]">Est. ~{item.price_est}{item.currency}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  model.length > 0 && hardwareResponse.data.length > 0 && (
+                     <div className="py-2 px-2 text-xs text-muted-foreground text-center">No catalog matches</div>
+                  )
+                )}
+              </div>
+            )}
           </div>
 
           {nodeHasCPU(selectedNode.type) && (
