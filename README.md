@@ -6,6 +6,8 @@
 
 ![alt text](docs/image.png)
 
+![alt text](docs/homelabbuilder.gif)
+
 HLBuilder is a comprehensive, interactive web application designed to simplify the process of planning and architecting home laboratory infrastructure. It provides users with a visual interface to design network topologies, receive intelligent hardware recommendations based on their self-hosting needs, and generate actionable shopping lists.
 
 ## 🚀 Key Features
