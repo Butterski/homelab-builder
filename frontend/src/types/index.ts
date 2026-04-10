@@ -164,6 +164,7 @@ export interface VirtualMachine {
   name: string;
   type: VMType;
   ip?: string;
+  mac_address?: string;
   os?: string; // e.g. "Ubuntu 22.04", "Alpine Linux"
   cpu_cores?: number;
   ram_mb?: number;
@@ -182,6 +183,7 @@ export interface HardwareNode {
   type: HardwareType;
   name: string;
   ip?: string;
+  mac_address?: string;
   subnet_mask?: string;
   gateway?: string;
   x: number;

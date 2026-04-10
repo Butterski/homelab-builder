@@ -175,6 +175,7 @@ type Node struct {
 	X         float64         `gorm:"not null;default:0" json:"x"`
 	Y         float64         `gorm:"not null;default:0" json:"y"`
 	IP        string          `gorm:"default:''" json:"ip"`
+	MacAddress string         `gorm:"default:''" json:"mac_address"`
 	Details   json.RawMessage `gorm:"type:jsonb;default:'{}'" json:"details"` // Hardware specs
 	ParentID  *uuid.UUID      `gorm:"type:uuid" json:"parent_id,omitempty"`   // For nested components
 	CreatedAt time.Time       `json:"created_at"`
@@ -219,6 +220,7 @@ type VirtualMachine struct {
 	Name      string    `gorm:"not null" json:"name"`
 	Type      string    `gorm:"not null" json:"type"` // vm, container, lxc
 	IP        string    `gorm:"default:''" json:"ip"`
+	MacAddress string   `gorm:"default:''" json:"mac_address"`
 	OS        string    `gorm:"default:''" json:"os"`
 	CPUCores  float64   `gorm:"default:0" json:"cpu_cores"`
 	RAMMB     int       `gorm:"default:0" json:"ram_mb"`

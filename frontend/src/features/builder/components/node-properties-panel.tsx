@@ -39,6 +39,7 @@ export function NodePropertiesPanel() {
 
   const [name, setName] = useState('');
   const [ip, setIp] = useState('');
+  const [macAddress, setMacAddress] = useState('');
   const [mask, setMask] = useState('');
   const [gateway, setGateway] = useState('');
   const [dhcpEnabled, setDhcpEnabled] = useState(false);
@@ -52,7 +53,7 @@ export function NodePropertiesPanel() {
   const [ramUnit, setRamUnit] = useState<'GB' | 'TB'>('GB');
   const [storageUnit, setStorageUnit] = useState<'GB' | 'TB'>('GB');
 
-  const [errors, setErrors] = useState<{ ip?: string; mask?: string; gateway?: string }>({});
+  const [errors, setErrors] = useState<{ ip?: string; mask?: string; gateway?: string; macAddress?: string }>({});
   const [netOpen, setNetOpen] = useState(false);
   const [modelSearchOpen, setModelSearchOpen] = useState(false);
 
@@ -117,6 +118,7 @@ export function NodePropertiesPanel() {
     if (ip && !IP_REGEX.test(ip)) newErrors.ip = 'Invalid IPv4';
     if (mask && !IP_REGEX.test(mask)) newErrors.mask = 'Invalid mask';
     if (gateway && !IP_REGEX.test(gateway)) newErrors.gateway = 'Invalid gateway';
+    if (macAddress && !/^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/.test(macAddress)) newErrors.macAddress = 'Invalid MAC';
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -126,6 +128,7 @@ export function NodePropertiesPanel() {
     if (selectedNode) {
       if (name !== selectedNode.name) setName(selectedNode.name);
       if (ip !== (selectedNode.ip || '')) setIp(selectedNode.ip || '');
+      if (macAddress !== (selectedNode.mac_address || '')) setMacAddress(selectedNode.mac_address || '');
       if (mask !== (selectedNode.subnet_mask || '')) setMask(selectedNode.subnet_mask || '');
       if (gateway !== (selectedNode.gateway || '')) setGateway(selectedNode.gateway || '');
       if (dhcpEnabled !== (selectedNode.details?.dhcp_enabled ?? true))
@@ -198,6 +201,7 @@ export function NodePropertiesPanel() {
         updateHardware(selectedNode.id, {
           name,
           ip,
+          mac_address: macAddress,
           subnet_mask: mask,
           gateway,
           details: {
@@ -218,6 +222,7 @@ export function NodePropertiesPanel() {
   }, [
     name,
     ip,
+    macAddress,
     mask,
     gateway,
     dhcpEnabled,
@@ -526,6 +531,26 @@ export function NodePropertiesPanel() {
                         ? 'This IP is locked and will not be overwritten by Auto Assign.'
                         : 'This IP can be overwritten by Auto Assign if DHCP is enabled.'}
                     </p>
+                  </div>
+
+                  {/* MAC Address */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <Label htmlFor="macAddress">MAC Address</Label>
+                      {errors.macAddress && (
+                        <span className="text-[10px] text-destructive flex items-center">
+                          <AlertCircle className="h-3 w-3 mr-0.5" />
+                          {errors.macAddress}
+                        </span>
+                      )}
+                    </div>
+                    <Input
+                      id="macAddress"
+                      value={macAddress}
+                      onChange={e => setMacAddress(e.target.value)}
+                      placeholder="AA:BB:CC:DD:EE:FF"
+                      className={errors.macAddress ? 'border-destructive focus-visible:ring-destructive' : ''}
+                    />
                   </div>
 
                   {/* Router-specific: Subnet Mask + Gateway */}

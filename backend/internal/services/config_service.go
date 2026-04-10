@@ -142,6 +142,9 @@ func (s *ConfigService) GenerateDockerCompose(buildID uuid.UUID) (string, error)
 				composeStr += "    networks:\n"
 				composeStr += "      homelab_net:\n"
 				composeStr += fmt.Sprintf("        ipv4_address: %s\n", vm.IP)
+				if vm.MacAddress != "" {
+					composeStr += fmt.Sprintf("    mac_address: %s\n", vm.MacAddress)
+				}
 
 				if subnet == "" {
 					parts := strings.Split(vm.IP, ".")
@@ -244,11 +247,19 @@ func (s *ConfigService) GenerateAnsibleInventory(buildID uuid.UUID) (string, err
 	invStr := "[homelab]\n"
 	for _, node := range build.Nodes {
 		if node.IP != "" {
-			invStr += fmt.Sprintf("node_%s ansible_host=%s ansible_user=ubuntu\n", node.ID.String()[:8], node.IP)
+			macStr := ""
+			if node.MacAddress != "" {
+				macStr = fmt.Sprintf(" mac_address=%s", node.MacAddress)
+			}
+			invStr += fmt.Sprintf("node_%s ansible_host=%s ansible_user=ubuntu%s\n", node.ID.String()[:8], node.IP, macStr)
 		}
 		for _, vm := range node.VirtualMachines {
 			if vm.IP != "" {
-				invStr += fmt.Sprintf("%s ansible_host=%s ansible_user=ubuntu\n", vm.Name, vm.IP)
+				macStr := ""
+				if vm.MacAddress != "" {
+					macStr = fmt.Sprintf(" mac_address=%s", vm.MacAddress)
+				}
+				invStr += fmt.Sprintf("%s ansible_host=%s ansible_user=ubuntu%s\n", vm.Name, vm.IP, macStr)
 			}
 		}
 	}
