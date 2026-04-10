@@ -278,3 +278,55 @@ func TestCalculateNetwork_VMsGetSubnetIPs(t *testing.T) {
 func hasPrefix(s, prefix string) bool {
 	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
 }
+
+// ─── Rack node tests ──────────────────────────────────────────────────────────
+
+func TestCalculateNetwork_RackNode_SkippedForIP(t *testing.T) {
+	skipWithoutIPAM(t)
+	tx := testTx(t)
+	svc := NewIPService(tx)
+	buildID := newBuildID(t, tx)
+
+	router := createNode(t, tx, buildID, "router", "Router", "192.168.1.1")
+	rack := createNode(t, tx, buildID, "rack", "Main Rack", "")
+
+	connectNodes(t, tx, buildID, router.ID, rack.ID)
+
+	if err := svc.CalculateNetwork(buildID); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ip := fetchIP(t, tx, rack.ID); ip != "" {
+		t.Errorf("rack should never get an IP, got %q", ip)
+	}
+}
+
+func TestCalculateNetwork_DeviceInsideRack_GetsIP(t *testing.T) {
+	skipWithoutIPAM(t)
+	tx := testTx(t)
+	svc := NewIPService(tx)
+	buildID := newBuildID(t, tx)
+
+	router := createNode(t, tx, buildID, "router", "Router", "192.168.1.1")
+	// Create a switch that is "inside" a rack — it has a parent_id on the model
+	// but for IP assignment, parent_id doesn't matter; connectivity (edges) does
+	sw := createNode(t, tx, buildID, "switch", "Rack Switch", "")
+	rack := createNode(t, tx, buildID, "rack", "Main Rack", "")
+	// Set the switch's parent to the rack
+	sw.ParentID = &rack.ID
+	if err := tx.Save(&sw).Error; err != nil {
+		t.Fatalf("set parent_id: %v", err)
+	}
+
+	// Connect the switch directly to the router (through the rack logically)
+	connectNodes(t, tx, buildID, router.ID, sw.ID)
+
+	if err := svc.CalculateNetwork(buildID); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ip := fetchIP(t, tx, sw.ID); ip == "" {
+		t.Error("switch inside rack should have an IP")
+	}
+	if ip := fetchIP(t, tx, rack.ID); ip != "" {
+		t.Errorf("rack should never get an IP, got %q", ip)
+	}
+}

@@ -21,6 +21,7 @@ import {
   Zap,
   Printer,
   Globe,
+  BoxSelect,
 } from 'lucide-react';
 import type { HardwareType } from '../../../types';
 import { Card } from '../../../components/ui/card';
@@ -49,6 +50,7 @@ const HARDWARE_TOOLS: {
   { type: 'ups', label: 'UPS', icon: Battery, color: 'text-lime-500' },
   { type: 'iot', label: 'IoT', icon: Printer, color: 'text-yellow-600' },
   { type: 'modem', label: 'Modem', icon: Globe, color: 'text-blue-600' },
+  { type: 'rack', label: 'Rack', icon: BoxSelect, color: 'text-violet-500' },
 ];
 
 // ─── Preset library ────────────────────────────────────────────────────────────
@@ -353,6 +355,51 @@ const PRESETS: {
         data: {
           name: 'Home Assistant Hub',
           details: { model: 'Home Assistant Yellow', price_est: 120 },
+        },
+      },
+    ],
+  },
+  {
+    category: 'Server Racks',
+    items: [
+      {
+        label: '4U Wall Mount',
+        type: 'rack' as HardwareType,
+        icon: BoxSelect,
+        sub: '4U · Desktop / Wall mount',
+        data: {
+          name: '4U Rack',
+          details: { model: '4U Wall Mount Enclosure', rack_size: 4 },
+        },
+      },
+      {
+        label: '12U Cabinet',
+        type: 'rack' as HardwareType,
+        icon: BoxSelect,
+        sub: '12U · Small cabinet',
+        data: {
+          name: '12U Cabinet',
+          details: { model: '12U Network Cabinet', rack_size: 12 },
+        },
+      },
+      {
+        label: '24U Half Rack',
+        type: 'rack' as HardwareType,
+        icon: BoxSelect,
+        sub: '24U · Standard homelab',
+        data: {
+          name: '24U Rack',
+          details: { model: '24U Server Rack', rack_size: 24 },
+        },
+      },
+      {
+        label: '42U Full Rack',
+        type: 'rack' as HardwareType,
+        icon: BoxSelect,
+        sub: '42U · Full height',
+        data: {
+          name: '42U Rack',
+          details: { model: '42U Full Server Rack', rack_size: 42 },
         },
       },
     ],

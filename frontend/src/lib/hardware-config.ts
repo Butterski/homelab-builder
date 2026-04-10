@@ -30,6 +30,7 @@ export const HARDWARE_FEATURES: Record<HardwareType, HardwareFeatures> = {
   access_point: { hasCPU: false, hasRAM: false, hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: false, isNetworked: true,  canBeNested: false, canHostNested: false, canConnectToAny: false },
   hba:          { hasCPU: false, hasRAM: false, hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: false, isNetworked: false, canBeNested: true,  canHostNested: false, canConnectToAny: true },
   pcie:         { hasCPU: false, hasRAM: false, hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: false, isNetworked: false, canBeNested: true,  canHostNested: false, canConnectToAny: false },
+  rack:         { hasCPU: false, hasRAM: false, hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: false, isNetworked: false, canBeNested: false, canHostNested: false, canConnectToAny: false },
 };
 
 export const nodeHasCPU = (type: HardwareType) => HARDWARE_FEATURES[type]?.hasCPU ?? false;

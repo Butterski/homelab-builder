@@ -31,7 +31,7 @@ var FallbackZone = ZoneConfig{BaseOffset: 220, Step: 1, CanHostVMs: false, Label
 var VMHostTypeOrder = []string{"nas", "server", "pc", "minipc", "sbc", "iot"}
 
 var NonNetworkTypes = map[string]bool{
-	"disk": true, "gpu": true, "hba": true, "pcie": true, "pdu": true, "ups": true,
+	"disk": true, "gpu": true, "hba": true, "pcie": true, "pdu": true, "ups": true, "rack": true,
 }
 
 func GetZone(deviceType string, zones map[string]ZoneConfig) ZoneConfig {

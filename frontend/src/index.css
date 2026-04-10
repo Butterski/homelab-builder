@@ -330,3 +330,138 @@
 .dark .react-flow__controls-button svg {
   fill: var(--foreground);
 }
+
+/* ─── Rack Node ────────────────────────────────────────────────────────────── */
+
+.rack-node-container {
+  background: var(--card);
+  border: 2px solid #3f3f46;
+  border-radius: 8px;
+  overflow: visible;
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.rack-node-container:hover {
+  border-color: #52525b;
+}
+
+.rack-node-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: linear-gradient(180deg, #27272a 0%, #1e1e21 100%);
+  border-bottom: 1px solid #3f3f46;
+  border-radius: 6px 6px 0 0;
+  min-height: 36px;
+}
+
+.rack-node-header-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.rack-node-icon {
+  width: 16px;
+  height: 16px;
+  color: #a78bfa;
+  flex-shrink: 0;
+}
+
+.rack-node-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #fafafa;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+
+.rack-node-capacity {
+  font-size: 10px;
+  font-family: 'JetBrains Mono', monospace;
+  color: #a1a1aa;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 2px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+
+.rack-node-capacity-warn {
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.15);
+}
+
+.rack-node-body {
+  display: flex;
+  position: relative;
+}
+
+.rack-node-rail {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #27272a;
+  background: linear-gradient(90deg, #1a1a1d 0%, #18181b 100%);
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.rack-node-u-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  font-family: 'JetBrains Mono', monospace;
+  color: #52525b;
+  border-bottom: 1px solid #1f1f23;
+  box-sizing: border-box;
+}
+
+.rack-node-slots {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.rack-node-slot {
+  border-bottom: 1px solid #1f1f23;
+  box-sizing: border-box;
+  transition: background-color 0.15s ease;
+}
+
+.rack-node-slot-even {
+  background: rgba(255, 255, 255, 0.01);
+}
+
+.rack-node-slot:hover {
+  background: rgba(139, 92, 246, 0.04);
+}
+
+/* Override React Flow group node styles for racks */
+.react-flow__node-rack {
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: 8px !important;
+}
+
+.react-flow__node-rack.selected .rack-node-container {
+  border-color: #8b5cf6 !important;
+  box-shadow:
+    0 0 0 3px rgba(139, 92, 246, 0.2),
+    0 4px 12px rgba(0, 0, 0, 0.2) !important;
+}
+
+/* Devices inside a rack get a compact horizontal layout */
+.react-flow__node-hardware[data-inrack="true"] {
+  width: calc(100% - 28px) !important;
+}

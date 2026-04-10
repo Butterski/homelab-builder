@@ -21,6 +21,7 @@ import { InternalComponentManager } from './internal-component-manager';
 import { canNodeHostVMs, nodeHasCPU, nodeHasDynamicPorts, nodeHasRAM, nodeHasStorage, isNetworkNode } from '../../../lib/hardware-config';
 import { getVmResourceUsage } from '../lib/resource-usage';
 import { getNodePortCount, parsePortCount } from '../lib/port-count';
+import { DEFAULT_DEVICE_U } from './rack-node';
 
 const IP_REGEX =
   /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
@@ -197,6 +198,8 @@ export function NodePropertiesPanel() {
   };
 
   const isRouter = selectedNode.type === 'router';
+  const isRack = selectedNode.type === 'rack';
+  const isInRack = !!selectedNode.parent_id;
   const supportsVMs = canNodeHostVMs(selectedNode.type);
   const isNetworked = isNetworkNode(selectedNode.type);
 
@@ -264,9 +267,139 @@ export function NodePropertiesPanel() {
             id="name"
             value={name}
             onChange={e => setName(e.target.value)}
-            placeholder="e.g. Main Router"
+            placeholder={isRack ? 'e.g. Main Rack' : 'e.g. Main Router'}
           />
         </div>
+
+        {/* ── Rack-specific properties ── */}
+        {isRack && (
+          <div className="space-y-3 border-t pt-3">
+            <div className="space-y-2">
+              <Label htmlFor="rackSize" className="text-xs text-muted-foreground">Rack Size (U)</Label>
+              <select
+                id="rackSize"
+                className="w-full h-8 text-xs rounded-md border border-input bg-background px-3 py-1 cursor-pointer"
+                value={selectedNode.details?.rack_size || 24}
+                onChange={e => {
+                  const newSize = Number(e.target.value);
+                  updateHardware(selectedNode.id, {
+                    details: { ...selectedNode.details, rack_size: newSize },
+                  });
+                }}
+              >
+                <option value={4}>4U — Wall Mount</option>
+                <option value={12}>12U — Small Cabinet</option>
+                <option value={24}>24U — Standard Homelab</option>
+                <option value={42}>42U — Full Height</option>
+                <option value={48}>48U — Extended</option>
+              </select>
+            </div>
+
+            {/* U Occupancy Bar */}
+            {(() => {
+              const rackSize = selectedNode.details?.rack_size || 24;
+              const children = hardwareNodes.filter(n => n.parent_id === selectedNode.id);
+              const usedU = children.reduce(
+                (sum, n) => sum + (n.details?.rack_units || DEFAULT_DEVICE_U[n.type] || 1), 0
+              );
+              const pct = Math.min(100, Math.round((usedU / rackSize) * 100));
+              const isWarn = pct > 80;
+              return (
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-muted-foreground">Occupancy</span>
+                    <span className={`text-xs font-mono ${isWarn ? 'text-yellow-500' : 'text-muted-foreground'}`}>
+                      {usedU}/{rackSize}U ({pct}%)
+                    </span>
+                  </div>
+                  <div className="h-2 rounded-full bg-muted overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-300 ${isWarn ? 'bg-yellow-500' : 'bg-violet-500'}`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Child devices list */}
+            {(() => {
+              const children = hardwareNodes.filter(n => n.parent_id === selectedNode.id);
+              if (children.length === 0) return (
+                <p className="text-xs text-muted-foreground italic py-2">Drop devices into this rack to mount them.</p>
+              );
+              return (
+                <div className="space-y-1">
+                  <span className="text-xs text-muted-foreground">Mounted Devices</span>
+                  <div className="space-y-1 max-h-32 overflow-y-auto">
+                    {children.map(child => (
+                      <div
+                        key={child.id}
+                        className="flex items-center justify-between px-2 py-1 rounded text-xs bg-muted/50 hover:bg-muted cursor-pointer"
+                        onClick={() => selectNode(child.id)}
+                      >
+                        <span className="truncate">{child.name}</span>
+                        <span className="text-muted-foreground font-mono ml-2 shrink-0">
+                          {child.details?.rack_units || DEFAULT_DEVICE_U[child.type] || 1}U
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
+        {/* ── In-rack device fields ── */}
+        {isInRack && !isRack && (
+          <div className="space-y-3 border rounded-md px-3 py-3 bg-violet-500/5">
+            <span className="text-xs font-medium flex items-center gap-1.5">
+              <svg className="w-3 h-3 text-violet-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="2" y="2" width="20" height="20" rx="2" />
+                <line x1="2" y1="8" x2="22" y2="8" />
+              </svg>
+              Rack Mounted
+            </span>
+            <div className="space-y-1">
+              <Label htmlFor="rackUnits" className="text-xs text-muted-foreground">Device Height (U)</Label>
+              <Input
+                id="rackUnits"
+                type="number"
+                min={1}
+                max={16}
+                value={selectedNode.details?.rack_units || DEFAULT_DEVICE_U[selectedNode.type] || 1}
+                onChange={e => {
+                  const val = Number(e.target.value);
+                  if (val >= 1 && val <= 16) {
+                    updateHardware(selectedNode.id, {
+                      details: { ...selectedNode.details, rack_units: val },
+                    });
+                  }
+                }}
+                className="h-8 text-xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="rackPos" className="text-xs text-muted-foreground">U Position (from top)</Label>
+              <Input
+                id="rackPos"
+                type="number"
+                min={0}
+                value={selectedNode.details?.rack_position || 0}
+                onChange={e => {
+                  const val = Number(e.target.value);
+                  if (val >= 0) {
+                    updateHardware(selectedNode.id, {
+                      details: { ...selectedNode.details, rack_position: val },
+                    });
+                  }
+                }}
+                className="h-8 text-xs"
+              />
+            </div>
+          </div>
+        )}
 
         {/* Advanced Network Config Collapsible */}
         {isNetworked && (
