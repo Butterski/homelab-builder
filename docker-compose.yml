@@ -33,8 +33,8 @@ services:
       DB_NAME: homelab_builder
       DB_SSLMODE: disable
       DB_TYPE: postgres
-      JWT_SECRET: ${JWT_SECRET}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      #JWT_SECRET: ${JWT_SECRET}
+      #GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       IPAM_URL: http://hlbipam:8081
       TIMEZONE: Europe/Berlin
     depends_on:
@@ -58,7 +58,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: ${VITE_API_URL:-http://localhost:${BACKEND_PORT}}
+        VITE_API_URL: ${VITE_API_URL:-http://${IP_ADRESS}:${BACKEND_PORT}}
         VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID}
     container_name: homelab-builder-frontend
     ports:
