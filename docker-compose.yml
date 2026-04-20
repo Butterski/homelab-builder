@@ -4,10 +4,10 @@ services:
     container_name: homelab-builder-db
     environment:
       POSTGRES_USER: homelab
-      POSTGRES_PASSWORD: homelab_password
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: homelab_builder
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ${DB_PATH}:/var/lib/postgresql/data
       - ./backend/migrations:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U homelab -d homelab_builder"]
@@ -22,14 +22,14 @@ services:
       dockerfile: Dockerfile
     container_name: homelab-builder-backend
     ports:
-      - "8080:8080"
+      - ${BACKEND_PORT}:8080
     environment:
       SERVER_PORT: "8080"
       # GIN_MODE: "release"
       DB_HOST: postgres
       DB_PORT: "5432"
       DB_USER: homelab
-      DB_PASSWORD: homelab_password
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
       DB_NAME: homelab_builder
       DB_SSLMODE: disable
       DB_TYPE: postgres
@@ -61,10 +61,7 @@ services:
         VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID}
     container_name: homelab-builder-frontend
     ports:
-      - "3000:80"
+      - ${FRONTEND_PORT}:80
     depends_on:
       - backend
     restart: unless-stopped
-
-volumes:
-  postgres_data:
