@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: homelab_builder
     volumes:
-      - ${DB_PATH}:/var/lib/postgresql/data
+      - ${DB_PATH}:/var/lib/postgresql/data:rw
       - ./backend/migrations:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U homelab -d homelab_builder"]
