@@ -36,6 +36,7 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       IPAM_URL: http://hlbipam:8081
+      TIMEZONE: Europe/Berlin
     depends_on:
       postgres:
         condition: service_healthy
@@ -65,3 +66,5 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
+    environment:
+      TIMEZONE: Europe/Berlin
