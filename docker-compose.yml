@@ -59,7 +59,7 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_API_URL: ${VITE_API_URL:-http://${IP_ADRESS}:${BACKEND_PORT}}
-        VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID}
+        #VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID}
     container_name: homelab-builder-frontend
     ports:
       - ${FRONTEND_PORT}:80
