@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16
+    image: postgres:17
     container_name: homelab-builder-db
     environment:
       POSTGRES_USER: homelab
