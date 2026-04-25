@@ -13,41 +13,32 @@ First, thanks for taking the time to contribute!
 
 ## Branching Strategy
 
-We use a two-branch model:
-
-| Branch | Purpose |
-|--------|---------|
-| `master` | Stable, release-ready code. **Never push directly to master.** |
-| `dev` | Integration branch. All feature/fix branches are merged here first. |
+We use a simple branching model where all feature and fix branches are merged directly into `master`.
 
 ### Workflow
 
 ```
-master (stable releases)
-  ↑ merge (maintainer only)
-dev (integration / staging)
+master (main branch)
   ↑ pull request
 feature/your-feature-name  ← you work here
 ```
 
-1. **Start from `dev`** — always branch off the latest `dev`:
+1. **Start from `master`** — always branch off the latest `master`:
    ```bash
-   git checkout dev
-   git pull origin dev
+   git checkout master
+   git pull origin master
    git checkout -b feature/short-description
    ```
 
 2. **Work on your branch** — make commits with clear messages. Keep the scope small (one feature or fix per branch).
 
-3. **Push and open a Pull Request into `dev`**:
+3. **Push and open a Pull Request into `master`**:
    ```bash
    git push -u origin feature/short-description
    ```
-   Then open a PR on GitHub targeting the **`dev`** branch (not `master`).
+   Then open a PR on GitHub targeting the **`master`** branch.
 
-4. **PR review & merge** — once CI passes and the PR is approved, it gets merged into `dev`.
-
-5. **Releases** — the maintainer periodically merges `dev` into `master` to cut a release.
+4. **PR review & merge** — once CI passes and the PR is approved, it gets merged into `master`.
 
 ### Branch Naming Convention
 
@@ -65,7 +56,7 @@ Use a descriptive prefix:
 
 We strictly follow a "One PR = One Feature/Fix" philosophy to keep reviews fast and code stable.
 
-1. **Target branch: `dev`** — all PRs must target `dev`, not `master`.
+1. **Target branch: `master`** — all PRs must target `master`.
 2. Ensure any install or build dependencies are removed before the end of the layer when doing a build.
 3. Update the README.md with details of changes to the interface, if applicable.
 4. Your PR must pass all GitHub Action CI tests before it can be merged.

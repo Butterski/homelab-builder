@@ -1,7 +1,12 @@
 # HLBuilder
 <img src="./logo.svg" alt="Logo" width="100" height="100">
 
+
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+
+![alt text](docs/image.png)
+
+![alt text](docs/homelabbuilder.gif)
 
 HLBuilder is a comprehensive, interactive web application designed to simplify the process of planning and architecting home laboratory infrastructure. It provides users with a visual interface to design network topologies, receive intelligent hardware recommendations based on their self-hosting needs, and generate actionable shopping lists.
 

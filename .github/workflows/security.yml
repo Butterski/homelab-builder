@@ -3,7 +3,7 @@ on:
   push:
     branches: [ "master" ]
   pull_request:
-    branches: [ "master", "dev" ]
+    branches: [ "master" ]
   schedule:
     - cron: '27 15 * * 3' # Weekly scan
 

@@ -9,7 +9,7 @@ import (
 )
 
 type User struct {
-	ID          uuid.UUID       `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
+	ID          uuid.UUID       `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
 	GoogleID    string          `gorm:"unique;column:google_id" json:"google_id,omitempty"`
 	Email       string          `gorm:"unique;not null" json:"email"`
 	Name        string          `gorm:"not null;default:''" json:"name"`
@@ -22,7 +22,7 @@ type User struct {
 }
 
 type Service struct {
-	ID              uuid.UUID           `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
+	ID              uuid.UUID           `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
 	Name            string              `gorm:"not null" json:"name"`
 	Description     string              `gorm:"default:''" json:"description"`
 	Category        string              `gorm:"not null;default:'other'" json:"category"`
@@ -39,7 +39,7 @@ type Service struct {
 }
 
 type ServiceRequirement struct {
-	ID                   uuid.UUID `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
+	ID                   uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
 	ServiceID            uuid.UUID `gorm:"type:uuid;unique;not null" json:"service_id"`
 	MinRAMMB             int       `gorm:"column:min_ram_mb;not null;default:256" json:"min_ram_mb"`
 	RecommendedRAMMB     int       `gorm:"column:recommended_ram_mb;not null;default:512" json:"recommended_ram_mb"`
@@ -51,7 +51,7 @@ type ServiceRequirement struct {
 }
 
 type UserSelection struct {
-	ID        uuid.UUID `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
+	ID        uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
 	UserID    uuid.UUID `gorm:"type:uuid;not null" json:"user_id"`
 	ServiceID uuid.UUID `gorm:"type:uuid;not null" json:"service_id"`
 	User      *User     `gorm:"foreignKey:UserID" json:"-"`
@@ -60,7 +60,7 @@ type UserSelection struct {
 }
 
 type HardwareRecommendation struct {
-	ID                uuid.UUID  `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
+	ID                uuid.UUID  `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
 	UserID            *uuid.UUID `gorm:"type:uuid" json:"user_id,omitempty"`
 	Tier              string     `gorm:"not null;default:'recommended'" json:"tier"`
 	TotalRAMMB        int        `gorm:"column:total_ram_mb;not null;default:0" json:"total_ram_mb"`
@@ -77,7 +77,7 @@ type HardwareRecommendation struct {
 }
 
 type ShoppingList struct {
-	ID                 uuid.UUID          `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
+	ID                 uuid.UUID          `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
 	RecommendationID   uuid.UUID          `gorm:"type:uuid;not null" json:"recommendation_id"`
 	UserID             *uuid.UUID         `gorm:"type:uuid" json:"user_id,omitempty"`
 	TotalEstimatedCost int                `gorm:"default:0" json:"total_estimated_cost"`
@@ -86,7 +86,7 @@ type ShoppingList struct {
 }
 
 type ShoppingListItem struct {
-	ID             uuid.UUID `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
+	ID             uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
 	ShoppingListID uuid.UUID `gorm:"type:uuid;not null" json:"shopping_list_id"`
 	Name           string    `gorm:"not null" json:"name"`
 	Category       string    `gorm:"not null;default:'other'" json:"category"`
@@ -97,7 +97,7 @@ type ShoppingListItem struct {
 }
 
 type Event struct {
-	ID        uuid.UUID  `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
+	ID        uuid.UUID  `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
 	UserID    *uuid.UUID `gorm:"type:uuid" json:"user_id,omitempty"`
 	EventType string     `gorm:"not null" json:"event_type"`
 	Payload   string     `gorm:"type:jsonb;default:'{}'" json:"payload"`
@@ -105,7 +105,7 @@ type Event struct {
 }
 
 type HardwareComponent struct {
-	ID           uuid.UUID       `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
+	ID           uuid.UUID       `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
 	Category     string          `gorm:"not null;index" json:"category"`
 	Brand        string          `gorm:"not null;index" json:"brand"`
 	Model        string          `gorm:"not null" json:"model"`
@@ -125,7 +125,7 @@ type HardwareComponent struct {
 func (HardwareComponent) TableName() string { return "hardware_components" }
 
 type HardwareReview struct {
-	ID               uuid.UUID  `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
+	ID               uuid.UUID  `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
 	ComponentID      uuid.UUID  `gorm:"type:uuid;not null;index" json:"component_id"`
 	UserID           *uuid.UUID `gorm:"type:uuid" json:"user_id,omitempty"`
 	Rating           int        `gorm:"check:rating >= 1 AND rating <= 5" json:"rating"`
@@ -139,7 +139,7 @@ type HardwareReview struct {
 func (HardwareReview) TableName() string { return "hardware_reviews" }
 
 type SteeringRule struct {
-	ID            uuid.UUID       `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
+	ID            uuid.UUID       `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
 	Category      string          `gorm:"not null;uniqueIndex" json:"category"`
 	RetailerOrder json.RawMessage `gorm:"type:jsonb;default:'[]'" json:"retailer_order"`
 	CreatedAt     time.Time       `json:"created_at"`
@@ -150,7 +150,7 @@ func (SteeringRule) TableName() string { return "steering_rules" }
 
 // Build represents a saved visual builder project
 type Build struct {
-	ID        uuid.UUID       `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
+	ID        uuid.UUID       `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
 	UserID    uuid.UUID       `gorm:"type:uuid;not null;index" json:"user_id"` // Owner
 	Name      string          `gorm:"not null" json:"name"`
 	Settings  json.RawMessage `gorm:"type:jsonb;default:'{}'" json:"settings"` // UI state e.g. boughtItems
@@ -168,13 +168,14 @@ func (Build) TableName() string { return "builds" }
 
 // Node represents a hardware node in the graph
 type Node struct {
-	ID        uuid.UUID       `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
+	ID        uuid.UUID       `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
 	BuildID   uuid.UUID       `gorm:"type:uuid;not null;index" json:"build_id"`
 	Type      string          `gorm:"not null" json:"type"` // server, router, switch
 	Name      string          `gorm:"not null" json:"name"`
 	X         float64         `gorm:"not null;default:0" json:"x"`
 	Y         float64         `gorm:"not null;default:0" json:"y"`
 	IP        string          `gorm:"default:''" json:"ip"`
+	MacAddress string         `gorm:"default:''" json:"mac_address"`
 	Details   json.RawMessage `gorm:"type:jsonb;default:'{}'" json:"details"` // Hardware specs
 	ParentID  *uuid.UUID      `gorm:"type:uuid" json:"parent_id,omitempty"`   // For nested components
 	CreatedAt time.Time       `json:"created_at"`
@@ -189,7 +190,7 @@ func (Node) TableName() string { return "nodes" }
 
 // NodeComponent represents an internal hardware piece (e.g. disk, GPU) inside a Node
 type NodeComponent struct {
-	ID        uuid.UUID       `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
+	ID        uuid.UUID       `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
 	NodeID    uuid.UUID       `gorm:"type:uuid;not null;index" json:"node_id"`
 	Type      string          `gorm:"not null" json:"type"` // disk, gpu, hba etc.
 	Name      string          `gorm:"not null" json:"name"`
@@ -202,7 +203,7 @@ func (NodeComponent) TableName() string { return "node_components" }
 
 // CatalogComponent represents a template/reference for NodeComponent creation
 type CatalogComponent struct {
-	ID        uuid.UUID       `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
+	ID        uuid.UUID       `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
 	Type      string          `gorm:"not null;index" json:"type"` // disk, gpu, ram, etc.
 	Name      string          `gorm:"not null" json:"name"`
 	Details   json.RawMessage `gorm:"type:jsonb;default:'{}'" json:"details"`
@@ -214,11 +215,12 @@ func (CatalogComponent) TableName() string { return "catalog_components" }
 
 // VirtualMachine represents a nested VM/Container on a node
 type VirtualMachine struct {
-	ID        uuid.UUID `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
+	ID        uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
 	NodeID    uuid.UUID `gorm:"type:uuid;not null;index" json:"node_id"`
 	Name      string    `gorm:"not null" json:"name"`
 	Type      string    `gorm:"not null" json:"type"` // vm, container, lxc
 	IP        string    `gorm:"default:''" json:"ip"`
+	MacAddress string   `gorm:"default:''" json:"mac_address"`
 	OS        string    `gorm:"default:''" json:"os"`
 	CPUCores  float64   `gorm:"default:0" json:"cpu_cores"`
 	RAMMB     int       `gorm:"default:0" json:"ram_mb"`
@@ -231,7 +233,7 @@ func (VirtualMachine) TableName() string { return "virtual_machines" }
 
 // Edge represents a connection between nodes
 type Edge struct {
-	ID           uuid.UUID `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
+	ID           uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
 	BuildID      uuid.UUID `gorm:"type:uuid;not null;index" json:"build_id"`
 	SourceNodeID uuid.UUID `gorm:"type:uuid;not null" json:"source_node_id"`
 	SourceHandle string    `json:"source_handle,omitempty"`
@@ -247,7 +249,7 @@ func (Edge) TableName() string { return "edges" }
 
 // ServiceInstance represents a deployed service on a node (or unassigned in backlog)
 type ServiceInstance struct {
-	ID               uuid.UUID  `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
+	ID               uuid.UUID  `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
 	BuildID          uuid.UUID  `gorm:"type:uuid;not null;index" json:"build_id"`
 	NodeID           *uuid.UUID `gorm:"type:uuid;index" json:"node_id,omitempty"` // Null if in backlog
 	CatalogServiceID uuid.UUID  `gorm:"type:uuid;not null" json:"catalog_service_id"`
@@ -267,7 +269,7 @@ func (ServiceInstance) TableName() string { return "service_instances" }
 // BetaSurvey stores one response per user for the open-beta feedback survey.
 // Remove this model and migrate away after beta ends.
 type BetaSurvey struct {
-	ID                 uuid.UUID `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
+	ID                 uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
 	UserID             uuid.UUID `gorm:"type:uuid;not null;uniqueIndex" json:"user_id"` // 1 per user
 	Rating             int       `gorm:"default:0" json:"rating"`                       // 1-5
 	WillUseApp         string    `gorm:"default:''" json:"will_use_app"`                // yes | no | maybe

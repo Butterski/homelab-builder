@@ -21,6 +21,8 @@ import { InternalComponentManager } from './internal-component-manager';
 import { canNodeHostVMs, nodeHasCPU, nodeHasDynamicPorts, nodeHasRAM, nodeHasStorage, isNetworkNode } from '../../../lib/hardware-config';
 import { getVmResourceUsage } from '../lib/resource-usage';
 import { getNodePortCount, parsePortCount } from '../lib/port-count';
+import { DEFAULT_DEVICE_U } from './rack-node';
+import { useHardware } from '../../catalog/api/use-hardware';
 
 const IP_REGEX =
   /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
@@ -37,6 +39,7 @@ export function NodePropertiesPanel() {
 
   const [name, setName] = useState('');
   const [ip, setIp] = useState('');
+  const [macAddress, setMacAddress] = useState('');
   const [mask, setMask] = useState('');
   const [gateway, setGateway] = useState('');
   const [dhcpEnabled, setDhcpEnabled] = useState(false);
@@ -50,16 +53,72 @@ export function NodePropertiesPanel() {
   const [ramUnit, setRamUnit] = useState<'GB' | 'TB'>('GB');
   const [storageUnit, setStorageUnit] = useState<'GB' | 'TB'>('GB');
 
-  const [errors, setErrors] = useState<{ ip?: string; mask?: string; gateway?: string }>({});
+  const [errors, setErrors] = useState<{ ip?: string; mask?: string; gateway?: string; macAddress?: string }>({});
   const [netOpen, setNetOpen] = useState(false);
+  const [modelSearchOpen, setModelSearchOpen] = useState(false);
 
   const selectedNode = hardwareNodes.find(n => n.id === selectedNodeId);
+
+  const { data: hardwareResponse } = useHardware(
+    selectedNode ? { category: selectedNode.type, limit: 100 } : {}
+  );
+  
+  const parseHardwareSpecString = (spec: Record<string, any>) => {
+    let cpu = undefined;
+    if (spec.cpu) {
+      const cpuStr = String(spec.cpu).toLowerCase();
+      const matchCoreNum = cpuStr.match(/(\d+)\s*-core/);
+      if (matchCoreNum) cpu = parseInt(matchCoreNum[1], 10);
+      else if (cpuStr.includes('quad-core')) cpu = 4;
+      else if (cpuStr.includes('dual-core')) cpu = 2;
+      else if (cpuStr.includes('octa-core') || cpuStr.includes('8-core')) cpu = 8;
+      const multiMatch = cpuStr.match(/^(\d+)x/);
+      if (multiMatch && cpu) {
+        cpu *= parseInt(multiMatch[1], 10);
+      }
+    }
+  
+    let ramGB = undefined;
+    if (spec.ram) {
+      const ramStr = String(spec.ram).toUpperCase();
+      const gbMatch = ramStr.match(/(\d+(?:\.\d+)?)\s*GB/);
+      const mbMatch = ramStr.match(/(\d+)\s*MB/);
+      if (gbMatch) ramGB = parseFloat(gbMatch[1]);
+      else if (mbMatch) ramGB = parseInt(mbMatch[1], 10) / 1024;
+    }
+  
+    let storageGB = undefined;
+    if (spec.storage || spec.capacity) {
+      const storageStr = String(spec.storage || spec.capacity).toUpperCase();
+      const gbMatch = storageStr.match(/(\d+(?:\.\d+)?)\s*GB/);
+      const tbMatch = storageStr.match(/(\d+(?:\.\d+)?)\s*TB/);
+      
+      let base = 0;
+      if (gbMatch) base = parseFloat(gbMatch[1]);
+      else if (tbMatch) base = parseFloat(tbMatch[1]) * 1024;
+      
+      const multiMatch = storageStr.match(/^(\d+)X/);
+      if (multiMatch && base) base *= parseInt(multiMatch[1], 10);
+      if (base > 0) storageGB = base;
+    }
+  
+    let rackUnits = undefined;
+    if (spec.form_factor || spec.units) {
+      const ffStr = String(spec.form_factor || spec.units).toLowerCase();
+      const ruMatch = ffStr.match(/(\d+)u\s*rack/);
+      if (ruMatch) rackUnits = parseInt(ruMatch[1], 10);
+      else if (spec.units) rackUnits = parseInt(String(spec.units), 10); 
+    }
+  
+    return { cpu, ram: ramGB, storage: storageGB, rackUnits };
+  };
 
   const validate = () => {
     const newErrors: typeof errors = {};
     if (ip && !IP_REGEX.test(ip)) newErrors.ip = 'Invalid IPv4';
     if (mask && !IP_REGEX.test(mask)) newErrors.mask = 'Invalid mask';
     if (gateway && !IP_REGEX.test(gateway)) newErrors.gateway = 'Invalid gateway';
+    if (macAddress && !/^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/.test(macAddress)) newErrors.macAddress = 'Invalid MAC';
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -69,6 +128,7 @@ export function NodePropertiesPanel() {
     if (selectedNode) {
       if (name !== selectedNode.name) setName(selectedNode.name);
       if (ip !== (selectedNode.ip || '')) setIp(selectedNode.ip || '');
+      if (macAddress !== (selectedNode.mac_address || '')) setMacAddress(selectedNode.mac_address || '');
       if (mask !== (selectedNode.subnet_mask || '')) setMask(selectedNode.subnet_mask || '');
       if (gateway !== (selectedNode.gateway || '')) setGateway(selectedNode.gateway || '');
       if (dhcpEnabled !== (selectedNode.details?.dhcp_enabled ?? true))
@@ -141,6 +201,7 @@ export function NodePropertiesPanel() {
         updateHardware(selectedNode.id, {
           name,
           ip,
+          mac_address: macAddress,
           subnet_mask: mask,
           gateway,
           details: {
@@ -161,6 +222,7 @@ export function NodePropertiesPanel() {
   }, [
     name,
     ip,
+    macAddress,
     mask,
     gateway,
     dhcpEnabled,
@@ -197,6 +259,8 @@ export function NodePropertiesPanel() {
   };
 
   const isRouter = selectedNode.type === 'router';
+  const isRack = selectedNode.type === 'rack';
+  const isInRack = !!selectedNode.parent_id;
   const supportsVMs = canNodeHostVMs(selectedNode.type);
   const isNetworked = isNetworkNode(selectedNode.type);
 
@@ -264,9 +328,139 @@ export function NodePropertiesPanel() {
             id="name"
             value={name}
             onChange={e => setName(e.target.value)}
-            placeholder="e.g. Main Router"
+            placeholder={isRack ? 'e.g. Main Rack' : 'e.g. Main Router'}
           />
         </div>
+
+        {/* ── Rack-specific properties ── */}
+        {isRack && (
+          <div className="space-y-3 border-t pt-3">
+            <div className="space-y-2">
+              <Label htmlFor="rackSize" className="text-xs text-muted-foreground">Rack Size (U)</Label>
+              <select
+                id="rackSize"
+                className="w-full h-8 text-xs rounded-md border border-input bg-background px-3 py-1 cursor-pointer"
+                value={selectedNode.details?.rack_size || 24}
+                onChange={e => {
+                  const newSize = Number(e.target.value);
+                  updateHardware(selectedNode.id, {
+                    details: { ...selectedNode.details, rack_size: newSize },
+                  });
+                }}
+              >
+                <option value={4}>4U — Wall Mount</option>
+                <option value={12}>12U — Small Cabinet</option>
+                <option value={24}>24U — Standard Homelab</option>
+                <option value={42}>42U — Full Height</option>
+                <option value={48}>48U — Extended</option>
+              </select>
+            </div>
+
+            {/* U Occupancy Bar */}
+            {(() => {
+              const rackSize = selectedNode.details?.rack_size || 24;
+              const children = hardwareNodes.filter(n => n.parent_id === selectedNode.id);
+              const usedU = children.reduce(
+                (sum, n) => sum + (n.details?.rack_units || DEFAULT_DEVICE_U[n.type] || 1), 0
+              );
+              const pct = Math.min(100, Math.round((usedU / rackSize) * 100));
+              const isWarn = pct > 80;
+              return (
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-muted-foreground">Occupancy</span>
+                    <span className={`text-xs font-mono ${isWarn ? 'text-yellow-500' : 'text-muted-foreground'}`}>
+                      {usedU}/{rackSize}U ({pct}%)
+                    </span>
+                  </div>
+                  <div className="h-2 rounded-full bg-muted overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-300 ${isWarn ? 'bg-yellow-500' : 'bg-violet-500'}`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Child devices list */}
+            {(() => {
+              const children = hardwareNodes.filter(n => n.parent_id === selectedNode.id);
+              if (children.length === 0) return (
+                <p className="text-xs text-muted-foreground italic py-2">Drop devices into this rack to mount them.</p>
+              );
+              return (
+                <div className="space-y-1">
+                  <span className="text-xs text-muted-foreground">Mounted Devices</span>
+                  <div className="space-y-1 max-h-32 overflow-y-auto">
+                    {children.map(child => (
+                      <div
+                        key={child.id}
+                        className="flex items-center justify-between px-2 py-1 rounded text-xs bg-muted/50 hover:bg-muted cursor-pointer"
+                        onClick={() => selectNode(child.id)}
+                      >
+                        <span className="truncate">{child.name}</span>
+                        <span className="text-muted-foreground font-mono ml-2 shrink-0">
+                          {child.details?.rack_units || DEFAULT_DEVICE_U[child.type] || 1}U
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
+        {/* ── In-rack device fields ── */}
+        {isInRack && !isRack && (
+          <div className="space-y-3 border rounded-md px-3 py-3 bg-violet-500/5">
+            <span className="text-xs font-medium flex items-center gap-1.5">
+              <svg className="w-3 h-3 text-violet-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="2" y="2" width="20" height="20" rx="2" />
+                <line x1="2" y1="8" x2="22" y2="8" />
+              </svg>
+              Rack Mounted
+            </span>
+            <div className="space-y-1">
+              <Label htmlFor="rackUnits" className="text-xs text-muted-foreground">Device Height (U)</Label>
+              <Input
+                id="rackUnits"
+                type="number"
+                min={1}
+                max={16}
+                value={selectedNode.details?.rack_units || DEFAULT_DEVICE_U[selectedNode.type] || 1}
+                onChange={e => {
+                  const val = Number(e.target.value);
+                  if (val >= 1 && val <= 16) {
+                    updateHardware(selectedNode.id, {
+                      details: { ...selectedNode.details, rack_units: val },
+                    });
+                  }
+                }}
+                className="h-8 text-xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="rackPos" className="text-xs text-muted-foreground">U Position (from top)</Label>
+              <Input
+                id="rackPos"
+                type="number"
+                min={0}
+                value={selectedNode.details?.rack_position || 0}
+                onChange={e => {
+                  const val = Number(e.target.value);
+                  if (val >= 0) {
+                    updateHardware(selectedNode.id, {
+                      details: { ...selectedNode.details, rack_position: val },
+                    });
+                  }
+                }}
+                className="h-8 text-xs"
+              />
+            </div>
+          </div>
+        )}
 
         {/* Advanced Network Config Collapsible */}
         {isNetworked && (
@@ -337,6 +531,26 @@ export function NodePropertiesPanel() {
                         ? 'This IP is locked and will not be overwritten by Auto Assign.'
                         : 'This IP can be overwritten by Auto Assign if DHCP is enabled.'}
                     </p>
+                  </div>
+
+                  {/* MAC Address */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <Label htmlFor="macAddress">MAC Address</Label>
+                      {errors.macAddress && (
+                        <span className="text-[10px] text-destructive flex items-center">
+                          <AlertCircle className="h-3 w-3 mr-0.5" />
+                          {errors.macAddress}
+                        </span>
+                      )}
+                    </div>
+                    <Input
+                      id="macAddress"
+                      value={macAddress}
+                      onChange={e => setMacAddress(e.target.value)}
+                      placeholder="AA:BB:CC:DD:EE:FF"
+                      className={errors.macAddress ? 'border-destructive focus-visible:ring-destructive' : ''}
+                    />
                   </div>
 
                   {/* Router-specific: Subnet Mask + Gateway */}
@@ -417,17 +631,88 @@ export function NodePropertiesPanel() {
               />
             </div>
           )}
-          <div className="space-y-1">
+          <div className="space-y-1 relative">
             <Label htmlFor="model" className="text-xs text-muted-foreground">
               Model
             </Label>
             <Input
               id="model"
               value={model}
-              onChange={e => setModel(e.target.value)}
+              onChange={e => {
+                setModel(e.target.value);
+                setModelSearchOpen(true);
+              }}
+              onFocus={() => setModelSearchOpen(true)}
+              onBlur={() => setTimeout(() => setModelSearchOpen(false), 200)}
               className="h-8 text-xs"
               placeholder="e.g. Raspberry Pi 4"
+              autoComplete="off"
             />
+            {modelSearchOpen && hardwareResponse?.data && (
+              <div className="absolute top-full left-0 right-0 z-50 mt-1 max-h-48 overflow-auto rounded-md border bg-popover text-popover-foreground shadow-md outline-none animate-in fade-in zoom-in-95">
+                {hardwareResponse.data.filter(
+                  p =>
+                    (p.brand + ' ' + p.model).toLowerCase().includes(model.toLowerCase()) &&
+                    (p.brand + ' ' + p.model).toLowerCase() !== model.toLowerCase()
+                ).length > 0 ? (
+                  <ul className="py-1 text-xs">
+                    {hardwareResponse.data.filter(
+                      p =>
+                        (p.brand + ' ' + p.model).toLowerCase().includes(model.toLowerCase()) &&
+                        (p.brand + ' ' + p.model).toLowerCase() !== model.toLowerCase()
+                    ).map(item => (
+                      <li
+                        key={item.id}
+                        className="relative flex w-full cursor-pointer select-none flex-col rounded-sm py-1.5 px-2 hover:bg-accent hover:text-accent-foreground outline-none"
+                        onClick={() => {
+                          const fullName = `${item.brand} ${item.model}`;
+                          setModel(fullName);
+                          
+                          const parsed = parseHardwareSpecString(item.spec);
+                          
+                          if (parsed.cpu !== undefined) setCpu(String(parsed.cpu));
+                          if (parsed.ram !== undefined) {
+                            if (parsed.ram >= 1000 && parsed.ram % 1000 === 0) {
+                              setRam(String(parsed.ram / 1000));
+                              setRamUnit('TB');
+                            } else {
+                              setRam(String(parsed.ram));
+                              setRamUnit('GB');
+                            }
+                          }
+                          if (parsed.storage !== undefined) {
+                            if (parsed.storage >= 1000 && parsed.storage % 1000 === 0) {
+                              setStorage(String(parsed.storage / 1000));
+                              setStorageUnit('TB');
+                            } else {
+                              setStorage(String(parsed.storage));
+                              setStorageUnit('GB');
+                            }
+                          }
+                          if (item.spec.ports !== undefined) {
+                            const pCount = parsePortCount(item.spec.ports);
+                            if (pCount !== undefined) setPorts(String(pCount));
+                          }
+                          if (parsed.rackUnits !== undefined && selectedNode.parent_id) {
+                            updateHardware(selectedNode.id, {
+                              details: { ...selectedNode.details, rack_units: parsed.rackUnits },
+                            });
+                          }
+                          setModelSearchOpen(false);
+                        }}
+                      >
+                        <span className="font-semibold">{item.brand} {item.model}</span>
+                        {item.price_est > 0 && <span className="opacity-70 text-[9px]">Est. ~{item.price_est}{item.currency}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  model.length > 0 && hardwareResponse.data.length > 0 && (
+                     <div className="py-2 px-2 text-xs text-muted-foreground text-center">No catalog matches</div>
+                  )
+                )}
+              </div>
+            )}
           </div>
 
           {nodeHasCPU(selectedNode.type) && (

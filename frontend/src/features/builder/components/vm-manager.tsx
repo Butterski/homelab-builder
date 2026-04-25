@@ -37,6 +37,7 @@ export function VMManager({ nodeId }: Props) {
         name: '',
         os: '',
         ip: '',
+        mac_address: '',
         cpu_cores: 1,
         ram_mb: 512,
     })
@@ -49,12 +50,13 @@ export function VMManager({ nodeId }: Props) {
             type: newVM.type as VMType || 'container',
             status: newVM.status as VirtualMachine['status'] || 'running',
             ip: newVM.ip || undefined,
+            mac_address: newVM.mac_address || undefined,
             os: newVM.os || undefined,
             cpu_cores: newVM.cpu_cores,
             ram_mb: newVM.ram_mb,
         })
         setIsAdding(false)
-        setNewVM({ type: 'container', status: 'running', name: '', os: '', ip: '', cpu_cores: 1, ram_mb: 512 })
+        setNewVM({ type: 'container', status: 'running', name: '', os: '', ip: '', mac_address: '', cpu_cores: 1, ram_mb: 512 })
     }
 
     const cycleStatus = (vm: VirtualMachine) => {
@@ -73,6 +75,7 @@ export function VMManager({ nodeId }: Props) {
             type: vm.type,
             os: vm.os || '',
             ip: vm.ip || '',
+            mac_address: vm.mac_address || '',
             cpu_cores: vm.cpu_cores || 1,
             ram_mb: vm.ram_mb || 512,
         })
@@ -85,6 +88,7 @@ export function VMManager({ nodeId }: Props) {
             type: editVM.type as VMType || 'container',
             os: editVM.os || undefined,
             ip: editVM.ip || undefined,
+            mac_address: editVM.mac_address || undefined,
             cpu_cores: editVM.cpu_cores,
             ram_mb: editVM.ram_mb,
         })
@@ -139,7 +143,7 @@ export function VMManager({ nodeId }: Props) {
                             </select>
                         </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-3 gap-2">
                         <div>
                             <Label className="text-[10px]">OS / Image</Label>
                             <Input
@@ -156,6 +160,15 @@ export function VMManager({ nodeId }: Props) {
                                 placeholder="auto"
                                 value={newVM.ip}
                                 onChange={e => setNewVM(p => ({ ...p, ip: e.target.value }))}
+                            />
+                        </div>
+                        <div>
+                            <Label className="text-[10px]">MAC Address</Label>
+                            <Input
+                                className="h-7 text-xs"
+                                placeholder="AA:BB:CC:DD:EE:FF"
+                                value={newVM.mac_address}
+                                onChange={e => setNewVM(p => ({ ...p, mac_address: e.target.value }))}
                             />
                         </div>
                     </div>
@@ -230,7 +243,7 @@ export function VMManager({ nodeId }: Props) {
                                     </select>
                                 </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-2">
+                            <div className="grid grid-cols-3 gap-2">
                                 <div>
                                     <Label className="text-[10px]">OS / Image</Label>
                                     <Input
@@ -249,6 +262,15 @@ export function VMManager({ nodeId }: Props) {
                                         onChange={e => setEditVM(p => ({ ...p, ip: e.target.value }))}
                                     />
                                 </div>
+                                <div>
+                            <Label className="text-[10px]">MAC Address</Label>
+                            <Input
+                                className="h-7 text-xs"
+                                placeholder="AA:BB:CC:DD:EE:FF"
+                                value={editVM.mac_address}
+                                onChange={e => setEditVM(p => ({ ...p, mac_address: e.target.value }))}
+                            />
+                        </div>
                             </div>
                             <div className="grid grid-cols-2 gap-2">
                                 <div>

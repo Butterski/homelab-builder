@@ -160,6 +160,13 @@ const TYPE_CONFIG: Partial<
     iconColor: 'text-blue-600',
     color: '#2563eb',
   },
+  rack: {
+    icon: Server,
+    border: 'border-border',
+    bg: 'bg-violet-600',
+    iconColor: 'text-violet-400',
+    color: '#7c3aed',
+  },
 };
 const FALLBACK_CONFIG = {
   icon: Server,

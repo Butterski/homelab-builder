@@ -17,6 +17,8 @@ import Joyride, { type CallBackProps, STATUS, type Step } from 'react-joyride';
 import { useBuilderStore } from '../store/builder-store';
 import { HardwareToolbox } from './hardware-toolbox';
 import { HardwareNode as HardwareNodeComponent } from './hardware-node';
+import { RackNode } from './rack-node';
+import { RACK_U_HEIGHT_PX, RACK_HEADER_PX, RACK_RAIL_WIDTH, DEFAULT_DEVICE_U } from './rack-node';
 import { NodePropertiesPanel } from './node-properties-panel';
 import { LiveResourceDashboard } from './live-resource-dashboard';
 import { Button } from '../../../components/ui/button';
@@ -41,6 +43,7 @@ import { CustomEdge } from './custom-edge';
 
 const nodeTypes: NodeTypes = {
   hardware: HardwareNodeComponent,
+  rack: RackNode,
 };
 
 const edgeTypes = {
@@ -388,8 +391,7 @@ function Flow() {
         height: 1,
       });
 
-      const targetNode = intersecting[0];
-
+      // Check if dropped on a rack node — auto-mount into the rack
       let data: any = {};
       const dataStr = event.dataTransfer.getData('application/reactflow-data');
       const type = event.dataTransfer.getData('application/reactflow') as HardwareType;
@@ -406,6 +408,38 @@ function Flow() {
       if (!data.type) return;
 
       const isServiceDrag = event.dataTransfer.getData('service-drag') === 'true';
+
+      const rackTarget = intersecting.find(
+        (n: any) => n.type === 'rack',
+      );
+
+      if (rackTarget && data.type !== 'rack' && !isServiceDrag) {
+        // Calculate the U-slot position based on drop position within the rack
+        const relY = position.y - rackTarget.position.y - RACK_HEADER_PX;
+        const uSlot = Math.max(0, Math.round(relY / RACK_U_HEIGHT_PX));
+        const deviceU = data.details?.rack_units || DEFAULT_DEVICE_U[data.type] || 1;
+
+        const newNode: HardwareNode = {
+          id: `node-${Date.now()}`,
+          type: data.type as HardwareType,
+          name: data.name || `New ${data.type}`,
+          // Position relative to rack, snapped to U-slot grid
+          x: RACK_RAIL_WIDTH,
+          y: RACK_HEADER_PX + uSlot * RACK_U_HEIGHT_PX,
+          details: {
+            ...(data.details || {}),
+            rack_units: deviceU,
+            rack_position: uSlot,
+          },
+          internal_components: [],
+          vms: [],
+          parent_id: rackTarget.id,
+        };
+        addHardware(newNode);
+        return;
+      }
+
+      const targetNode = intersecting[0];
 
       if (isServiceDrag) {
         if (targetNode && targetNode.type === 'hardware') {
@@ -459,6 +493,68 @@ function Flow() {
       addHardware(newNode);
     },
     [screenToFlowPosition, getIntersectingNodes, addHardware, addInternalComponent, addVM],
+  );
+
+  const onNodeDragStop = useCallback(
+    (_: React.MouseEvent, node: any) => {
+      // Rack nodes manage their own position, don't nest them
+      if (node.type === 'rack') return;
+
+      const intersectingNodes = getIntersectingNodes(node);
+      const rackTarget = intersectingNodes.find((n: any) => n.type === 'rack');
+      const storeState = useBuilderStore.getState();
+
+      if (rackTarget) {
+        // Find hardware node to check details
+        const hardwareNode = storeState.hardwareNodes.find(n => n.id === node.id);
+        if (!hardwareNode) return;
+
+        // Calculate relative Y
+        const isCurrentlyInRack = node.parentId === rackTarget.id;
+        
+        // Node position in React Flow is relative IF it has parentId, or absolute if not
+        let newRelX = RACK_RAIL_WIDTH;
+        let newRelY = node.position.y;
+        
+        if (!isCurrentlyInRack) {
+          // It was dropped from outside! node.position is absolute canvas.
+          newRelY = node.position.y - rackTarget.position.y - RACK_HEADER_PX;
+        }
+
+        const uSlot = Math.max(0, Math.round(newRelY / RACK_U_HEIGHT_PX));
+        
+        storeState.updateHardware(node.id, {
+          parent_id: rackTarget.id,
+          x: newRelX,
+          y: RACK_HEADER_PX + uSlot * RACK_U_HEIGHT_PX,
+          details: {
+             ...(hardwareNode.details || {}),
+             rack_position: uSlot,
+          }
+        });
+      } else if (node.parentId) {
+         // Dropped outside a rack but had a parent! It should be detached!
+         // Calculate absolute position to drop it on canvas
+         const oldParent = storeState.nodes.find(n => n.id === node.parentId);
+         const absX = oldParent ? oldParent.position.x + node.position.x : node.position.x;
+         const absY = oldParent ? oldParent.position.y + node.position.y : node.position.y;
+         
+         const hardwareNode = storeState.hardwareNodes.find(n => n.id === node.id);
+         if (!hardwareNode) return;
+
+         // We use undefined to delete the rack_position from details, but TypeScript requires a structural match
+         const newDetails = { ...hardwareNode.details };
+         delete newDetails.rack_position;
+
+         storeState.updateHardware(node.id, {
+           parent_id: undefined,
+           x: absX,
+           y: absY,
+           details: newDetails
+         });
+      }
+    },
+    [getIntersectingNodes]
   );
 
   const isValidConnection = useCallback(
@@ -577,8 +673,9 @@ function Flow() {
           edgeTypes={edgeTypes}
           onDragOver={onDragOver}
           onDrop={onDrop}
+          onNodeDragStop={onNodeDragStop}
           onNodeClick={(_, node) => {
-            if (node.type === 'hardware') selectNode(node.id);
+            if (node.type === 'hardware' || node.type === 'rack') selectNode(node.id);
             else selectNode(null);
           }}
           onPaneClick={() => selectNode(null)}

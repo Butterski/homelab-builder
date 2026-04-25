@@ -21,6 +21,7 @@ import type {
 } from '../../../types';
 import { buildApi, type Build } from '../api/builds';
 import { api } from '../../../services/api';
+import { RACK_U_HEIGHT_PX, RACK_WIDTH_PX, RACK_HEADER_PX, RACK_FOOTER_PX } from '../components/rack-node';
 
 // Removed hardcoded NON_NETWORK_TYPES and using isNetworkNode instead.
 
@@ -220,11 +221,28 @@ export const useBuilderStore = create<BuilderState>()(
             edges: state.edges,
             hardwareNodes: state.hardwareNodes,
           };
+
+          const isRack = hardwareNode.type === 'rack';
+          const rackSize = hardwareNode.details?.rack_size || 24;
+          const totalHeight = RACK_HEADER_PX + rackSize * RACK_U_HEIGHT_PX + RACK_FOOTER_PX;
+
           const reactFlowNode: Node = {
             id: hardwareNode.id,
-            type: 'hardware',
+            type: isRack ? 'rack' : 'hardware',
             position: { x: hardwareNode.x, y: hardwareNode.y },
             data: { label: hardwareNode.name, ...hardwareNode },
+            ...(isRack
+              ? {
+                  style: { width: RACK_WIDTH_PX, height: totalHeight },
+                  zIndex: -1,
+                }
+              : {}),
+            ...(hardwareNode.parent_id
+              ? {
+                  parentId: hardwareNode.parent_id,
+                  extent: 'parent' as const,
+                }
+              : {}),
           };
 
           return {
@@ -243,30 +261,56 @@ export const useBuilderStore = create<BuilderState>()(
             edges: state.edges,
             hardwareNodes: state.hardwareNodes,
           };
+          // If removing a rack, also remove all children
+          const removedNode = state.hardwareNodes.find(n => n.id === nodeId);
+          const isRack = removedNode?.type === 'rack';
+          const childIds = isRack
+            ? new Set(state.hardwareNodes.filter(n => n.parent_id === nodeId).map(n => n.id))
+            : new Set<string>();
+          const allRemovedIds = new Set([nodeId, ...childIds]);
+
           return {
             historyPast: [...state.historyPast, snap].slice(-50),
             historyFuture: [],
-            hardwareNodes: state.hardwareNodes.filter(n => n.id !== nodeId),
-            nodes: state.nodes.filter(n => n.id !== nodeId),
-            edges: state.edges.filter(e => e.source !== nodeId && e.target !== nodeId),
-            selectedNodeId: state.selectedNodeId === nodeId ? null : state.selectedNodeId,
+            hardwareNodes: state.hardwareNodes.filter(n => !allRemovedIds.has(n.id)),
+            nodes: state.nodes.filter(n => !allRemovedIds.has(n.id)),
+            edges: state.edges.filter(
+              e => !allRemovedIds.has(e.source) && !allRemovedIds.has(e.target),
+            ),
+            selectedNodeId: allRemovedIds.has(state.selectedNodeId ?? '')
+              ? null
+              : state.selectedNodeId,
           };
         }),
 
       updateHardware: (nodeId, updates) =>
         set(state => ({
           hardwareNodes: state.hardwareNodes.map(n => (n.id === nodeId ? { ...n, ...updates } : n)),
-          nodes: state.nodes.map(n =>
-            n.id === nodeId
-              ? { ...n, data: { ...n.data, ...updates, label: updates.name ?? n.data.label } }
-              : n,
-          ),
+          nodes: state.nodes.map(n => {
+            if (n.id !== nodeId) return n;
+            const newN = { ...n, data: { ...n.data, ...updates, label: updates.name ?? n.data.label } };
+            if (updates.x !== undefined || updates.y !== undefined) {
+              newN.position = { x: updates.x ?? n.position.x, y: updates.y ?? n.position.y };
+            }
+            if ('parent_id' in updates) {
+              if (updates.parent_id) {
+                newN.parentId = updates.parent_id;
+                newN.extent = 'parent';
+              } else {
+                delete newN.parentId;
+                delete newN.extent;
+              }
+            }
+            return newN;
+          }),
         })),
 
       duplicateHardware: nodeId => {
         const state = get();
         const orig = state.hardwareNodes.find(n => n.id === nodeId);
         if (!orig) return;
+        // Don't duplicate racks (too complex with children)
+        if (orig.type === 'rack') return;
         const newId = crypto.randomUUID();
         const dup: HardwareNode = {
           ...orig,
@@ -276,6 +320,7 @@ export const useBuilderStore = create<BuilderState>()(
           x: orig.x + 40,
           y: orig.y + 40,
           vms: [],
+          parent_id: orig.parent_id,
         };
 
         const rfNode: Node = {
@@ -283,6 +328,9 @@ export const useBuilderStore = create<BuilderState>()(
           type: 'hardware',
           position: { x: dup.x, y: dup.y },
           data: { label: dup.name, ...dup },
+          ...(dup.parent_id
+            ? { parentId: dup.parent_id, extent: 'parent' as const }
+            : {}),
         };
         const snap: Snapshot = {
           nodes: state.nodes,
@@ -672,17 +720,39 @@ export const useBuilderStore = create<BuilderState>()(
           vms: n.virtual_machines || [],
           internal_components: n.internal_components || [],
           details: typeof n.details === 'string' ? JSON.parse(n.details) : n.details || {},
+          parent_id: n.parent_id || undefined,
         }));
 
         const hwMap = new Map<string, HardwareNode>(hardwareNodes.map((n: any) => [n.id, n]));
 
+        // Sort: racks first so React Flow can resolve parentId references
+        const sortedBuildNodes = [...(build.nodes || [])].sort((a: any, b: any) => {
+          const aIsRack = a.type === 'rack' ? 0 : 1;
+          const bIsRack = b.type === 'rack' ? 0 : 1;
+          return aIsRack - bIsRack;
+        });
+
         // Construct React Flow nodes from the relational DB nodes
-        const rfNodes = (build.nodes || []).map((n: any) => ({
-          id: n.id,
-          type: 'hardware',
-          position: { x: n.x, y: n.y },
-          data: { ...(hwMap.get(n.id) || {}), label: n.name },
-        }));
+        const rfNodes = sortedBuildNodes.map((n: any) => {
+          const hw = hwMap.get(n.id);
+          const isRack = n.type === 'rack';
+          const details = hw?.details || {};
+          const rackSize = details.rack_size || 24;
+          const totalHeight = RACK_HEADER_PX + rackSize * RACK_U_HEIGHT_PX + RACK_FOOTER_PX;
+
+          return {
+            id: n.id,
+            type: isRack ? 'rack' : 'hardware',
+            position: { x: n.x, y: n.y },
+            data: { ...(hw || {}), label: n.name },
+            ...(isRack
+              ? { style: { width: RACK_WIDTH_PX, height: totalHeight } }
+              : {}),
+            ...(n.parent_id
+              ? { parentId: n.parent_id, extent: 'parent' as const }
+              : {}),
+          };
+        });
 
         // Map DB edges to React Flow edges
         const rfEdges = (build.edges || []).map((e: any) => ({
@@ -726,6 +796,7 @@ export const useBuilderStore = create<BuilderState>()(
             details: rfn.data?.details || hw.details || {},
             vms: rfn.data?.vms || hw.vms || [],
             internal_components: rfn.data?.internal_components || hw.internal_components || [],
+            parent_id: hw.parent_id || undefined,
           };
         });
 

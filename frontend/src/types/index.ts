@@ -137,7 +137,8 @@ export type HardwareType =
   | 'sbc'
   | 'minipc'
   | 'iot'
-  | 'modem';
+  | 'modem'
+  | 'rack';
 
 export interface HardwareSpec {
   model?: string;
@@ -151,6 +152,9 @@ export interface HardwareSpec {
   url?: string;
   dhcp_enabled?: boolean;
   dhcp_locked?: boolean;
+  rack_size?: number;     // Total U capacity of a rack (e.g. 24, 42)
+  rack_units?: number;    // How many U this device occupies (e.g. 1, 2, 4)
+  rack_position?: number; // U-slot position within the rack (0-indexed from top)
 }
 
 export type VMType = 'vm' | 'container' | 'lxc';
@@ -160,6 +164,7 @@ export interface VirtualMachine {
   name: string;
   type: VMType;
   ip?: string;
+  mac_address?: string;
   os?: string; // e.g. "Ubuntu 22.04", "Alpine Linux"
   cpu_cores?: number;
   ram_mb?: number;
@@ -178,6 +183,7 @@ export interface HardwareNode {
   type: HardwareType;
   name: string;
   ip?: string;
+  mac_address?: string;
   subnet_mask?: string;
   gateway?: string;
   x: number;
@@ -185,6 +191,7 @@ export interface HardwareNode {
   details?: HardwareSpec;
   vms?: VirtualMachine[]; // Nested VMs / Containers
   internal_components?: HardwareComponent[]; // Nested hardware (GPU, Disk, etc)
+  parent_id?: string; // If inside a rack, the rack node's ID
 }
 
 export type HardwareNodeValidationIssue = {
