@@ -110,7 +110,7 @@ export const RackNode = memo(({ data, selected, id }: NodeProps) => {
           ))}
         </div>
 
-        {/* Main slot area — children are rendered here by React Flow */}
+        {/* Main slot area - children are rendered here by React Flow */}
         <div className="rack-node-slots">
           {uSlots.map(u => (
             <div

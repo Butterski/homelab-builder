@@ -400,7 +400,7 @@ func (s *IPService) ValidateNetwork(buildID uuid.UUID) (json.RawMessage, error) 
 	return json.RawMessage(rawResp), nil
 }
 
-// FallbackCalculateNetwork is kept as a safety net — if hlbIPAM is unreachable,
+// FallbackCalculateNetwork is kept as a safety net - if hlbIPAM is unreachable,
 // the system can fall back to this inline implementation.
 // Currently unused; wire it in if you need offline resilience.
 func (s *IPService) FallbackCalculateNetwork(buildID uuid.UUID) error {

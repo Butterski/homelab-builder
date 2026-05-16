@@ -245,7 +245,7 @@ function Flow() {
 
   const prevPortsRef = useRef<Map<string, number>>(new Map());
 
-  // Effect 1 — delete orphaned edges when port count shrinks.
+  // Effect 1 - delete orphaned edges when port count shrinks.
   // Does NOT call updateNodeInternals here; that happens in Effect 2.
   useEffect(() => {
     hardwareNodes.forEach(node => {
@@ -264,7 +264,7 @@ function Flow() {
     });
   }, [hardwareNodes, edges, deleteElements]);
 
-  // Effect 2 — always resync handle positions for port-bearing nodes whenever
+  // Effect 2 - always resync handle positions for port-bearing nodes whenever
   // hardwareNodes changes (covers increases, decreases, and first render).
   // Running after every hardwareNodes change is cheap and ensures the triple-rAF
   // fires after *all* state updates (including the deleteElements re-render from
@@ -396,7 +396,7 @@ function Flow() {
         height: 1,
       });
 
-      // Check if dropped on a rack node — auto-mount into the rack
+      // Check if dropped on a rack node - auto-mount into the rack
       let data: any = {};
       const dataStr = event.dataTransfer.getData('application/reactflow-data');
       const type = event.dataTransfer.getData('application/reactflow') as HardwareType;
@@ -576,7 +576,7 @@ function Flow() {
 
       const isUPS = sourceNode.type === 'ups' || targetNode.type === 'ups';
 
-      // Port exclusivity — each physical handle can carry at most one cable.
+      // Port exclusivity - each physical handle can carry at most one cable.
       // UPS connections are power cables and share ports with network connections.
       if (!isUPS) {
         const sourceHandleUsed = currentEdges.some(
@@ -599,7 +599,7 @@ function Flow() {
         }
       }
 
-      // Cycle detection — BFS through the existing undirected graph (skip for UPS).
+      // Cycle detection - BFS through the existing undirected graph (skip for UPS).
       if (!isUPS && !useBuilderStore.getState().edgePreferences.ignoreNetworkLoops) {
         const adj = new Map<string, Set<string>>();
         for (const e of currentEdges) {
@@ -639,7 +639,7 @@ function Flow() {
 
       return true;
     },
-    [], // no deps — reads live state via getState()
+    [], // no deps - reads live state via getState()
   );
 
   // ...

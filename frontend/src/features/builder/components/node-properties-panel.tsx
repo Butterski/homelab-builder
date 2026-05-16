@@ -348,11 +348,11 @@ export function NodePropertiesPanel() {
                   });
                 }}
               >
-                <option value={4}>4U — Wall Mount</option>
-                <option value={12}>12U — Small Cabinet</option>
-                <option value={24}>24U — Standard Homelab</option>
-                <option value={42}>42U — Full Height</option>
-                <option value={48}>48U — Extended</option>
+                <option value={4}>4U - Wall Mount</option>
+                <option value={12}>12U - Small Cabinet</option>
+                <option value={24}>24U - Standard Homelab</option>
+                <option value={42}>42U - Full Height</option>
+                <option value={48}>48U - Extended</option>
               </select>
             </div>
 
@@ -414,9 +414,9 @@ export function NodePropertiesPanel() {
 
         {/* ── In-rack device fields ── */}
         {isInRack && !isRack && (
-          <div className="space-y-3 border rounded-md px-3 py-3 bg-violet-500/5">
+          <div className="space-y-3 border rounded-md p-3 bg-violet-500/5">
             <span className="text-xs font-medium flex items-center gap-1.5">
-              <svg className="w-3 h-3 text-violet-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg className="size-3 text-violet-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <rect x="2" y="2" width="20" height="20" rx="2" />
                 <line x1="2" y1="8" x2="22" y2="8" />
               </svg>

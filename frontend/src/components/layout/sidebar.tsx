@@ -325,7 +325,7 @@ export function Sidebar({ className }: { className?: string }) {
 
         {/* BETA_SURVEY - Glowing survey button */}
         {user && (
-          <div className="border-t px-2 py-2 shrink-0">
+          <div className="border-t p-2 shrink-0">
             <button
               onClick={() => setShowSurvey(true)}
               title="Beta Feedback Survey"

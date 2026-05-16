@@ -260,19 +260,19 @@ export function SurveyModal({ onClose }: SurveyModalProps) { // BETA_SURVEY
                         <div className="text-center py-6 space-y-5">
                             <div className="text-5xl">🎉</div>
                             <h2 className="text-xl font-bold">Thank you for the feedback!</h2>
-                            <p className="text-sm text-muted-foreground">Your responses help shape the future of HLBuilder. Seriously — this means a lot. Come say hi:</p>
+                            <p className="text-sm text-muted-foreground">Your responses help shape the future of HLBuilder. Seriously - this means a lot. Come say hi:</p>
                             <div className="flex flex-col gap-2 items-center">
                                 <a href="https://mkuch.pl" target="_blank" rel="noreferrer"
                                     className="flex items-center gap-2 text-sm text-primary hover:underline">
-                                    <ExternalLink className="h-3.5 w-3.5" /> mkuch.pl — main site
+                                    <ExternalLink className="h-3.5 w-3.5" /> mkuch.pl - main site
                                 </a>
                                 <a href="https://in.mkuch.pl" target="_blank" rel="noreferrer"
                                     className="flex items-center gap-2 text-sm text-primary hover:underline">
-                                    <ExternalLink className="h-3.5 w-3.5" /> in.mkuch.pl — LinkedIn
+                                    <ExternalLink className="h-3.5 w-3.5" /> in.mkuch.pl - LinkedIn
                                 </a>
                                 <a href="https://git.mkuch.pl" target="_blank" rel="noreferrer"
                                     className="flex items-center gap-2 text-sm text-primary hover:underline">
-                                    <ExternalLink className="h-3.5 w-3.5" /> git.mkuch.pl — GitHub
+                                    <ExternalLink className="h-3.5 w-3.5" /> git.mkuch.pl - GitHub
                                 </a>
                             </div>
                             <Button className="w-full" onClick={onClose}>Close</Button>

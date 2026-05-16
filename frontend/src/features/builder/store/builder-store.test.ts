@@ -4,11 +4,11 @@
  * Tests for the three bugs fixed in builder-store.ts:
  *
  * 1. reassignAllIPs MUST call buildApi.update (save) BEFORE buildApi.calculateNetwork
- *    — if calculate runs first the backend reads stale/empty relational tables →
+ *    - if calculate runs first the backend reads stale/empty relational tables →
  *      "no router found" 500 error.
  *
  * 2. addHardware / addVM / duplicateHardware must NOT trigger reassignAllIPs
- *    — only onConnect should (prevents unnecessary API calls on every node drop).
+ *    - only onConnect should (prevents unnecessary API calls on every node drop).
  *
  * 3. onConnect MUST trigger reassignAllIPs so nodes get IPs when first wired up.
  *
@@ -74,7 +74,7 @@ describe('reassignAllIPs', () => {
     beforeEach(() => resetStoreWithBuildId())
     afterEach(() => vi.clearAllMocks())
 
-    it('should save (update) BEFORE calling calculateNetwork — core regression', async () => {
+    it('should save (update) BEFORE calling calculateNetwork - core regression', async () => {
         // Track call order
         const callOrder: string[] = []
             ; (buildApi.update as ReturnType<typeof vi.fn>).mockImplementation(async () => {
@@ -145,14 +145,14 @@ describe('reassignAllIPs', () => {
     })
 })
 
-describe('addHardware — must NOT trigger reassignAllIPs', () => {
+describe('addHardware - must NOT trigger reassignAllIPs', () => {
     beforeEach(() => resetStoreWithBuildId())
     afterEach(() => vi.clearAllMocks())
 
     it('does not call calculateNetwork when adding a hardware node', () => {
         useBuilderStore.getState().addHardware(makeRouter())
 
-        // Immediate (sync) check — reassignAllIPs debounced via setTimeout(0)
+        // Immediate (sync) check - reassignAllIPs debounced via setTimeout(0)
         // but addHardware should not queue it at all
         expect(buildApi.calculateNetwork).not.toHaveBeenCalled()
     })
@@ -172,7 +172,7 @@ describe('addHardware — must NOT trigger reassignAllIPs', () => {
     })
 })
 
-describe('onConnect — MUST trigger reassignAllIPs', () => {
+describe('onConnect - MUST trigger reassignAllIPs', () => {
     beforeEach(() => resetStoreWithBuildId())
     afterEach(() => vi.clearAllMocks())
 

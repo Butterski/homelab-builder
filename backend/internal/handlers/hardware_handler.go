@@ -78,7 +78,7 @@ func (h *HardwareHandler) GetBrands(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": brands})
 }
 
-// POST /api/hardware  (community submission — auto-approve=false)
+// POST /api/hardware  (community submission - auto-approve=false)
 func (h *HardwareHandler) Create(c *gin.Context) {
 	var input services.CreateHardwareInput
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -93,7 +93,7 @@ func (h *HardwareHandler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"data": comp})
 }
 
-// POST /api/admin/hardware  (admin — auto-approve=true)
+// POST /api/admin/hardware  (admin - auto-approve=true)
 func (h *HardwareHandler) AdminCreate(c *gin.Context) {
 	var input services.CreateHardwareInput
 	if err := c.ShouldBindJSON(&input); err != nil {

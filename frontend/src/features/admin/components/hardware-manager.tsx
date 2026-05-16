@@ -155,7 +155,7 @@ function HardwareRow({ item }: { item: HardwareComponent }) {
                     <p className="text-sm font-semibold">{item.model}</p>
                 </td>
                 <td className="px-4 py-3 text-sm font-medium">
-                    {item.price_est > 0 ? `~${item.price_est} ${item.currency}` : "—"}
+                    {item.price_est > 0 ? `~${item.price_est} ${item.currency}` : "-"}
                 </td>
                 <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-1">

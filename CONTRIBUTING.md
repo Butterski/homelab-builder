@@ -23,14 +23,14 @@ master (main branch)
 feature/your-feature-name  ← you work here
 ```
 
-1. **Start from `master`** — always branch off the latest `master`:
+1. **Start from `master`** - always branch off the latest `master`:
    ```bash
    git checkout master
    git pull origin master
    git checkout -b feature/short-description
    ```
 
-2. **Work on your branch** — make commits with clear messages. Keep the scope small (one feature or fix per branch).
+2. **Work on your branch** - make commits with clear messages. Keep the scope small (one feature or fix per branch).
 
 3. **Push and open a Pull Request into `master`**:
    ```bash
@@ -38,7 +38,7 @@ feature/your-feature-name  ← you work here
    ```
    Then open a PR on GitHub targeting the **`master`** branch.
 
-4. **PR review & merge** — once CI passes and the PR is approved, it gets merged into `master`.
+4. **PR review & merge** - once CI passes and the PR is approved, it gets merged into `master`.
 
 ### Branch Naming Convention
 
@@ -56,16 +56,16 @@ Use a descriptive prefix:
 
 We strictly follow a "One PR = One Feature/Fix" philosophy to keep reviews fast and code stable.
 
-1. **Target branch: `master`** — all PRs must target `master`.
+1. **Target branch: `master`** - all PRs must target `master`.
 2. Ensure any install or build dependencies are removed before the end of the layer when doing a build.
 3. Update the README.md with details of changes to the interface, if applicable.
 4. Your PR must pass all GitHub Action CI tests before it can be merged.
 5. If you have modified backend service logic, you MUST write an accompanying test in `*_test.go`.
-6. Keep PRs focused — avoid mixing unrelated changes in a single PR.
+6. Keep PRs focused - avoid mixing unrelated changes in a single PR.
 
 ### CI Checks (Required)
 
-Every PR automatically runs the following GitHub Actions checks — **all must pass** before the PR can be merged:
+Every PR automatically runs the following GitHub Actions checks - **all must pass** before the PR can be merged:
 
 | Check | What it runs |
 |-------|-------------|
@@ -74,7 +74,7 @@ Every PR automatically runs the following GitHub Actions checks — **all must p
 | **Backend Tests** | Docker Compose integration tests against PostgreSQL |
 | **Security Analysis** | Gosec (Go) + npm audit (frontend) |
 
-A summary gate job (**"All Tests Pass"**) aggregates the results — branch protection is configured to require this check. If any test suite fails, the PR is blocked from merging.
+A summary gate job (**"All Tests Pass"**) aggregates the results - branch protection is configured to require this check. If any test suite fails, the PR is blocked from merging.
 
 ## Code of Conduct
 

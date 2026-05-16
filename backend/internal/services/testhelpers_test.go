@@ -96,7 +96,7 @@ func migrateTestDB(db *gorm.DB) error {
 
 // testTx starts an isolated transaction for a single test.
 // The transaction is always rolled back in t.Cleanup, so tests are fully
-// isolated regardless of pass/fail — no manual teardown needed.
+// isolated regardless of pass/fail - no manual teardown needed.
 //
 // Usage:
 //

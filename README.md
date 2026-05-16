@@ -58,7 +58,7 @@ For the feature roadmap and future ideas, see [ROADMAP.md](./ROADMAP.md).
 
 ## 🏠 Self-Hosting Without Google OAuth (Auth-Disabled Mode)
 
-HLBuilder ships with a built-in **auth-disabled mode** designed for self-hosted / local deployments where you don't want to (or can't) set up Google OAuth credentials. When enabled, the application bypasses all login screens and automatically provisions a local admin user — no Google account, no OAuth app registration, and no tokens required.
+HLBuilder ships with a built-in **auth-disabled mode** designed for self-hosted / local deployments where you don't want to (or can't) set up Google OAuth credentials. When enabled, the application bypasses all login screens and automatically provisions a local admin user - no Google account, no OAuth app registration, and no tokens required.
 
 ### How It Works
 
@@ -67,7 +67,7 @@ The entire mechanism is driven by a single condition: **whether `GOOGLE_CLIENT_I
 | Component | What happens when `GOOGLE_CLIENT_ID` is **empty / unset** |
 |---|---|
 | **Backend** | `config.AuthDisabled` becomes `true`. Every protected endpoint's auth middleware skips JWT validation and instead auto-provisions a **Local Admin** user (`local@homelab.local`) with full access, including admin privileges. |
-| **Frontend** | `VITE_GOOGLE_CLIENT_ID` is empty, so the Google login button is non-functional. The auth hook detects this and calls `/auth/me` without a token — the backend responds with the Local Admin user, automatically logging you in. |
+| **Frontend** | `VITE_GOOGLE_CLIENT_ID` is empty, so the Google login button is non-functional. The auth hook detects this and calls `/auth/me` without a token - the backend responds with the Local Admin user, automatically logging you in. |
 | **Login Page** | You will still briefly see the login page on first load, but the auto-login fires immediately and redirects you to the projects dashboard. |
 
 ### Quick Start (Auth-Disabled)
@@ -78,7 +78,7 @@ Simply start the stack **without** providing any Google or JWT variables:
 git clone https://github.com/Butterski/homelab-builder.git
 cd homelab-builder
 
-# No .env file needed — just start the containers
+# No .env file needed - just start the containers
 docker compose up -d
 ```
 
@@ -123,8 +123,8 @@ docker compose up -d
 
 | Variable | Where | Required for Auth-Disabled? | Description |
 |---|---|---|---|
-| `GOOGLE_CLIENT_ID` | Backend | **No — leave unset** | When empty, backend sets `AuthDisabled=true` and skips JWT validation on all protected routes. |
-| `VITE_GOOGLE_CLIENT_ID` | Frontend (build arg) | **No — leave unset** | When empty, the frontend skips the Google login flow and auto-authenticates via `/auth/me`. |
+| `GOOGLE_CLIENT_ID` | Backend | **No - leave unset** | When empty, backend sets `AuthDisabled=true` and skips JWT validation on all protected routes. |
+| `VITE_GOOGLE_CLIENT_ID` | Frontend (build arg) | **No - leave unset** | When empty, the frontend skips the Google login flow and auto-authenticates via `/auth/me`. |
 | `JWT_SECRET` | Backend | **No** (unless `GIN_MODE=release`) | Secret for signing JWTs. In auth-disabled mode JWTs are never issued, so this is unused. If running in release mode, set it to any random string. |
 | `GIN_MODE` | Backend | **No** | Set to `debug` (or omit) to skip the JWT_SECRET strength check. Set to `release` for production with Google OAuth. |
 
@@ -139,7 +139,7 @@ When auth is disabled, the backend automatically creates (or reuses) a user with
 | Google ID | `local-auth-disabled` |
 | Avatar | DiceBear generated avatar |
 
-This user is created on first request to any protected endpoint and persists in the database. All builds, selections, and preferences are stored under this single user. If you later enable Google OAuth, this user remains in the database but will no longer be auto-selected — you'll log in with your Google account instead.
+This user is created on first request to any protected endpoint and persists in the database. All builds, selections, and preferences are stored under this single user. If you later enable Google OAuth, this user remains in the database but will no longer be auto-selected - you'll log in with your Google account instead.
 
 ### Dev Login Endpoint (Advanced)
 
@@ -152,7 +152,7 @@ Content-Type: application/json
 { "email": "any-email@example.com" }
 ```
 
-This creates (or logs into) a user with the given email — no Google account needed. It returns a JWT token you can use in `Authorization: Bearer <token>` headers. This is useful for:
+This creates (or logs into) a user with the given email - no Google account needed. It returns a JWT token you can use in `Authorization: Bearer <token>` headers. This is useful for:
 - Testing multi-user scenarios locally
 - Scripting / API access without a browser
 - Frontend development with `api.devLogin("your@email.com")`

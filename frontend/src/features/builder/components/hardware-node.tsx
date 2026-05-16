@@ -360,7 +360,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
 
   return (
     <div className="relative group">
-      {/* Animated ring on selection — uses device accent color */}
+      {/* Animated ring on selection - uses device accent color */}
       {selected && (
         <div
           className="absolute -inset-1 -z-10 rounded-2xl pointer-events-none node-selected-ring"
@@ -566,7 +566,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
               type="source"
               position={Position.Bottom}
               style={{ left: `${portSpacing * (i + 1)}%` }}
-              className="bg-muted-foreground! w-2 h-2 border! border-background! rounded-sm! hover:bg-primary! hover:scale-125 transition-all"
+              className="bg-muted-foreground! size-2 border! border-background! rounded-sm! hover:bg-primary! hover:scale-125 transition-all"
               title={`eth${i}`}
             />
           ));
@@ -577,7 +577,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
           id="eth0"
           type="source"
           position={Position.Bottom}
-          className="bg-muted-foreground! w-3 h-3 border-2! border-background! rounded-sm! hover:bg-primary! hover:scale-125 transition-all"
+          className="bg-muted-foreground! size-3 border-2! border-background! rounded-sm! hover:bg-primary! hover:scale-125 transition-all"
           title="eth0"
         />
       )}

@@ -307,7 +307,7 @@ func TestCalculateNetwork_DeviceInsideRack_GetsIP(t *testing.T) {
 	buildID := newBuildID(t, tx)
 
 	router := createNode(t, tx, buildID, "router", "Router", "192.168.1.1")
-	// Create a switch that is "inside" a rack — it has a parent_id on the model
+	// Create a switch that is "inside" a rack - it has a parent_id on the model
 	// but for IP assignment, parent_id doesn't matter; connectivity (edges) does
 	sw := createNode(t, tx, buildID, "switch", "Rack Switch", "")
 	rack := createNode(t, tx, buildID, "rack", "Main Rack", "")

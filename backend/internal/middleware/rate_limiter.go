@@ -115,14 +115,14 @@ func (rl *RateLimiter) cleanup() {
 
 // RateLimitMiddleware applies rate limiting to specific endpoints.
 // For the login endpoint, after 6 failed attempts the response is always
-// "Invalid credentials" — even for valid logins — so attackers can't
+// "Invalid credentials" - even for valid logins - so attackers can't
 // distinguish success from failure during lockout.
 func RateLimitMiddleware(rl *RateLimiter) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ip := c.ClientIP()
 
 		if rl.IsBlocked(ip) {
-			// Always return the same error — attacker thinks credentials are wrong
+			// Always return the same error - attacker thinks credentials are wrong
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"error": "Invalid credentials",
 				"code":  "invalid_credentials",

@@ -25,7 +25,7 @@ export default function TermsOfServicePage() {
 
                     <section className="space-y-3">
                         <h2 className="text-2xl font-bold">3. Accounts</h2>
-                        <p>You sign in using Google OAuth. You are responsible for maintaining the security of your Google account. One person, one account — do not share your session.</p>
+                        <p>You sign in using Google OAuth. You are responsible for maintaining the security of your Google account. One person, one account - do not share your session.</p>
                     </section>
 
                     <section className="space-y-3">
@@ -46,7 +46,7 @@ export default function TermsOfServicePage() {
 
                     <section className="space-y-3">
                         <h2 className="text-2xl font-bold">6. No Warranty</h2>
-                        <p>The Service is provided <strong>"as is"</strong> without warranties of any kind. We do not guarantee uptime, data preservation, or accuracy of generated configurations. This is a beta product — expect bugs.</p>
+                        <p>The Service is provided <strong>"as is"</strong> without warranties of any kind. We do not guarantee uptime, data preservation, or accuracy of generated configurations. This is a beta product - expect bugs.</p>
                     </section>
 
                     <section className="space-y-3">

@@ -45,7 +45,7 @@ func (h *AuthHandler) GoogleLogin(c *gin.Context) {
 		locked := h.rateLimiter.RecordFailure(ip)
 		if locked {
 			log.Printf("Rate limit locked IP: %s", ip)
-			// Just locked — return same generic error
+			// Just locked - return same generic error
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"error": "Invalid credentials",
 				"code":  "invalid_credentials",
@@ -59,7 +59,7 @@ func (h *AuthHandler) GoogleLogin(c *gin.Context) {
 		return
 	}
 
-	// Success — clear attempt counter
+	// Success - clear attempt counter
 	h.rateLimiter.ClearAttempts(ip)
 	// Return result directly without "data" wrapper to match frontend expectation
 	c.JSON(http.StatusOK, result)

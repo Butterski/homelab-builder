@@ -90,7 +90,7 @@ export default function RecommendationsPage() {
         >
           {isLoading && (
             <div className="col-span-1 xl:col-span-2 flex items-center justify-center p-8 text-muted-foreground">
-              <Loader2 className="w-6 h-6 animate-spin mr-2" />
+              <Loader2 className="size-6 animate-spin mr-2" />
               Analyzing requirements...
             </div>
           )}
@@ -181,7 +181,7 @@ export default function RecommendationsPage() {
                                 className="inline-flex items-center text-xs text-blue-600 hover:underline mt-1"
                               >
                                 Buy on {hw.buy_urls[0].store}{' '}
-                                <ExternalLink className="w-3 h-3 ml-1" />
+                                <ExternalLink className="size-3 ml-1" />
                               </a>
                             )}
                           </div>

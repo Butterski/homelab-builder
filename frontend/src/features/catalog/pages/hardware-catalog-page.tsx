@@ -457,7 +457,7 @@ export default function HardwareCatalogPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Hardware Catalog</h1>
           <p className="text-muted-foreground mt-1">
-            {total > 0 ? `${total} components` : 'Browse'} — routers, switches, NAS, servers, SBCs
+            {total > 0 ? `${total} components` : 'Browse'} - routers, switches, NAS, servers, SBCs
             and more
           </p>
         </div>
