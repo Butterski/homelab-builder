@@ -11,11 +11,11 @@ interface LayoutProps {
 
 export function Layout({ children }: LayoutProps) {
   const [user, setUser] = useState<User | null>(null);
-  const location = useLocation();
+  const routerLocation = useLocation();
 
   useEffect(() => {
     api.getCurrentUser().then(res => setUser(res.data)).catch(() => setUser(null));
-  }, [location.pathname]);
+  }, [routerLocation.pathname]);
 
   return (
     <div className="layout-root">

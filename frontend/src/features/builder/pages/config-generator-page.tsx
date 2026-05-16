@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useReducer, useMemo, useEffect } from 'react';
 import { useBuilderStore } from '../store/builder-store';
 import { buildApi } from '../api/builds';
 import {
@@ -75,14 +75,14 @@ function CodeBlock({ content, filename }: { content: string; filename: string })
         <div className="flex gap-2">
           <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={copy}>
             {copied ? (
-              <Check className="h-3.5 w-3.5 text-green-500" />
+              <Check className="size-3.5 text-green-500" />
             ) : (
-              <Copy className="h-3.5 w-3.5" />
+              <Copy className="size-3.5" />
             )}
             {copied ? 'Copied!' : 'Copy'}
           </Button>
           <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={download}>
-            <Download className="h-3.5 w-3.5 mr-1" /> Download
+            <Download className="size-3.5 mr-1" /> Download
           </Button>
         </div>
       </div>
@@ -93,36 +93,203 @@ function CodeBlock({ content, filename }: { content: string; filename: string })
   );
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
-export default function ConfigGeneratorPage() {
-  const { hardwareNodes, loadBuild, clearCurrentBuild } = useBuilderStore();
-  const [activeTab, setActiveTab] = useState<Tab>('docker-compose');
-  const [domain, setDomain] = useState('homelab.local');
-  const [labName, setLabName] = useState('my-homelab');
-  const [showSettings, setShowSettings] = useState(false);
+// ─── Sub-Components ─────────────────────────────────────────────────────────────
 
-  // Multi-project selection
-  const [builds, setBuilds] = useState<{ id: string; name: string }[]>([]);
-  const [selectedBuildId, setSelectedBuildId] = useState<string>('');
-  const [loadingBuild, setLoadingBuild] = useState(false);
-  const [configBundle, setConfigBundle] = useState<{
+function StatsBar({
+  servicesCount,
+  hardwareNodesCount,
+  ipOpts,
+}: {
+  servicesCount: number;
+  hardwareNodesCount: number;
+  ipOpts: IpAllocatorOptions;
+}) {
+  return (
+    <div className="flex flex-wrap gap-3">
+      <div className="flex items-center gap-2 rounded-lg border bg-card px-4 py-2 text-sm">
+        <Package className="size-4 text-primary" />
+        <span className="font-medium">{servicesCount}</span>
+        <span className="text-muted-foreground">containers/VMs</span>
+      </div>
+      <div className="flex items-center gap-2 rounded-lg border bg-card px-4 py-2 text-sm">
+        <Server className="size-4 text-primary" />
+        <span className="font-medium">{hardwareNodesCount}</span>
+        <span className="text-muted-foreground">hardware nodes</span>
+      </div>
+      <div className="flex items-center gap-2 rounded-lg border bg-card px-4 py-2 text-sm">
+        <Network className="size-4 text-primary" />
+        <span className="font-medium font-mono">
+          {ipOpts.baseIp}/{ipOpts.cidr}
+        </span>
+        <span className="text-muted-foreground">subnet</span>
+      </div>
+      {ipOpts.homeRouterMode && (
+        <div className="flex items-center gap-2 rounded-lg border border-amber-300/50 bg-amber-500/10 px-4 py-2 text-sm">
+          <Home className="size-4 text-amber-500" />
+          <span className="text-amber-600 dark:text-amber-400">
+            {ipOpts.homeReserve} IPs reserved for home devices
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SettingsPanel({
+  showSettings,
+  labName,
+  domain,
+  onToggle,
+  onLabNameChange,
+  onDomainChange,
+}: {
+  showSettings: boolean;
+  labName: string;
+  domain: string;
+  onToggle: () => void;
+  onLabNameChange: (value: string) => void;
+  onDomainChange: (value: string) => void;
+}) {
+  return (
+    <div className="rounded-xl border bg-card overflow-hidden">
+      <button
+        className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium hover:bg-muted/50 transition-colors"
+        onClick={onToggle}
+      >
+        <span className="flex items-center gap-2">
+          <Settings className="size-4 text-muted-foreground" />
+          Generator Settings
+        </span>
+        {showSettings ? (
+          <ChevronDown className="size-4 hover:cursor-pointer rotate-180 transition-transform duration-200" />
+        ) : (
+          <ChevronDown className="size-4 hover:cursor-pointer transition-transform duration-200" />
+        )}
+      </button>
+      <div
+        className="grid transition-all duration-300 ease-in-out"
+        style={{ gridTemplateRows: showSettings ? '1fr' : '0fr' }}
+      >
+        <div className="overflow-hidden">
+          <div className="border-t p-4 space-y-4">
+            {/* Row 1: general */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="lab-name" className="text-xs font-medium text-muted-foreground mb-1.5 block ">
+                  Lab Name
+                </label>
+                <Input
+                  id="lab-name"
+                  value={labName}
+                  onChange={e => onLabNameChange(e.target.value)}
+                  placeholder="my-homelab"
+                  className="h-8 text-sm"
+                />
+                <p className="text-xs text-muted-foreground mt-1">Used for export filename</p>
+              </div>
+              <div>
+                <label htmlFor="domain" className="text-xs font-medium text-muted-foreground mb-1.5 block">
+                  Domain
+                </label>
+                <Input
+                  id="domain"
+                  value={domain}
+                  onChange={e => onDomainChange(e.target.value)}
+                  placeholder="homelab.local"
+                  className="h-8 text-sm"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Used in Nginx/Traefik configs
+                </p>
+              </div>
+            </div>
+
+            {/* IP settings removed as they are now handled by backend */}
+            <div className="text-sm text-muted-foreground italic p-4">
+              IP Allocation settings are now managed securely by the backend.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
+interface ConfigState {
+  activeTab: Tab;
+  domain: string;
+  labName: string;
+  showSettings: boolean;
+  builds: { id: string; name: string }[];
+  selectedBuildId: string;
+  loadingBuild: boolean;
+  configBundle: {
     docker_compose: string;
     env: string;
     ansible_inventory: string;
     nginx: string;
-  } | null>(null);
-  const [loadingCompose, setLoadingCompose] = useState(false);
+  } | null;
+  loadingCompose: boolean;
+}
+
+export default function ConfigGeneratorPage() {
+  const { hardwareNodes, loadBuild, clearCurrentBuild } = useBuilderStore();
+  
+  const [state, dispatch] = useReducer(
+    (state: ConfigState, newState: Partial<ConfigState>) => ({ ...state, ...newState }),
+    {
+      activeTab: 'docker-compose',
+      domain: 'homelab.local',
+      labName: 'my-homelab',
+      showSettings: false,
+      builds: [],
+      selectedBuildId: '',
+      loadingBuild: false,
+      configBundle: null,
+      loadingCompose: false,
+    }
+  );
+
+  const {
+    activeTab,
+    domain,
+    labName,
+    showSettings,
+    builds,
+    selectedBuildId,
+    loadingBuild,
+    configBundle,
+    loadingCompose,
+  } = state;
+
+  const loadConfigBundle = async (id: string) => {
+    dispatch({ loadingCompose: true });
+    try {
+      const res = await buildApi.generateConfig(id);
+      dispatch({ configBundle: res });
+    } catch (err) {
+      console.error('Failed to generate compose', err);
+      toast.error('Failed to generate configurations from backend');
+      dispatch({ configBundle: null });
+    } finally {
+      dispatch({ loadingCompose: false });
+    }
+  };
 
   // Load project list on mount
   useEffect(() => {
     buildApi
       .list()
       .then(list => {
-        setBuilds(list.map(b => ({ id: b.id, name: b.name })));
+        dispatch({ builds: list.map(b => ({ id: b.id, name: b.name })) });
         // If store has a build, try to match it
         const current = useBuilderStore.getState().currentBuildId;
-        if (current) setSelectedBuildId(current);
-        else if (list.length > 0) {
+        if (current) {
+          dispatch({ selectedBuildId: current });
+          loadConfigBundle(current);
+        } else if (list.length > 0) {
           // Optionally load first one automatically?
           // Better to let user choose or stay empty if they navigated here without opening a project
           // But user complaint is "chooses first one only", implies auto-selection.
@@ -136,46 +303,25 @@ export default function ConfigGeneratorPage() {
   const handleSelectBuild = async (id: string) => {
     if (!id) return;
     console.log(`[ConfigGen] Switching to build ID: ${id}`);
-    setLoadingBuild(true);
-    setSelectedBuildId(id);
+    dispatch({ loadingBuild: true, selectedBuildId: id });
     try {
       const fullBuild = await buildApi.get(id);
       console.log(`[ConfigGen] Fetched build: ${fullBuild.name}`, fullBuild);
 
       console.log(`[ConfigGen] Loading data into store...`, fullBuild);
       loadBuild(fullBuild.id, fullBuild.name, fullBuild);
-      setLabName(fullBuild.name.toLowerCase().replace(/[^a-z0-9]/g, '-'));
+      dispatch({ labName: fullBuild.name.toLowerCase().replace(/[^a-z0-9]/g, '-') });
       toast.success(`Loaded project: ${fullBuild.name}`);
+      await loadConfigBundle(id);
     } catch (e) {
       console.error('[ConfigGen] Failed to load build', e);
       toast.error('Failed to load project - it may have been deleted');
       clearCurrentBuild();
-      setSelectedBuildId('');
+      dispatch({ selectedBuildId: '' });
     } finally {
-      setLoadingBuild(false);
+      dispatch({ loadingBuild: false });
     }
   };
-
-  // Fetch Config bundle from backend
-  useEffect(() => {
-    if (selectedBuildId) {
-      // Fetch regardless of active tab so it's ready instantly
-      setLoadingCompose(true);
-      buildApi
-        .generateConfig(selectedBuildId)
-        .then(res => {
-          setConfigBundle(res);
-        })
-        .catch(err => {
-          console.error('Failed to generate compose', err);
-          toast.error('Failed to generate configurations from backend');
-          setConfigBundle(null);
-        })
-        .finally(() => {
-          setLoadingCompose(false);
-        });
-    }
-  }, [selectedBuildId]);
 
   // IP settings
   // IP settings (Defaults)
@@ -258,7 +404,7 @@ export default function ConfigGeneratorPage() {
       {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Config Generator</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">Config Generator</h1>
           <p className="text-muted-foreground mt-1">
             Generate deployment configs from your Visual Builder design
           </p>
@@ -267,7 +413,7 @@ export default function ConfigGeneratorPage() {
         <div className="flex items-center gap-3">
           {loadingBuild && (
             <span className="text-xs text-muted-foreground animate-pulse flex items-center gap-1.5">
-              <Logo variant="loading" className="w-3 h-3" /> Loading...
+              <Logo variant="loading" className="size-3" /> Loading&hellip;
             </span>
           )}
           <select
@@ -294,7 +440,7 @@ export default function ConfigGeneratorPage() {
       {/* Empty state */}
       {!hasContent && (
         <div className="rounded-xl border border-dashed p-12 text-center">
-          <AlertCircle className="h-10 w-10 text-muted-foreground/40 mx-auto mb-4" />
+          <AlertCircle className="size-10 text-muted-foreground/40 mx-auto mb-4" />
           <h3 className="font-semibold text-lg mb-2">No lab design yet</h3>
           <p className="text-muted-foreground text-sm mb-4">
             Go to the <strong>Visual Builder</strong> and add services and hardware nodes, then come
@@ -309,94 +455,20 @@ export default function ConfigGeneratorPage() {
       {hasContent && (
         <>
           {/* Stats bar */}
-          <div className="flex flex-wrap gap-3">
-            <div className="flex items-center gap-2 rounded-lg border bg-card px-4 py-2 text-sm">
-              <Package className="h-4 w-4 text-primary" />
-              <span className="font-medium">{allServices.length}</span>
-              <span className="text-muted-foreground">containers/VMs</span>
-            </div>
-            <div className="flex items-center gap-2 rounded-lg border bg-card px-4 py-2 text-sm">
-              <Server className="h-4 w-4 text-primary" />
-              <span className="font-medium">{hardwareNodes.length}</span>
-              <span className="text-muted-foreground">hardware nodes</span>
-            </div>
-            <div className="flex items-center gap-2 rounded-lg border bg-card px-4 py-2 text-sm">
-              <Network className="h-4 w-4 text-primary" />
-              <span className="font-medium font-mono">
-                {ipOpts.baseIp}/{ipOpts.cidr}
-              </span>
-              <span className="text-muted-foreground">subnet</span>
-            </div>
-            {ipOpts.homeRouterMode && (
-              <div className="flex items-center gap-2 rounded-lg border border-amber-300/50 bg-amber-500/10 px-4 py-2 text-sm">
-                <Home className="h-4 w-4 text-amber-500" />
-                <span className="text-amber-600 dark:text-amber-400">
-                  {ipOpts.homeReserve} IPs reserved for home devices
-                </span>
-              </div>
-            )}
-          </div>
+          <StatsBar
+            servicesCount={allServices.length}
+            hardwareNodesCount={hardwareNodes.length}
+            ipOpts={ipOpts}
+          />
 
-          {/* Settings panel */}
-          <div className="rounded-xl border bg-card overflow-hidden">
-            <button
-              className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium hover:bg-muted/50 transition-colors"
-              onClick={() => setShowSettings(s => !s)}
-            >
-              <span className="flex items-center gap-2">
-                <Settings className="h-4 w-4 text-muted-foreground" />
-                Generator Settings
-              </span>
-              {showSettings ? (
-                <ChevronDown className="h-4 w-4 hover:cursor-pointer rotate-180 transition-transform duration-200" />
-              ) : (
-                <ChevronDown className="h-4 w-4 hover:cursor-pointer transition-transform duration-200" />
-              )}
-            </button>
-            <div
-              className="grid transition-all duration-300 ease-in-out"
-              style={{ gridTemplateRows: showSettings ? '1fr' : '0fr' }}
-            >
-              <div className="overflow-hidden">
-                <div className="border-t px-4 py-4 space-y-4">
-                  {/* Row 1: general */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-xs font-medium text-muted-foreground mb-1.5 block ">
-                        Lab Name
-                      </label>
-                      <Input
-                        value={labName}
-                        onChange={e => setLabName(e.target.value)}
-                        placeholder="my-homelab"
-                        className="h-8 text-sm"
-                      />
-                      <p className="text-xs text-muted-foreground mt-1">Used for export filename</p>
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                        Domain
-                      </label>
-                      <Input
-                        value={domain}
-                        onChange={e => setDomain(e.target.value)}
-                        placeholder="homelab.local"
-                        className="h-8 text-sm"
-                      />
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Used in Nginx/Traefik configs
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* IP settings removed as they are now handled by backend */}
-                  <div className="text-sm text-muted-foreground italic p-4">
-                    IP Allocation settings are now managed securely by the backend.
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <SettingsPanel
+            showSettings={showSettings}
+            labName={labName}
+            domain={domain}
+            onToggle={() => dispatch({ showSettings: !showSettings })}
+            onLabNameChange={(value) => dispatch({ labName: value })}
+            onDomainChange={(value) => dispatch({ domain: value })}
+          />
 
           {/* IP Zone Legend removed */}
 
@@ -407,14 +479,14 @@ export default function ConfigGeneratorPage() {
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
+                  onClick={() => dispatch({ activeTab: tab.id })}
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-colors hover:cursor-pointer ${
                     activeTab === tab.id
                       ? 'bg-primary text-primary-foreground border-primary'
                       : 'border-border hover:bg-muted'
                   }`}
                 >
-                  <Icon className="h-4 w-4" />
+                  <Icon className="size-4" />
                   {tab.label}
                 </button>
               );
@@ -447,7 +519,7 @@ export default function ConfigGeneratorPage() {
                     URL.revokeObjectURL(url);
                   }}
                 >
-                  <Download className="h-3 w-3 mr-1" />
+                  <Download className="size-3 mr-1" />
                   {tab.ext}
                 </Button>
               ))}
