@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useBuilderStore } from '../store/builder-store';
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';
@@ -62,6 +62,16 @@ export function NodePropertiesPanel() {
   const { data: hardwareResponse } = useHardware(
     selectedNode ? { category: selectedNode.type, limit: 100 } : {}
   );
+
+  // Pre-compute filtered hardware list once to avoid iterating twice (filter + map)
+  const filteredHardware = useMemo(() => {
+    if (!hardwareResponse?.data || !model) return [];
+    const lowerModel = model.toLowerCase();
+    return hardwareResponse.data.filter(p => {
+      const full = (p.brand + ' ' + p.model).toLowerCase();
+      return full.includes(lowerModel) && full !== lowerModel;
+    });
+  }, [hardwareResponse?.data, model]);
   
   const parseHardwareSpecString = (spec: Record<string, any>) => {
     let cpu = undefined;
@@ -650,17 +660,9 @@ export function NodePropertiesPanel() {
             />
             {modelSearchOpen && hardwareResponse?.data && (
               <div className="absolute top-full left-0 right-0 z-50 mt-1 max-h-48 overflow-auto rounded-md border bg-popover text-popover-foreground shadow-md outline-none animate-in fade-in zoom-in-95">
-                {hardwareResponse.data.filter(
-                  p =>
-                    (p.brand + ' ' + p.model).toLowerCase().includes(model.toLowerCase()) &&
-                    (p.brand + ' ' + p.model).toLowerCase() !== model.toLowerCase()
-                ).length > 0 ? (
+                {filteredHardware.length > 0 ? (
                   <ul className="py-1 text-xs">
-                    {hardwareResponse.data.filter(
-                      p =>
-                        (p.brand + ' ' + p.model).toLowerCase().includes(model.toLowerCase()) &&
-                        (p.brand + ' ' + p.model).toLowerCase() !== model.toLowerCase()
-                    ).map(item => (
+                    {filteredHardware.map(item => (
                       <li
                         key={item.id}
                         className="relative flex w-full cursor-pointer select-none flex-col rounded-sm py-1.5 px-2 hover:bg-accent hover:text-accent-foreground outline-none"
