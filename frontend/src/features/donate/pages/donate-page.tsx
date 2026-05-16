@@ -9,7 +9,7 @@ export default function DonatePage() {
                 {/* Header */}
                 <div className="text-center space-y-4">
                     <div className="inline-flex items-center justify-center p-3 bg-pink-500/10 text-pink-500 rounded-full mb-2">
-                        <Heart className="h-8 w-8" />
+                        <Heart className="size-8" />
                     </div>
                     <h1 className="text-4xl font-extrabold tracking-tight">Support HLBuilder</h1>
                     <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
@@ -71,7 +71,7 @@ export default function DonatePage() {
                         rel="noreferrer"
                         className="group relative overflow-hidden rounded-xl bg-[#FFDD00] p-6 text-[#000000] hover:bg-[#FFDD00]/90 transition-all hover:-translate-y-1 hover:shadow-xl hover:shadow-[#FFDD00]/20 flex flex-col items-center gap-3"
                     >
-                        <Coffee className="h-8 w-8 transition-transform group-hover:scale-110" />
+                        <Coffee className="size-8 transition-transform group-hover:scale-110" />
                         <span className="font-bold text-lg">Buy me a coffee</span>
                         <span className="text-sm opacity-75">One-time or monthly</span>
                     </a>
@@ -82,7 +82,7 @@ export default function DonatePage() {
                         rel="noreferrer"
                         className="group relative overflow-hidden rounded-xl bg-[#24292F] dark:bg-white p-6 text-white dark:text-[#24292F] hover:bg-[#24292F]/90 dark:hover:bg-white/90 transition-all hover:-translate-y-1 hover:shadow-xl hover:shadow-black/20 flex flex-col items-center gap-3"
                     >
-                        <GithubIcon className="h-8 w-8 transition-transform group-hover:scale-110" />
+                        <GithubIcon className="size-8 transition-transform group-hover:scale-110" />
                         <span className="font-bold text-lg">GitHub Sponsor</span>
                         <span className="text-sm opacity-75">Support development</span>
                     </a>

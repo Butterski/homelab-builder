@@ -68,7 +68,7 @@ function BuyConfirmDialog({
         </p>
         <div className="flex gap-3">
           <Button className="flex-1" onClick={onBought}>
-            <CheckCircle2 className="h-4 w-4 mr-2" /> Yes, mark as bought
+            <CheckCircle2 className="size-4 mr-2" /> Yes, mark as bought
           </Button>
           <Button variant="outline" onClick={onClose}>
             Not yet
@@ -153,7 +153,7 @@ export default function ShoppingListPage() {
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center border rounded-md bg-background px-3 py-1.5">
-            <Globe className="mr-2 h-4 w-4 text-muted-foreground" />
+            <Globe className="mr-2 size-4 text-muted-foreground" />
             <select
               className="bg-transparent text-sm font-medium focus:outline-none cursor-pointer"
               value={locale}
@@ -164,7 +164,7 @@ export default function ShoppingListPage() {
             </select>
           </div>
           <Button variant="outline" onClick={handlePrint}>
-            <Printer className="mr-2 h-4 w-4" /> Print
+            <Printer className="mr-2 size-4" /> Print
           </Button>
         </div>
       </div>
@@ -186,7 +186,7 @@ export default function ShoppingListPage() {
                 className="bg-green-600 hover:bg-green-700 cursor-pointer"
                 onClick={() => setShowBought(!showBought)}
               >
-                <CheckCircle2 className="h-3 w-3 mr-1" /> {boughtCount} bought
+                <CheckCircle2 className="size-3 mr-1" /> {boughtCount} bought
               </Badge>
             )}
             <Button
@@ -195,7 +195,7 @@ export default function ShoppingListPage() {
               className="h-7 text-xs"
               onClick={() => setShowBought(!showBought)}
             >
-              {showBought ? <EyeOff className="h-3 w-3 mr-1" /> : <Eye className="h-3 w-3 mr-1" />}
+              {showBought ? <EyeOff className="size-3 mr-1" /> : <Eye className="size-3 mr-1" />}
               {showBought ? 'Hide bought' : 'Show bought'}
             </Button>
           </div>
@@ -234,9 +234,9 @@ export default function ShoppingListPage() {
                         className={`mt-0.5 p-2 rounded-lg shrink-0 ${isBought ? 'bg-green-500/20 text-green-600' : 'bg-primary/10 text-primary'}`}
                       >
                         {isBought ? (
-                          <CheckCircle2 className="h-4 w-4" />
+                          <CheckCircle2 className="size-4" />
                         ) : (
-                          <Icon className="h-4 w-4" />
+                          <Icon className="size-4" />
                         )}
                       </div>
                       <div className="flex flex-col gap-1.5">
@@ -316,7 +316,7 @@ export default function ShoppingListPage() {
                               disabled={isBought}
                               onClick={() => handleBuyClick(item.name, offer.url)}
                             >
-                              Buy <ExternalLink className="ml-1 h-3 w-3 opacity-50" />
+                              Buy <ExternalLink className="ml-1 size-3 opacity-50" />
                             </Button>
                           </div>
                         </div>
@@ -347,7 +347,7 @@ export default function ShoppingListPage() {
                               disabled={isBought}
                               onClick={() => handleBuyClick(item.name, offer.url)}
                             >
-                              Buy <ExternalLink className="ml-1 h-3 w-3 opacity-50" />
+                              Buy <ExternalLink className="ml-1 size-3 opacity-50" />
                             </Button>
                           </div>
                         </div>

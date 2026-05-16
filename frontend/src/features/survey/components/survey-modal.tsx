@@ -67,7 +67,7 @@ export function SurveyModal({ onClose }: SurveyModalProps) { // BETA_SURVEY
                         <span className="text-xs font-bold uppercase tracking-widest text-primary/70 bg-primary/10 px-2 py-0.5 rounded-full">Beta Survey</span>
                     </div>
                     <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-accent">
-                        <X className="h-4 w-4" />
+                        <X className="size-4" />
                     </button>
                 </div>
 
@@ -96,7 +96,7 @@ export function SurveyModal({ onClose }: SurveyModalProps) { // BETA_SURVEY
                             <div className="flex gap-2 justify-center">
                                 {[1, 2, 3, 4, 5].map(n => (
                                     <button key={n} onClick={() => set("rating", n)} className="transition-transform hover:scale-110">
-                                        <Star className={`h-9 w-9 ${form.rating >= n ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground/30"}`} />
+                                        <Star className={`size-9 ${form.rating >= n ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground/30"}`} />
                                     </button>
                                 ))}
                             </div>

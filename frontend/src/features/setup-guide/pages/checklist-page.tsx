@@ -280,7 +280,7 @@ export default function ChecklistPage() {
                   <div
                     className={`p-2 rounded-lg ${isExpanded ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}
                   >
-                    <Icon className="h-5 w-5" />
+                    <Icon className="size-5" />
                   </div>
                   <div>
                     <CardTitle className="text-lg flex items-center gap-2">{step.title}</CardTitle>
@@ -289,7 +289,7 @@ export default function ChecklistPage() {
                 </div>
                 <div className="text-muted-foreground">
                   <ChevronDown
-                    className={`h-5 w-5 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+                    className={`size-5 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
                   />
                 </div>
               </div>
@@ -303,7 +303,7 @@ export default function ChecklistPage() {
                     <ul className="space-y-4 pt-6">
                       {step.items.map((item, i) => (
                         <li key={i} className="flex items-start gap-3">
-                          <CheckCircle2 className="h-5 w-5 text-primary/60 shrink-0 mt-0.5" />
+                          <CheckCircle2 className="size-5 text-primary/60 shrink-0 mt-0.5" />
                           <div className="space-y-2 flex-1">
                             <p className="text-sm leading-relaxed">{item.text}</p>
                             {item.code && (

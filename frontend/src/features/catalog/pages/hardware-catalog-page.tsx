@@ -124,14 +124,14 @@ function SubmitHardwareModal({ onClose }: { onClose: () => void }) {
             </p>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted transition-colors">
-            <X className="h-4 w-4" />
+            <X className="size-4" />
           </button>
         </div>
 
         {success ? (
           <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
             <div className="h-14 w-14 rounded-full bg-green-500/10 flex items-center justify-center mb-4">
-              <Check className="h-7 w-7 text-green-500" />
+              <Check className="size-7 text-green-500" />
             </div>
             <h3 className="font-semibold text-lg mb-1">Submitted!</h3>
             <p className="text-muted-foreground text-sm">
@@ -266,9 +266,9 @@ function SubmitHardwareModal({ onClose }: { onClose: () => void }) {
               </Button>
               <Button type="submit" className="flex-1" disabled={loading}>
                 {loading ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  <Loader2 className="size-4 animate-spin mr-2" />
                 ) : (
-                  <Plus className="h-4 w-4 mr-2" />
+                  <Plus className="size-4 mr-2" />
                 )}
                 {loading ? 'Submitting…' : 'Submit Hardware'}
               </Button>
@@ -326,7 +326,7 @@ const HardwareCard = memo(function HardwareCard({ item }: { item: HardwareCompon
     <div className="group rounded-xl border bg-card hover:border-primary/40 transition-all duration-200 overflow-hidden flex flex-col">
       <div className="p-4 flex items-start gap-3">
         <div className={`p-2.5 rounded-lg shrink-0 ${meta.color}`}>
-          <Icon className="h-5 w-5" />
+          <Icon className="size-5" />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
@@ -372,7 +372,7 @@ const HardwareCard = memo(function HardwareCard({ item }: { item: HardwareCompon
           className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors hover:cursor-pointer"
         >
           <ChevronDown
-            className={`h-3 w-3 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
+            className={`size-3 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
           />
           {expanded ? 'Less' : 'Full specs'}
         </button>
@@ -387,7 +387,7 @@ const HardwareCard = memo(function HardwareCard({ item }: { item: HardwareCompon
         {newOffers[0] && (
           <Button size="sm" className="h-7 px-3 text-xs" asChild>
             <a href={newOffers[0].url} target="_blank" rel="noreferrer">
-              <ShoppingCart className="h-3 w-3 opacity-60" />
+              <ShoppingCart className="size-3 opacity-60" />
             </a>
           </Button>
         )}
@@ -399,7 +399,7 @@ const HardwareCard = memo(function HardwareCard({ item }: { item: HardwareCompon
             asChild
           >
             <a href={usedOffers[0].url} target="_blank" rel="noreferrer">
-              <ShoppingCart className="h-3 w-3 opacity-60" />
+              <ShoppingCart className="size-3 opacity-60" />
             </a>
           </Button>
         )}
@@ -462,13 +462,13 @@ export default function HardwareCatalogPage() {
           </p>
         </div>
         <Button size="sm" onClick={() => setShowSubmit(true)}>
-          <Plus className="h-4 w-4 mr-2" /> Submit Hardware
+          <Plus className="size-4 mr-2" /> Submit Hardware
         </Button>
       </div>
 
       <div className="flex flex-wrap gap-3 items-center">
         <div className="relative flex-1 min-w-50 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
             placeholder="Search brand or model..."
             className="pl-9"
@@ -523,7 +523,7 @@ export default function HardwareCatalogPage() {
               onClick={() => handleCategory(cat === category ? '' : cat)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors hover:cursor-pointer ${cat === category ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:bg-muted'}`}
             >
-              <Icon className="h-3 w-3" />
+              <Icon className="size-3" />
               {meta?.label ?? cat}
             </button>
           );

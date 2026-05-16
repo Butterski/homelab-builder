@@ -108,14 +108,14 @@ export function SteeringRulesManager() {
                                                 <span className="text-xs font-semibold w-5 text-center">{i+1}.</span>
                                                 <span className="text-sm min-w-24">{store}</span>
                                                 <div className="flex gap-1 ml-4 border-l pl-2">
-                                                    <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => handleReorder(rule, i, 'up')} disabled={i === 0}>
-                                                        <ArrowUp className="h-3 w-3" />
+                                                    <Button variant="ghost" size="icon" className="size-5" onClick={() => handleReorder(rule, i, 'up')} disabled={i === 0}>
+                                                        <ArrowUp className="size-3" />
                                                     </Button>
-                                                    <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => handleReorder(rule, i, 'down')} disabled={i === rule.retailer_order.length - 1}>
-                                                        <ArrowDown className="h-3 w-3" />
+                                                    <Button variant="ghost" size="icon" className="size-5" onClick={() => handleReorder(rule, i, 'down')} disabled={i === rule.retailer_order.length - 1}>
+                                                        <ArrowDown className="size-3" />
                                                     </Button>
-                                                    <Button variant="ghost" size="icon" className="h-5 w-5 text-destructive ml-1" onClick={() => handleRemoveStore(rule, store)}>
-                                                        <Trash2 className="h-3 w-3" />
+                                                    <Button variant="ghost" size="icon" className="size-5 text-destructive ml-1" onClick={() => handleRemoveStore(rule, store)}>
+                                                        <Trash2 className="size-3" />
                                                     </Button>
                                                 </div>
                                             </div>
@@ -129,7 +129,7 @@ export function SteeringRulesManager() {
                                     <Button variant="ghost" size="icon" className="text-destructive" onClick={() => {
                                         if (window.confirm(`Delete rule for ${rule.category}?`)) deleteMut.mutate(rule.category)
                                     }}>
-                                        <Trash2 className="h-4 w-4" />
+                                        <Trash2 className="size-4" />
                                     </Button>
                                 </TableCell>
                             </TableRow>

@@ -134,7 +134,7 @@ export function LiveResourceDashboard() {
           <div className="flex items-center gap-2 text-sm font-semibold">
             <Activity
               className={cn(
-                'h-4 w-4',
+                'size-4',
                 maxPercent >= 90
                   ? 'text-destructive'
                   : maxPercent >= 75
@@ -143,18 +143,18 @@ export function LiveResourceDashboard() {
               )}
             />
             Resource Usage
-            <span className="relative flex h-2 w-2 shrink-0 ml-1">
+            <span className="relative flex size-2 shrink-0 ml-1">
               <span
                 className={cn(
                   'absolute inline-flex h-full w-full rounded-full opacity-75',
                   pingColor,
                 )}
               />
-              <span className={cn('relative inline-flex rounded-full h-2 w-2', lightColor)} />
+              <span className={cn('relative inline-flex rounded-full size-2', lightColor)} />
             </span>
           </div>
-          <Button variant="ghost" size="icon" className="h-6 w-6">
-            {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          <Button variant="ghost" size="icon" className="size-6">
+            {isExpanded ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
           </Button>
         </div>
 

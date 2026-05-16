@@ -103,10 +103,10 @@ export function AffiliateLinksManager() {
                                             {links.length === 0 && <span className="text-xs text-muted-foreground italic">No links configured</span>}
                                             {links.map((v: any, i: number) => (
                                                 <div key={i} className="flex items-center gap-2 text-xs border rounded p-1 bg-background">
-                                                    <Link className="h-3 w-3 text-muted-foreground" />
+                                                    <Link className="size-3 text-muted-foreground" />
                                                     <span className="truncate max-w-[200px]" title={v.url || v}>{v.url || v}</span>
-                                                    <Button variant="ghost" size="icon" className="h-4 w-4 ml-auto" onClick={() => handleRemoveLink(comp, i)}>
-                                                        <Trash2 className="h-3 w-3 text-destructive" />
+                                                    <Button variant="ghost" size="icon" className="size-4 ml-auto" onClick={() => handleRemoveLink(comp, i)}>
+                                                        <Trash2 className="size-3 text-destructive" />
                                                     </Button>
                                                 </div>
                                             ))}
@@ -115,13 +115,13 @@ export function AffiliateLinksManager() {
                                     <TableCell className="text-right">
                                         <div className="flex justify-end gap-1">
                                             <Button variant="outline" size="sm" onClick={() => handleGenerateMock(comp)} disabled={!mockUrlDest || updateLinksMut.isPending}>
-                                                <Beaker className="h-4 w-4 mr-1" /> Mock URL
+                                                <Beaker className="size-4 mr-1" /> Mock URL
                                             </Button>
                                             <Button variant="default" size="sm" onClick={() => {
                                                 const url = prompt("Enter full buy URL:")
                                                 if (url) handleAddLink(comp, url)
                                             }} disabled={updateLinksMut.isPending}>
-                                                <Plus className="h-4 w-4" /> Add
+                                                <Plus className="size-4" /> Add
                                             </Button>
                                         </div>
                                     </TableCell>

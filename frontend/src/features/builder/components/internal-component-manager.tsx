@@ -71,23 +71,23 @@ export function InternalComponentManager({ nodeId }: Props) {
                                 <Button
                                     size="icon"
                                     variant="ghost"
-                                    className="h-6 w-6 text-muted-foreground hover:text-primary"
+                                    className="size-6 text-muted-foreground hover:text-primary"
                                     onClick={() => setEditingComponent(comp)}
                                     title="Edit component"
                                 >
-                                    <Pencil className="h-3 w-3" />
+                                    <Pencil className="size-3" />
                                 </Button>
                                 <Button
                                     size="icon"
                                     variant="ghost"
-                                    className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                                    className="size-6 text-muted-foreground hover:text-destructive"
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         setDeletingCompId(comp.id);
                                     }}
                                     title="Remove component"
                                 >
-                                    <Trash2 className="h-3 w-3" />
+                                    <Trash2 className="size-3" />
                                 </Button>
                             </div>
                         </div>

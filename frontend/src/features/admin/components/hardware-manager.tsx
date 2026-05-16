@@ -37,12 +37,12 @@ function ApproveButton({ id, approved }: { id: string; approved: boolean }) {
     return approved ? (
         <Button size="sm" variant="outline" className="h-7 px-2 text-xs border-red-300/50 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
             onClick={() => mut.mutate(false)} disabled={mut.isPending}>
-            {mut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3 w-3" />}
+            {mut.isPending ? <Loader2 className="size-3 animate-spin" /> : <X className="size-3" />}
         </Button>
     ) : (
         <Button size="sm" className="h-7 px-2 text-xs bg-green-600 hover:bg-green-700"
             onClick={() => mut.mutate(true)} disabled={mut.isPending}>
-            {mut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+            {mut.isPending ? <Loader2 className="size-3 animate-spin" /> : <Check className="size-3" />}
         </Button>
     )
 }
@@ -58,7 +58,7 @@ function DeleteButton({ id }: { id: string }) {
     if (confirm) return (
         <div className="flex gap-1">
             <Button size="sm" variant="destructive" className="h-7 px-2 text-xs" onClick={() => mut.mutate()} disabled={mut.isPending}>
-                {mut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Delete"}
+                {mut.isPending ? <Loader2 className="size-3 animate-spin" /> : "Delete"}
             </Button>
             <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setConfirm(false)}>Cancel</Button>
         </div>
@@ -257,7 +257,7 @@ export function AdminHardwareManager() {
             {/* Pending alert */}
             {tab === "all" && pendingCount > 0 && (
                 <div className="flex items-center gap-3 rounded-lg border border-amber-300/50 bg-amber-500/10 px-4 py-3 text-sm">
-                    <AlertCircle className="h-4 w-4 text-amber-500 shrink-0" />
+                    <AlertCircle className="size-4 text-amber-500 shrink-0" />
                     <span><strong>{pendingCount}</strong> component{pendingCount > 1 ? "s" : ""} pending review</span>
                     <button onClick={() => setTab("pending")} className="ml-auto text-xs text-amber-600 hover:underline font-medium">
                         Review now →
@@ -275,12 +275,12 @@ export function AdminHardwareManager() {
                 </div>
                 {isLoading ? (
                     <div className="p-8 text-center text-muted-foreground text-sm">
-                        <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
+                        <Loader2 className="size-6 animate-spin mx-auto mb-2" />
                         Loading hardware catalog…
                     </div>
                 ) : items.length === 0 ? (
                     <div className="p-12 text-center">
-                        <Package className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
+                        <Package className="size-10 text-muted-foreground/30 mx-auto mb-3" />
                         <p className="text-muted-foreground text-sm">No components found</p>
                     </div>
                 ) : (

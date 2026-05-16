@@ -168,7 +168,7 @@ export default function HomelabGuidePage() {
                   className="inline-flex items-center gap-2 rounded-md bg-primary px-5 py-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
                 >
                   Open HLBuilder
-                  <ArrowRight className="h-4 w-4" />
+                  <ArrowRight className="size-4" />
                 </Link>
                 <Link
                   to="/hardware"
@@ -188,7 +188,7 @@ export default function HomelabGuidePage() {
             <Card className="border-border/70 bg-background/80">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-xl">
-                  <BookOpen className="h-5 w-5 text-cyan-500" />
+                  <BookOpen className="size-5 text-cyan-500" />
                   Quick answer
                 </CardTitle>
                 <CardDescription>
@@ -220,7 +220,7 @@ export default function HomelabGuidePage() {
               <Card key={step.title} className="border-border/70 bg-card/80 hover-lift">
                 <CardHeader>
                   <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                    <step.icon className="h-5 w-5" />
+                    <step.icon className="size-5" />
                   </div>
                   <CardTitle className="text-xl">{step.title}</CardTitle>
                 </CardHeader>
@@ -236,7 +236,7 @@ export default function HomelabGuidePage() {
           <Card className="border-border/70 bg-card/85">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-2xl">
-                <Boxes className="h-5 w-5 text-orange-500" />
+                <Boxes className="size-5 text-orange-500" />
                 Starter homelab patterns
               </CardTitle>
               <CardDescription>
@@ -257,7 +257,7 @@ export default function HomelabGuidePage() {
           <Card className="border-border/70 bg-card/85">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-2xl">
-                <Server className="h-5 w-5 text-red-500" />
+                <Server className="size-5 text-red-500" />
                 Hardware advice that actually matters
               </CardTitle>
               <CardDescription>
@@ -282,7 +282,7 @@ export default function HomelabGuidePage() {
           <Card className="border-border/70 bg-card/85">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-2xl">
-                <Network className="h-5 w-5 text-blue-500" />
+                <Network className="size-5 text-blue-500" />
                 Network design basics for a real homelab
               </CardTitle>
             </CardHeader>
@@ -302,7 +302,7 @@ export default function HomelabGuidePage() {
           <Card className="border-border/70 bg-card/85">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-2xl">
-                <Shield className="h-5 w-5 text-emerald-500" />
+                <Shield className="size-5 text-emerald-500" />
                 Security and maintenance checklist
               </CardTitle>
             </CardHeader>
@@ -328,7 +328,7 @@ export default function HomelabGuidePage() {
             <div className="space-y-3">
               {usageSteps.map((step, index) => (
                 <div key={step} className="flex gap-4 rounded-2xl border border-border/70 bg-background/70 p-4">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-semibold">
+                  <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-semibold">
                     {index + 1}
                   </div>
                   <p className="text-sm leading-7 text-muted-foreground">{step}</p>
@@ -339,7 +339,7 @@ export default function HomelabGuidePage() {
             <Card className="border-border/70 bg-background/80">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-xl">
-                  <Wrench className="h-5 w-5 text-violet-500" />
+                  <Wrench className="size-5 text-violet-500" />
                   What HLBuilder helps with
                 </CardTitle>
               </CardHeader>

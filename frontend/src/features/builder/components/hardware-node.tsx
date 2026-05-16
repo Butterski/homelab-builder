@@ -398,7 +398,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
                   : '',
           )}
         >
-          <Icon className={cn('h-4 w-4 shrink-0', cfg.iconColor)} />
+          <Icon className={cn('size-4 shrink-0', cfg.iconColor)} />
           <span className="font-semibold text-sm truncate flex-1" title={nodeData.label}>
             {nodeData.label}
           </span>
@@ -416,14 +416,14 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
             </div>
           )}
 
-          <span className="relative flex h-2 w-2 shrink-0">
+          <span className="relative flex size-2 shrink-0">
             <span
               className={cn(
                 'absolute inline-flex h-full w-full rounded-full opacity-75',
                 pingColor,
               )}
             />
-            <span className={cn('relative inline-flex rounded-full h-2 w-2', lightColor)} />
+            <span className={cn('relative inline-flex rounded-full size-2', lightColor)} />
           </span>
         </div>
 

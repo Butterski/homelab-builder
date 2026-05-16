@@ -303,19 +303,19 @@ export function NodePropertiesPanel() {
             variant="ghost"
             size="icon"
             onClick={handleDelete}
-            className="h-6 w-6 rounded-full hover:bg-destructive/10 hover:text-destructive"
+            className="size-6 rounded-full hover:bg-destructive/10 hover:text-destructive"
             title="Delete Node"
           >
-            <Trash2 className="h-4 w-4" />
+            <Trash2 className="size-4" />
           </Button>
           <Button
             variant="ghost"
             size="icon"
             onClick={() => selectNode(null)}
-            className="h-6 w-6 rounded-full hover:bg-muted"
+            className="size-6 rounded-full hover:bg-muted"
             title="Close"
           >
-            <X className="h-4 w-4" />
+            <X className="size-4" />
           </Button>
         </div>
       </CardHeader>
@@ -472,7 +472,7 @@ export function NodePropertiesPanel() {
             >
               <span>Advanced Network Settings</span>
               <ChevronDown
-                className={`h-4 w-4 transition-transform duration-200 text-muted-foreground ${netOpen ? 'rotate-180' : ''}`}
+                className={`size-4 transition-transform duration-200 text-muted-foreground ${netOpen ? 'rotate-180' : ''}`}
               />
             </button>
             <div
@@ -488,7 +488,7 @@ export function NodePropertiesPanel() {
                       <div className="flex items-center gap-1">
                         {errors.ip && (
                           <span className="text-[10px] text-destructive flex items-center">
-                            <AlertCircle className="h-3 w-3 mr-0.5" />
+                            <AlertCircle className="size-3 mr-0.5" />
                             {errors.ip}
                           </span>
                         )}
@@ -499,7 +499,7 @@ export function NodePropertiesPanel() {
                             className="h-5 px-1.5 text-[10px] text-primary"
                             onClick={handleAutoIP}
                           >
-                            <Wand2 className="h-3 w-3 mr-0.5" /> Auto
+                            <Wand2 className="size-3 mr-0.5" /> Auto
                           </Button>
                         )}
                       </div>
@@ -519,11 +519,11 @@ export function NodePropertiesPanel() {
                       <Button
                         variant="outline"
                         size="icon"
-                        className={`h-9 w-9 shrink-0 transition-colors ${dhcpLocked ? 'bg-primary/10 text-primary border-primary/30 hover:bg-primary/20 hover:text-primary' : 'text-muted-foreground'}`}
+                        className={`size-9 shrink-0 transition-colors ${dhcpLocked ? 'bg-primary/10 text-primary border-primary/30 hover:bg-primary/20 hover:text-primary' : 'text-muted-foreground'}`}
                         onClick={() => setDhcpLocked(!dhcpLocked)}
                         title={dhcpLocked ? 'IP is Locked (Static)' : 'IP is Auto-Assigned (DHCP)'}
                       >
-                        {dhcpLocked ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />}
+                        {dhcpLocked ? <Lock className="size-4" /> : <Unlock className="size-4" />}
                       </Button>
                     </div>
                     <p className="text-[10px] text-muted-foreground">
@@ -539,7 +539,7 @@ export function NodePropertiesPanel() {
                       <Label htmlFor="macAddress">MAC Address</Label>
                       {errors.macAddress && (
                         <span className="text-[10px] text-destructive flex items-center">
-                          <AlertCircle className="h-3 w-3 mr-0.5" />
+                          <AlertCircle className="size-3 mr-0.5" />
                           {errors.macAddress}
                         </span>
                       )}
@@ -598,7 +598,7 @@ export function NodePropertiesPanel() {
                           id="dhcp_enabled"
                           checked={dhcpEnabled}
                           onChange={e => setDhcpEnabled(e.target.checked)}
-                          className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                          className="size-4 rounded border-gray-300 text-primary focus:ring-primary"
                         />
                       </div>
                       <p className="text-[10px] text-muted-foreground bg-primary/5 rounded-md px-2 py-1.5 mt-2">
@@ -796,7 +796,7 @@ export function NodePropertiesPanel() {
           <div className="border-t pt-4">
             {hasWarning && (
               <div className="mb-4 p-2.5 bg-destructive/10 border border-destructive/20 rounded-md text-xs text-destructive flex items-start gap-2 animate-in fade-in">
-                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                <AlertTriangle className="size-4 shrink-0 mt-0.5" />
                 <div>
                   <p className="font-semibold mb-0.5">Resource Warning</p>
                   <p className="opacity-90 leading-relaxed">

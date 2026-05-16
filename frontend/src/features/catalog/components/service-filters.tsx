@@ -30,7 +30,7 @@ export function ServiceFilters({ selectedCategory, onSelectCategory }: ServiceFi
             className="justify-start"
             onClick={() => onSelectCategory(cat.id)}
           >
-            {selectedCategory === cat.id && <Check className="mr-2 h-4 w-4" />}
+            {selectedCategory === cat.id && <Check className="mr-2 size-4" />}
             {cat.label}
           </Button>
         ))}

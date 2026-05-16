@@ -544,13 +544,13 @@ export function HardwareToolbox() {
         </div>
         <button
           onClick={() => setIsMinimized(!isMinimized)}
-          className="h-4 w-4 flex items-center justify-center rounded hover:bg-background/50 text-muted-foreground"
+          className="size-4 flex items-center justify-center rounded hover:bg-background/50 text-muted-foreground"
           title={isMinimized ? 'Expand' : 'Minimize'}
         >
           {isMinimized ? (
-            <ChevronDown className="h-3 w-3 hover:cursor-pointer" />
+            <ChevronDown className="size-3 hover:cursor-pointer" />
           ) : (
-            <ChevronDown className="h-3 w-3 hover:cursor-pointer rotate-180" />
+            <ChevronDown className="size-3 hover:cursor-pointer rotate-180" />
           )}
         </button>
       </div>
@@ -601,7 +601,7 @@ export function HardwareToolbox() {
                         onDragStart={e => onDragStart(e, tool.type)}
                         draggable
                       >
-                        <Icon className={`h-4 w-4 mb-1 ${tool.color}`} />
+                        <Icon className={`size-4 mb-1 ${tool.color}`} />
                         <span className="text-[9px] font-medium text-center leading-tight">
                           {tool.label}
                         </span>
@@ -625,7 +625,7 @@ export function HardwareToolbox() {
                       >
                         {cat.category}
                         <ChevronDown
-                          className={`h-3 w-3 transition-transform duration-200 hover:cursor-pointer ${isOpen ? 'rotate-180' : ''}`}
+                          className={`size-3 transition-transform duration-200 hover:cursor-pointer ${isOpen ? 'rotate-180' : ''}`}
                         />
                       </button>
                       <div
@@ -708,7 +708,7 @@ export function HardwareToolbox() {
                         >
                           <span className="flex items-center gap-1.5 focus:outline-none">
                             {catName === 'Favorites' && (
-                              <Heart className="h-3 w-3 fill-red-500 text-red-500" />
+                              <Heart className="size-3 fill-red-500 text-red-500" />
                             )}
                             {catName}
                           </span>
@@ -717,7 +717,7 @@ export function HardwareToolbox() {
                               {svcs.length}
                             </span>
                             <ChevronDown
-                              className={`h-3 w-3 transition-transform duration-200 hover:cursor-pointer ${isEffectivelyOpen ? 'rotate-180' : ''}`}
+                              className={`size-3 transition-transform duration-200 hover:cursor-pointer ${isEffectivelyOpen ? 'rotate-180' : ''}`}
                             />
                           </div>
                         </button>
@@ -757,11 +757,11 @@ export function HardwareToolbox() {
                                   draggable
                                 >
                                   <div className="flex items-center gap-2 min-w-0">
-                                    <div className="h-6 w-6 rounded bg-primary/10 flex items-center justify-center shrink-0">
+                                    <div className="size-6 rounded bg-primary/10 flex items-center justify-center shrink-0">
                                       {svc.icon ? (
-                                        <Zap className="h-3 w-3 text-primary" />
+                                        <Zap className="size-3 text-primary" />
                                       ) : (
-                                        <Zap className="h-3 w-3 text-primary" />
+                                        <Zap className="size-3 text-primary" />
                                       )}
                                     </div>
                                     <div className="min-w-0 flex flex-col">
@@ -795,7 +795,7 @@ export function HardwareToolbox() {
                                         className="p-1 hover:bg-muted rounded"
                                         title="Documentation"
                                       >
-                                        <Book className="h-3 w-3 text-emerald-500" />
+                                        <Book className="size-3 text-emerald-500" />
                                       </a>
                                     )}
                                     {svc.github_url && (
@@ -806,7 +806,7 @@ export function HardwareToolbox() {
                                         className="p-1 hover:bg-muted rounded"
                                         title="GitHub Source"
                                       >
-                                        <Github className="h-3 w-3 text-muted-foreground" />
+                                        <Github className="size-3 text-muted-foreground" />
                                       </a>
                                     )}
                                     {svc.official_website && !svc.github_url && !svc.docs_url && (
@@ -817,7 +817,7 @@ export function HardwareToolbox() {
                                         className="p-1 hover:bg-muted rounded"
                                         title="Official Website"
                                       >
-                                        <ExternalLink className="h-3 w-3 text-blue-500" />
+                                        <ExternalLink className="size-3 text-blue-500" />
                                       </a>
                                     )}
                                   </div>

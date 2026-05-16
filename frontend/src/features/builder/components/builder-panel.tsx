@@ -58,7 +58,7 @@ export function BuilderPanel() {
           <div className="space-y-1">
             <div className="flex items-center justify-between text-xs font-medium">
               <span className="flex items-center gap-1">
-                <Cpu className="h-3 w-3" /> CPU
+                <Cpu className="size-3" /> CPU
               </span>
               <span className="text-muted-foreground">{cpu} Cores</span>
             </div>
@@ -67,7 +67,7 @@ export function BuilderPanel() {
           <div className="space-y-1">
             <div className="flex items-center justify-between text-xs font-medium">
               <span className="flex items-center gap-1">
-                <MemoryStick className="h-3 w-3" /> RAM
+                <MemoryStick className="size-3" /> RAM
               </span>
               <span className="text-muted-foreground">{Math.round(ram / 1024)} GB</span>
             </div>
@@ -76,7 +76,7 @@ export function BuilderPanel() {
           <div className="space-y-1">
             <div className="flex items-center justify-between text-xs font-medium">
               <span className="flex items-center gap-1">
-                <Database className="h-3 w-3" /> Storage
+                <Database className="size-3" /> Storage
               </span>
               <span className="text-muted-foreground">{storage} GB</span>
             </div>
@@ -96,7 +96,7 @@ export function BuilderPanel() {
             size="lg"
             className="w-full md:w-auto"
           >
-            Next Step <ChevronRight className="ml-2 h-4 w-4" />
+            Next Step <ChevronRight className="ml-2 size-4" />
           </Button>
         </div>
       </div>

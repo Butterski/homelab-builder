@@ -32,15 +32,15 @@ export function ServiceCard({ service, onSelect, isSelected }: ServiceCardProps)
       <CardContent className="flex-1">
         <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground">
           <div className="flex flex-col items-center p-2 bg-muted rounded">
-            <Cpu className="h-4 w-4 mb-1" />
+            <Cpu className="size-4 mb-1" />
             <span>{service.requirements?.min_cpu_cores || 1} vCPU</span>
           </div>
           <div className="flex flex-col items-center p-2 bg-muted rounded">
-            <MemoryStick className="h-4 w-4 mb-1" />
+            <MemoryStick className="size-4 mb-1" />
             <span>{service.requirements?.min_ram_mb || 512} MB</span>
           </div>
           <div className="flex flex-col items-center p-2 bg-muted rounded">
-            <HardDrive className="h-4 w-4 mb-1" />
+            <HardDrive className="size-4 mb-1" />
             <span>{service.requirements?.min_storage_gb || 10} GB</span>
           </div>
         </div>

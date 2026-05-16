@@ -36,7 +36,7 @@ function ServiceCard({
     <div className="group rounded-xl border bg-card hover:border-primary/40 transition-all duration-200 overflow-hidden flex flex-col h-full">
       <div className="p-4 flex items-start gap-4 flex-1">
         <div className="p-2.5 rounded-lg shrink-0 text-blue-500 bg-blue-500/10">
-          <Package className="h-6 w-6" />
+          <Package className="size-6" />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2 max-w-full">
@@ -48,7 +48,7 @@ function ServiceCard({
               onClick={handleFavorite}
               className={`shrink-0 p-1.5 rounded-md hover:bg-muted/60 transition-colors hover:cursor-pointer ${isFavorite ? 'text-red-500 hover:text-red-400' : 'text-muted-foreground hover:text-red-400'}`}
             >
-              <Heart className={`h-4 w-4 ${isFavorite ? 'fill-red-500' : ''}`} />
+              <Heart className={`size-4 ${isFavorite ? 'fill-red-500' : ''}`} />
             </button>
           </div>
           <p className="text-sm text-foreground/80 mt-2 line-clamp-3">
@@ -77,7 +77,7 @@ function ServiceCard({
               title="Website"
               className="hover:text-primary transition-colors"
             >
-              <Globe className="h-4 w-4" />
+              <Globe className="size-4" />
             </a>
           )}
           {item.docs_url && (
@@ -88,7 +88,7 @@ function ServiceCard({
               title="Documentation"
               className="hover:text-primary transition-colors"
             >
-              <Book className="h-4 w-4" />
+              <Book className="size-4" />
             </a>
           )}
           {item.github_url && (
@@ -99,7 +99,7 @@ function ServiceCard({
               title="GitHub"
               className="hover:text-primary transition-colors"
             >
-              <Github className="h-4 w-4" />
+              <Github className="size-4" />
             </a>
           )}
         </div>
@@ -162,7 +162,7 @@ export default function ServiceCatalogPage() {
 
       <div className="flex flex-wrap gap-3 items-center">
         <div className="relative flex-1 min-w-50 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
             placeholder="Search services..."
             className="pl-9"
@@ -183,7 +183,7 @@ export default function ServiceCatalogPage() {
           onClick={() => setCategory('favorites')}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors hover:cursor-pointer ${category === 'favorites' ? 'bg-red-500/10 text-red-500 border-red-500/20' : 'border-border hover:bg-muted'}`}
         >
-          <Heart className={`h-3 w-3 ${category === 'favorites' ? 'fill-red-500' : ''}`} />
+          <Heart className={`size-3 ${category === 'favorites' ? 'fill-red-500' : ''}`} />
           Favorites
         </button>
         {categories.map(cat => (

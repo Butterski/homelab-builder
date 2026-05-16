@@ -6,7 +6,7 @@ export default function PrivacyPolicyPage() {
             <div className="mx-auto max-w-3xl space-y-8 pb-24">
                 <div className="space-y-4">
                     <div className="inline-flex items-center justify-center p-3 bg-primary/10 text-primary rounded-full mb-2">
-                        <Shield className="h-8 w-8" />
+                        <Shield className="size-8" />
                     </div>
                     <h1 className="text-4xl font-extrabold tracking-tight">Privacy Policy</h1>
                     <p className="text-muted-foreground">Last updated: March 5, 2025</p>

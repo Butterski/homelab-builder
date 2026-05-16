@@ -87,10 +87,18 @@ export function Sidebar({ className }: { className?: string }) {
         {/* Logo */}
         <div
           className="flex h-16 items-center border-b border-[#27272A] px-4 shrink-0 group cursor-pointer select-none"
+          role="button"
+          tabIndex={0}
           onClick={() => navigate('/')}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              navigate('/');
+            }
+          }}
           title="Go to Projects"
         >
-          <Logo className="h-8 w-8 shrink-0 drop-shadow-sm" interactive />
+          <Logo className="size-8 shrink-0 drop-shadow-sm" interactive />
           <span
             className={cn(
               'ml-3 text-xl font-bold tracking-tight whitespace-nowrap transition-all duration-300',
@@ -104,32 +112,35 @@ export function Sidebar({ className }: { className?: string }) {
         {/* Navigation */}
         <div className="flex-1 overflow-y-auto py-4">
           <nav className="grid gap-1 px-2">
-            {navItems
-              .filter(item => item.label !== 'Admin' || user?.is_admin)
-              .map(item => (
-                <NavLink
-                  key={item.href}
-                  to={item.href}
-                  title={collapsed ? item.label : undefined}
-                  className={({ isActive }) =>
-                    cn(
-                      'group flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground',
-                      isActive ? 'bg-accent text-accent-foreground' : 'text-muted-foreground',
-                      collapsed && 'justify-center px-2',
-                    )
-                  }
-                >
-                  <item.icon className={cn('h-4 w-4 shrink-0', !collapsed && 'mr-2')} />
-                  <span
-                    className={cn(
-                      'whitespace-nowrap transition-all duration-300',
-                      collapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100',
-                    )}
+            {navItems.reduce<JSX.Element[]>((acc, item) => {
+              if (item.label !== 'Admin' || user?.is_admin) {
+                acc.push(
+                  <NavLink
+                    key={item.href}
+                    to={item.href}
+                    title={collapsed ? item.label : undefined}
+                    className={({ isActive }) =>
+                      cn(
+                        'group flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground',
+                        isActive ? 'bg-accent text-accent-foreground' : 'text-muted-foreground',
+                        collapsed && 'justify-center px-2',
+                      )
+                    }
                   >
-                    {item.label}
-                  </span>
-                </NavLink>
-              ))}
+                    <item.icon className={cn('size-4 shrink-0', !collapsed && 'mr-2')} />
+                    <span
+                      className={cn(
+                        'whitespace-nowrap transition-all duration-300',
+                        collapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100',
+                      )}
+                    >
+                      {item.label}
+                    </span>
+                  </NavLink>,
+                );
+              }
+              return acc;
+            }, [])}
           </nav>
         </div>
 
@@ -138,7 +149,15 @@ export function Sidebar({ className }: { className?: string }) {
           <div className="border-t p-4 animate-in fade-in duration-200">
             <div
               className="flex items-center gap-3 rounded-lg border bg-muted/50 p-2 min-h-14 cursor-pointer hover:bg-accent/50 transition-colors"
+              role="button"
+              tabIndex={0}
               onClick={() => (user ? navigate('/profile') : undefined)}
+              onKeyDown={(e) => {
+                if (user && (e.key === 'Enter' || e.key === ' ')) {
+                  e.preventDefault();
+                  navigate('/profile');
+                }
+              }}
               title={user ? 'View profile' : undefined}
             >
               {user ? (
@@ -148,7 +167,7 @@ export function Sidebar({ className }: { className?: string }) {
                       user.avatar_url ||
                       `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.email)}`
                     }
-                    className="h-8 w-8 rounded-full bg-primary/20 shrink-0"
+                    className="size-8 rounded-full bg-primary/20 shrink-0"
                     alt={user.name}
                     onError={e => {
                       (e.target as HTMLImageElement).src =
@@ -179,9 +198,17 @@ export function Sidebar({ className }: { className?: string }) {
                 user.avatar_url ||
                 `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.email)}`
               }
-              className="h-8 w-8 rounded-full bg-primary/20 cursor-pointer hover:ring-2 ring-primary/40 transition-all"
+              className="size-8 rounded-full bg-primary/20 cursor-pointer hover:ring-2 ring-primary/40 transition-all"
               alt={user.name}
+              role="button"
+              tabIndex={0}
               onClick={() => navigate('/profile')}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  navigate('/profile');
+                }
+              }}
               title={user.name}
               onError={e => {
                 (e.target as HTMLImageElement).src =
@@ -205,7 +232,7 @@ export function Sidebar({ className }: { className?: string }) {
             className="text-muted-foreground hover:text-primary transition-colors"
             title="Project Site"
           >
-            <Globe className="h-4 w-4" />
+            <Globe className="size-4" />
           </a>
           <a
             href="https://github.com/Butterski"
@@ -214,7 +241,7 @@ export function Sidebar({ className }: { className?: string }) {
             className="text-muted-foreground hover:text-primary transition-colors"
             title="GitHub"
           >
-            <Github className="h-4 w-4" />
+            <Github className="size-4" />
           </a>
           <a
             href="https://github.com/sponsors/Butterski"
@@ -223,16 +250,16 @@ export function Sidebar({ className }: { className?: string }) {
             className="text-muted-foreground hover:text-pink-500 transition-colors"
             title="Sponsor"
           >
-            <Heart className="h-4 w-4" />
+            <Heart className="size-4" />
           </a>
           <a
             href="https://discord.gg/8PQb2M2fBB"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-muted-foreground hover:text-indigo-500 transition-colors"
+            className="text-muted-foreground hover:text-zinc-500 transition-colors"
             title="Discord"
           >
-            <Discord className="h-4 w-4" />
+            <Discord className="size-4" />
           </a>
           <a
             href="https://buymeacoffee.com/butterski"
@@ -241,7 +268,7 @@ export function Sidebar({ className }: { className?: string }) {
             className="text-muted-foreground hover:text-yellow-500 transition-colors"
             title="Buy Me a Coffee"
           >
-            <BuyMeACoffee className="h-4 w-4" />
+            <BuyMeACoffee className="size-4" />
           </a>
         </div>
 
@@ -279,7 +306,7 @@ export function Sidebar({ className }: { className?: string }) {
             <Heart
               className={cn(
                 'shrink-0 transition-transform group-hover:scale-110',
-                collapsed ? 'h-5 w-5' : 'h-4 w-4',
+                collapsed ? 'size-5' : 'size-4',
               )}
             />
 
@@ -315,9 +342,9 @@ export function Sidebar({ className }: { className?: string }) {
                 <span className="absolute inset-0 rounded-lg animate-pulse ring-2 ring-primary/50 ring-offset-1 ring-offset-background pointer-events-none" />
               )}
               {surveyDone ? (
-                <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+                <CheckCircle2 className="size-4 shrink-0 text-emerald-500" />
               ) : (
-                <ClipboardList className="h-4 w-4 shrink-0" />
+                <ClipboardList className="size-4 shrink-0" />
               )}
               <span
                 className={cn(
@@ -340,9 +367,9 @@ export function Sidebar({ className }: { className?: string }) {
             title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
             {collapsed ? (
-              <ChevronsRight className="h-4 w-4" />
+              <ChevronsRight className="size-4" />
             ) : (
-              <ChevronsLeft className="h-4 w-4" />
+              <ChevronsLeft className="size-4" />
             )}
           </button>
         </div>

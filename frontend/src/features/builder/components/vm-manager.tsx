@@ -113,7 +113,7 @@ export function VMManager({ nodeId }: Props) {
                     className="h-6 px-2 text-xs"
                     onClick={() => setIsAdding(!isAdding)}
                 >
-                    <Plus className="h-3 w-3 mr-1" /> Add
+                    <Plus className="size-3 mr-1" /> Add
                 </Button>
             </div>
 
@@ -298,10 +298,10 @@ export function VMManager({ nodeId }: Props) {
                             </div>
                             <div className="flex gap-2 pt-1">
                                 <Button size="sm" className="h-7 text-xs flex-1" onClick={saveEdit}>
-                                    <Check className="h-3 w-3 mr-1" /> Save
+                                    <Check className="size-3 mr-1" /> Save
                                 </Button>
                                 <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={cancelEdit}>
-                                    <X className="h-3 w-3 mr-1" /> Cancel
+                                    <X className="size-3 mr-1" /> Cancel
                                 </Button>
                             </div>
                         </div>
@@ -339,25 +339,25 @@ export function VMManager({ nodeId }: Props) {
                             {/* Status toggle */}
                             <button
                                 onClick={() => cycleStatus(vm)}
-                                className={`h-4 w-4 rounded-full ${STATUS_COLORS[vm.status]} hover:opacity-80 transition-opacity`}
+                                className={`size-4 rounded-full ${STATUS_COLORS[vm.status]} hover:opacity-80 transition-opacity`}
                                 title={`Status: ${vm.status}. Click to toggle.`}
                             />
                             <Button
                                 size="icon"
                                 variant="ghost"
-                                className="h-6 w-6 text-muted-foreground hover:text-primary"
+                                className="size-6 text-muted-foreground hover:text-primary"
                                 onClick={() => startEditing(vm)}
                                 title="Edit"
                             >
-                                <Pencil className="h-3 w-3" />
+                                <Pencil className="size-3" />
                             </Button>
                             <Button
                                 size="icon"
                                 variant="ghost"
-                                className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                                className="size-6 text-muted-foreground hover:text-destructive"
                                 onClick={() => removeVM(nodeId, vm.id)}
                             >
-                                <Trash2 className="h-3 w-3" />
+                                <Trash2 className="size-3" />
                             </Button>
                         </div>
                     </div>
