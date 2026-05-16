@@ -577,7 +577,7 @@ export function HardwareToolbox() {
                       : 'text-muted-foreground hover:text-foreground'
                   }`}
                 >
-                  <Icon className="h-3.5 w-3.5" />
+                  <Icon className="size-3.5" />
                   {tab.label}
                 </button>
               );
@@ -643,7 +643,7 @@ export function HardwareToolbox() {
                                   onDragStart={e => onDragStart(e, preset.type, preset.data)}
                                   draggable
                                 >
-                                  <Icon className="h-3.5 w-3.5 text-primary shrink-0" />
+                                  <Icon className="size-3.5 text-primary shrink-0" />
                                   <div className="min-w-0">
                                     <p className="text-[10px] font-semibold truncate">
                                       {preset.label}
@@ -672,7 +672,7 @@ export function HardwareToolbox() {
                 </p>
 
                 <div className="relative mb-3">
-                  <Search className="absolute left-2 top-1.5 h-3.5 w-3.5 text-muted-foreground" />
+                  <Search className="absolute left-2 top-1.5 size-3.5 text-muted-foreground" />
                   <input
                     type="text"
                     placeholder="Search services..."

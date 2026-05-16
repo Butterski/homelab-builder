@@ -311,7 +311,7 @@ export function VMManager({ nodeId }: Props) {
                 return (
                     <div key={vm.id} className="flex items-start gap-2 rounded-lg border bg-background/60 p-2.5">
                         <div className="mt-0.5 shrink-0">
-                            <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+                            <Icon className="size-3.5 text-muted-foreground" />
                         </div>
                         <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5">
@@ -324,7 +324,7 @@ export function VMManager({ nodeId }: Props) {
                             <div className="flex items-center gap-2 mt-1">
                                 {vm.ip && (
                                     <span className="flex items-center gap-0.5 text-[10px] text-primary font-mono">
-                                        <Wifi className="h-2.5 w-2.5" />{vm.ip}
+                                        <Wifi className="size-2.5" />{vm.ip}
                                     </span>
                                 )}
                                 {vm.cpu_cores && (

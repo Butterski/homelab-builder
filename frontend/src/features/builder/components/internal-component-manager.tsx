@@ -50,7 +50,7 @@ export function InternalComponentManager({ nodeId }: Props) {
                     return (
                         <div key={comp.id} className="flex items-start gap-2 rounded-lg border bg-background/60 p-2.5 group">
                             <div className="mt-0.5 shrink-0">
-                                <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+                                <Icon className="size-3.5 text-muted-foreground" />
                             </div>
                             <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setEditingComponent(comp)}>
                                 <div className="flex items-center gap-1.5">

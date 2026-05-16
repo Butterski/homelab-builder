@@ -381,7 +381,7 @@ const HardwareCard = memo(function HardwareCard({ item }: { item: HardwareCompon
           onClick={handleLike}
           className={`flex items-center gap-1 text-xs transition-colors ${liked ? 'text-red-500' : 'text-muted-foreground hover:text-red-400'}`}
         >
-          <Heart className={`h-3.5 w-3.5 hover:cursor-pointer ${liked ? 'fill-red-500' : ''}`} />
+          <Heart className={`size-3.5 hover:cursor-pointer ${liked ? 'fill-red-500' : ''}`} />
           {likeCount}
         </button>
         {newOffers[0] && (

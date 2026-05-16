@@ -363,7 +363,7 @@ export default function ShoppingListPage() {
               <TableRow>
                 <TableCell colSpan={2} className="py-3 px-6 bg-green-500/5 border-t">
                   <p className="text-xs text-green-600 dark:text-green-400 font-medium flex items-center gap-1.5">
-                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    <CheckCircle2 className="size-3.5" />
                     {boughtCount} item{boughtCount !== 1 ? 's' : ''} already purchased - shown above
                     with strikethrough
                   </p>

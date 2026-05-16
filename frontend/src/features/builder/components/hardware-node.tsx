@@ -199,7 +199,7 @@ function VmChip({ vm }: { vm: VirtualMachine }) {
         colorClass,
       )}
     >
-      <Icon className="h-2.5 w-2.5 shrink-0" />
+      <Icon className="size-2.5 shrink-0" />
       <div className="min-w-0 flex-1">
         <div className="truncate font-semibold max-w-20" title={vm.name}>
           {vm.name}
@@ -232,7 +232,7 @@ function ComponentChip({ component }: { component: HardwareComponent }) {
         'flex items-center gap-1.5 rounded border px-1.5 py-1 text-[10px] bg-muted/30 border-border/50 text-muted-foreground',
       )}
     >
-      <Icon className={cn('h-2.5 w-2.5 shrink-0', cfg.iconColor)} />
+      <Icon className={cn('size-2.5 shrink-0', cfg.iconColor)} />
       <div className="min-w-0 flex-1">
         <div className="truncate font-semibold max-w-22.5" title={component.name}>
           {component.name}
@@ -407,7 +407,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
             <div title={tooltipLabel.trim()}>
               <AlertTriangle
                 className={cn(
-                  'h-3.5 w-3.5 shrink-0 cursor-help',
+                  'size-3.5 shrink-0 cursor-help',
                   hasResourceWarning || hasIpError
                     ? 'text-destructive animate-pulse'
                     : 'text-orange-500',
@@ -464,7 +464,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
             {containerRangeHint && (
               <div className="flex items-center justify-between gap-2 px-1 opacity-60">
                 <span className="text-[11px] text-muted-foreground flex items-center gap-1 font-medium">
-                  <Container className="h-2.5 w-2.5" /> Pool:
+                  <Container className="size-2.5" /> Pool:
                 </span>
                 <span className="font-mono text-[10px] text-blue-400 truncate">
                   {containerRangeHint}

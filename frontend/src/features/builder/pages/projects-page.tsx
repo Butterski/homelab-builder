@@ -539,11 +539,11 @@ export default function ProjectsPage() {
                   <div className="mt-auto space-y-3">
                     <div className="flex items-center gap-4 text-xs text-muted-foreground">
                       <div className="flex items-center gap-1.5">
-                        <HardDrive className="h-3.5 w-3.5" />
+                        <HardDrive className="size-3.5" />
                         {nodeCount} Nodes
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <Clock className="h-3.5 w-3.5" />
+                        <Clock className="size-3.5" />
                         {formatDistanceToNow(new Date(build.updated_at), { addSuffix: true })}
                       </div>
                     </div>
@@ -557,7 +557,7 @@ export default function ProjectsPage() {
                           handleOpen(build);
                         }}
                       >
-                        <Play className="mr-2 h-3.5 w-3.5" /> Open Editor
+                        <Play className="mr-2 size-3.5" /> Open Editor
                       </Button>
                     </div>
                   </div>

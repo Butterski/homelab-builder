@@ -163,7 +163,7 @@ export function LiveResourceDashboard() {
             <div className="space-y-1.5">
               <div className="flex justify-between items-center text-xs">
                 <span className="flex items-center gap-1.5 text-muted-foreground">
-                  <Cpu className="h-3.5 w-3.5" /> CPU Threads
+                  <Cpu className="size-3.5" /> CPU Threads
                 </span>
                 <span className="font-mono font-medium">
                   {stats.usedCpuThreads} / {stats.totalCpuThreads}
@@ -179,7 +179,7 @@ export function LiveResourceDashboard() {
             <div className="space-y-1.5">
               <div className="flex justify-between items-center text-xs">
                 <span className="flex items-center gap-1.5 text-muted-foreground">
-                  <Package className="h-3.5 w-3.5" /> Memory (RAM)
+                  <Package className="size-3.5" /> Memory (RAM)
                 </span>
                 <span className="font-mono font-medium">
                   {Math.round((stats.usedRamMb / 1024) * 10) / 10}G /{' '}
@@ -196,7 +196,7 @@ export function LiveResourceDashboard() {
             <div className="space-y-1.5">
               <div className="flex justify-between items-center text-xs">
                 <span className="flex items-center gap-1.5 text-muted-foreground">
-                  <HardDrive className="h-3.5 w-3.5" /> Storage
+                  <HardDrive className="size-3.5" /> Storage
                 </span>
                 <span className="font-mono font-medium">
                   {stats.usedStorageGb}G / {stats.totalStorageGb}G

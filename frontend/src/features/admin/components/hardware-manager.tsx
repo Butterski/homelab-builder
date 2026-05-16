@@ -65,7 +65,7 @@ function DeleteButton({ id }: { id: string }) {
     )
     return (
         <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive" onClick={() => setConfirm(true)}>
-            <Trash2 className="h-3.5 w-3.5" />
+            <Trash2 className="size-3.5" />
         </Button>
     )
 }
@@ -112,7 +112,7 @@ function BulkImportPanel() {
                 <label className="cursor-pointer">
                     <input type="file" accept=".json" className="hidden" onChange={handleFile} />
                     <Button variant="outline" size="sm" asChild>
-                        <span><Upload className="h-3.5 w-3.5 mr-1.5" /> Load JSON file</span>
+                        <span><Upload className="size-3.5 mr-1.5" /> Load JSON file</span>
                     </Button>
                 </label>
             </div>
@@ -129,7 +129,7 @@ function BulkImportPanel() {
                     : <p className="text-xs text-green-600 bg-green-500/10 rounded px-3 py-2">✓ Imported {result.imported} components</p>
             )}
             <Button size="sm" onClick={handleImport} disabled={!text.trim() || loading}>
-                {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-2" /> : <Plus className="h-3.5 w-3.5 mr-2" />}
+                {loading ? <Loader2 className="size-3.5 animate-spin mr-2" /> : <Plus className="size-3.5 mr-2" />}
                 Import
             </Button>
         </div>
@@ -233,7 +233,7 @@ export function AdminHardwareManager() {
 
                 <div className="flex gap-2 items-center">
                     <div className="relative">
-                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
                         <Input
                             placeholder="Search..."
                             className="h-8 pl-8 text-xs w-48"
@@ -242,10 +242,10 @@ export function AdminHardwareManager() {
                         />
                     </div>
                     <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => qc.invalidateQueries({ queryKey: ["admin-hardware"] })}>
-                        <RefreshCw className="h-3.5 w-3.5" />
+                        <RefreshCw className="size-3.5" />
                     </Button>
                     <Button size="sm" className="h-8" onClick={() => setShowImport(s => !s)}>
-                        {showImport ? <ChevronUp className="h-3.5 w-3.5 mr-1.5" /> : <ChevronDown className="h-3.5 w-3.5 mr-1.5" />}
+                        {showImport ? <ChevronUp className="size-3.5 mr-1.5" /> : <ChevronDown className="size-3.5 mr-1.5" />}
                         Bulk Import
                     </Button>
                 </div>
