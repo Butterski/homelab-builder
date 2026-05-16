@@ -264,9 +264,12 @@ export const useBuilderStore = create<BuilderState>()(
           // If removing a rack, also remove all children
           const removedNode = state.hardwareNodes.find(n => n.id === nodeId);
           const isRack = removedNode?.type === 'rack';
-          const childIds = isRack
-            ? new Set(state.hardwareNodes.filter(n => n.parent_id === nodeId).map(n => n.id))
-            : new Set<string>();
+          const childIds = new Set<string>();
+          if (isRack) {
+            for (const n of state.hardwareNodes) {
+              if (n.parent_id === nodeId) childIds.add(n.id);
+            }
+          }
           const allRemovedIds = new Set([nodeId, ...childIds]);
 
           return {
@@ -726,7 +729,7 @@ export const useBuilderStore = create<BuilderState>()(
         const hwMap = new Map<string, HardwareNode>(hardwareNodes.map((n: any) => [n.id, n]));
 
         // Sort: racks first so React Flow can resolve parentId references
-        const sortedBuildNodes = [...(build.nodes || [])].sort((a: any, b: any) => {
+        const sortedBuildNodes = (build.nodes || []).toSorted((a: any, b: any) => {
           const aIsRack = a.type === 'rack' ? 0 : 1;
           const bIsRack = b.type === 'rack' ? 0 : 1;
           return aIsRack - bIsRack;
