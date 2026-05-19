@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { NavLink, useNavigate, Link } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -112,7 +112,7 @@ export function Sidebar({ className }: { className?: string }) {
         {/* Navigation */}
         <div className="flex-1 overflow-y-auto py-4">
           <nav className="grid gap-1 px-2">
-            {navItems.reduce<JSX.Element[]>((acc, item) => {
+            {navItems.reduce<ReactNode[]>((acc, item) => {
               if (item.label !== 'Admin' || user?.is_admin) {
                 acc.push(
                   <NavLink
