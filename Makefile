@@ -42,7 +42,7 @@ test-backend:
 		homelab-builder-test-runner \
 		go test ./internal/services/... -v -count=1
 
-# Frontend Vitest tests run locally. buildApi is fully mocked — no backend needed.
+# Frontend Vitest tests run locally. buildApi is fully mocked - no backend needed.
 test-frontend:
 	@echo "Running frontend tests..."
 	cd frontend && npm test

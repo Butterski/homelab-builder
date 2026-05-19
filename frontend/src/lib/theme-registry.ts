@@ -4,7 +4,7 @@ export const THEME_STORAGE_KEY = 'hlbuilder-theme-settings';
 export const DEFAULT_THEME_ID = 'dark';
 export const LIGHT_THEME_ID = 'light';
 
-export const THEME_TOKEN_KEYS = [
+const THEME_TOKEN_KEYS = [
   'background',
   'foreground',
   'card',

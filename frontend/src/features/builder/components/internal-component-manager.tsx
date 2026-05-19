@@ -50,7 +50,7 @@ export function InternalComponentManager({ nodeId }: Props) {
                     return (
                         <div key={comp.id} className="flex items-start gap-2 rounded-lg border bg-background/60 p-2.5 group">
                             <div className="mt-0.5 shrink-0">
-                                <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+                                <Icon className="size-3.5 text-muted-foreground" />
                             </div>
                             <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setEditingComponent(comp)}>
                                 <div className="flex items-center gap-1.5">
@@ -71,23 +71,23 @@ export function InternalComponentManager({ nodeId }: Props) {
                                 <Button
                                     size="icon"
                                     variant="ghost"
-                                    className="h-6 w-6 text-muted-foreground hover:text-primary"
+                                    className="size-6 text-muted-foreground hover:text-primary"
                                     onClick={() => setEditingComponent(comp)}
                                     title="Edit component"
                                 >
-                                    <Pencil className="h-3 w-3" />
+                                    <Pencil className="size-3" />
                                 </Button>
                                 <Button
                                     size="icon"
                                     variant="ghost"
-                                    className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                                    className="size-6 text-muted-foreground hover:text-destructive"
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         setDeletingCompId(comp.id);
                                     }}
                                     title="Remove component"
                                 >
-                                    <Trash2 className="h-3 w-3" />
+                                    <Trash2 className="size-3" />
                                 </Button>
                             </div>
                         </div>

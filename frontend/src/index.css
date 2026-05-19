@@ -212,7 +212,7 @@
   transition: box-shadow 0.15s ease;
 }
 
-/* Node selection ring — animated accent border */
+/* Node selection ring - animated accent border */
 @keyframes node-ring-pulse {
   0%,
   100% {

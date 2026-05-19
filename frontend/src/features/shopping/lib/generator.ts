@@ -212,14 +212,29 @@ export function generateShoppingList(
         })
     })
 
-    // Now, enrich standard generated items with real catalog proxy URLs if they exist!
+    // Build a category index Map for O(1) category lookups instead of catalog.find() in a loop
+    const catalogByCategory = new Map<string, typeof catalog>()
+    for (const c of catalog) {
+        const cat = c.category?.toLowerCase()
+        if (cat && c.buy_urls?.length > 0) {
+            const existing = catalogByCategory.get(cat)
+            if (existing) {
+                existing.push(c)
+            } else {
+                catalogByCategory.set(cat, [c])
+            }
+        }
+    }
+
+    // Enrich standard generated items with real catalog proxy URLs if they exist!
     for (const item of items) {
-        // Try to find a match in the real catalog by checking type and name
-        const match = catalog.find(c => {
-            const tMatch = c.category?.toLowerCase() === item.category.toLowerCase()
-            const nMatch = item.name.toLowerCase().includes(c.model.toLowerCase())
-            return tMatch && nMatch && c.buy_urls?.length > 0;
-        })
+        const catKey = item.category.toLowerCase()
+        const catEntries = catalogByCategory.get(catKey)
+        if (!catEntries) continue
+
+        const match = catEntries.find(c =>
+            item.name.toLowerCase().includes(c.model.toLowerCase())
+        )
 
         if (match) {
             // Replace offers completely with mapped buy_urls from the database!

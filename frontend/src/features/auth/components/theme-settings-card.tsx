@@ -130,7 +130,7 @@ export function ThemeSettingsCard() {
         <div className="flex items-start justify-between gap-4">
           <div>
             <CardTitle className="flex items-center gap-2 text-base">
-              <Palette className="h-4 w-4" />
+              <Palette className="size-4" />
               Appearance
             </CardTitle>
             <CardDescription className="mt-1">
@@ -202,7 +202,7 @@ export function ThemeSettingsCard() {
                         }}
                         aria-label={`Delete ${theme.name}`}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="size-4" />
                       </button>
                     )}
                   </div>
@@ -227,11 +227,11 @@ export function ThemeSettingsCard() {
             onChange={handleFileSelection}
           />
           <Button variant="outline" disabled={isSaving} onClick={() => fileInputRef.current?.click()}>
-            <Upload className="h-4 w-4" />
+            <Upload className="size-4" />
             Import Theme JSON
           </Button>
           <Button variant="outline" disabled={isSaving} onClick={handleExportActiveTheme}>
-            <Download className="h-4 w-4" />
+            <Download className="size-4" />
             Export Active Theme
           </Button>
           <Button
@@ -239,7 +239,7 @@ export function ThemeSettingsCard() {
             disabled={isSaving || themeSettings.customThemes.length === 0}
             onClick={handleExportThemePack}
           >
-            <Download className="h-4 w-4" />
+            <Download className="size-4" />
             Export Theme Pack
           </Button>
         </div>

@@ -237,10 +237,10 @@ export function CustomEdge({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-6 w-6 rounded-full bg-background border transition-all text-muted-foreground hover:text-foreground hover:bg-muted"
+                  className="size-6 rounded-full bg-background border transition-all text-muted-foreground hover:text-foreground hover:bg-muted"
                   title="Configure Connection"
                 >
-                  <Settings2 className="h-3 w-3" />
+                  <Settings2 className="size-3" />
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-60 p-3" side="top" align="center">
@@ -282,11 +282,11 @@ export function CustomEdge({
             <Button
               variant="ghost"
               size="icon"
-              className="h-6 w-6 rounded-full bg-background border hover:bg-destructive hover:text-destructive-foreground active:scale-95 transition-all text-muted-foreground"
+              className="size-6 rounded-full bg-background border hover:bg-destructive hover:text-destructive-foreground active:scale-95 transition-all text-muted-foreground"
               onClick={onEdgeClick}
               title="Delete Connection"
             >
-              <X className="h-3 w-3" />
+              <X className="size-3" />
             </Button>
           </div>
         </div>

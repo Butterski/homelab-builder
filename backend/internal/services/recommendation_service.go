@@ -63,14 +63,14 @@ type RecommendationResponse struct {
 var serviceNotes = map[string]string{
 	"Plex":                "Plex benefits from Intel QuickSync (iGPU) for hardware transcoding. Avoid AMD CPUs without integrated graphics.",
 	"Jellyfin":            "Jellyfin supports VAAPI hardware transcoding. Intel N100/N305 are excellent low-power choices.",
-	"Immich":              "Immich uses machine learning for photo recognition — it's RAM-hungry. Consider 8+ GB dedicated.",
+	"Immich":              "Immich uses machine learning for photo recognition - it's RAM-hungry. Consider 8+ GB dedicated.",
 	"Home Assistant":      "Home Assistant runs best with host networking. USB passthrough needed for Zigbee/Z-Wave dongles.",
 	"Pi-hole":             "Pi-hole is lightweight but needs to be reliable. Consider a UPS for DNS availability.",
 	"Minecraft Server":    "Minecraft server RAM scales with player count and world size. Paper server is recommended for performance.",
 	"Nextcloud":           "Nextcloud benefits from SSD storage and a dedicated database (PostgreSQL). Pair with a reverse proxy for HTTPS.",
 	"Grafana":             "Grafana itself is lightweight, but pair it with Prometheus for full observability.",
 	"Uptime Kuma":         "Uptime Kuma is very lightweight. Great first service to ensure everything else is running.",
-	"Vaultwarden":         "Vaultwarden handles sensitive data — prioritize server security and regular backups.",
+	"Vaultwarden":         "Vaultwarden handles sensitive data - prioritize server security and regular backups.",
 	"Traefik":             "Traefik auto-discovers Docker services and manages SSL certificates. Central to your network setup.",
 	"Nginx Proxy Manager": "Nginx Proxy Manager offers a GUI for reverse proxy. Choose either Traefik or NPM, not both.",
 	"AdGuard Home":        "AdGuard Home is a Pi-hole alternative with a modern UI. Supports DNS-over-HTTPS natively.",
@@ -262,10 +262,10 @@ func buildSpec(ramMB int, cpuCores float32, storageGB int, tier string) Spec {
 		var parts []string
 		parts = append(parts, "Bare minimum to run your services.")
 		if cpuCores <= 2 {
-			parts = append(parts, "Only 2 cores — multitasking will be limited.")
+			parts = append(parts, "Only 2 cores - multitasking will be limited.")
 		}
 		if ramMB < 4096 {
-			parts = append(parts, "Under 4 GB RAM — some services may struggle under load.")
+			parts = append(parts, "Under 4 GB RAM - some services may struggle under load.")
 		}
 		spec.Rationale = strings.Join(parts, " ")
 		spec.EstimatedCostMin = estimateCost(ramMB, cpuCores, storageGB, 0.6)
@@ -275,7 +275,7 @@ func buildSpec(ramMB int, cpuCores float32, storageGB int, tier string) Spec {
 		spec.EstimatedCostMin = estimateCost(ramMB, cpuCores, storageGB, 0.8)
 		spec.EstimatedCostMax = estimateCost(ramMB, cpuCores, storageGB, 1.2)
 	case "optimal":
-		spec.Rationale = "Future-proof setup with 50% extra headroom. Ideal for growing your homelab — you can add 3-5 more services without upgrading."
+		spec.Rationale = "Future-proof setup with 50% extra headroom. Ideal for growing your homelab - you can add 3-5 more services without upgrading."
 		spec.EstimatedCostMin = estimateCost(ramMB, cpuCores, storageGB, 1.2)
 		spec.EstimatedCostMax = estimateCost(ramMB, cpuCores, storageGB, 1.8)
 	}

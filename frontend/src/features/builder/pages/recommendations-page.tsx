@@ -67,14 +67,14 @@ export default function RecommendationsPage() {
               onClick={() => setShowInsights(!showInsights)}
             >
               {showInsights ? (
-                <ChevronUp className="h-4 w-4 mr-2" />
+                <ChevronUp className="size-4 mr-2" />
               ) : (
-                <ChevronDown className="h-4 w-4 mr-2" />
+                <ChevronDown className="size-4 mr-2" />
               )}
               {showInsights ? 'Hide Recommendations' : 'Show Recommendations'}
             </Button>
             {/* <Button size="sm" variant="outline" onClick={() => navigate('/shopping-list')}>
-                    Shopping List <ShoppingCart className="ml-2 h-4 w-4" />
+                    Shopping List <ShoppingCart className="ml-2 size-4" />
                 </Button> */}
           </div>
         </div>
@@ -90,7 +90,7 @@ export default function RecommendationsPage() {
         >
           {isLoading && (
             <div className="col-span-1 xl:col-span-2 flex items-center justify-center p-8 text-muted-foreground">
-              <Loader2 className="w-6 h-6 animate-spin mr-2" />
+              <Loader2 className="size-6 animate-spin mr-2" />
               Analyzing requirements...
             </div>
           )}
@@ -107,19 +107,19 @@ export default function RecommendationsPage() {
                   <CardContent className="space-y-2 pb-3">
                     <div className="flex justify-between text-sm">
                       <span className="flex items-center gap-2">
-                        <Cpu className="h-4 w-4" /> CPU
+                        <Cpu className="size-4" /> CPU
                       </span>
                       <span className="font-bold">{spec.total_cpu_cores.toFixed(1)} Cores</span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="flex items-center gap-2">
-                        <MemoryStick className="h-4 w-4" /> RAM
+                        <MemoryStick className="size-4" /> RAM
                       </span>
                       <span className="font-bold">{Math.ceil(spec.total_ram_mb / 1024)} GB</span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="flex items-center gap-2">
-                        <HardDrive className="h-4 w-4" /> Storage
+                        <HardDrive className="size-4" /> Storage
                       </span>
                       <span className="font-bold">{spec.total_storage_gb} GB</span>
                     </div>
@@ -143,7 +143,7 @@ export default function RecommendationsPage() {
                           key={insight.name}
                           className="flex gap-2 items-start text-muted-foreground"
                         >
-                          <CheckCircle2 className="h-3 w-3 mt-0.5 text-primary shrink-0" />
+                          <CheckCircle2 className="size-3 mt-0.5 text-primary shrink-0" />
                           <span>
                             <strong>{insight.name}:</strong> {insight.note}
                           </span>
@@ -181,7 +181,7 @@ export default function RecommendationsPage() {
                                 className="inline-flex items-center text-xs text-blue-600 hover:underline mt-1"
                               >
                                 Buy on {hw.buy_urls[0].store}{' '}
-                                <ExternalLink className="w-3 h-3 ml-1" />
+                                <ExternalLink className="size-3 ml-1" />
                               </a>
                             )}
                           </div>

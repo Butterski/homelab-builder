@@ -32,7 +32,7 @@ export default function LoginPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8 mt-16 max-w-5xl text-left">
                 <div className="space-y-2 opacity-50 cursor-not-allowed" title="Requires Login">
                     <div className="flex items-center gap-2 font-semibold">
-                        <Server className="h-5 w-5 text-blue-500" />
+                        <Server className="size-5 text-blue-500" />
                         <span>Visual Builder</span>
                     </div>
                     <p className="text-sm text-muted-foreground">Drag & drop visual editor for your servers, network, and containers.</p>
@@ -40,7 +40,7 @@ export default function LoginPage() {
                 
                 <Link to="/checklist" className="space-y-2 hover:opacity-80 transition-opacity block">
                     <div className="flex items-center gap-2 font-semibold">
-                         <CheckSquare className="h-5 w-5 text-green-500" />
+                         <CheckSquare className="size-5 text-green-500" />
                         <span>Setup Guide</span>
                     </div>
                     <p className="text-sm text-muted-foreground">Step-by-step checklist to prepare your hardware and OS securely.</p>
@@ -48,7 +48,7 @@ export default function LoginPage() {
 
                 <Link to="/hardware" className="space-y-2 hover:opacity-80 transition-opacity block">
                     <div className="flex items-center gap-2 font-semibold">
-                        <ShoppingCart className="h-5 w-5 text-orange-500" />
+                        <ShoppingCart className="size-5 text-orange-500" />
                         <span>Hardware Catalog</span>
                     </div>
                     <p className="text-sm text-muted-foreground">Browse 100+ community curated components with specs and pricing.</p>
@@ -56,7 +56,7 @@ export default function LoginPage() {
 
                 <Link to="/how-to-build-a-homelab" className="space-y-2 hover:opacity-80 transition-opacity block">
                     <div className="flex items-center gap-2 font-semibold">
-                        <BookOpen className="h-5 w-5 text-cyan-500" />
+                        <BookOpen className="size-5 text-cyan-500" />
                         <span>Homelab Guide</span>
                     </div>
                     <p className="text-sm text-muted-foreground">Read a public guide on planning hardware, networking, and using HLBuilder effectively.</p>
@@ -66,9 +66,9 @@ export default function LoginPage() {
             {/* ── Demo Showcase ────────────────────────────────── */}
             <div className="mt-20 flex flex-col items-center gap-4 w-full max-w-5xl animate-fade-in-up" style={{ animationDelay: '200ms' }}>
                 <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-widest text-muted-foreground">
-                    <Eye className="h-4 w-4" />
+                    <Eye className="size-4" />
                     <span>See It In Action</span>
-                    <Sparkles className="h-4 w-4" />
+                    <Sparkles className="size-4" />
                 </div>
                 <p className="text-sm text-muted-foreground/70 mb-2">
                     A preview of the drag‑and‑drop visual builder you get after signing in.
@@ -92,19 +92,19 @@ export default function LoginPage() {
 
             <div className="mt-12 flex items-center justify-center gap-5">
                 <a href="https://github.com/Butterski/homelab-builder" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary transition-colors" title="Project Site">
-                    <Globe className="h-4 w-4" />
+                    <Globe className="size-4" />
                 </a>
                 <a href="https://github.com/Butterski" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary transition-colors" title="GitHub">
-                    <Github className="h-4 w-4" />
+                    <Github className="size-4" />
                 </a>
                 <a href="https://github.com/sponsors/Butterski" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-pink-500 transition-colors" title="Sponsor">
-                    <Heart className="h-4 w-4" />
+                    <Heart className="size-4" />
                 </a>
                 <a href="https://discord.gg/8PQb2M2fBB" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-indigo-500 transition-colors" title="Discord">
-                    <Discord className="h-4 w-4" />
+                    <Discord className="size-4" />
                 </a>
                 <a href="https://buymeacoffee.com/butterski" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-yellow-500 transition-colors" title="Buy Me a Coffee">
-                    <BuyMeACoffee className="h-4 w-4" />
+                    <BuyMeACoffee className="size-4" />
                 </a>
             </div>
 

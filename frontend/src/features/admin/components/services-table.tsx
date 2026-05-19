@@ -52,7 +52,7 @@ export function ServicesTable({ services, isLoading }: ServicesTableProps) {
               <TableCell className="capitalize">{service.category}</TableCell>
               <TableCell>
                 <div className={`flex items-center gap-2 ${service.is_active ? "text-green-500" : "text-muted-foreground"}`}>
-                    <span className={`h-2 w-2 rounded-full ${service.is_active ? "bg-green-500" : "bg-muted-foreground"}`} />
+                    <span className={`size-2 rounded-full ${service.is_active ? "bg-green-500" : "bg-muted-foreground"}`} />
                     {service.is_active ? "Active" : "Inactive"}
                 </div>
               </TableCell>
@@ -62,7 +62,7 @@ export function ServicesTable({ services, isLoading }: ServicesTableProps) {
                         initialData={service} 
                         trigger={
                             <Button variant="ghost" size="icon">
-                                <Edit2 className="h-4 w-4" />
+                                <Edit2 className="size-4" />
                             </Button>
                         } 
                     />
@@ -76,7 +76,7 @@ export function ServicesTable({ services, isLoading }: ServicesTableProps) {
                             }
                         }}
                     >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="size-4" />
                     </Button>
                 </div>
               </TableCell>

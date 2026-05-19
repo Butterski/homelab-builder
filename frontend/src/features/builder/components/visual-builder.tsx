@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useEffectEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ReactFlow,
@@ -67,16 +67,16 @@ function ShortcutHints() {
     <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 flex items-center gap-3 px-3 py-1.5 rounded-full bg-card border border-border text-[10px] text-muted-foreground pointer-events-none select-none">
       {shortcuts.map((sh: Shortcut, iter: number) =>
         iter === shortcuts.length - 1 ? (
-          <span className="flex flex-col items-center">
+          <span key={iter} className="flex flex-col items-center">
             <kbd className="font-mono bg-muted px-1 rounded">{sh.combination}</kbd> {sh.name}
           </span>
         ) : (
-          <>
+          <div key={iter} className="flex items-center gap-3">
             <span className="flex flex-col items-center">
               <kbd className="font-mono bg-muted px-1 rounded">{sh.combination}</kbd> {sh.name}
             </span>
             <span className="opacity-30">·</span>
-          </>
+          </div>
         ),
       )}
     </div>
@@ -127,8 +127,10 @@ function Flow() {
   useEffect(() => {
     return () => {
       document.body.removeAttribute('data-scroll-locked');
-      document.body.style.overflow = '';
-      document.documentElement.style.overflow = '';
+      // Batch style resets together to avoid layout thrashing
+      [document.body, document.documentElement].forEach(el => {
+        el.style.cssText = '';
+      });
     };
   }, []);
 
@@ -184,16 +186,11 @@ function Flow() {
   }, [id, currentBuildId, loadBuild, navigate]);
 
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
-  const [clipboardNodeId, setClipboardNodeId] = useState<string | null>(null);
+  const clipboardNodeIdRef = useRef<string | null>(null);
   const isFirstRender = useRef(true);
   const lastSaveTime = useRef(Date.now());
 
-  // Effect to mark as "saved" initially when data loads
-  useEffect(() => {
-    setSaveStatus('saved');
-  }, [currentBuildId]);
-
-  const saveProject = useCallback(async () => {
+  const saveProjectFn = useCallback(async () => {
     if (!id) return;
     setSaveStatus('saving');
     try {
@@ -215,6 +212,10 @@ function Flow() {
     }
   }, [id, getBuildData, projectName, validateNetwork]);
 
+  // Wrap saveProjectFn with useEffectEvent so it can be called from setTimeout
+  // without being a dependency, preventing unnecessary effect re-subscriptions
+  const saveProject = useEffectEvent(saveProjectFn);
+
   // Auto-save trigger
   useEffect(() => {
     if (isFirstRender.current) {
@@ -228,12 +229,12 @@ function Flow() {
     }, 2000); // 2 seconds debounce
 
     return () => clearTimeout(timer);
-  }, [nodes, edges, hardwareNodes, saveProject]); // Any change triggers debounce
+  }, [nodes, edges, hardwareNodes]); // Any change triggers debounce
 
   // Manual save wrapper (immediate)
   const handleManualSave = () => {
-    toast.promise(saveProject(), {
-      loading: 'Saving...',
+    toast.promise(saveProjectFn(), {
+      loading: 'Saving…',
       success: 'Project saved',
       error: 'Failed to save',
     });
@@ -244,7 +245,7 @@ function Flow() {
 
   const prevPortsRef = useRef<Map<string, number>>(new Map());
 
-  // Effect 1 — delete orphaned edges when port count shrinks.
+  // Effect 1 - delete orphaned edges when port count shrinks.
   // Does NOT call updateNodeInternals here; that happens in Effect 2.
   useEffect(() => {
     hardwareNodes.forEach(node => {
@@ -263,15 +264,19 @@ function Flow() {
     });
   }, [hardwareNodes, edges, deleteElements]);
 
-  // Effect 2 — always resync handle positions for port-bearing nodes whenever
+  // Effect 2 - always resync handle positions for port-bearing nodes whenever
   // hardwareNodes changes (covers increases, decreases, and first render).
   // Running after every hardwareNodes change is cheap and ensures the triple-rAF
   // fires after *all* state updates (including the deleteElements re-render from
   // Effect 1) have settled.
   useEffect(() => {
-    const portNodeIds = hardwareNodes
-      .filter(n => nodeHasDynamicPorts(n.type))
-      .map(n => n.id);
+    // Combine filter + map into single iteration
+    const portNodeIds: string[] = [];
+    for (const n of hardwareNodes) {
+      if (nodeHasDynamicPorts(n.type)) {
+        portNodeIds.push(n.id);
+      }
+    }
     if (portNodeIds.length === 0) return;
 
     const r1 = requestAnimationFrame(() => {
@@ -339,14 +344,14 @@ function Flow() {
 
       if (e.key === 'c' && (e.ctrlKey || e.metaKey) && selectedNodeId) {
         e.preventDefault();
-        setClipboardNodeId(selectedNodeId);
+        clipboardNodeIdRef.current = selectedNodeId;
         toast.success('Node copied');
         return;
       }
 
-      if (e.key === 'v' && (e.ctrlKey || e.metaKey) && clipboardNodeId) {
+      if (e.key === 'v' && (e.ctrlKey || e.metaKey) && clipboardNodeIdRef.current) {
         e.preventDefault();
-        duplicateHardware(clipboardNodeId);
+        duplicateHardware(clipboardNodeIdRef.current);
         return;
       }
 
@@ -391,7 +396,7 @@ function Flow() {
         height: 1,
       });
 
-      // Check if dropped on a rack node — auto-mount into the rack
+      // Check if dropped on a rack node - auto-mount into the rack
       let data: any = {};
       const dataStr = event.dataTransfer.getData('application/reactflow-data');
       const type = event.dataTransfer.getData('application/reactflow') as HardwareType;
@@ -571,7 +576,7 @@ function Flow() {
 
       const isUPS = sourceNode.type === 'ups' || targetNode.type === 'ups';
 
-      // Port exclusivity — each physical handle can carry at most one cable.
+      // Port exclusivity - each physical handle can carry at most one cable.
       // UPS connections are power cables and share ports with network connections.
       if (!isUPS) {
         const sourceHandleUsed = currentEdges.some(
@@ -594,7 +599,7 @@ function Flow() {
         }
       }
 
-      // Cycle detection — BFS through the existing undirected graph (skip for UPS).
+      // Cycle detection - BFS through the existing undirected graph (skip for UPS).
       if (!isUPS && !useBuilderStore.getState().edgePreferences.ignoreNetworkLoops) {
         const adj = new Map<string, Set<string>>();
         for (const e of currentEdges) {
@@ -634,7 +639,7 @@ function Flow() {
 
       return true;
     },
-    [], // no deps — reads live state via getState()
+    [], // no deps - reads live state via getState()
   );
 
   // ...
@@ -697,31 +702,31 @@ function Flow() {
           <Panel position="top-left" className="flex gap-2 items-center">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" className="h-10 w-10 bg-card">
-                  <Menu className="h-5 w-5" />
+                <Button variant="outline" size="icon" className="size-10 bg-card">
+                  <Menu className="size-5" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-56">
                 <DropdownMenuLabel>Project Menu</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={saveProject}>
-                  <Save className="mr-2 h-4 w-4" /> Save Project{' '}
+                  <Save className="mr-2 size-4" /> Save Project{' '}
                   <span className="ml-auto text-xs text-muted-foreground opacity-60">Ctrl+S</span>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => navigate('/')}>
-                  <Folder className="mr-2 h-4 w-4" /> My Projects
+                  <Folder className="mr-2 size-4" /> My Projects
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => navigate('/generate')}>
-                  <Download className="mr-2 h-4 w-4" /> Export / Generate Config
+                  <Download className="mr-2 size-4" /> Export / Generate Config
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => navigate('/services')}>
-                  <Wand2 className="mr-2 h-4 w-4" /> Component Catalog
+                  <Wand2 className="mr-2 size-4" /> Component Catalog
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={logout} className="text-red-500 focus:text-red-500">
-                  <LogOut className="mr-2 h-4 w-4" /> Sign Out
+                  <LogOut className="mr-2 size-4" /> Sign Out
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -731,7 +736,7 @@ function Flow() {
               <span className="text-[10px] text-muted-foreground flex items-center gap-1">
                 {saveStatus === 'saving' && (
                   <span className="text-amber-500 flex items-center gap-1">
-                    <span className="animate-spin">⟳</span> Saving...
+                    <span className="animate-spin">⟳</span> Saving…
                   </span>
                 )}
                 {saveStatus === 'saved' && (
@@ -748,14 +753,14 @@ function Flow() {
               size="sm"
               className="h-10 bg-card ml-4"
             >
-              <Wand2 className="mr-2 h-4 w-4" />
+              <Wand2 className="mr-2 size-4" />
               Reassign IPs
             </Button>
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" className="h-10 bg-card w-37.5">
-                  <Route className="mr-2 h-4 w-4 shrink-0" />
+                  <Route className="mr-2 size-4 shrink-0" />
                   Edge Settings
                 </Button>
               </DropdownMenuTrigger>
@@ -831,9 +836,10 @@ function Flow() {
 }
 
 export default function VisualBuilderPage() {
+  const { id } = useParams<{ id: string }>();
   return (
     <ReactFlowProvider>
-      <Flow />
+      <Flow key={id} />
     </ReactFlowProvider>
   );
 }

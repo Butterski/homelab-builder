@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useBuilderStore } from '../store/builder-store';
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';
@@ -62,6 +62,16 @@ export function NodePropertiesPanel() {
   const { data: hardwareResponse } = useHardware(
     selectedNode ? { category: selectedNode.type, limit: 100 } : {}
   );
+
+  // Pre-compute filtered hardware list once to avoid iterating twice (filter + map)
+  const filteredHardware = useMemo(() => {
+    if (!hardwareResponse?.data || !model) return [];
+    const lowerModel = model.toLowerCase();
+    return hardwareResponse.data.filter(p => {
+      const full = (p.brand + ' ' + p.model).toLowerCase();
+      return full.includes(lowerModel) && full !== lowerModel;
+    });
+  }, [hardwareResponse?.data, model]);
   
   const parseHardwareSpecString = (spec: Record<string, any>) => {
     let cpu = undefined;
@@ -303,19 +313,19 @@ export function NodePropertiesPanel() {
             variant="ghost"
             size="icon"
             onClick={handleDelete}
-            className="h-6 w-6 rounded-full hover:bg-destructive/10 hover:text-destructive"
+            className="size-6 rounded-full hover:bg-destructive/10 hover:text-destructive"
             title="Delete Node"
           >
-            <Trash2 className="h-4 w-4" />
+            <Trash2 className="size-4" />
           </Button>
           <Button
             variant="ghost"
             size="icon"
             onClick={() => selectNode(null)}
-            className="h-6 w-6 rounded-full hover:bg-muted"
+            className="size-6 rounded-full hover:bg-muted"
             title="Close"
           >
-            <X className="h-4 w-4" />
+            <X className="size-4" />
           </Button>
         </div>
       </CardHeader>
@@ -348,11 +358,11 @@ export function NodePropertiesPanel() {
                   });
                 }}
               >
-                <option value={4}>4U — Wall Mount</option>
-                <option value={12}>12U — Small Cabinet</option>
-                <option value={24}>24U — Standard Homelab</option>
-                <option value={42}>42U — Full Height</option>
-                <option value={48}>48U — Extended</option>
+                <option value={4}>4U - Wall Mount</option>
+                <option value={12}>12U - Small Cabinet</option>
+                <option value={24}>24U - Standard Homelab</option>
+                <option value={42}>42U - Full Height</option>
+                <option value={48}>48U - Extended</option>
               </select>
             </div>
 
@@ -414,9 +424,9 @@ export function NodePropertiesPanel() {
 
         {/* ── In-rack device fields ── */}
         {isInRack && !isRack && (
-          <div className="space-y-3 border rounded-md px-3 py-3 bg-violet-500/5">
+          <div className="space-y-3 border rounded-md p-3 bg-violet-500/5">
             <span className="text-xs font-medium flex items-center gap-1.5">
-              <svg className="w-3 h-3 text-violet-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg className="size-3 text-violet-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <rect x="2" y="2" width="20" height="20" rx="2" />
                 <line x1="2" y1="8" x2="22" y2="8" />
               </svg>
@@ -472,7 +482,7 @@ export function NodePropertiesPanel() {
             >
               <span>Advanced Network Settings</span>
               <ChevronDown
-                className={`h-4 w-4 transition-transform duration-200 text-muted-foreground ${netOpen ? 'rotate-180' : ''}`}
+                className={`size-4 transition-transform duration-200 text-muted-foreground ${netOpen ? 'rotate-180' : ''}`}
               />
             </button>
             <div
@@ -488,7 +498,7 @@ export function NodePropertiesPanel() {
                       <div className="flex items-center gap-1">
                         {errors.ip && (
                           <span className="text-[10px] text-destructive flex items-center">
-                            <AlertCircle className="h-3 w-3 mr-0.5" />
+                            <AlertCircle className="size-3 mr-0.5" />
                             {errors.ip}
                           </span>
                         )}
@@ -499,7 +509,7 @@ export function NodePropertiesPanel() {
                             className="h-5 px-1.5 text-[10px] text-primary"
                             onClick={handleAutoIP}
                           >
-                            <Wand2 className="h-3 w-3 mr-0.5" /> Auto
+                            <Wand2 className="size-3 mr-0.5" /> Auto
                           </Button>
                         )}
                       </div>
@@ -519,11 +529,11 @@ export function NodePropertiesPanel() {
                       <Button
                         variant="outline"
                         size="icon"
-                        className={`h-9 w-9 shrink-0 transition-colors ${dhcpLocked ? 'bg-primary/10 text-primary border-primary/30 hover:bg-primary/20 hover:text-primary' : 'text-muted-foreground'}`}
+                        className={`size-9 shrink-0 transition-colors ${dhcpLocked ? 'bg-primary/10 text-primary border-primary/30 hover:bg-primary/20 hover:text-primary' : 'text-muted-foreground'}`}
                         onClick={() => setDhcpLocked(!dhcpLocked)}
                         title={dhcpLocked ? 'IP is Locked (Static)' : 'IP is Auto-Assigned (DHCP)'}
                       >
-                        {dhcpLocked ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />}
+                        {dhcpLocked ? <Lock className="size-4" /> : <Unlock className="size-4" />}
                       </Button>
                     </div>
                     <p className="text-[10px] text-muted-foreground">
@@ -539,7 +549,7 @@ export function NodePropertiesPanel() {
                       <Label htmlFor="macAddress">MAC Address</Label>
                       {errors.macAddress && (
                         <span className="text-[10px] text-destructive flex items-center">
-                          <AlertCircle className="h-3 w-3 mr-0.5" />
+                          <AlertCircle className="size-3 mr-0.5" />
                           {errors.macAddress}
                         </span>
                       )}
@@ -598,7 +608,7 @@ export function NodePropertiesPanel() {
                           id="dhcp_enabled"
                           checked={dhcpEnabled}
                           onChange={e => setDhcpEnabled(e.target.checked)}
-                          className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                          className="size-4 rounded border-gray-300 text-primary focus:ring-primary"
                         />
                       </div>
                       <p className="text-[10px] text-muted-foreground bg-primary/5 rounded-md px-2 py-1.5 mt-2">
@@ -650,17 +660,9 @@ export function NodePropertiesPanel() {
             />
             {modelSearchOpen && hardwareResponse?.data && (
               <div className="absolute top-full left-0 right-0 z-50 mt-1 max-h-48 overflow-auto rounded-md border bg-popover text-popover-foreground shadow-md outline-none animate-in fade-in zoom-in-95">
-                {hardwareResponse.data.filter(
-                  p =>
-                    (p.brand + ' ' + p.model).toLowerCase().includes(model.toLowerCase()) &&
-                    (p.brand + ' ' + p.model).toLowerCase() !== model.toLowerCase()
-                ).length > 0 ? (
+                {filteredHardware.length > 0 ? (
                   <ul className="py-1 text-xs">
-                    {hardwareResponse.data.filter(
-                      p =>
-                        (p.brand + ' ' + p.model).toLowerCase().includes(model.toLowerCase()) &&
-                        (p.brand + ' ' + p.model).toLowerCase() !== model.toLowerCase()
-                    ).map(item => (
+                    {filteredHardware.map(item => (
                       <li
                         key={item.id}
                         className="relative flex w-full cursor-pointer select-none flex-col rounded-sm py-1.5 px-2 hover:bg-accent hover:text-accent-foreground outline-none"
@@ -796,7 +798,7 @@ export function NodePropertiesPanel() {
           <div className="border-t pt-4">
             {hasWarning && (
               <div className="mb-4 p-2.5 bg-destructive/10 border border-destructive/20 rounded-md text-xs text-destructive flex items-start gap-2 animate-in fade-in">
-                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                <AlertTriangle className="size-4 shrink-0 mt-0.5" />
                 <div>
                   <p className="font-semibold mb-0.5">Resource Warning</p>
                   <p className="opacity-90 leading-relaxed">

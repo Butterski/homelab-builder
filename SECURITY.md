@@ -25,17 +25,17 @@ We appreciate your effort in responsibly disclosing vulnerabilities to keep the 
 
 ## Authentication Modes & Security Implications
 
-HLBuilder supports two authentication modes. Choosing the wrong mode for your deployment scenario is a security risk — please read this section carefully.
+HLBuilder supports two authentication modes. Choosing the wrong mode for your deployment scenario is a security risk - please read this section carefully.
 
 ### 1. Google OAuth Mode (Production / Public Deployments)
 
 This is the default mode when `GOOGLE_CLIENT_ID` and `VITE_GOOGLE_CLIENT_ID` are configured. Users must authenticate via Google OAuth 2.0 and receive a signed JWT.
 
 **Requirements:**
-- `GOOGLE_CLIENT_ID` — must be set to a valid Google OAuth 2.0 client ID.
-- `VITE_GOOGLE_CLIENT_ID` — must be set at frontend build time to the same client ID.
-- `JWT_SECRET` — **must** be set to a strong, unique, random value (minimum 32 characters recommended). The backend **refuses to start** in release mode (`GIN_MODE=release`) if `JWT_SECRET` is missing, empty, or set to the default dev value.
-- `GIN_MODE=release` — enforces the JWT secret strength check and disables the dev login endpoint.
+- `GOOGLE_CLIENT_ID` - must be set to a valid Google OAuth 2.0 client ID.
+- `VITE_GOOGLE_CLIENT_ID` - must be set at frontend build time to the same client ID.
+- `JWT_SECRET` - **must** be set to a strong, unique, random value (minimum 32 characters recommended). The backend **refuses to start** in release mode (`GIN_MODE=release`) if `JWT_SECRET` is missing, empty, or set to the default dev value.
+- `GIN_MODE=release` - enforces the JWT secret strength check and disables the dev login endpoint.
 
 **Checklist for production:**
 - [ ] Set `GOOGLE_CLIENT_ID` and `VITE_GOOGLE_CLIENT_ID` to your OAuth client ID
@@ -50,7 +50,7 @@ When `GOOGLE_CLIENT_ID` is **not set** (empty or absent), the backend automatica
 
 - All protected endpoints bypass JWT validation entirely.
 - A **Local Admin** user (`local@homelab.local`) is auto-provisioned and used for every request.
-- No login credentials are required — anyone with network access to the application has full admin access.
+- No login credentials are required - anyone with network access to the application has full admin access.
 
 > :warning: **Auth-disabled mode is inherently insecure.** It is designed exclusively for local, trusted-network deployments (e.g., running on `localhost` or behind a VPN). **Never expose an auth-disabled instance to the public internet.**
 
@@ -70,7 +70,7 @@ Content-Type: application/json
 { "email": "any-email@example.com" }
 ```
 
-This endpoint creates or logs into a user account with the given email — **no password, no OAuth token, no verification**. It returns a valid JWT.
+This endpoint creates or logs into a user account with the given email - **no password, no OAuth token, no verification**. It returns a valid JWT.
 
 > :warning: **The dev login endpoint is a deliberate backdoor for development convenience.** It is automatically disabled when `GIN_MODE=release`. Always verify it is not accessible on any internet-facing deployment by setting `GIN_MODE=release`.
 
@@ -81,7 +81,7 @@ This endpoint creates or logs into a user account with the given email — **no 
 - JWTs are signed with HMAC-SHA256 using the `JWT_SECRET`.
 - Token claims include `user_id`, `email`, and standard registered claims (expiry, issuer).
 - The backend validates tokens on every protected request via the `AuthMiddleware`.
-- In release mode, the backend **panics on startup** if `JWT_SECRET` is weak or default — this is an intentional fail-safe.
+- In release mode, the backend **panics on startup** if `JWT_SECRET` is weak or default - this is an intentional fail-safe.
 
 ### Rate Limiting
 
@@ -104,6 +104,6 @@ All responses include standard security headers via the `SecurityHeaders()` midd
 
 ### Database
 
-- All primary keys use PostgreSQL-native UUID v4 generation — IDs are non-sequential and non-guessable.
+- All primary keys use PostgreSQL-native UUID v4 generation - IDs are non-sequential and non-guessable.
 - The database is not exposed externally in the default Docker Compose configuration (no host port mapping for the `postgres` service).
 

@@ -134,7 +134,7 @@ export function LiveResourceDashboard() {
           <div className="flex items-center gap-2 text-sm font-semibold">
             <Activity
               className={cn(
-                'h-4 w-4',
+                'size-4',
                 maxPercent >= 90
                   ? 'text-destructive'
                   : maxPercent >= 75
@@ -143,18 +143,18 @@ export function LiveResourceDashboard() {
               )}
             />
             Resource Usage
-            <span className="relative flex h-2 w-2 shrink-0 ml-1">
+            <span className="relative flex size-2 shrink-0 ml-1">
               <span
                 className={cn(
                   'absolute inline-flex h-full w-full rounded-full opacity-75',
                   pingColor,
                 )}
               />
-              <span className={cn('relative inline-flex rounded-full h-2 w-2', lightColor)} />
+              <span className={cn('relative inline-flex rounded-full size-2', lightColor)} />
             </span>
           </div>
-          <Button variant="ghost" size="icon" className="h-6 w-6">
-            {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          <Button variant="ghost" size="icon" className="size-6">
+            {isExpanded ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
           </Button>
         </div>
 
@@ -163,7 +163,7 @@ export function LiveResourceDashboard() {
             <div className="space-y-1.5">
               <div className="flex justify-between items-center text-xs">
                 <span className="flex items-center gap-1.5 text-muted-foreground">
-                  <Cpu className="h-3.5 w-3.5" /> CPU Threads
+                  <Cpu className="size-3.5" /> CPU Threads
                 </span>
                 <span className="font-mono font-medium">
                   {stats.usedCpuThreads} / {stats.totalCpuThreads}
@@ -179,7 +179,7 @@ export function LiveResourceDashboard() {
             <div className="space-y-1.5">
               <div className="flex justify-between items-center text-xs">
                 <span className="flex items-center gap-1.5 text-muted-foreground">
-                  <Package className="h-3.5 w-3.5" /> Memory (RAM)
+                  <Package className="size-3.5" /> Memory (RAM)
                 </span>
                 <span className="font-mono font-medium">
                   {Math.round((stats.usedRamMb / 1024) * 10) / 10}G /{' '}
@@ -196,7 +196,7 @@ export function LiveResourceDashboard() {
             <div className="space-y-1.5">
               <div className="flex justify-between items-center text-xs">
                 <span className="flex items-center gap-1.5 text-muted-foreground">
-                  <HardDrive className="h-3.5 w-3.5" /> Storage
+                  <HardDrive className="size-3.5" /> Storage
                 </span>
                 <span className="font-mono font-medium">
                   {stats.usedStorageGb}G / {stats.totalStorageGb}G

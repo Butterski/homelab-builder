@@ -1,4 +1,4 @@
-# HLBuilder — AI Agent Reference
+# HLBuilder - AI Agent Reference
 
 This document is the canonical reference for AI agents working on this codebase.
 It covers project architecture, testing infrastructure, known pitfalls, and the decisions behind them.
@@ -33,7 +33,7 @@ Remember - I don't want migrations scripts or Legacy things support. If somethin
 
 ## Project Overview
 
-**HLBuilder** is a full-stack web app that lets users visually design their home lab network — placing hardware nodes (routers, switches, servers, NAS, etc.), wiring them, and automatically receiving IP address assignments and service recommendations.
+**HLBuilder** is a full-stack web app that lets users visually design their home lab network - placing hardware nodes (routers, switches, servers, NAS, etc.), wiring them, and automatically receiving IP address assignments and service recommendations.
 
 - **Backend**: Go 1.24.5, Gin, GORM v1.31.1, PostgreSQL 17
 - **HLBIPAM**: Standalone Go microservice for IP Address Management
@@ -127,9 +127,9 @@ HTTP Request → Gin Router → Middleware → Handler → Service → GORM → 
 | File | Responsibility |
 |---|---|
 | `auth.go` | JWT-based `AuthMiddleware` and `AuthMiddlewareWithUser` (loads full user model) |
-| `admin.go` | `AdminRequired()` — checks `IsAdmin` flag on loaded user |
+| `admin.go` | `AdminRequired()` - checks `IsAdmin` flag on loaded user |
 | `rate_limiter.go` | Per-IP rate limiting for sensitive endpoints (login) |
-| `security.go` | `SecurityHeaders()` — standard security response headers |
+| `security.go` | `SecurityHeaders()` - standard security response headers |
 
 ### Handlers
 
@@ -238,7 +238,7 @@ feature/
 
 | Feature | Description |
 |---|---|
-| `builder/` | Visual network builder — the main feature (ReactFlow canvas, node management, IP display) |
+| `builder/` | Visual network builder - the main feature (ReactFlow canvas, node management, IP display) |
 | `admin/` | Admin dashboard, user management, service/hardware admin, steering rules, catalog components |
 | `auth/` | Login page (Google OAuth), profile page |
 | `catalog/` | Public hardware & service catalog browsing |
@@ -337,7 +337,7 @@ This requires the `uuid-ossp` extension. **SQLite cannot be used for tests** bec
 - **No mocking the database.** Tests run against a real PostgreSQL instance in Docker.
 - **Transaction isolation.** Every test wraps its work in a `db.Begin()` transaction that is always rolled back in `t.Cleanup`. No teardown code needed; tests are fully independent.
 - **Backend tests run in Docker.** The builder stage of `backend/Dockerfile` contains the full Go toolchain and source. A temporary container is spun up on the same Docker network as the running `postgres` service.
-- **Frontend tests run locally.** `buildApi` is fully vi.mock'd — no backend or Docker needed.
+- **Frontend tests run locally.** `buildApi` is fully vi.mock'd - no backend or Docker needed.
 
 ### Backend Test Pattern
 
@@ -352,7 +352,7 @@ func TestSomething(t *testing.T) {
 }
 ```
 
-**CRITICAL**: `nodes.build_id` is a foreign key to `builds.id`. You cannot insert a node with a random `uuid.New()` build ID — it violates `fk_builds_nodes`. Always use `newBuildID(t, tx)` which creates a `User` + `Build` first.
+**CRITICAL**: `nodes.build_id` is a foreign key to `builds.id`. You cannot insert a node with a random `uuid.New()` build ID - it violates `fk_builds_nodes`. Always use `newBuildID(t, tx)` which creates a `User` + `Build` first.
 
 ### Helper Functions (`testhelpers_test.go`)
 
@@ -388,7 +388,7 @@ hasPrefix(s, prefix string) bool
 | `internal/handlers/health_test.go` | `handlers` | Health endpoint test |
 | `hlbipam/internal/core/allocator_test.go` | `core` | IPAM allocator tests |
 | `hlbipam/internal/core/validator_test.go` | `core` | IPAM validator tests |
-| `frontend/src/features/builder/store/builder-store.test.ts` | — | Vitest tests |
+| `frontend/src/features/builder/store/builder-store.test.ts` | - | Vitest tests |
 
 ### Test Database
 
@@ -457,7 +457,7 @@ cd frontend && npm run test:watch
 
 **Cause A** (frontend bug, fixed): `reassignAllIPs` was calling `calculateNetwork` before `buildApi.update`. The backend read stale/empty `nodes` and found no router.
 
-**Cause B** (real): The build genuinely has no node with `type = "router"`. `CalculateNetwork` returns this as an error — the caller should handle it gracefully.
+**Cause B** (real): The build genuinely has no node with `type = "router"`. `CalculateNetwork` returns this as an error - the caller should handle it gracefully.
 
 ### 4. VMs not getting IPs
 
@@ -526,8 +526,8 @@ These bugs were diagnosed and fixed; tests guard against regression.
 | `DB_SSLMODE` | `disable` | PostgreSQL SSL mode |
 | `DB_TYPE` | `postgres` | Database driver type |
 | `TEST_DB_NAME` | `homelab_builder_test` | Test database name (used by TestMain) |
-| `JWT_SECRET` | — | Secret for signing JWTs |
-| `GOOGLE_CLIENT_ID` | — | Google OAuth client ID |
+| `JWT_SECRET` | - | Secret for signing JWTs |
+| `GOOGLE_CLIENT_ID` | - | Google OAuth client ID |
 | `SERVER_PORT` | `8080` | HTTP listen port |
 | `IPAM_URL` | `http://hlbipam:8081` | HLBIPAM microservice URL |
 

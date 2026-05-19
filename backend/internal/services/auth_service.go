@@ -139,7 +139,7 @@ func (s *AuthService) loginOrRegister(email, name, googleID, avatarURL string) (
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			// 2. Not found by Google ID — check if email exists
+			// 2. Not found by Google ID - check if email exists
 			emailErr := s.db.Where("email = ?", email).First(&user).Error
 
 			if emailErr == nil {
@@ -152,7 +152,7 @@ func (s *AuthService) loginOrRegister(email, name, googleID, avatarURL string) (
 					return nil, fmt.Errorf("failed to link existing user: %w", saveErr)
 				}
 			} else if errors.Is(emailErr, gorm.ErrRecordNotFound) {
-				// 3. Not found by Email either — Create new user
+				// 3. Not found by Email either - Create new user
 				user = models.User{
 					GoogleID:  googleID,
 					Email:     email,
@@ -171,7 +171,7 @@ func (s *AuthService) loginOrRegister(email, name, googleID, avatarURL string) (
 			return nil, fmt.Errorf("database error checking google_id: %w", err)
 		}
 	} else {
-		// Found by Google ID — Update details
+		// Found by Google ID - Update details
 		updates := map[string]interface{}{
 			"email":      email,
 			"name":       name,

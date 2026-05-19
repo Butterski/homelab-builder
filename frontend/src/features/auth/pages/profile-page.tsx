@@ -44,7 +44,7 @@ export default function ProfilePage() {
         onClick={() => navigate(-1)}
         className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-8 w-fit hover:cursor-pointer"
       >
-        <ChevronLeft className="h-4 w-4" />
+        <ChevronLeft className="size-4" />
         Back
       </button>
 
@@ -54,7 +54,7 @@ export default function ProfilePage() {
           <div className="h-24 bg-linear-to-br from-primary/30 via-primary/10 to-background" />
           <CardContent className="pt-0 pb-6 relative">
             <div className="flex items-end gap-4 -mt-12">
-              <div className="rounded-full border-4 border-background overflow-hidden h-20 w-20 shrink-0 bg-muted">
+              <div className="rounded-full border-4 border-background overflow-hidden size-20 shrink-0 bg-muted">
                 <img
                   src={avatarUrl}
                   alt={user?.name}
@@ -69,7 +69,7 @@ export default function ProfilePage() {
                 <h1 className="text-xl font-bold truncate">{user?.name}</h1>
                 {user?.is_admin && (
                   <div className="flex items-center gap-1 text-xs text-amber-500 font-medium mt-0.5">
-                    <Shield className="h-3 w-3" />
+                    <Shield className="size-3" />
                     Admin
                   </div>
                 )}
@@ -87,8 +87,8 @@ export default function ProfilePage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center gap-3">
-              <div className="h-8 w-8 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0">
-                <User className="h-4 w-4 text-blue-400" />
+              <div className="size-8 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0">
+                <User className="size-4 text-blue-400" />
               </div>
               <div className="min-w-0">
                 <p className="text-[11px] text-muted-foreground">Full Name</p>
@@ -97,8 +97,8 @@ export default function ProfilePage() {
             </div>
 
             <div className="flex items-center gap-3">
-              <div className="h-8 w-8 rounded-full bg-orange-500/10 flex items-center justify-center shrink-0">
-                <Mail className="h-4 w-4 text-orange-400" />
+              <div className="size-8 rounded-full bg-orange-500/10 flex items-center justify-center shrink-0">
+                <Mail className="size-4 text-orange-400" />
               </div>
               <div className="min-w-0">
                 <p className="text-[11px] text-muted-foreground">Email</p>
@@ -107,8 +107,8 @@ export default function ProfilePage() {
             </div>
 
             <div className="flex items-center gap-3">
-              <div className="h-8 w-8 rounded-full bg-green-500/10 flex items-center justify-center shrink-0">
-                <FolderOpen className="h-4 w-4 text-green-400" />
+              <div className="size-8 rounded-full bg-green-500/10 flex items-center justify-center shrink-0">
+                <FolderOpen className="size-4 text-green-400" />
               </div>
               <div className="min-w-0">
                 <p className="text-[11px] text-muted-foreground">Projects</p>
@@ -135,7 +135,7 @@ export default function ProfilePage() {
               className="w-full"
               onClick={() => setShowLogoutDialog(true)}
             >
-              <LogOut className="mr-2 h-4 w-4" />
+              <LogOut className="mr-2 size-4" />
               Sign Out
             </Button>
           </CardContent>

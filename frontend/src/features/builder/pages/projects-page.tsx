@@ -408,7 +408,7 @@ export default function ProjectsPage() {
         </div>
         <div className="flex items-center gap-2 w-full md:w-auto">
           <div className="relative flex-1 md:w-64">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
             <Input
               placeholder="Search projects..."
               className="pl-9"
@@ -424,17 +424,17 @@ export default function ProjectsPage() {
             onChange={handleFileChange}
           />
           <Button variant="outline" onClick={handleImportClick}>
-            <Upload className="mr-2 h-4 w-4" /> Import
+            <Upload className="mr-2 size-4" /> Import
           </Button>
           <Button
             variant="outline"
             className="text-amber-600 border-amber-200 hover:bg-amber-50 hover:text-amber-700 dark:border-amber-800/30 dark:hover:bg-amber-900/20 dark:hover:text-amber-400"
             onClick={() => setIsFastStartOpen(true)}
           >
-            <Zap className="mr-2 h-4 w-4" /> Fast Start
+            <Zap className="mr-2 size-4" /> Fast Start
           </Button>
           <Button onClick={handleCreateNew}>
-            <Plus className="mr-2 h-4 w-4" /> New Project
+            <Plus className="mr-2 size-4" /> New Project
           </Button>
         </div>
       </div>
@@ -448,7 +448,7 @@ export default function ProjectsPage() {
       ) : filteredBuilds.length === 0 ? (
         <div className="text-center py-20 border-2 border-dashed rounded-xl">
           <div className="bg-primary/10 p-4 rounded-full w-fit mx-auto mb-4">
-            <Folder className="h-8 w-8 text-primary" />
+            <Folder className="size-8 text-primary" />
           </div>
           <h3 className="text-lg font-semibold mb-2">No projects found</h3>
           <p className="text-muted-foreground mb-6 max-w-sm mx-auto">
@@ -481,7 +481,7 @@ export default function ProjectsPage() {
                     />
                   ) : (
                     <div className="flex flex-col items-center gap-2 text-muted-foreground/40">
-                      <Folder className="h-12 w-12" />
+                      <Folder className="size-12" />
                     </div>
                   )}
 
@@ -491,10 +491,10 @@ export default function ProjectsPage() {
                         <Button
                           variant="secondary"
                           size="icon"
-                          className="h-8 w-8"
+                          className="size-8"
                           onClick={e => e.stopPropagation()}
                         >
-                          <MoreVertical className="h-4 w-4" />
+                          <MoreVertical className="size-4" />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
@@ -504,22 +504,22 @@ export default function ProjectsPage() {
                             handleOpen(build);
                           }}
                         >
-                          <Edit2 className="mr-2 h-4 w-4" /> Edit
+                          <Edit2 className="mr-2 size-4" /> Edit
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={e => handleRenameClick(e, build)}>
-                          <Edit2 className="mr-2 h-4 w-4" /> Rename
+                          <Edit2 className="mr-2 size-4" /> Rename
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={e => handleDuplicate(e, build.id)}>
-                          <Folder className="mr-2 h-4 w-4" /> Duplicate
+                          <Folder className="mr-2 size-4" /> Duplicate
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={e => handleExport(e, build)}>
-                          <Download className="mr-2 h-4 w-4" /> Export
+                          <Download className="mr-2 size-4" /> Export
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           className="text-destructive focus:text-destructive"
                           onClick={e => handleDelete(e, build.id)}
                         >
-                          <Trash2 className="mr-2 h-4 w-4" /> Delete
+                          <Trash2 className="mr-2 size-4" /> Delete
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -539,11 +539,11 @@ export default function ProjectsPage() {
                   <div className="mt-auto space-y-3">
                     <div className="flex items-center gap-4 text-xs text-muted-foreground">
                       <div className="flex items-center gap-1.5">
-                        <HardDrive className="h-3.5 w-3.5" />
+                        <HardDrive className="size-3.5" />
                         {nodeCount} Nodes
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <Clock className="h-3.5 w-3.5" />
+                        <Clock className="size-3.5" />
                         {formatDistanceToNow(new Date(build.updated_at), { addSuffix: true })}
                       </div>
                     </div>
@@ -557,7 +557,7 @@ export default function ProjectsPage() {
                           handleOpen(build);
                         }}
                       >
-                        <Play className="mr-2 h-3.5 w-3.5" /> Open Editor
+                        <Play className="mr-2 size-3.5" /> Open Editor
                       </Button>
                     </div>
                   </div>

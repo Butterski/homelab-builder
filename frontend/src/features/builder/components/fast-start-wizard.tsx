@@ -23,25 +23,25 @@ const GOALS = [
     id: 'media',
     title: 'Media Server',
     desc: 'Plex, Jellyfin, Arr stack',
-    icon: <MonitorPlay className="w-8 h-8 text-indigo-500" />,
+    icon: <MonitorPlay className="size-8 text-indigo-500" />,
   },
   {
     id: 'nas',
     title: 'Network Storage',
     desc: 'TrueNAS, OpenMediaVault',
-    icon: <HardDrive className="w-8 h-8 text-emerald-500" />,
+    icon: <HardDrive className="size-8 text-emerald-500" />,
   },
   {
     id: 'virtualization',
     title: 'Virtualization Lab',
     desc: 'Proxmox, ESXi, heavy VMs',
-    icon: <Server className="w-8 h-8 text-blue-500" />,
+    icon: <Server className="size-8 text-blue-500" />,
   },
   {
     id: 'network',
     title: 'Advanced Network',
     desc: 'pfSense, OPNsense, VLANs',
-    icon: <Network className="w-8 h-8 text-amber-500" />,
+    icon: <Network className="size-8 text-amber-500" />,
   },
 ];
 
@@ -50,19 +50,19 @@ const SCALES = [
     id: 'mini',
     title: 'Mini PC / SFF',
     desc: 'Low power, quiet, fits on a desk (e.g. Intel NUC)',
-    icon: <Box className="w-8 h-8" />,
+    icon: <Box className="size-8" />,
   },
   {
     id: 'desktop',
     title: 'Standard Desktop',
     desc: 'Balanced power and expandability',
-    icon: <Cpu className="w-8 h-8" />,
+    icon: <Cpu className="size-8" />,
   },
   {
     id: 'rack',
     title: 'Rackmount Server',
     desc: 'Enterprise hardware, loud, high capacity',
-    icon: <Server className="w-8 h-8" />,
+    icon: <Server className="size-8" />,
   },
 ];
 

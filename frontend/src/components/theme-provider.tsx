@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { createContext, use, useCallback, useEffect, useState } from 'react';
 import {
   type AppTheme,
   type ThemeMode,
@@ -97,7 +97,7 @@ export function ThemeProvider({
 }
 
 export const useTheme = () => {
-  const context = useContext(ThemeProviderContext);
+  const context = use(ThemeProviderContext);
 
   if (context === undefined) throw new Error('useTheme must be used within a ThemeProvider');
 

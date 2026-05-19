@@ -32,7 +32,7 @@ export function AnimatedLogo({ className }: { className?: string }) {
                                           drop-shadow(0 2px 14px rgba(74,222,128,0.12)); }
                     }
 
-                    /* Dots in their own fixed layer — only LED animation, no position change */
+                    /* Dots in their own fixed layer - only LED animation, no position change */
                     .dot-2 { animation: led 4s ease-in-out infinite;      }
                     .dot-1 { animation: led 4s ease-in-out infinite 1.4s; }
                     .dot-h { animation: led 4s ease-in-out infinite 2.7s; }
@@ -82,7 +82,7 @@ export function AnimatedLogo({ className }: { className?: string }) {
             </defs>
 
             <g className="logo-root">
-                {/* RACK 2 — no dot */}
+                {/* RACK 2 - no dot */}
                 <g className="layer-2 glow-2">
                     <path className="cls-base" d="M180.68,193.32l.12-33.68a4.48,4.48,0,0,0-2.43-4L92.88,112.2a4.42,4.42,0,0,0-4,0L2.57,155.67a4.44,4.44,0,0,0-2.45,4L0,193.28a4.45,4.45,0,0,0,2.2,3.86l86.26,50.7a4.45,4.45,0,0,0,4.53,0l85.51-50.7A4.46,4.46,0,0,0,180.68,193.32Z"/>
                     <polygon className="cls-1 s"   points="93.07 242.59 92.98 214.37 176.96 163.7 176.96 193.93 93.07 242.59"/>
@@ -91,7 +91,7 @@ export function AnimatedLogo({ className }: { className?: string }) {
                     <rect x="-10" y="110" width="210" height="110" fill="url(#shimmer)" clipPath="url(#c2)" opacity="0.28" className="tf2"/>
                 </g>
 
-                {/* RACK 1 — no dot */}
+                {/* RACK 1 - no dot */}
                 <g className="layer-1 glow-1">
                     <path className="cls-base" d="M180.81,137.29l.12-33.68a4.46,4.46,0,0,0-2.43-4L93,56.17a4.42,4.42,0,0,0-4,0L2.7,99.64a4.46,4.46,0,0,0-2.45,4L.13,137.25a4.47,4.47,0,0,0,2.2,3.86l86.27,50.7a4.44,4.44,0,0,0,4.52,0l85.51-50.7A4.44,4.44,0,0,0,180.81,137.29Z"/>
                     <polygon className="cls-1 sb"  points="93.2 186.56 93.12 158.34 177.09 107.67 177.09 137.9 93.2 186.56"/>
@@ -100,7 +100,7 @@ export function AnimatedLogo({ className }: { className?: string }) {
                     <rect x="-10" y="52" width="210" height="110" fill="url(#shimmer)" clipPath="url(#c1)" opacity="0.28" className="tf1"/>
                 </g>
 
-                {/* RACK H — no dot */}
+                {/* RACK H - no dot */}
                 <g className="layer-h glow-h">
                     <path className="cls-base" d="M180.81,82.09l.12-33.68a4.43,4.43,0,0,0-2.43-4L145.83,27.82,121,41.81l.29-26.49L93,.48a4.45,4.45,0,0,0-4,0L3,45.06A4.49,4.49,0,0,0,.59,49L.65,81.43a4.47,4.47,0,0,0,2.2,3.86L35,104.65,55.46,93.11,55.63,117l33,19.66a4.44,4.44,0,0,0,4.52,0L178.63,85.9A4.44,4.44,0,0,0,180.81,82.09Z"/>
                     <polygon className="cls-1 sc"  points="93.2 131.36 93.12 103.14 177.09 52.47 177.09 82.7 93.2 131.36"/>
@@ -113,7 +113,7 @@ export function AnimatedLogo({ className }: { className?: string }) {
                     <rect x="-10" y="-5" width="210" height="115" fill="url(#shimmer)" clipPath="url(#ch)" opacity="0.28" className="tfh"/>
                 </g>
 
-                {/* DOTS — own fixed group, unaffected by rack transforms */}
+                {/* DOTS - own fixed group, unaffected by rack transforms */}
                 <ellipse className="dot-2" cx="17.9"  cy="186.47" rx="5.33" ry="6.77" transform="translate(-60.36 16.28) rotate(-19.21)"/>
                 <ellipse className="dot-1" cx="18.04" cy="130.44" rx="5.33" ry="6.77" transform="translate(-41.92 13.2)  rotate(-19.21)"/>
                 <ellipse className="dot-h" cx="18.04" cy="75.24"  rx="5.33" ry="6.77" transform="translate(-23.75 10.13) rotate(-19.21)"/>

@@ -6,7 +6,7 @@ export default function TermsOfServicePage() {
             <div className="mx-auto max-w-3xl space-y-8 pb-24">
                 <div className="space-y-4">
                     <div className="inline-flex items-center justify-center p-3 bg-primary/10 text-primary rounded-full mb-2">
-                        <ScrollText className="h-8 w-8" />
+                        <ScrollText className="size-8" />
                     </div>
                     <h1 className="text-4xl font-extrabold tracking-tight">Terms of Service</h1>
                     <p className="text-muted-foreground">Last updated: March 5, 2025</p>
@@ -25,7 +25,7 @@ export default function TermsOfServicePage() {
 
                     <section className="space-y-3">
                         <h2 className="text-2xl font-bold">3. Accounts</h2>
-                        <p>You sign in using Google OAuth. You are responsible for maintaining the security of your Google account. One person, one account — do not share your session.</p>
+                        <p>You sign in using Google OAuth. You are responsible for maintaining the security of your Google account. One person, one account - do not share your session.</p>
                     </section>
 
                     <section className="space-y-3">
@@ -46,7 +46,7 @@ export default function TermsOfServicePage() {
 
                     <section className="space-y-3">
                         <h2 className="text-2xl font-bold">6. No Warranty</h2>
-                        <p>The Service is provided <strong>"as is"</strong> without warranties of any kind. We do not guarantee uptime, data preservation, or accuracy of generated configurations. This is a beta product — expect bugs.</p>
+                        <p>The Service is provided <strong>"as is"</strong> without warranties of any kind. We do not guarantee uptime, data preservation, or accuracy of generated configurations. This is a beta product - expect bugs.</p>
                     </section>
 
                     <section className="space-y-3">

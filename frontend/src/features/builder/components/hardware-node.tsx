@@ -199,7 +199,7 @@ function VmChip({ vm }: { vm: VirtualMachine }) {
         colorClass,
       )}
     >
-      <Icon className="h-2.5 w-2.5 shrink-0" />
+      <Icon className="size-2.5 shrink-0" />
       <div className="min-w-0 flex-1">
         <div className="truncate font-semibold max-w-20" title={vm.name}>
           {vm.name}
@@ -232,7 +232,7 @@ function ComponentChip({ component }: { component: HardwareComponent }) {
         'flex items-center gap-1.5 rounded border px-1.5 py-1 text-[10px] bg-muted/30 border-border/50 text-muted-foreground',
       )}
     >
-      <Icon className={cn('h-2.5 w-2.5 shrink-0', cfg.iconColor)} />
+      <Icon className={cn('size-2.5 shrink-0', cfg.iconColor)} />
       <div className="min-w-0 flex-1">
         <div className="truncate font-semibold max-w-22.5" title={component.name}>
           {component.name}
@@ -360,7 +360,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
 
   return (
     <div className="relative group">
-      {/* Animated ring on selection — uses device accent color */}
+      {/* Animated ring on selection - uses device accent color */}
       {selected && (
         <div
           className="absolute -inset-1 -z-10 rounded-2xl pointer-events-none node-selected-ring"
@@ -398,7 +398,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
                   : '',
           )}
         >
-          <Icon className={cn('h-4 w-4 shrink-0', cfg.iconColor)} />
+          <Icon className={cn('size-4 shrink-0', cfg.iconColor)} />
           <span className="font-semibold text-sm truncate flex-1" title={nodeData.label}>
             {nodeData.label}
           </span>
@@ -407,7 +407,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
             <div title={tooltipLabel.trim()}>
               <AlertTriangle
                 className={cn(
-                  'h-3.5 w-3.5 shrink-0 cursor-help',
+                  'size-3.5 shrink-0 cursor-help',
                   hasResourceWarning || hasIpError
                     ? 'text-destructive animate-pulse'
                     : 'text-orange-500',
@@ -416,14 +416,14 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
             </div>
           )}
 
-          <span className="relative flex h-2 w-2 shrink-0">
+          <span className="relative flex size-2 shrink-0">
             <span
               className={cn(
                 'absolute inline-flex h-full w-full rounded-full opacity-75',
                 pingColor,
               )}
             />
-            <span className={cn('relative inline-flex rounded-full h-2 w-2', lightColor)} />
+            <span className={cn('relative inline-flex rounded-full size-2', lightColor)} />
           </span>
         </div>
 
@@ -464,7 +464,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
             {containerRangeHint && (
               <div className="flex items-center justify-between gap-2 px-1 opacity-60">
                 <span className="text-[11px] text-muted-foreground flex items-center gap-1 font-medium">
-                  <Container className="h-2.5 w-2.5" /> Pool:
+                  <Container className="size-2.5" /> Pool:
                 </span>
                 <span className="font-mono text-[10px] text-blue-400 truncate">
                   {containerRangeHint}
@@ -566,7 +566,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
               type="source"
               position={Position.Bottom}
               style={{ left: `${portSpacing * (i + 1)}%` }}
-              className="bg-muted-foreground! w-2 h-2 border! border-background! rounded-sm! hover:bg-primary! hover:scale-125 transition-all"
+              className="bg-muted-foreground! size-2 border! border-background! rounded-sm! hover:bg-primary! hover:scale-125 transition-all"
               title={`eth${i}`}
             />
           ));
@@ -577,7 +577,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
           id="eth0"
           type="source"
           position={Position.Bottom}
-          className="bg-muted-foreground! w-3 h-3 border-2! border-background! rounded-sm! hover:bg-primary! hover:scale-125 transition-all"
+          className="bg-muted-foreground! size-3 border-2! border-background! rounded-sm! hover:bg-primary! hover:scale-125 transition-all"
           title="eth0"
         />
       )}

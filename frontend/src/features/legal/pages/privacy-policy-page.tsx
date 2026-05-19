@@ -6,7 +6,7 @@ export default function PrivacyPolicyPage() {
             <div className="mx-auto max-w-3xl space-y-8 pb-24">
                 <div className="space-y-4">
                     <div className="inline-flex items-center justify-center p-3 bg-primary/10 text-primary rounded-full mb-2">
-                        <Shield className="h-8 w-8" />
+                        <Shield className="size-8" />
                     </div>
                     <h1 className="text-4xl font-extrabold tracking-tight">Privacy Policy</h1>
                     <p className="text-muted-foreground">Last updated: March 5, 2025</p>
@@ -17,8 +17,8 @@ export default function PrivacyPolicyPage() {
                         <h2 className="text-2xl font-bold">1. What We Collect</h2>
                         <p>When you sign in with Google, we receive and store:</p>
                         <ul className="list-disc pl-6 space-y-1">
-                            <li><strong>Name</strong> and <strong>email address</strong> — to identify your account.</li>
-                            <li><strong>Profile picture URL</strong> — to display your avatar.</li>
+                            <li><strong>Name</strong> and <strong>email address</strong> - to identify your account.</li>
+                            <li><strong>Profile picture URL</strong> - to display your avatar.</li>
                         </ul>
                         <p>We also store the <strong>builds and configurations</strong> you create within the app, so you can access them later.</p>
                     </section>
@@ -40,7 +40,7 @@ export default function PrivacyPolicyPage() {
 
                     <section className="space-y-3">
                         <h2 className="text-2xl font-bold">4. Data Storage & Security</h2>
-                        <p>Your data is stored in a PostgreSQL database hosted on our server. We use HTTPS encryption in transit and follow standard security practices. However, no system is 100% secure — use the service at your own risk.</p>
+                        <p>Your data is stored in a PostgreSQL database hosted on our server. We use HTTPS encryption in transit and follow standard security practices. However, no system is 100% secure - use the service at your own risk.</p>
                     </section>
 
                     <section className="space-y-3">
