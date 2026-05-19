@@ -188,7 +188,13 @@ function Flow() {
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
   const clipboardNodeIdRef = useRef<string | null>(null);
   const isFirstRender = useRef(true);
-  const lastSaveTime = useRef(Date.now());
+  // Avoid calling impure Date.now() during render to satisfy react-hooks purity rules.
+  // Initialize with 0 and set the actual time on first effect run.
+  const lastSaveTime = useRef<number>(0);
+
+  useEffect(() => {
+    if (lastSaveTime.current === 0) lastSaveTime.current = Date.now();
+  }, []);
 
   const saveProjectFn = useCallback(async () => {
     if (!id) return;
@@ -364,7 +370,7 @@ function Flow() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
     selectedNodeId,
-    clipboardNodeId,
+    clipboardNodeIdRef,
     undo,
     redo,
     removeHardware,
