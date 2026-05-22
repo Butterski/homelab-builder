@@ -14,6 +14,11 @@ import {
   Download,
   Upload,
   Zap,
+  Share2,
+  Copy,
+  Check,
+  Globe,
+  Lock,
 } from 'lucide-react';
 // Removed unused imports: ExternalLink, Cpu
 import { Button } from '../../../components/ui/button';
@@ -152,6 +157,11 @@ export default function ProjectsPage() {
   const [projectToRename, setProjectToRename] = useState<Build | null>(null);
   const [renameValue, setRenameValue] = useState('');
 
+  // Share state
+  const [isShareOpen, setIsShareOpen] = useState(false);
+  const [buildToShare, setBuildToShare] = useState<Build | null>(null);
+  const [shareCopied, setShareCopied] = useState(false);
+
   // Fast Start Wizard State
   const [isFastStartOpen, setIsFastStartOpen] = useState(false);
   const [isGeneratingFastStart, setIsGeneratingFastStart] = useState(false);
@@ -249,7 +259,9 @@ export default function ProjectsPage() {
           } as Build)
         : newBuild;
       loadBuild(newBuild.id, newBuild.name, buildForStore);
-      toast.success(importPayload ? 'Project imported successfully' : 'Project created successfully');
+      toast.success(
+        importPayload ? 'Project imported successfully' : 'Project created successfully',
+      );
       if (importPayload && importWarning) {
         toast.warning(`Import completed with warnings: ${importWarning}`);
       }
@@ -395,6 +407,36 @@ export default function ProjectsPage() {
     }
   };
 
+  const handleShareClick = (e: React.MouseEvent, build: Build) => {
+    e.stopPropagation();
+    setBuildToShare(build);
+    setShareCopied(false);
+    setIsShareOpen(true);
+  };
+
+  const handleToggleShare = async () => {
+    if (!buildToShare) return;
+    try {
+      const updated = buildToShare.is_shared
+        ? await buildApi.unshare(buildToShare.id)
+        : await buildApi.share(buildToShare.id);
+      setBuildToShare(updated);
+      setBuilds(prev => prev.map(b => (b.id === updated.id ? { ...b, ...updated } : b)));
+      toast.success(updated.is_shared ? 'Sharing enabled' : 'Sharing disabled');
+    } catch {
+      toast.error('Failed to update sharing');
+    }
+  };
+
+  const handleCopyShareLink = () => {
+    if (!buildToShare?.share_token) return;
+    const url = `${window.location.origin}/shared/${buildToShare.share_token}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2000);
+    });
+  };
+
   const filteredBuilds = builds.filter(b => b.name.toLowerCase().includes(search.toLowerCase()));
 
   return (
@@ -514,6 +556,9 @@ export default function ProjectsPage() {
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={e => handleExport(e, build)}>
                           <Download className="mr-2 size-4" /> Export
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={e => handleShareClick(e, build)}>
+                          <Share2 className="mr-2 size-4" /> Share
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           className="text-destructive focus:text-destructive"
@@ -646,6 +691,66 @@ export default function ProjectsPage() {
               Cancel
             </Button>
             <Button onClick={confirmRename}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Share Modal */}
+      <Dialog open={isShareOpen} onOpenChange={setIsShareOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Share Layout</DialogTitle>
+            <DialogDescription>
+              Anyone with the link can view this layout in read-only mode.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-4 space-y-4">
+            <div className="flex items-center justify-between p-3 rounded-lg border">
+              <div className="flex items-center gap-2">
+                {buildToShare?.is_shared ? (
+                  <Globe className="size-4 text-green-500" />
+                ) : (
+                  <Lock className="size-4 text-muted-foreground" />
+                )}
+                <span className="text-sm font-medium">
+                  {buildToShare?.is_shared ? 'Public — anyone with the link' : 'Private — only you'}
+                </span>
+              </div>
+              <Button
+                variant={buildToShare?.is_shared ? 'outline' : 'default'}
+                size="sm"
+                onClick={handleToggleShare}
+              >
+                {buildToShare?.is_shared ? 'Disable sharing' : 'Enable sharing'}
+              </Button>
+            </div>
+
+            {buildToShare?.is_shared && buildToShare.share_token && (
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Share link</Label>
+                <div className="flex gap-2">
+                  <Input
+                    readOnly
+                    value={`${window.location.origin}/shared/${buildToShare.share_token}`}
+                    className="text-xs font-mono"
+                  />
+                  <Button size="icon" variant="outline" onClick={handleCopyShareLink}>
+                    {shareCopied ? (
+                      <Check className="size-4 text-green-500" />
+                    ) : (
+                      <Copy className="size-4" />
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsShareOpen(false)}>
+              Done
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

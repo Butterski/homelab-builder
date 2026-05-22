@@ -179,9 +179,14 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 			protected.PUT("/builds/:id", buildHandler.Update)
 			protected.DELETE("/builds/:id", buildHandler.Delete)
 			protected.POST("/builds/:id/duplicate", buildHandler.Duplicate)
+			protected.POST("/builds/:id/share", buildHandler.Share)
+			protected.POST("/builds/:id/unshare", buildHandler.Unshare)
 			protected.POST("/builds/:id/calculate-network", buildHandler.CalculateNetwork)
 			protected.POST("/builds/:id/validate-network", buildHandler.ValidateNetwork)
 			protected.POST("/builds/:id/generate-config", configHandler.GenerateConfig)
+
+			// Public shared build viewer (no auth required)
+			api.GET("/shared/:token", buildHandler.GetShared)
 
 			// Beta Survey (BETA_SURVEY - remove after beta)
 			surveyHandler := handlers.NewSurveyHandler(db)

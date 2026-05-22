@@ -7,6 +7,7 @@ import { Suspense, lazy } from 'react';
 import { LoadingScreen } from './components/ui/loading-screen';
 
 const VisualBuilderPage = lazy(() => import('./features/builder/components/visual-builder'));
+const SharedBuildPage = lazy(() => import('./features/builder/pages/shared-build-page'));
 const ProjectsPage = lazy(() => import('./features/builder/pages/projects-page'));
 const AdminPage = lazy(() => import('./features/admin/pages/admin-page'));
 // const ShoppingListPage = lazy(() => import('./features/shopping/pages/shopping-list-page'));
@@ -82,19 +83,22 @@ function AppContent() {
     };
   }, [getThemeSettings, replaceThemeSettings, setEdgePreferences, user]);
 
-  // Hide sidebar only on the "Landing/Login" page (root path) when not logged in
+  // Hide sidebar only on the "Landing/Login" page (root path) when not logged in, and on shared views
   const isLandingPage = !user && location.pathname === '/';
+  const isSharedRoute = location.pathname.startsWith('/shared/');
   const isBuilderRoute = location.pathname.startsWith('/builder/');
 
   return (
     <div className="flex h-screen bg-background text-foreground overflow-hidden">
-      {!isLandingPage && <Sidebar />}
+      {!isLandingPage && !isSharedRoute && <Sidebar />}
       <main
-        className={`flex-1 min-h-0 relative ${isBuilderRoute ? 'overflow-hidden' : 'overflow-auto'}`}
+        className={`flex-1 min-h-0 relative ${isBuilderRoute || isSharedRoute ? 'overflow-hidden' : 'overflow-auto'}`}
       >
-        <div className="absolute top-4 right-4 z-50">
-          <ThemeToggle />
-        </div>
+        {!isSharedRoute && (
+          <div className="absolute top-4 right-4 z-50">
+            <ThemeToggle />
+          </div>
+        )}
         <Suspense fallback={<LoadingScreen message="Loading HLBuilder..." />}>
           <Routes>
             <Route path="/" element={user ? <ProjectsPage /> : <LoginPage />} />
@@ -154,6 +158,8 @@ function AppContent() {
             <Route path="/how-to-build-a-homelab" element={<HomelabGuidePage />} />
             <Route path="/privacy" element={<PrivacyPolicyPage />} />
             <Route path="/terms" element={<TermsOfServicePage />} />
+            {/* Public shared build viewer */}
+            <Route path="/shared/:token" element={<SharedBuildPage />} />
           </Routes>
         </Suspense>
       </main>
@@ -163,28 +169,25 @@ function AppContent() {
 
 function App() {
   const rawClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
-  const isAuthDisabled = !rawClientId || rawClientId === "your-client-id" || rawClientId === "your_client_id_here";
+  const isAuthDisabled =
+    !rawClientId || rawClientId === 'your-client-id' || rawClientId === 'your_client_id_here';
 
   const appProviders = (
-      <QueryClientProvider client={queryClient}>
-        <ThemeProvider>
-          <Router>
-            <AppContent />
-            <Toaster />
-          </Router>
-        </ThemeProvider>
-      </QueryClientProvider>
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider>
+        <Router>
+          <AppContent />
+          <Toaster />
+        </Router>
+      </ThemeProvider>
+    </QueryClientProvider>
   );
 
   if (isAuthDisabled) {
-      return appProviders;
+    return appProviders;
   }
 
-  return (
-    <GoogleOAuthProvider clientId={rawClientId}>
-        {appProviders}
-    </GoogleOAuthProvider>
-  );
+  return <GoogleOAuthProvider clientId={rawClientId}>{appProviders}</GoogleOAuthProvider>;
 }
 
 export default App;

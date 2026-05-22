@@ -11,6 +11,8 @@ import (
 	"gorm.io/gorm"
 )
 
+var ErrBuildNotFound = errors.New("build not found")
+
 type BuildService struct {
 	db *gorm.DB
 }
@@ -349,6 +351,53 @@ type EdgeDTO struct {
 	TargetHandle string `json:"target_handle"`
 	Speed        string `json:"speed"`
 	Subnet       string `json:"subnet"`
+}
+
+// ShareBuild enables public sharing for a build and returns the share token.
+func (s *BuildService) ShareBuild(buildID uuid.UUID, userID uuid.UUID) (*models.Build, error) {
+	var build models.Build
+	if err := s.db.First(&build, "id = ?", buildID).Error; err != nil {
+		return nil, ErrBuildNotFound
+	}
+	if build.UserID != userID {
+		return nil, errors.New("unauthorized")
+	}
+
+	if build.ShareToken == "" {
+		build.ShareToken = uuid.New().String()
+	}
+	build.IsShared = true
+
+	if err := s.db.Save(&build).Error; err != nil {
+		return nil, err
+	}
+	return s.GetByID(buildID)
+}
+
+// UnshareBuild disables public sharing for a build.
+func (s *BuildService) UnshareBuild(buildID uuid.UUID, userID uuid.UUID) (*models.Build, error) {
+	var build models.Build
+	if err := s.db.First(&build, "id = ?", buildID).Error; err != nil {
+		return nil, ErrBuildNotFound
+	}
+	if build.UserID != userID {
+		return nil, errors.New("unauthorized")
+	}
+
+	build.IsShared = false
+	if err := s.db.Save(&build).Error; err != nil {
+		return nil, err
+	}
+	return s.GetByID(buildID)
+}
+
+// GetByShareToken fetches a publicly shared build by its token.
+func (s *BuildService) GetByShareToken(token string) (*models.Build, error) {
+	var build models.Build
+	if err := s.db.Where("share_token = ? AND is_shared = true", token).First(&build).Error; err != nil {
+		return nil, ErrBuildNotFound
+	}
+	return s.GetByID(build.ID)
 }
 
 func (s *BuildService) ListByUser(userID uuid.UUID) ([]models.Build, error) {

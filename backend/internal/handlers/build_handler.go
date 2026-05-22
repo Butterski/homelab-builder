@@ -168,6 +168,70 @@ func (h *BuildHandler) ValidateNetwork(c *gin.Context) {
 	c.Data(http.StatusOK, "application/json", result)
 }
 
+func (h *BuildHandler) Share(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	idParam := c.Param("id")
+	id, err := uuid.Parse(idParam)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+		return
+	}
+
+	build, err := h.service.ShareBuild(id, userID.(uuid.UUID))
+	if err != nil {
+		if err == services.ErrBuildNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Build not found"})
+			return
+		}
+		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, build)
+}
+
+func (h *BuildHandler) Unshare(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	idParam := c.Param("id")
+	id, err := uuid.Parse(idParam)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+		return
+	}
+
+	build, err := h.service.UnshareBuild(id, userID.(uuid.UUID))
+	if err != nil {
+		if err == services.ErrBuildNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Build not found"})
+			return
+		}
+		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, build)
+}
+
+func (h *BuildHandler) GetShared(c *gin.Context) {
+	token := c.Param("token")
+	build, err := h.service.GetByShareToken(token)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Shared build not found"})
+		return
+	}
+	c.JSON(http.StatusOK, build)
+}
+
 func (h *BuildHandler) Duplicate(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
