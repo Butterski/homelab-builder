@@ -250,3 +250,118 @@ func TestBuildService_Update_PowerDraw(t *testing.T) {
 		t.Errorf("expected TotalPower %f after update, got %f", expectedPower, loaded.TotalPower)
 	}
 }
+
+func TestBuildService_MultipleEmptyShareTokens(t *testing.T) {
+	tx := testTx(t)
+	svc := NewBuildService(tx)
+
+	// Create user 1 and user 2
+	user1 := models.User{Email: uuid.NewString() + "@t1.com", Name: "U1", GoogleID: uuid.NewString()}
+	tx.Create(&user1)
+	user2 := models.User{Email: uuid.NewString() + "@t2.com", Name: "U2", GoogleID: uuid.NewString()}
+	tx.Create(&user2)
+
+	// Create build 1 for user 1 (will have empty/nil ShareToken)
+	build1, err := svc.Create(user1.ID, SyncGraphInput{
+		Name:  "Project One",
+		Nodes: []NodeDTO{{ID: uuid.NewString(), Type: "server", Name: "Server 1"}},
+	})
+	if err != nil {
+		t.Fatalf("Create build1 failed: %v", err)
+	}
+
+	// Create build 2 for user 2 (will also have empty/nil ShareToken)
+	build2, err := svc.Create(user2.ID, SyncGraphInput{
+		Name:  "Project Two",
+		Nodes: []NodeDTO{{ID: uuid.NewString(), Type: "server", Name: "Server 2"}},
+	})
+	if err != nil {
+		t.Fatalf("Create build2 failed: %v", err)
+	}
+
+	// Update build 1 - this triggers tx.Save which previously crashed on empty string ShareToken index violation
+	_, err = svc.Update(build1.ID, user1.ID, SyncGraphInput{
+		Name:  "Project One Updated",
+		Nodes: []NodeDTO{{ID: build1.Nodes[0].ID.String(), Type: "server", Name: "Server 1"}},
+	})
+	if err != nil {
+		t.Fatalf("Update build1 failed: %v", err)
+	}
+
+	// Update build 2 - ensure it updates without errors too
+	_, err = svc.Update(build2.ID, user2.ID, SyncGraphInput{
+		Name:  "Project Two Updated",
+		Nodes: []NodeDTO{{ID: build2.Nodes[0].ID.String(), Type: "server", Name: "Server 2"}},
+	})
+	if err != nil {
+		t.Fatalf("Update build2 failed: %v", err)
+	}
+
+	// Verify both share tokens are nil in the DB
+	var b1, b2 models.Build
+	if err := tx.First(&b1, "id = ?", build1.ID).Error; err != nil {
+		t.Fatalf("Fetch b1: %v", err)
+	}
+	if err := tx.First(&b2, "id = ?", build2.ID).Error; err != nil {
+		t.Fatalf("Fetch b2: %v", err)
+	}
+
+	if b1.ShareToken != nil {
+		t.Errorf("expected b1.ShareToken to be nil, got %q", *b1.ShareToken)
+	}
+	if b2.ShareToken != nil {
+		t.Errorf("expected b2.ShareToken to be nil, got %q", *b2.ShareToken)
+	}
+}
+
+func TestBuildService_RackNodeSaving(t *testing.T) {
+	tx := testTx(t)
+	svc := NewBuildService(tx)
+	user := models.User{Email: uuid.NewString() + "@t.com", Name: "RackTest", GoogleID: uuid.NewString()}
+	tx.Create(&user)
+
+	rackID := uuid.NewString()
+	serverID := uuid.NewString()
+
+	// Create a build with a rack node and nested server node
+	build, err := svc.Create(user.ID, SyncGraphInput{
+		Name: "Rack Build",
+		Nodes: []NodeDTO{
+			{ID: rackID, Type: "rack", Name: "Main Rack", PowerDraw: 0},
+			{ID: serverID, Type: "server", Name: "Server 1", ParentID: &rackID},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Create build with rack failed: %v", err)
+	}
+
+	// Verify build was saved and preloaded
+	loaded, err := svc.GetByID(build.ID)
+	if err != nil {
+		t.Fatalf("GetByID failed: %v", err)
+	}
+
+	if len(loaded.Nodes) != 2 {
+		t.Fatalf("expected 2 nodes, got %d", len(loaded.Nodes))
+	}
+
+	var rackNode, serverNode *models.Node
+	for i := range loaded.Nodes {
+		if loaded.Nodes[i].Type == "rack" {
+			rackNode = &loaded.Nodes[i]
+		} else if loaded.Nodes[i].Type == "server" {
+			serverNode = &loaded.Nodes[i]
+		}
+	}
+
+	if rackNode == nil {
+		t.Fatal("rack node was not saved")
+	}
+	if serverNode == nil {
+		t.Fatal("server node was not saved")
+	}
+
+	if serverNode.ParentID == nil || *serverNode.ParentID != rackNode.ID {
+		t.Errorf("server parent ID expected %s, got %v", rackNode.ID, serverNode.ParentID)
+	}
+}

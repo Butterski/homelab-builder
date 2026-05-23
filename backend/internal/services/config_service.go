@@ -93,6 +93,8 @@ func (s *ConfigService) GenerateDockerCompose(buildID uuid.UUID) (string, error)
 	allVolumes := make(map[string]bool)
 	var subnet string
 
+	usedServices := make(map[string]int)
+
 	for _, node := range build.Nodes {
 		// Attempt to extract root subnet from router IP
 		if node.Type == "router" && node.IP != "" && subnet == "" {
@@ -106,6 +108,13 @@ func (s *ConfigService) GenerateDockerCompose(buildID uuid.UUID) (string, error)
 			hasVMs = true
 			cfg := getServiceConfig(vm.Name)
 			slug := strings.ReplaceAll(strings.ToLower(vm.Name), " ", "_")
+
+			if count, exists := usedServices[slug]; exists {
+				usedServices[slug] = count + 1
+				slug = fmt.Sprintf("%s_%d", slug, count+1)
+			} else {
+				usedServices[slug] = 1
+			}
 
 			composeStr += fmt.Sprintf("  %s:\n", slug)
 			composeStr += fmt.Sprintf("    image: %s\n", cfg.Image)
@@ -289,7 +298,16 @@ func (s *ConfigService) GenerateNginxConfig(buildID uuid.UUID) (string, error) {
 }
 
 // GenerateAll generates all configurations for a build returning a ConfigBundle
-func (s *ConfigService) GenerateAll(buildID uuid.UUID) (*ConfigBundle, error) {
+func (s *ConfigService) GenerateAll(buildID uuid.UUID, userID uuid.UUID) (*ConfigBundle, error) {
+	// Verify build exists and user owns it
+	var build models.Build
+	if err := s.db.First(&build, "id = ?", buildID).Error; err != nil {
+		return nil, err
+	}
+	if build.UserID != userID {
+		return nil, fmt.Errorf("unauthorized to access this build config")
+	}
+
 	composeStr, err := s.GenerateDockerCompose(buildID)
 	if err != nil {
 		return nil, err

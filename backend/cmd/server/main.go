@@ -138,10 +138,7 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 		{
 			api.GET("/services", serviceHandler.GetAll)
 			api.GET("/services/:id", serviceHandler.GetByID)
-			api.POST("/services", serviceHandler.Create)
 			api.POST("/services/community", serviceHandler.SubmitCommunity) // community submission
-			api.PUT("/services/:id", serviceHandler.Update)
-			api.DELETE("/services/:id", serviceHandler.Delete)
 
 			api.POST("/recommendations", recommendationHandler.Generate)
 			api.POST("/shopping-list", shoppingHandler.Generate)
@@ -206,6 +203,7 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 			admin.GET("/dashboard", adminHandler.Dashboard)
 			admin.GET("/users", adminHandler.ListUsers)
 			admin.GET("/services", adminHandler.ListAllServices)
+			admin.POST("/services", serviceHandler.Create)
 			admin.POST("/services/:id/toggle", adminHandler.ToggleServiceActive)
 			admin.PUT("/services/:id", adminHandler.UpdateServiceFull)
 			admin.DELETE("/services/:id", adminHandler.DeleteService)

@@ -20,7 +20,7 @@ func NewConfigHandler(service *services.ConfigService) *ConfigHandler {
 }
 
 func (h *ConfigHandler) GenerateConfig(c *gin.Context) {
-	_, exists := c.Get("user_id")
+	userIDVal, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
@@ -33,10 +33,10 @@ func (h *ConfigHandler) GenerateConfig(c *gin.Context) {
 		return
 	}
 
-	bundle, err := h.service.GenerateAll(buildID)
+	bundle, err := h.service.GenerateAll(buildID, userIDVal.(uuid.UUID))
 	if err != nil {
 		fmt.Printf("Config Generate Error: %v\n", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate config bundle"})
+		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 		return
 	}
 

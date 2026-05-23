@@ -363,8 +363,9 @@ func (s *BuildService) ShareBuild(buildID uuid.UUID, userID uuid.UUID) (*models.
 		return nil, errors.New("unauthorized")
 	}
 
-	if build.ShareToken == "" {
-		build.ShareToken = uuid.New().String()
+	if build.ShareToken == nil || *build.ShareToken == "" {
+		token := uuid.New().String()
+		build.ShareToken = &token
 	}
 	build.IsShared = true
 

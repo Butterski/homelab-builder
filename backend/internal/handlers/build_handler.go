@@ -48,6 +48,12 @@ func (h *BuildHandler) Create(c *gin.Context) {
 }
 
 func (h *BuildHandler) Get(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
 	idParam := c.Param("id")
 	id, err := uuid.Parse(idParam)
 	if err != nil {
@@ -58,6 +64,11 @@ func (h *BuildHandler) Get(c *gin.Context) {
 	build, err := h.service.GetByID(id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Build not found"})
+		return
+	}
+
+	if build.UserID != userID.(uuid.UUID) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized to access this build"})
 		return
 	}
 
@@ -133,10 +144,27 @@ func (h *BuildHandler) Delete(c *gin.Context) {
 }
 
 func (h *BuildHandler) CalculateNetwork(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
 	idParam := c.Param("id")
 	id, err := uuid.Parse(idParam)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+		return
+	}
+
+	build, err := h.service.GetByID(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Build not found"})
+		return
+	}
+
+	if build.UserID != userID.(uuid.UUID) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized to access this build"})
 		return
 	}
 
@@ -152,10 +180,27 @@ func (h *BuildHandler) CalculateNetwork(c *gin.Context) {
 }
 
 func (h *BuildHandler) ValidateNetwork(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
 	idParam := c.Param("id")
 	id, err := uuid.Parse(idParam)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+		return
+	}
+
+	build, err := h.service.GetByID(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Build not found"})
+		return
+	}
+
+	if build.UserID != userID.(uuid.UUID) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized to access this build"})
 		return
 	}
 

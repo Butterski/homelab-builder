@@ -157,7 +157,7 @@ type Build struct {
 	Settings   json.RawMessage `gorm:"type:jsonb;default:'{}'" json:"settings"` // UI state e.g. boughtItems
 	Thumbnail  string          `gorm:"default:''" json:"thumbnail"`             // Base64 or URL
 	TotalPower float64         `gorm:"-" json:"total_power"`                    // Transient, calculated on fetch
-	ShareToken     string          `gorm:"uniqueIndex;default:null" json:"share_token,omitempty"`
+	ShareToken     *string         `gorm:"uniqueIndex;default:null" json:"share_token,omitempty"`
 	IsShared       bool            `gorm:"default:false" json:"is_shared"`
 	SharedEditable bool            `gorm:"default:false" json:"shared_editable"`
 	User       *User           `gorm:"foreignKey:UserID" json:"-"`

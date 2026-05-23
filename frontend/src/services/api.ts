@@ -105,7 +105,7 @@ export const api = {
         }),
 
     createService: (data: Record<string, unknown>) =>
-        request<{ data: import('../types').Service }>('/api/services', {
+        request<{ data: import('../types').Service }>('/api/admin/services', {
             method: 'POST',
             body: JSON.stringify(data),
         }),

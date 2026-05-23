@@ -57,7 +57,7 @@ export const useCreateService = () => {
     const queryClient = useQueryClient()
     return useMutation({
         mutationFn: async (data: Partial<Service>) => {
-            return api.post("/api/services", data)
+            return api.post("/api/admin/services", data)
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["services"] })
