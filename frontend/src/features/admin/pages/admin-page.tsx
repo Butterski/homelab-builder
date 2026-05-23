@@ -10,7 +10,7 @@ import { CatalogComponentsManager } from "../components/catalog-components-manag
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../../components/ui/card"
 import { Button } from "../../../components/ui/button"
 import { useState } from "react"
-import { Download, Shield, Network, Server, Users, Layers, Cpu, Database } from "lucide-react"
+import { Download, Shield, Network, Server, Cpu } from "lucide-react"
 
 import { useAuth } from "../hooks/use-auth"
 import { Navigate } from "react-router-dom"
