@@ -77,7 +77,7 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 			// In development, allow localhost origin
 			c.Header("Access-Control-Allow-Origin", "*")
 		}
-		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Authorization")
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)
@@ -181,12 +181,14 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 			protected.POST("/builds/:id/duplicate", buildHandler.Duplicate)
 			protected.POST("/builds/:id/share", buildHandler.Share)
 			protected.POST("/builds/:id/unshare", buildHandler.Unshare)
+			protected.PATCH("/builds/:id/share", buildHandler.SetShareEditable)
 			protected.POST("/builds/:id/calculate-network", buildHandler.CalculateNetwork)
 			protected.POST("/builds/:id/validate-network", buildHandler.ValidateNetwork)
 			protected.POST("/builds/:id/generate-config", configHandler.GenerateConfig)
 
-			// Public shared build viewer (no auth required)
+			// Public shared build viewer / editor (no auth required)
 			api.GET("/shared/:token", buildHandler.GetShared)
+			api.PUT("/shared/:token", buildHandler.UpdateShared)
 
 			// Beta Survey (BETA_SURVEY - remove after beta)
 			surveyHandler := handlers.NewSurveyHandler(db)

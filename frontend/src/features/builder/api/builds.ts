@@ -9,6 +9,7 @@ export interface Build {
   settings: any; // e.g. boughtItems, showBought
   share_token?: string;
   is_shared?: boolean;
+  shared_editable?: boolean;
   created_at: string;
   updated_at: string;
 
@@ -76,8 +77,16 @@ export const buildApi = {
     const response = await api.post<Build>(`/api/builds/${id}/unshare`, {});
     return response;
   },
+  setShareEditable: async (id: string, editable: boolean) => {
+    const response = await api.patch<Build>(`/api/builds/${id}/share`, { editable });
+    return response;
+  },
   getShared: async (token: string) => {
     const response = await api.get<Build>(`/api/shared/${token}`);
+    return response;
+  },
+  updateShared: async (token: string, params: CreateBuildParams) => {
+    const response = await api.put<Build>(`/api/shared/${token}`, params);
     return response;
   },
 };

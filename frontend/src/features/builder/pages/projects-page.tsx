@@ -19,6 +19,7 @@ import {
   Check,
   Globe,
   Lock,
+  Pencil,
 } from 'lucide-react';
 // Removed unused imports: ExternalLink, Cpu
 import { Button } from '../../../components/ui/button';
@@ -437,6 +438,23 @@ export default function ProjectsPage() {
     });
   };
 
+  const handleToggleEditable = async () => {
+    if (!buildToShare?.id) return;
+    try {
+      const updated = await buildApi.setShareEditable(
+        buildToShare.id,
+        !buildToShare.shared_editable,
+      );
+      setBuildToShare(updated);
+      setBuilds(prev => prev.map(b => (b.id === updated.id ? { ...b, ...updated } : b)));
+      toast.success(
+        updated.shared_editable ? 'Editing enabled for link viewers' : 'Editing disabled',
+      );
+    } catch {
+      toast.error('Failed to update edit permission');
+    }
+  };
+
   const filteredBuilds = builds.filter(b => b.name.toLowerCase().includes(search.toLowerCase()));
 
   return (
@@ -701,11 +719,12 @@ export default function ProjectsPage() {
           <DialogHeader>
             <DialogTitle>Share Layout</DialogTitle>
             <DialogDescription>
-              Anyone with the link can view this layout in read-only mode.
+              Control who can view or edit this layout via a link.
             </DialogDescription>
           </DialogHeader>
 
           <div className="py-4 space-y-4">
+            {/* Public/private toggle */}
             <div className="flex items-center justify-between p-3 rounded-lg border">
               <div className="flex items-center gap-2">
                 {buildToShare?.is_shared ? (
@@ -726,6 +745,35 @@ export default function ProjectsPage() {
               </Button>
             </div>
 
+            {/* Editable toggle — only shown when sharing is on */}
+            {buildToShare?.is_shared && (
+              <div className="flex items-center justify-between p-3 rounded-lg border">
+                <div className="flex items-center gap-2">
+                  <Pencil
+                    className={`size-4 ${buildToShare.shared_editable ? 'text-blue-500' : 'text-muted-foreground'}`}
+                  />
+                  <div>
+                    <span className="text-sm font-medium">
+                      {buildToShare.shared_editable ? 'Editing allowed' : 'View only'}
+                    </span>
+                    <p className="text-xs text-muted-foreground">
+                      {buildToShare.shared_editable
+                        ? 'Anyone with the link can move nodes and reconnect cables'
+                        : 'Viewers cannot make changes'}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  variant={buildToShare.shared_editable ? 'outline' : 'secondary'}
+                  size="sm"
+                  onClick={handleToggleEditable}
+                >
+                  {buildToShare.shared_editable ? 'Make read-only' : 'Allow editing'}
+                </Button>
+              </div>
+            )}
+
+            {/* Share link */}
             {buildToShare?.is_shared && buildToShare.share_token && (
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Share link</Label>

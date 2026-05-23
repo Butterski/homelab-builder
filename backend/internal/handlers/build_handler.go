@@ -232,6 +232,66 @@ func (h *BuildHandler) GetShared(c *gin.Context) {
 	c.JSON(http.StatusOK, build)
 }
 
+type shareSettingsRequest struct {
+	Editable bool `json:"editable"`
+}
+
+func (h *BuildHandler) SetShareEditable(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	idParam := c.Param("id")
+	id, err := uuid.Parse(idParam)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+		return
+	}
+
+	var req shareSettingsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	build, err := h.service.SetShareEditable(id, userID.(uuid.UUID), req.Editable)
+	if err != nil {
+		if err == services.ErrBuildNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Build not found"})
+			return
+		}
+		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, build)
+}
+
+func (h *BuildHandler) UpdateShared(c *gin.Context) {
+	token := c.Param("token")
+
+	var req services.SyncGraphInput
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	build, err := h.service.UpdateByShareToken(token, req)
+	if err != nil {
+		if err == services.ErrBuildNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Shared build not found or editing not allowed"})
+			return
+		}
+		log.Printf("UpdateShared Error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update shared build"})
+		return
+	}
+
+	c.JSON(http.StatusOK, build)
+}
+
 func (h *BuildHandler) Duplicate(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {

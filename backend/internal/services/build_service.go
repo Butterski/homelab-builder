@@ -391,6 +391,49 @@ func (s *BuildService) UnshareBuild(buildID uuid.UUID, userID uuid.UUID) (*model
 	return s.GetByID(buildID)
 }
 
+// SetShareEditable sets whether collaborators with the share link can edit the build.
+func (s *BuildService) SetShareEditable(buildID uuid.UUID, userID uuid.UUID, editable bool) (*models.Build, error) {
+	var build models.Build
+	if err := s.db.First(&build, "id = ?", buildID).Error; err != nil {
+		return nil, ErrBuildNotFound
+	}
+	if build.UserID != userID {
+		return nil, errors.New("unauthorized")
+	}
+
+	build.SharedEditable = editable
+	if err := s.db.Save(&build).Error; err != nil {
+		return nil, err
+	}
+	return s.GetByID(buildID)
+}
+
+// UpdateByShareToken allows editing a build via its share token (only when SharedEditable is true).
+func (s *BuildService) UpdateByShareToken(token string, input SyncGraphInput) (*models.Build, error) {
+	var build models.Build
+	if err := s.db.Where("share_token = ? AND is_shared = true AND shared_editable = true", token).First(&build).Error; err != nil {
+		return nil, ErrBuildNotFound
+	}
+
+	settingsJSON, _ := json.Marshal(input.Settings)
+	build.Name = input.Name
+	build.Settings = settingsJSON
+	if input.Thumbnail != "" {
+		build.Thumbnail = input.Thumbnail
+	}
+
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Save(&build).Error; err != nil {
+			return err
+		}
+		return s.syncGraph(tx, build.ID, input)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.GetByID(build.ID)
+}
+
 // GetByShareToken fetches a publicly shared build by its token.
 func (s *BuildService) GetByShareToken(token string) (*models.Build, error) {
 	var build models.Build
