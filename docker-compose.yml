@@ -65,6 +65,8 @@ services:
       - ${FRONTEND_PORT}:80
     depends_on:
       - backend
-    restart: unless-stopped
     environment:
       TIMEZONE: Europe/Berlin
+
+volumes:
+  postgres_data:
