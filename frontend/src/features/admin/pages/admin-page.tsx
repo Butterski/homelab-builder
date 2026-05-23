@@ -9,11 +9,82 @@ import { SteeringRulesManager } from "../components/steering-rules-manager"
 import { CatalogComponentsManager } from "../components/catalog-components-manager"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../../components/ui/card"
 import { Button } from "../../../components/ui/button"
-import { useState } from "react"
-import { Download, Shield, Network, Server, Cpu } from "lucide-react"
+import { useState, useEffect } from "react"
+import { Download, Shield, Network, Server, Cpu, Search } from "lucide-react"
 
 import { useAuth } from "../hooks/use-auth"
 import { Navigate } from "react-router-dom"
+
+function AnimatedCounter({ value, decimals = 0 }: { value: number; decimals?: number }) {
+  const [current, setCurrent] = useState(0)
+
+  useEffect(() => {
+    let start = 0
+    const end = value
+    if (start === end) {
+      setCurrent(end)
+      return
+    }
+
+    const duration = 1000 // 1 second
+    const startTime = performance.now()
+    let animationFrameId: number
+
+    const updateCounter = (now: number) => {
+      const elapsed = now - startTime
+      const progress = Math.min(elapsed / duration, 1)
+      const easeProgress = progress * (2 - progress) // easeOutQuad
+      
+      const nextValue = start + easeProgress * (end - start)
+      setCurrent(nextValue)
+
+      if (progress < 1) {
+        animationFrameId = requestAnimationFrame(updateCounter)
+      } else {
+        setCurrent(end)
+      }
+    }
+
+    animationFrameId = requestAnimationFrame(updateCounter)
+
+    return () => {
+      cancelAnimationFrame(animationFrameId)
+    }
+  }, [value])
+
+  return <>{current.toFixed(decimals)}</>
+}
+
+const getPseudonym = (id: string) => {
+  const short = id.slice(0, 4).toUpperCase()
+  return `Homelaber #${short}`
+}
+
+const getAnonymizedEmail = (id: string) => {
+  const short = id.slice(0, 4).toLowerCase()
+  return `homelaber_${short}@internal.local`
+}
+
+const getAvatarColor = (id: string) => {
+  const colors = [
+    "bg-red-500/10 text-red-500 border-red-500/20",
+    "bg-orange-500/10 text-orange-500 border-orange-500/20",
+    "bg-amber-500/10 text-amber-500 border-amber-500/20",
+    "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
+    "bg-cyan-500/10 text-cyan-500 border-cyan-500/20",
+    "bg-blue-500/10 text-blue-500 border-blue-500/20",
+    "bg-indigo-500/10 text-indigo-500 border-indigo-500/20",
+    "bg-purple-500/10 text-purple-500 border-purple-500/20",
+    "bg-pink-500/10 text-pink-500 border-pink-500/20",
+  ]
+  let hash = 0
+  for (let i = 0; i < id.length; i++) {
+    hash = id.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  const index = Math.abs(hash) % colors.length
+  return colors[index]
+}
+
 
 export default function AdminPage() {
   const { user, loading } = useAuth()
@@ -21,6 +92,18 @@ export default function AdminPage() {
   const { data: services, isLoading: servicesLoading } = useAdminServices()
   const { data: users, isLoading: usersLoading } = useAdminUsers()
   const [tab, setTab] = useState<"insights" | "users" | "services" | "hardware" | "links" | "steering" | "mass-planner">("insights")
+
+  const [userSearch, setUserSearch] = useState("")
+  const [userMinBuilds, setUserMinBuilds] = useState<number>(0)
+
+  const filteredUsers = (users || []).filter(u => {
+    const anonName = getPseudonym(u.id).toLowerCase()
+    const anonEmail = getAnonymizedEmail(u.id).toLowerCase()
+    const matchesSearch = anonName.includes(userSearch.toLowerCase()) || 
+                          anonEmail.includes(userSearch.toLowerCase())
+    const matchesBuilds = u.builds_count >= userMinBuilds
+    return matchesSearch && matchesBuilds
+  })
 
   if (loading) return <LoadingScreen message="Loading Admin Dashboard..." />
   if (!user?.is_admin) return <Navigate to="/" replace />
@@ -97,7 +180,7 @@ export default function AdminPage() {
               <CardContent>
                 <div className="text-3xl font-bold flex items-baseline gap-2">
                   <Network className="size-5 text-purple-500 shrink-0 self-center" />
-                  {stats?.total_builds || 0}
+                  <AnimatedCounter value={stats?.total_builds || 0} />
                   <span className="text-xs font-normal text-muted-foreground">layouts planned</span>
                 </div>
               </CardContent>
@@ -110,7 +193,7 @@ export default function AdminPage() {
               <CardContent>
                 <div className="text-3xl font-bold flex items-baseline gap-2">
                   <Server className="size-5 text-orange-500 shrink-0 self-center" />
-                  {stats?.avg_nodes_per_build ? stats.avg_nodes_per_build.toFixed(1) : "0.0"}
+                  <AnimatedCounter value={stats?.avg_nodes_per_build || 0} decimals={1} />
                   <span className="text-xs font-normal text-muted-foreground">devices per build</span>
                 </div>
               </CardContent>
@@ -123,7 +206,7 @@ export default function AdminPage() {
               <CardContent>
                 <div className="text-3xl font-bold flex items-baseline gap-2">
                   <Cpu className="size-5 text-green-500 shrink-0 self-center" />
-                  {stats?.avg_vms_per_build ? stats.avg_vms_per_build.toFixed(1) : "0.0"}
+                  <AnimatedCounter value={stats?.avg_vms_per_build || 0} decimals={1} />
                   <span className="text-xs font-normal text-muted-foreground">VMs/containers per build</span>
                 </div>
               </CardContent>
@@ -244,19 +327,45 @@ export default function AdminPage() {
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle>Active Homelabers</CardTitle>
-              <CardDescription>A list of active users designing homelab topologies</CardDescription>
+            <CardHeader className="pb-3 border-b">
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <CardTitle>Active Homelabers</CardTitle>
+                  <CardDescription>A list of anonymized active users designing homelab topologies</CardDescription>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <input
+                      type="text"
+                      placeholder="Search homelaber..."
+                      value={userSearch}
+                      onChange={e => setUserSearch(e.target.value)}
+                      className="pl-8 pr-3 py-1.5 h-9 w-full sm:w-[220px] rounded-md border bg-background text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                  </div>
+                  <select
+                    value={userMinBuilds}
+                    onChange={e => setUserMinBuilds(Number(e.target.value))}
+                    className="h-9 px-3 py-1.5 rounded-md border bg-background text-sm focus:outline-none focus:ring-1 focus:ring-primary hover:cursor-pointer"
+                  >
+                    <option value={0}>All Builds Count</option>
+                    <option value={1}>1+ Builds</option>
+                    <option value={3}>3+ Builds</option>
+                    <option value={5}>5+ Builds</option>
+                  </select>
+                </div>
+              </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-6">
               {usersLoading ? (
                 <div className="space-y-2 py-6">
                   <Skeleton className="h-10 w-full" />
                   <Skeleton className="h-10 w-full" />
                   <Skeleton className="h-10 w-full" />
                 </div>
-              ) : !users || users.length === 0 ? (
-                <div className="text-center py-10 text-muted-foreground">No active homelabers found.</div>
+              ) : !filteredUsers || filteredUsers.length === 0 ? (
+                <div className="text-center py-10 text-muted-foreground">No active homelabers match the filters.</div>
               ) : (
                 <div className="relative overflow-x-auto border rounded-lg">
                   <table className="w-full text-sm text-left text-foreground">
@@ -271,19 +380,15 @@ export default function AdminPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y">
-                      {users.map(u => (
+                      {filteredUsers.map(u => (
                         <tr key={u.id} className="bg-card hover:bg-muted/30 transition-colors">
-                          <td className="px-4 py-3 font-semibold flex items-center gap-2">
-                            {u.avatar_url ? (
-                              <img src={u.avatar_url} alt={u.name} className="size-6 rounded-full border bg-muted" />
-                            ) : (
-                              <div className="size-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold">
-                                {u.name ? u.name.slice(0,2).toUpperCase() : "HL"}
-                              </div>
-                            )}
-                            {u.name || "Anonymous User"}
+                          <td className="px-4 py-3 font-semibold flex items-center gap-2 select-none">
+                            <div className={`size-6 rounded-full border flex items-center justify-center text-[10px] font-bold ${getAvatarColor(u.id)}`}>
+                              {getPseudonym(u.id).slice(11, 13)}
+                            </div>
+                            {getPseudonym(u.id)}
                           </td>
-                          <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{u.email}</td>
+                          <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{getAnonymizedEmail(u.id)}</td>
                           <td className="px-4 py-3 text-center font-bold text-primary">{u.builds_count}</td>
                           <td className="px-4 py-3 text-center font-bold">{u.nodes_count}</td>
                           <td className="px-4 py-3 text-center font-bold text-emerald-500">{u.vms_count}</td>
