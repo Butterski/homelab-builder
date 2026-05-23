@@ -77,8 +77,8 @@ function buildReactFlowEdges(build: Build): Edge[] {
 export default function SharedBuildPage() {
   const { token } = useParams<{ token: string }>();
   const [build, setBuild] = useState<Build | null>(null);
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
