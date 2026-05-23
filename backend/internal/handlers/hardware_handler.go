@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -260,3 +261,76 @@ func (h *HardwareHandler) AdminUpdateBuyURLs(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Updated"})
 }
+
+// GET /api/hardware/favorites
+func (h *HardwareHandler) GetFavorites(c *gin.Context) {
+	userID, err := getHwUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+		return
+	}
+	favs, err := h.svc.GetHardwareFavorites(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch hardware favorites"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": favs})
+}
+
+// POST /api/hardware/favorites
+func (h *HardwareHandler) AddFavorite(c *gin.Context) {
+	userID, err := getHwUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+		return
+	}
+
+	var body struct {
+		HardwareComponentID uuid.UUID `json:"hardware_component_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid hardware component ID"})
+		return
+	}
+
+	fav, err := h.svc.AddHardwareFavorite(userID, body.HardwareComponentID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"data": fav})
+}
+
+// DELETE /api/hardware/favorites/:id
+func (h *HardwareHandler) RemoveFavorite(c *gin.Context) {
+	userID, err := getHwUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+		return
+	}
+
+	componentID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid hardware component ID"})
+		return
+	}
+
+	if err := h.svc.RemoveHardwareFavorite(userID, componentID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Favorite removed"})
+}
+
+func getHwUserID(c *gin.Context) (uuid.UUID, error) {
+	userIDVal, exists := c.Get("user_id")
+	if !exists {
+		return uuid.Nil, fmt.Errorf("user_id not found in context")
+	}
+	userID, ok := userIDVal.(uuid.UUID)
+	if !ok {
+		return uuid.Nil, fmt.Errorf("invalid user_id type")
+	}
+	return userID, nil
+}
+

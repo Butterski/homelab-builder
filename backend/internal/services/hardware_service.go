@@ -243,3 +243,46 @@ func (s *HardwareService) BulkImport(items []CreateHardwareInput, submittedBy *u
 	}
 	return len(components), nil
 }
+
+func (s *HardwareService) GetHardwareFavorites(userID uuid.UUID) ([]models.UserHardwareFavorite, error) {
+	var favs []models.UserHardwareFavorite
+	err := s.db.Preload("HardwareComponent").Where("user_id = ?", userID).Find(&favs).Error
+	return favs, err
+}
+
+func (s *HardwareService) AddHardwareFavorite(userID uuid.UUID, componentID uuid.UUID) (*models.UserHardwareFavorite, error) {
+	var existing models.UserHardwareFavorite
+	if err := s.db.Where("user_id = ? AND hardware_component_id = ?", userID, componentID).First(&existing).Error; err == nil {
+		s.db.Preload("HardwareComponent").First(&existing, "id = ?", existing.ID)
+		return &existing, nil
+	}
+
+	fav := models.UserHardwareFavorite{
+		UserID:              userID,
+		HardwareComponentID: componentID,
+	}
+	if err := s.db.Create(&fav).Error; err != nil {
+		return nil, err
+	}
+
+	// Increment likes count on the hardware component
+	s.db.Model(&models.HardwareComponent{}).Where("id = ?", componentID).UpdateColumn("likes", gorm.Expr("likes + 1"))
+
+	s.db.Preload("HardwareComponent").First(&fav, "id = ?", fav.ID)
+	return &fav, nil
+}
+
+func (s *HardwareService) RemoveHardwareFavorite(userID uuid.UUID, componentID uuid.UUID) error {
+	var fav models.UserHardwareFavorite
+	if err := s.db.Where("user_id = ? AND hardware_component_id = ?", userID, componentID).First(&fav).Error; err != nil {
+		return err
+	}
+	if err := s.db.Delete(&fav).Error; err != nil {
+		return err
+	}
+
+	// Decrement likes count on the hardware component safely
+	s.db.Model(&models.HardwareComponent{}).Where("id = ?", componentID).UpdateColumn("likes", gorm.Expr("GREATEST(0, likes - 1)"))
+	return nil
+}
+

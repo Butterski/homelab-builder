@@ -6,6 +6,13 @@ interface AdminStats {
     total_users: number
     total_services: number
     total_selections: number
+    total_builds: number
+    avg_nodes_per_build: number
+    avg_vms_per_build: number
+    node_distribution: Array<{ type: string; count: number }>
+    brand_market_share: Array<{ brand: string; count: number }>
+    active_services_distribution: Array<{ name: string; count: number }>
+    popular_services: Array<{ service_name: string; count: number }>
 }
 
 export const useAdminStats = () => {
@@ -18,11 +25,18 @@ export const useAdminStats = () => {
     })
 }
 
+export interface EnrichedUser extends User {
+    builds_count: number
+    nodes_count: number
+    vms_count: number
+    created_at: string
+}
+
 export const useAdminUsers = () => {
     return useQuery({
         queryKey: ["admin", "users"],
         queryFn: async () => {
-            const response = await api.get<{ data: User[] }>("/api/admin/users")
+            const response = await api.get<{ data: EnrichedUser[] }>("/api/admin/users")
             return response.data
         },
     })

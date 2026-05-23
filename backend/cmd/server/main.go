@@ -163,6 +163,11 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 			protected.POST("/selections", selectionHandler.AddSelection)
 			protected.DELETE("/selections/:id", selectionHandler.RemoveSelection)
 
+			// Hardware Favorites
+			protected.GET("/hardware/favorites", hardwareHandler.GetFavorites)
+			protected.POST("/hardware/favorites", hardwareHandler.AddFavorite)
+			protected.DELETE("/hardware/favorites/:id", hardwareHandler.RemoveFavorite)
+
 			// Builds
 			buildService := services.NewBuildService(db)
 			ipService := services.NewIPService(db)
@@ -201,6 +206,7 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 		admin.Use(middleware.AdminRequired())
 		{
 			admin.GET("/dashboard", adminHandler.Dashboard)
+			admin.GET("/export-anonymized-topologies", adminHandler.ExportAnonymizedTopologies)
 			admin.GET("/users", adminHandler.ListUsers)
 			admin.GET("/services", adminHandler.ListAllServices)
 			admin.POST("/services", serviceHandler.Create)

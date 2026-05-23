@@ -1,5 +1,5 @@
-import { useState, useDeferredValue, memo } from 'react';
-import { useHardware, useHardwareCategories, type HardwareComponent } from '../api/use-hardware';
+import { useState, useDeferredValue, memo, useMemo } from 'react';
+import { useHardware, useHardwareCategories, useHardwareFavorites, useAddHardwareFavorite, useRemoveHardwareFavorite, type HardwareComponent } from '../api/use-hardware';
 import { Badge } from '../../../components/ui/badge';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
@@ -298,10 +298,16 @@ function SpecBadges({ spec }: { spec: Record<string, string | number | boolean> 
 }
 
 // ─── Hardware Card ────────────────────────────────────────────────────────────
-const HardwareCard = memo(function HardwareCard({ item }: { item: HardwareComponent }) {
+const HardwareCard = memo(function HardwareCard({
+  item,
+  isFavorite,
+  onToggleFavorite,
+}: {
+  item: HardwareComponent;
+  isFavorite: boolean;
+  onToggleFavorite: () => void;
+}) {
   const [expanded, setExpanded] = useState(false);
-  const [liked, setLiked] = useState(false);
-  const [likeCount, setLikeCount] = useState(item.likes);
   const meta = CATEGORY_META[item.category] ?? {
     label: item.category,
     icon: Package,
@@ -312,14 +318,8 @@ const HardwareCard = memo(function HardwareCard({ item }: { item: HardwareCompon
   const newOffers = urls.filter(u => u.condition === 'new');
   const usedOffers = urls.filter(u => u.condition === 'used');
 
-  const handleLike = async () => {
-    if (liked) return;
-    setLiked(true);
-    setLikeCount(c => c + 1);
-    await api.post(`/api/hardware/${item.id}/like`, {}).catch(() => {
-      setLiked(false);
-      setLikeCount(c => c - 1);
-    });
+  const handleLike = () => {
+    onToggleFavorite();
   };
 
   return (
@@ -379,10 +379,10 @@ const HardwareCard = memo(function HardwareCard({ item }: { item: HardwareCompon
         <div className="flex-1" />
         <button
           onClick={handleLike}
-          className={`flex items-center gap-1 text-xs transition-colors ${liked ? 'text-red-500' : 'text-muted-foreground hover:text-red-400'}`}
+          className={`flex items-center gap-1 text-xs transition-colors hover:cursor-pointer ${isFavorite ? 'text-red-500 hover:text-red-400' : 'text-muted-foreground hover:text-red-400'}`}
         >
-          <Heart className={`size-3.5 hover:cursor-pointer ${liked ? 'fill-red-500' : ''}`} />
-          {likeCount}
+          <Heart className={`size-3.5 hover:cursor-pointer transition-transform active:scale-125 duration-200 ${isFavorite ? 'fill-red-500' : ''}`} />
+          {item.likes}
         </button>
         {newOffers[0] && (
           <Button size="sm" className="h-7 px-3 text-xs" asChild>
@@ -408,7 +408,6 @@ const HardwareCard = memo(function HardwareCard({ item }: { item: HardwareCompon
   );
 });
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
 export default function HardwareCatalogPage() {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
@@ -416,6 +415,21 @@ export default function HardwareCatalogPage() {
   const [page, setPage] = useState(0);
   const [showSubmit, setShowSubmit] = useState(false);
   const deferredSearch = useDeferredValue(search);
+
+  const { data: favoritesData } = useHardwareFavorites();
+  const favorites = favoritesData?.data || [];
+  const favSet = useMemo(() => new Set(favorites.map(f => f.hardware_component_id)), [favorites]);
+
+  const addFavorite = useAddHardwareFavorite();
+  const removeFavorite = useRemoveHardwareFavorite();
+
+  const handleToggleFavorite = (componentId: string) => {
+    if (favSet.has(componentId)) {
+      removeFavorite.mutate(componentId);
+    } else {
+      addFavorite.mutate(componentId);
+    }
+  };
 
   const handleSearch = (value: string) => {
     setSearch(value);
@@ -438,7 +452,7 @@ export default function HardwareCatalogPage() {
 
   const { data, isLoading, isFetching } = useHardware({
     search: deferredSearch,
-    category,
+    category: category === 'favorites' ? '' : category,
     max_price: maxPrice || undefined,
     limit: PAGE_SIZE,
     offset: page * PAGE_SIZE,
@@ -449,6 +463,25 @@ export default function HardwareCatalogPage() {
   const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
+  const displayedItems = useMemo(() => {
+    if (category === 'favorites') {
+      let res = favorites.map(f => f.hardware_component).filter(Boolean);
+      if (deferredSearch) {
+        const lowSearch = deferredSearch.toLowerCase();
+        res = res.filter(
+          item =>
+            item.brand.toLowerCase().includes(lowSearch) ||
+            item.model.toLowerCase().includes(lowSearch)
+        );
+      }
+      if (maxPrice > 0) {
+        res = res.filter(item => item.price_est <= maxPrice);
+      }
+      return res;
+    }
+    return items;
+  }, [category, items, favorites, deferredSearch, maxPrice]);
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto py-8 px-6">
       {showSubmit && <SubmitHardwareModal onClose={() => setShowSubmit(false)} />}
@@ -457,8 +490,7 @@ export default function HardwareCatalogPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Hardware Catalog</h1>
           <p className="text-muted-foreground mt-1">
-            {total > 0 ? `${total} components` : 'Browse'} - routers, switches, NAS, servers, SBCs
-            and more
+            {category === 'favorites' ? `${displayedItems.length} favorites` : total > 0 ? `${total} components` : 'Browse'} - routers, switches, NAS, servers, SBCs and more
           </p>
         </div>
         <Button size="sm" onClick={() => setShowSubmit(true)}>
@@ -482,6 +514,7 @@ export default function HardwareCatalogPage() {
           onChange={e => handleCategory(e.target.value)}
         >
           <option value="">All categories</option>
+          <option value="favorites">Favorites</option>
           {categories.map(cat => (
             <option key={cat} value={cat}>
               {CATEGORY_META[cat]?.label ?? cat}
@@ -514,6 +547,13 @@ export default function HardwareCatalogPage() {
         >
           All
         </button>
+        <button
+          onClick={() => handleCategory('favorites')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors hover:cursor-pointer ${category === 'favorites' ? 'bg-red-500/10 text-red-500 border-red-500/20' : 'border-border hover:bg-muted'}`}
+        >
+          <Heart className={`size-3 ${category === 'favorites' ? 'fill-red-500' : ''}`} />
+          Favorites
+        </button>
         {categories.map(cat => {
           const meta = CATEGORY_META[cat];
           const Icon = meta?.icon ?? Package;
@@ -530,28 +570,33 @@ export default function HardwareCatalogPage() {
         })}
       </div>
 
-      {isLoading ? (
+      {isLoading && category !== 'favorites' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {Array.from({ length: 12 }).map((_, i) => (
             <div key={i} className="rounded-xl border bg-card h-48 animate-pulse" />
           ))}
         </div>
-      ) : items.length === 0 ? (
+      ) : displayedItems.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <Package className="size-12 text-muted-foreground/40 mb-4" />
-          <h3 className="font-semibold text-lg mb-1">No components found</h3>
-          <p className="text-muted-foreground text-sm">Try adjusting your filters</p>
+          <h3 className="font-semibold text-lg mb-1">{category === 'favorites' ? 'No favorites added' : 'No components found'}</h3>
+          <p className="text-muted-foreground text-sm">{category === 'favorites' ? 'Heart components in the catalog to add them here!' : 'Try adjusting your filters'}</p>
         </div>
       ) : (
         <>
           <div
-            className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 stagger-children transition-opacity duration-200 ${isFetching ? 'opacity-60' : ''}`}
+            className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 stagger-children transition-opacity duration-200 ${isFetching && category !== 'favorites' ? 'opacity-60' : ''}`}
           >
-            {items.map(item => (
-              <HardwareCard key={item.id} item={item} />
+            {displayedItems.map(item => (
+              <HardwareCard
+                key={item.id}
+                item={item}
+                isFavorite={favSet.has(item.id)}
+                onToggleFavorite={() => handleToggleFavorite(item.id)}
+              />
             ))}
           </div>
-          {totalPages > 1 && (
+          {category !== 'favorites' && totalPages > 1 && (
             <div className="flex items-center justify-center gap-3 pt-2">
               <Button
                 variant="outline"

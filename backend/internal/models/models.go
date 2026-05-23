@@ -296,3 +296,15 @@ type BetaSurvey struct {
 
 func (BetaSurvey) TableName() string { return "beta_surveys" } // BETA_SURVEY
 // ─── END BETA_SURVEY ──────────────────────────────────────────────────────────
+
+type UserHardwareFavorite struct {
+	ID                  uuid.UUID         `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	UserID              uuid.UUID         `gorm:"type:uuid;not null;uniqueIndex:idx_user_hw_fav" json:"user_id"`
+	HardwareComponentID uuid.UUID         `gorm:"type:uuid;not null;uniqueIndex:idx_user_hw_fav" json:"hardware_component_id"`
+	User                *User             `gorm:"foreignKey:UserID" json:"-"`
+	HardwareComponent   *HardwareComponent `gorm:"foreignKey:HardwareComponentID" json:"hardware_component,omitempty"`
+	CreatedAt           time.Time         `json:"created_at"`
+}
+
+func (UserHardwareFavorite) TableName() string { return "user_hardware_favorites" }
+

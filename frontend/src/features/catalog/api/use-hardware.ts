@@ -1,4 +1,4 @@
-import { useQuery, keepPreviousData } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { api } from '../../../lib/api';
 
 export interface HardwareComponent {
@@ -66,5 +66,47 @@ export function useHardwareBrands(category?: string) {
     queryFn: () =>
       api.get<{ data: string[] }>(`/api/hardware/brands${category ? `?category=${category}` : ''}`),
     staleTime: 300_000,
+  });
+}
+
+export interface HardwareFavorite {
+  id: string;
+  user_id: string;
+  hardware_component_id: string;
+  hardware_component: HardwareComponent;
+  created_at: string;
+}
+
+export function useHardwareFavorites() {
+  return useQuery<{ data: HardwareFavorite[] }>({
+    queryKey: ['hardware-favorites'],
+    queryFn: () => api.get<{ data: HardwareFavorite[] }>('/api/hardware/favorites'),
+    staleTime: 60_000,
+  });
+}
+
+export function useAddHardwareFavorite() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (componentId: string) =>
+      api.post<{ data: HardwareFavorite }>('/api/hardware/favorites', {
+        hardware_component_id: componentId,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hardware-favorites'] });
+      queryClient.invalidateQueries({ queryKey: ['hardware'] });
+    },
+  });
+}
+
+export function useRemoveHardwareFavorite() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (componentId: string) =>
+      api.del<{ message: string }>(`/api/hardware/favorites/${componentId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hardware-favorites'] });
+      queryClient.invalidateQueries({ queryKey: ['hardware'] });
+    },
   });
 }

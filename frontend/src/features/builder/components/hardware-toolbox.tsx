@@ -26,6 +26,7 @@ import {
 import type { HardwareType } from '../../../types';
 import { Card } from '../../../components/ui/card';
 import { useUserSelections } from '../../catalog/api/use-services';
+import { useHardwareFavorites } from '../../catalog/api/use-hardware';
 import { useBuilderStore } from '../store/builder-store';
 import { Github } from '../../../components/icons/github';
 import { PowerUsagePanel } from './power-usage-panel';
@@ -410,6 +411,7 @@ const PRESETS: {
 export function HardwareToolbox() {
   const { availableServices, fetchServices } = useBuilderStore();
   const { data: selectionsData } = useUserSelections();
+  const { data: favoritesData } = useHardwareFavorites();
 
   React.useEffect(() => {
     fetchServices();
@@ -417,7 +419,7 @@ export function HardwareToolbox() {
 
   const [activeTab, setActiveTab] = useState<'components' | 'presets' | 'services' | 'power'>('components');
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
-    new Set(['Single Board Computers', 'Mini PCs']),
+    new Set(['My Favorites', 'Single Board Computers', 'Mini PCs']),
   );
   const [collapsedServiceCats, setCollapsedServiceCats] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
@@ -425,6 +427,106 @@ export function HardwareToolbox() {
   const [position, setPosition] = useState({ x: 16, y: 80 });
   const [isDragging, setIsDragging] = useState(false);
   const dragOffset = useState({ x: 0, y: 0 })[0]; // Ref-like state for drag offset
+
+  const favorites = favoritesData?.data || [];
+
+  // Dynamic presets combining static presets + My Favorites!
+  const dynamicPresets = React.useMemo(() => {
+    const list = [...PRESETS];
+
+    const favoriteItems = favorites
+      .map(fav => fav.hardware_component)
+      .filter(Boolean)
+      .map(comp => {
+        let type: string = comp.category;
+        if (comp.category === 'storage') {
+          type = 'disk';
+        } else if (comp.category === 'nic') {
+          type = 'hba';
+        }
+
+        const VALID_HARDWARE_TYPES = new Set<string>([
+          'router', 'switch', 'nas', 'server', 'pc', 'access_point',
+          'disk', 'gpu', 'hba', 'pcie', 'ups', 'pdu', 'sbc', 'minipc',
+          'iot', 'modem', 'rack'
+        ]);
+
+        if (!VALID_HARDWARE_TYPES.has(type)) {
+          return null;
+        }
+
+        const spec = comp.spec || {};
+        const details: any = {
+          model: `${comp.brand} ${comp.model}`,
+          price_est: comp.price_est,
+          currency: comp.currency,
+          ...spec,
+        };
+
+        let rack_units = spec.rack_units;
+        if (!rack_units && spec.form_factor && typeof spec.form_factor === 'string') {
+          const uMatch = spec.form_factor.match(/(\d+)U/i);
+          if (uMatch) {
+            rack_units = parseInt(uMatch[1], 10);
+          }
+        }
+        if (rack_units) details.rack_units = Number(rack_units);
+
+        let rack_size = spec.units ? Number(spec.units) : undefined;
+        if (spec.rack_size) {
+          rack_size = Number(spec.rack_size);
+        }
+        if (rack_size) details.rack_size = rack_size;
+
+        const name = `${comp.brand} ${comp.model}`;
+        
+        let icon: React.ElementType = Package;
+        if (type === 'router') icon = Router;
+        else if (type === 'switch') icon = CircuitBoard;
+        else if (type === 'server') icon = Server;
+        else if (type === 'pc' || type === 'minipc') icon = Monitor;
+        else if (type === 'sbc') icon = Cpu;
+        else if (type === 'nas' || type === 'disk') icon = HardDrive;
+        else if (type === 'access_point') icon = Wifi;
+        else if (type === 'gpu') icon = Layers;
+        else if (type === 'hba' || type === 'pcie') icon = Plug;
+        else if (type === 'ups' || type === 'pdu') icon = Battery;
+        else if (type === 'iot') icon = Printer;
+        else if (type === 'modem') icon = Globe;
+        else if (type === 'rack') icon = BoxSelect;
+
+        let sub = `${comp.brand} · ~${comp.price_est} ${comp.currency}`;
+        if (comp.category === 'server' || comp.category === 'minipc' || comp.category === 'sbc') {
+          const cpuStr = spec.cpu ? String(spec.cpu).split(' ')[0] : '';
+          const ramStr = spec.ram ? String(spec.ram).split(' ')[0] : '';
+          sub = `${cpuStr}${cpuStr && ramStr ? ' · ' : ''}${ramStr} · ~${comp.price_est} ${comp.currency}`;
+        } else if (comp.category === 'router' || comp.category === 'switch') {
+          const portsStr = spec.ports ? String(spec.ports) : '';
+          sub = `${portsStr} · ~${comp.price_est} ${comp.currency}`;
+        }
+
+        return {
+          label: name,
+          type: type as HardwareType,
+          icon,
+          sub,
+          data: {
+            name,
+            details,
+          },
+        };
+      })
+      .filter(Boolean) as any[];
+
+    if (favoriteItems.length > 0) {
+      list.unshift({
+        category: 'My Favorites',
+        items: favoriteItems,
+      });
+    }
+
+    return list;
+  }, [favorites]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     // Only drag from header
@@ -617,7 +719,7 @@ export function HardwareToolbox() {
             {/* ── Presets tab ── */}
             {activeTab === 'presets' && (
               <div className="space-y-1">
-                {PRESETS.map(cat => {
+                {dynamicPresets.map(cat => {
                   const isOpen = expandedCategories.has(cat.category);
                   return (
                     <div key={cat.category} className="border rounded-lg overflow-hidden">

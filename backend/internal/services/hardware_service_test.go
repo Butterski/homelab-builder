@@ -47,3 +47,92 @@ func TestHardwareService_UpdateBuyURLs(t *testing.T) {
 		t.Errorf("expected affiliate tag %s, got %s", tag, fetched.AffiliateTag)
 	}
 }
+
+func TestHardwareService_Favorites(t *testing.T) {
+	tx := testTx(t)
+	s := NewHardwareService(tx)
+
+	// Create dummy user
+	u := models.User{
+		Email: "fav_user@example.com",
+		Name:  "Fav User",
+	}
+	if err := tx.Create(&u).Error; err != nil {
+		t.Fatalf("failed to create user: %v", err)
+	}
+
+	// Create dummy hardware components
+	hw1 := models.HardwareComponent{
+		Category: "router",
+		Brand:    "Brand A",
+		Model:    "Model A",
+		Likes:    0,
+	}
+	hw2 := models.HardwareComponent{
+		Category: "switch",
+		Brand:    "Brand B",
+		Model:    "Model B",
+		Likes:    5,
+	}
+	if err := tx.Create(&hw1).Error; err != nil || tx.Create(&hw2).Error != nil {
+		t.Fatalf("failed to setup test hardware: %v", err)
+	}
+
+	// 1. Add Favorite
+	fav, err := s.AddHardwareFavorite(u.ID, hw1.ID)
+	if err != nil {
+		t.Fatalf("failed to add hardware favorite: %v", err)
+	}
+	if fav.HardwareComponentID != hw1.ID || fav.UserID != u.ID {
+		t.Errorf("unexpected favorite output: %+v", fav)
+	}
+
+	// Verify component likes got incremented
+	var fetchedHw1 models.HardwareComponent
+	tx.First(&fetchedHw1, "id = ?", hw1.ID)
+	if fetchedHw1.Likes != 1 {
+		t.Errorf("expected likes to increment to 1, got %d", fetchedHw1.Likes)
+	}
+
+	// 2. Add same favorite again (should not duplicate, but return existing)
+	favDup, err := s.AddHardwareFavorite(u.ID, hw1.ID)
+	if err != nil {
+		t.Fatalf("failed to add duplicate hardware favorite: %v", err)
+	}
+	if favDup.ID != fav.ID {
+		t.Errorf("expected existing favorite ID to be returned, got different ID")
+	}
+
+	// 3. Get Favorites
+	favs, err := s.GetHardwareFavorites(u.ID)
+	if err != nil {
+		t.Fatalf("failed to fetch hardware favorites: %v", err)
+	}
+	if len(favs) != 1 || favs[0].HardwareComponentID != hw1.ID {
+		t.Errorf("unexpected favorites list size or content: %+v", favs)
+	}
+	if favs[0].HardwareComponent.Brand != "Brand A" {
+		t.Errorf("expected preloaded HardwareComponent to have brand 'Brand A', got %s", favs[0].HardwareComponent.Brand)
+	}
+
+	// 4. Remove Favorite
+	if err := s.RemoveHardwareFavorite(u.ID, hw1.ID); err != nil {
+		t.Fatalf("failed to remove hardware favorite: %v", err)
+	}
+
+	// Verify component likes got decremented
+	tx.First(&fetchedHw1, "id = ?", hw1.ID)
+	if fetchedHw1.Likes != 0 {
+		t.Errorf("expected likes to decrement back to 0, got %d", fetchedHw1.Likes)
+	}
+
+	// Verify favorites list is now empty
+	favsEmpty, err := s.GetHardwareFavorites(u.ID)
+	if err != nil {
+		t.Fatalf("failed to fetch hardware favorites: %v", err)
+	}
+	if len(favsEmpty) != 0 {
+		t.Errorf("expected empty favorites list, got %d items", len(favsEmpty))
+	}
+}
+
