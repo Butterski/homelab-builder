@@ -8,9 +8,8 @@ services:
       POSTGRES_DB: homelab_builder
       TZ: ${TZ:-Europe/Berlin}
     volumes:
-      # If DB_PATH is a path (like ./postgres-data), it mounts a host folder.
-      # If DB_PATH is not set, it defaults to using the named volume postgres_data.
-      - ${DB_PATH:-postgres_data}:/var/lib/postgresql/data:rw
+      # Using the named volume
+      - postgres_data:/var/lib/postgresql/data:rw
       - ./backend/migrations:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U homelab -d homelab_builder"]
