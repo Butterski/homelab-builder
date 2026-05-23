@@ -4,6 +4,7 @@
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 
+![alt text](docs/hlbuilder-1.png)
 ![alt text](docs/image.png)
 
 ![alt text](docs/homelabbuilder.gif)
