@@ -728,7 +728,7 @@ function Flow() {
           connectionMode={ConnectionMode.Loose}
           fitView
           attributionPosition="bottom-right"
-          className="bg-background"
+          className="builder-flow-canvas"
           defaultEdgeOptions={{
             type: 'custom',
             animated: true,

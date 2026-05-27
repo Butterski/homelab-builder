@@ -176,6 +176,50 @@ const FALLBACK_CONFIG = {
   color: '#6b7280',
 };
 
+const TYPE_LABEL: Record<HardwareType, string> = {
+  router: 'Gateway',
+  switch: 'Switch',
+  nas: 'Storage',
+  server: 'Server',
+  pc: 'Workstation',
+  access_point: 'Wi-Fi',
+  disk: 'Disk',
+  gpu: 'GPU',
+  hba: 'HBA',
+  pcie: 'PCIe',
+  ups: 'Power',
+  pdu: 'PDU',
+  sbc: 'SBC',
+  minipc: 'Mini PC',
+  iot: 'IoT',
+  modem: 'Modem',
+  rack: 'Rack',
+};
+
+function formatCapacity(value: HardwareSpec['ram'] | HardwareSpec['storage']) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return `${value}`;
+  if (numeric >= 1000 && numeric % 1000 === 0) return `${numeric / 1000}TB`;
+  return `${numeric}GB`;
+}
+
+function formatPercent(value: number) {
+  return `${Math.min(999, Math.round(value * 100))}%`;
+}
+
+function clampPercent(value: number) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, Math.round(value * 100)));
+}
+
+function humanizeNodeLabel(label: string) {
+  return label
+    .replace(/_/g, ' ')
+    .replace(/\b(minipc)\b/gi, 'Mini PC')
+    .replace(/\b(sbc|nas|ups|pdu|hba|gpu|pc|iot)\b/gi, match => match.toUpperCase())
+    .replace(/\b\w/g, char => char.toUpperCase());
+}
+
 // ─── VM chip ───────────────────────────────────────────────────────────────────
 const VM_TYPE_ICON: Record<string, React.ElementType> = {
   vm: Cpu,
@@ -195,13 +239,15 @@ function VmChip({ vm }: { vm: VirtualMachine }) {
   return (
     <div
       className={cn(
-        'flex items-center gap-1.5 rounded border px-1.5 py-1 text-[10px] font-mono',
+        'node-vm-row flex items-center gap-2 rounded border px-2 py-1.5 text-[10px] font-mono',
         colorClass,
       )}
     >
-      <Icon className="size-2.5 shrink-0" />
+      <div className="node-vm-icon">
+        <Icon className="size-3 shrink-0" />
+      </div>
       <div className="min-w-0 flex-1">
-        <div className="truncate font-semibold max-w-20" title={vm.name}>
+        <div className="truncate font-semibold max-w-28" title={vm.name}>
           {vm.name}
         </div>
         <div className={cn('text-[9px]', vm.ip ? 'opacity-90' : 'opacity-40 italic')}>
@@ -229,12 +275,14 @@ function ComponentChip({ component }: { component: HardwareComponent }) {
   return (
     <div
       className={cn(
-        'flex items-center gap-1.5 rounded border px-1.5 py-1 text-[10px] bg-muted/30 border-border/50 text-muted-foreground',
+        'node-component-row flex items-center gap-2 rounded border px-2 py-1.5 text-[10px] bg-muted/30 border-border/50 text-muted-foreground',
       )}
     >
-      <Icon className={cn('size-2.5 shrink-0', cfg.iconColor)} />
+      <span className="node-component-icon">
+        <Icon className={cn('size-3 shrink-0', cfg.iconColor)} />
+      </span>
       <div className="min-w-0 flex-1">
-        <div className="truncate font-semibold max-w-22.5" title={component.name}>
+        <div className="truncate font-semibold max-w-32" title={component.name}>
           {component.name}
         </div>
         {component.details?.model && (
@@ -251,6 +299,8 @@ const POOL_HINT_NODE_TYPES: HardwareType[] = ['server', 'pc', 'minipc', 'sbc', '
 
 export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
   const nodeData = data as unknown as HardwareNodeData;
+  const details = nodeData.details ?? {};
+  const displayLabel = humanizeNodeLabel(nodeData.label);
   const cfg = TYPE_CONFIG[nodeData.type] ?? FALLBACK_CONFIG;
   const Icon = cfg.icon;
   const vms = nodeData.vms ?? [];
@@ -288,7 +338,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
   const hasWarning = hasResourceWarning || maxResourceUsage >= 0.8 || hasIpError || hasIpWarning;
 
   let lightColor = 'bg-green-500';
-  let pingColor = 'bg-green-400 animate-ping';
+  let pingColor = 'hidden';
 
   if (nodeData.status === 'offline') {
     lightColor = 'bg-gray-500';
@@ -351,57 +401,85 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
           const parts = nodeData.ip.split('.');
           const last = parseInt(parts[3] ?? '0', 10);
           const prefix = parts.slice(0, 3).join('.');
-          return `${prefix}.${last + 1} – .${last + CONTAINER_STEP - 1}`;
+          return `${prefix}.${last + 1}-${last + CONTAINER_STEP - 1}`;
         })()
       : null;
 
   // Calculate dynamic width for high-port-count switches/routers/etc
   const dynamicMinWidth = nodeHasDynamicPorts(nodeData.type) ? numPorts * 16 : 0;
+  const shouldShowBody =
+    nodeData.details?.model ||
+    !isNetworkNode(nodeData.type) ||
+    hasComponents ||
+    hasVMs ||
+    nodeData.details?.cpu ||
+    nodeData.details?.ram ||
+    nodeData.details?.storage ||
+    (isNetworkNode(nodeData.type) && !!nodeData.ip);
+
+  const hasSpecs = !!(
+    nodeData.details?.cpu ||
+    nodeData.details?.ram ||
+    nodeData.details?.storage ||
+    nodeData.details?.ports
+  );
+  const showResourceBars = isCompute && hasVMs && (totalCpu > 0 || totalRamMB > 0);
+  const cpuPercent = clampPercent(cpuUsageRatio);
+  const ramPercent = clampPercent(ramUsageRatio);
 
   return (
-    <div className="relative group">
+    <div
+      className="hardware-node-shell relative group"
+      style={{ '--node-accent': cfg.color } as React.CSSProperties}
+    >
       {/* Animated ring on selection - uses device accent color */}
       {selected && (
         <div
-          className="absolute -inset-1 -z-10 rounded-2xl pointer-events-none node-selected-ring"
+          className="absolute -inset-1 -z-10 rounded-xl pointer-events-none node-selected-ring"
           style={{ '--node-accent': cfg.color } as React.CSSProperties}
         />
       )}
 
       <Card
         className={cn(
-          'transition-[border-color,box-shadow,background-color,transform,opacity] duration-200 ease-out border shadow-none bg-card overflow-hidden border-t-2',
-          hasVMs || hasComponents ? 'w-56' : 'w-48',
+          'hardware-node-card transition-[border-color,box-shadow,background-color,transform,opacity] duration-200 ease-out overflow-hidden',
+          hasVMs || hasComponents ? 'w-[15.25rem]' : 'w-[13.75rem]',
           hasResourceWarning || hasIpError
-            ? 'border-destructive shadow-[0_0_10px_rgba(239,68,68,0.3)]'
+            ? 'hardware-node-danger border-destructive'
             : maxResourceUsage >= 0.8 || hasIpWarning
-              ? 'border-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.3)]'
-              : 'border-border',
-          hasIpError ? 'bg-destructive/5' : '',
-          selected ? 'scale-[1.02]' : 'hover:border-primary/50',
+              ? 'hardware-node-warning border-orange-500'
+              : '',
+          selected ? 'scale-[1.015]' : '',
         )}
         style={{
-          borderTopColor: cfg.color,
+          '--node-accent': cfg.color,
           ...(dynamicMinWidth > 192 ? { minWidth: `${dynamicMinWidth}px` } : {}),
-        }}
+        } as React.CSSProperties}
       >
+        <div className="node-accent-rail" />
+
         {/* Header */}
         <div
           className={cn(
-            'px-3 py-2 flex items-center gap-2 border-b border-border bg-card',
-            hasResourceWarning || hasIpError
-              ? 'bg-destructive/10'
-              : maxResourceUsage >= 0.8 || hasIpWarning
-                ? 'bg-orange-500/10'
-                : selected
-                  ? 'bg-primary/5'
-                  : '',
+            'node-header px-3 py-2.5 flex items-center gap-2.5 border-b border-border/70',
+            hasResourceWarning || hasIpError ? 'node-header-danger' : '',
+            maxResourceUsage >= 0.8 || hasIpWarning ? 'node-header-warning' : '',
           )}
         >
-          <Icon className={cn('size-4 shrink-0', cfg.iconColor)} />
-          <span className="font-semibold text-sm truncate flex-1" title={nodeData.label}>
-            {nodeData.label}
-          </span>
+          <div className="node-icon-plate">
+            <Icon className={cn('size-4 shrink-0', cfg.iconColor)} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <span className="font-semibold text-sm truncate block leading-tight" title={displayLabel}>
+              {displayLabel}
+            </span>
+            <div className="flex items-center gap-1.5 pt-0.5">
+              <span className="node-type-pill">{TYPE_LABEL[nodeData.type] ?? nodeData.type}</span>
+              {nodeHasDynamicPorts(nodeData.type) && (
+                <span className="node-port-count">{numPorts} ports</span>
+              )}
+            </div>
+          </div>
 
           {hasWarning && (
             <div title={tooltipLabel.trim()}>
@@ -416,103 +494,138 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
             </div>
           )}
 
-          <span className="relative flex size-2 shrink-0">
+          <span className="relative flex size-2.5 shrink-0" title={nodeData.status ?? 'online'}>
             <span
               className={cn(
                 'absolute inline-flex h-full w-full rounded-full opacity-75',
                 pingColor,
               )}
             />
-            <span className={cn('relative inline-flex rounded-full size-2', lightColor)} />
+            <span className={cn('relative inline-flex rounded-full size-2.5 node-status-led', lightColor)} />
           </span>
         </div>
 
         {/* Body */}
-        {(nodeData.details?.model ||
-          !isNetworkNode(nodeData.type) ||
-          hasComponents ||
-          hasVMs ||
-          nodeData.details?.cpu ||
-          nodeData.details?.ram ||
-          (isNetworkNode(nodeData.type) && !!nodeData.ip)) && (
-          <div className="p-2.5 bg-card space-y-1.5">
+        {shouldShowBody && (
+          <div className="node-body p-3 space-y-2.5">
             {/* Model subtitle */}
             {nodeData.details?.model && (
-              <p className="text-[9px] text-muted-foreground/70 truncate -mt-0.5">
+              <p className="node-model text-[10px] text-muted-foreground/80 truncate -mt-0.5">
                 {nodeData.details.model}
               </p>
             )}
 
-            {/* IP Address - Only for networked devices */}
-            {isNetworkNode(nodeData.type) && (
-              <div className="flex items-center justify-between gap-2 pt-1 px-1">
-                <span className="text-[11px] text-muted-foreground tracking-wide font-medium">
-                  IP:
-                </span>
-                <span
-                  className={cn(
-                    'font-mono text-[12px]',
-                    nodeData.ip ? 'text-foreground' : 'italic opacity-40 text-muted-foreground',
-                  )}
-                >
-                  {nodeData.ip || 'unassigned'}
-                </span>
-              </div>
-            )}
+            {(isNetworkNode(nodeData.type) || containerRangeHint) && (
+              <div className="node-telemetry-grid">
+                {isNetworkNode(nodeData.type) && (
+                  <div className="node-telemetry-cell">
+                    <span className="node-telemetry-label">IP:</span>
+                    <span
+                      className={cn(
+                        'node-telemetry-value font-mono',
+                        nodeData.ip ? 'text-foreground' : 'italic opacity-45 text-muted-foreground',
+                      )}
+                    >
+                      {nodeData.ip || 'unassigned'}
+                    </span>
+                  </div>
+                )}
 
-            {/* Container pool hint */}
-            {containerRangeHint && (
-              <div className="flex items-center justify-between gap-2 px-1 opacity-60">
-                <span className="text-[11px] text-muted-foreground flex items-center gap-1 font-medium">
-                  <Container className="size-2.5" /> Pool:
-                </span>
-                <span className="font-mono text-[10px] text-blue-400 truncate">
-                  {containerRangeHint}
-                </span>
+                {containerRangeHint && (
+                  <div className="node-telemetry-cell">
+                    <span className="node-telemetry-label flex items-center gap-1">
+                      <Container className="size-2.5" /> Pool:
+                    </span>
+                    <span className="node-telemetry-value font-mono text-sky-300 truncate">
+                      {containerRangeHint}
+                    </span>
+                  </div>
+                )}
               </div>
             )}
 
             {/* Spec chips */}
-            {(nodeData.details?.cpu || nodeData.details?.ram || nodeData.details?.storage) && (
-              <div className="flex flex-wrap gap-1 pt-0.5">
-                {nodeData.details.cpu && (
+            {hasSpecs && (
+              <div className="node-spec-grid">
+                {details.cpu && (
                   <span
-                    className="text-[9px] bg-muted/60 rounded px-1 py-0.5 truncate max-w-full"
-                    title={`${nodeData.details.cpu} Cores`}
+                    className="node-spec-chip"
+                    title={`${details.cpu} Cores`}
                   >
-                    {nodeData.details.cpu} Core{Number(nodeData.details.cpu) !== 1 ? 's' : ''}
+                    <Cpu className="size-2.5" />
+                    {details.cpu} Core{Number(details.cpu) !== 1 ? 's' : ''}
                   </span>
                 )}
-                {nodeData.details.ram && (
+                {details.ram && (
                   <span
-                    className="text-[9px] bg-muted/60 rounded px-1 py-0.5 truncate max-w-full"
-                    title={`${nodeData.details.ram} GB RAM`}
+                    className="node-spec-chip"
+                    title={`${details.ram} GB RAM`}
                   >
-                    {Number(nodeData.details.ram) >= 1000 &&
-                    Number(nodeData.details.ram) % 1000 === 0
-                      ? `${Number(nodeData.details.ram) / 1000}TB`
-                      : `${nodeData.details.ram}GB`}{' '}
+                    <Layers className="size-2.5" />
+                    {formatCapacity(details.ram)}{' '}
                     {nodeData.type === 'gpu' ? 'VRAM' : 'RAM'}
                   </span>
                 )}
-                {nodeData.details.storage && (
+                {details.storage && (
                   <span
-                    className="text-[9px] bg-muted/60 rounded px-1 py-0.5 truncate max-w-full"
-                    title={`${nodeData.details.storage} GB Storage`}
+                    className="node-spec-chip"
+                    title={`${details.storage} GB Storage`}
                   >
-                    {Number(nodeData.details.storage) >= 1000 &&
-                    Number(nodeData.details.storage) % 1000 === 0
-                      ? `${Number(nodeData.details.storage) / 1000}TB`
-                      : `${nodeData.details.storage}GB`}{' '}
+                    <HardDrive className="size-2.5" />
+                    {formatCapacity(details.storage)}{' '}
                     Disk
                   </span>
+                )}
+                {details.ports && (
+                  <span className="node-spec-chip" title={`${details.ports} ports`}>
+                    <Plug className="size-2.5" />
+                    {details.ports} Ports
+                  </span>
+                )}
+              </div>
+            )}
+
+            {showResourceBars && (
+              <div className="node-resource-panel">
+                {totalCpu > 0 && (
+                  <div className="node-resource-row">
+                    <div className="flex items-center justify-between">
+                      <span>CPU</span>
+                      <span className={cpuWarning ? 'text-red-300' : ''}>
+                        {usedCpu}/{totalCpu} - {formatPercent(cpuUsageRatio)}
+                      </span>
+                    </div>
+                    <div className="node-resource-track">
+                      <div
+                        className={cn('node-resource-bar', cpuWarning ? 'node-resource-over' : '')}
+                        style={{ width: `${cpuPercent}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+                {totalRamMB > 0 && (
+                  <div className="node-resource-row">
+                    <div className="flex items-center justify-between">
+                      <span>RAM</span>
+                      <span className={ramWarning ? 'text-red-300' : ''}>
+                        {Math.round(usedRam / 1024)}GB/{Math.round(totalRamMB / 1024)}GB -{' '}
+                        {formatPercent(ramUsageRatio)}
+                      </span>
+                    </div>
+                    <div className="node-resource-track">
+                      <div
+                        className={cn('node-resource-bar', ramWarning ? 'node-resource-over' : '')}
+                        style={{ width: `${ramPercent}%` }}
+                      />
+                    </div>
+                  </div>
                 )}
               </div>
             )}
 
             {hasComponents && (
-              <div className="space-y-1 pt-2 border-t border-border">
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium px-1">
+              <div className="node-section space-y-1.5 pt-2 border-t border-border/70">
+                <p className="node-section-title">
                   Components
                 </p>
                 <div className="space-y-1">
@@ -525,8 +638,8 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
 
             {/* VMs / Containers */}
             {hasVMs && (
-              <div className="space-y-1 pt-2 border-t border-border">
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium px-1">
+              <div className="node-section space-y-1.5 pt-2 border-t border-border/70">
+                <p className="node-section-title">
                   {vms.length} container{vms.length !== 1 ? 's' : ''}
                 </p>
                 <div className="space-y-1 max-h-36 overflow-y-auto">
@@ -539,7 +652,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
 
             {/* Empty compute hint */}
             {isCompute && !hasVMs && !hasComponents && (
-              <p className="text-[9px] text-muted-foreground/40 italic text-center py-0.5">
+              <p className="node-empty-hint text-[9px] text-muted-foreground/45 italic text-center py-1">
                 drop components here
               </p>
             )}
@@ -552,7 +665,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
         type="target"
         position={Position.Top}
         id="target-0"
-        className="bg-muted-foreground! w-3 h-1.5 border! border-background! rounded-sm! hover:bg-primary! hover:scale-125 transition-all"
+        className="node-flow-handle node-flow-handle-target bg-muted-foreground! w-3 h-1.5 border! border-background! rounded-sm! hover:scale-125 transition-all"
       />
 
       {/* Source Ports (Bottom, for outgoing cables) */}
@@ -566,7 +679,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
               type="source"
               position={Position.Bottom}
               style={{ left: `${portSpacing * (i + 1)}%` }}
-              className="bg-muted-foreground! size-2 border! border-background! rounded-sm! hover:bg-primary! hover:scale-125 transition-all"
+              className="node-flow-handle bg-muted-foreground! size-2 border! border-background! rounded-sm! hover:scale-125 transition-all"
               title={`eth${i}`}
             />
           ));
@@ -577,7 +690,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
           id="eth0"
           type="source"
           position={Position.Bottom}
-          className="bg-muted-foreground! size-3 border-2! border-background! rounded-sm! hover:bg-primary! hover:scale-125 transition-all"
+          className="node-flow-handle bg-muted-foreground! size-3 border-2! border-background! rounded-sm! hover:scale-125 transition-all"
           title="eth0"
         />
       )}
