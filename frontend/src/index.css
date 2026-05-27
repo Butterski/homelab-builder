@@ -235,6 +235,38 @@
   background: var(--background);
 }
 
+.builder-top-panel {
+  max-width: calc(100vw - 15rem);
+}
+
+.builder-resource-dashboard {
+  max-width: calc(100vw - 2rem);
+}
+
+@media (max-width: 980px) {
+  .builder-top-panel {
+    max-width: calc(100vw - 5rem);
+  }
+
+  .builder-action-label {
+    display: none;
+  }
+
+  .builder-resource-dashboard {
+    top: 4.25rem;
+  }
+}
+
+@media (max-width: 680px) {
+  .builder-project-title {
+    display: none;
+  }
+
+  .builder-resource-label {
+    display: none;
+  }
+}
+
 .hardware-node-shell {
   --node-accent: #22c55e;
 }

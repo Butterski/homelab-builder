@@ -740,17 +740,17 @@ function Flow() {
           <Background gap={20} size={1} color="#A1A1AA" style={{ opacity: 0.25 }} />
           <Controls />
 
-          <Panel position="top-left" className="flex gap-2 items-center">
+          <Panel position="top-left" className="builder-top-panel flex flex-wrap gap-2 items-start">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" className="size-10 bg-card">
-                  <Menu className="size-5" />
+                <Button variant="outline" size="icon" className="size-10 bg-card shrink-0">
+                  <Menu className="size-4" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-56">
                 <DropdownMenuLabel>Project Menu</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={saveProject}>
+                <DropdownMenuItem onClick={handleManualSave}>
                   <Save className="mr-2 size-4" /> Save Project{' '}
                   <span className="ml-auto text-xs text-muted-foreground opacity-60">Ctrl+S</span>
                 </DropdownMenuItem>
@@ -779,8 +779,10 @@ function Flow() {
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <div className="flex flex-col">
-              <h2 className="text-sm font-semibold leading-none">{projectName || 'HLBuilder'}</h2>
+            <div className="builder-project-title flex flex-col min-w-0 rounded-lg border bg-card px-3 py-2 h-12 justify-center">
+              <h2 className="text-sm font-semibold leading-none truncate max-w-52">
+                {projectName || 'HLBuilder'}
+              </h2>
               <span className="text-[10px] text-muted-foreground flex items-center gap-1">
                 {saveStatus === 'saving' && (
                   <span className="text-amber-500 flex items-center gap-1">
@@ -799,17 +801,17 @@ function Flow() {
               onClick={() => reassignAllIPs()}
               title="Fix IP Conflicts"
               size="sm"
-              className="h-10 bg-card ml-4"
+              className="h-10 bg-card px-3"
             >
-              <Wand2 className="mr-2 size-4" />
-              Reassign IPs
+              <Wand2 className="size-4" />
+              <span className="builder-action-label ml-2">Reassign IPs</span>
             </Button>
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-10 bg-card w-37.5">
-                  <Route className="mr-2 size-4 shrink-0" />
-                  Edge Settings
+                <Button variant="outline" size="sm" className="h-10 bg-card px-3">
+                  <Route className="size-4 shrink-0" />
+                  <span className="builder-action-label ml-2">Edge Settings</span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-56">

@@ -22,7 +22,6 @@ const PrivacyPolicyPage = lazy(() => import('./features/legal/pages/privacy-poli
 const TermsOfServicePage = lazy(() => import('./features/legal/pages/terms-of-service-page'));
 import { RequireAuth } from './components/auth/require-auth';
 import { Sidebar } from './components/layout/sidebar';
-import { ThemeToggle } from './components/theme-toggle';
 import { Toaster } from './components/ui/sonner';
 
 import { GoogleOAuthProvider } from '@react-oauth/google';
@@ -94,11 +93,6 @@ function AppContent() {
       <main
         className={`flex-1 min-h-0 relative ${isBuilderRoute || isSharedRoute ? 'overflow-hidden' : 'overflow-auto'}`}
       >
-        {!isSharedRoute && (
-          <div className="absolute top-4 right-4 z-50">
-            <ThemeToggle />
-          </div>
-        )}
         <Suspense fallback={<LoadingScreen message="Loading HLBuilder..." />}>
           <Routes>
             <Route path="/" element={user ? <ProjectsPage /> : <LoginPage />} />

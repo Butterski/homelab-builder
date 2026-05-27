@@ -626,22 +626,22 @@ export function HardwareToolbox() {
 
   return (
     <Card
-      className="absolute z-50 shadow-none border flex flex-col overflow-hidden"
+      className="absolute z-50 shadow-none border flex flex-col overflow-hidden bg-card"
       style={{
         left: position.x,
         top: position.y,
-        width: isMinimized ? 'auto' : '16.5rem',
+        width: isMinimized ? 'auto' : '19rem',
         maxHeight: isMinimized ? 'auto' : 'calc(100vh - 8rem)',
         cursor: isDragging ? 'grabbing' : 'auto',
       }}
     >
       {/* Header / Drag Handle */}
       <div
-        className="flex items-center justify-between px-3 py-2 bg-muted cursor-grab active:cursor-grabbing border-b select-none"
+        className="flex items-center justify-between px-4 py-3 bg-muted/50 cursor-grab active:cursor-grabbing border-b select-none"
         onMouseDown={handleMouseDown}
       >
         <div className="flex items-center gap-2">
-          <span className="font-bold text-xs uppercase tracking-wider text-muted-foreground">
+          <span className="font-bold text-xs uppercase tracking-wider text-foreground">
             Library
           </span>
         </div>
@@ -661,7 +661,7 @@ export function HardwareToolbox() {
       {!isMinimized && (
         <>
           {/* Tab bar */}
-          <div className="flex border-b shrink-0 bg-card">
+          <div className="grid grid-cols-4 border-b shrink-0 bg-card px-2 pt-2 gap-1">
             {(
               [
                 { id: 'components', label: 'Types', icon: LayoutGrid },
@@ -675,10 +675,10 @@ export function HardwareToolbox() {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex-1 flex flex-col items-center gap-0.5 py-2 text-[10px] font-semibold uppercase tracking-wide transition-colors ${tab.id === 'services' ? 'tour-toolbox-services' : ''} ${
+                  className={`flex flex-col items-center gap-1 rounded-t-md px-2 py-2 text-[10px] font-semibold uppercase tracking-wide transition-colors ${tab.id === 'services' ? 'tour-toolbox-services' : ''} ${
                     activeTab === tab.id
-                      ? 'text-primary border-b-2 border-primary bg-primary/5'
-                      : 'text-muted-foreground hover:text-foreground'
+                      ? 'text-primary bg-primary/10'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                   }`}
                 >
                   <Icon className="size-3.5" />
@@ -688,24 +688,24 @@ export function HardwareToolbox() {
             })}
           </div>
 
-          <div className="tour-toolbox overflow-y-auto flex-1 p-3">
+          <div className="tour-toolbox overflow-y-auto flex-1 p-4">
             {/* ── Components tab ── */}
             {activeTab === 'components' && (
-              <div className="space-y-2">
-                <p className="text-[10px] text-muted-foreground mb-2">
+              <div className="space-y-3">
+                <p className="text-[11px] text-muted-foreground">
                   Drag any component onto the canvas
                 </p>
-                <div className="grid grid-cols-3 gap-1.5">
+                <div className="grid grid-cols-3 gap-2">
                   {HARDWARE_TOOLS.map(tool => {
                     const Icon = tool.icon;
                     return (
                       <div
                         key={tool.type}
-                        className="flex flex-col items-center justify-center p-2 border rounded-lg cursor-grab hover:bg-primary/5 hover:border-primary/50 transition-colors bg-card active:cursor-grabbing"
+                        className="flex min-h-14 flex-col items-center justify-center rounded-md border bg-background/40 p-2.5 cursor-grab hover:bg-primary/5 hover:border-primary/50 transition-colors active:cursor-grabbing"
                         onDragStart={e => onDragStart(e, tool.type)}
                         draggable
                       >
-                        <Icon className={`size-4 mb-1 ${tool.color}`} />
+                        <Icon className={`size-4 mb-1.5 ${tool.color}`} />
                         <span className="text-[9px] font-medium text-center leading-tight">
                           {tool.label}
                         </span>
@@ -943,8 +943,8 @@ export function HardwareToolbox() {
             )}
           </div>
 
-          <div className="border-t px-3 py-2 shrink-0 bg-card">
-            <p className="text-[9px] text-muted-foreground text-center opacity-60">
+          <div className="border-t px-4 py-2.5 shrink-0 bg-muted/20">
+            <p className="text-[10px] text-muted-foreground text-center">
               Drag to canvas · Connect to router for auto-IP
             </p>
           </div>

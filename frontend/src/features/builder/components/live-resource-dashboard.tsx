@@ -112,7 +112,7 @@ export function LiveResourceDashboard() {
   const maxPercent = Math.max(stats.cpuPercent, stats.ramPercent, stats.storagePercent);
 
   let lightColor = 'bg-green-500';
-  let pingColor = 'bg-green-400 animate-ping';
+  let pingColor = 'hidden';
   let cardBorder = 'border-border';
 
   if (maxPercent >= 90) {
@@ -135,10 +135,10 @@ export function LiveResourceDashboard() {
   };
 
   return (
-    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 pointer-events-auto" data-hide-export="true">
+    <div className="builder-resource-dashboard absolute top-4 right-4 z-50 transition-all duration-300 pointer-events-auto" data-hide-export="true">
       <Card
         className={cn(
-          `shadow-none overflow-hidden transition-all duration-300 bg-card ${isExpanded ? 'w-[320px]' : 'w-50'}`,
+          `shadow-none overflow-hidden transition-all duration-300 bg-card ${isExpanded ? 'w-[320px]' : 'w-48'}`,
           cardBorder,
         )}
       >
@@ -157,7 +157,7 @@ export function LiveResourceDashboard() {
                     : 'text-primary',
               )}
             />
-            Resource Usage
+            <span className="builder-resource-label">Resource Usage</span>
             <span className="relative flex size-2 shrink-0 ml-1">
               <span
                 className={cn(
