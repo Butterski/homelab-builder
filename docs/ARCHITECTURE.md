@@ -3,12 +3,6 @@
 This document is the canonical reference for AI agents working on this codebase.
 It covers project architecture, testing infrastructure, known pitfalls, and the decisions behind them.
 
-REMEMBER THAT THIS IS JUST TO BUILD AN MVP, NOT A PRODUCTION READY APP! 
-SO YOU CAN WIPE THE DATABASE AND REBUILD IT FROM SCRATCH IF YOU WISH.
-IF IT WOULD BE FASTER TO REBUILD THE APP FROM SCRATCH, THEN DO IT.
-DO NOT MAKE ANY "todo later" OR "include in production" CHANGES.
-EVEN THOUGH THIS IS NOT A PRODUCTION THIS NEEDS TO WORK LIKE IT.
-
 Test things in docker since I wanna keep my windows environment clean.
 Remember - I don't want migrations scripts or Legacy things support. If something needs to be changed in the database, just update the models and let the database be recreated.
 
