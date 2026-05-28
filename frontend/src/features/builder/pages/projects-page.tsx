@@ -1,6 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../../admin/hooks/use-auth';
+import React from 'react';
 import {
   Plus,
   Folder,
@@ -21,7 +19,6 @@ import {
   Lock,
   Pencil,
 } from 'lucide-react';
-// Removed unused imports: ExternalLink, Cpu
 import { Button } from '../../../components/ui/button';
 import { Card } from '../../../components/ui/card';
 import { Badge } from '../../../components/ui/badge';
@@ -41,421 +38,39 @@ import {
 } from '../../../components/ui/dialog';
 import { Input } from '../../../components/ui/input';
 import { Label } from '../../../components/ui/label';
-import { toast } from 'sonner';
-import { buildApi, type Build } from '../api/builds';
-import { useBuilderStore } from '../store/builder-store';
+import type { Build } from '../api/builds';
 import { formatDistanceToNow } from 'date-fns';
 import { FastStartWizard } from '../components/fast-start-wizard';
-import { generateFastStartPayload } from '../../../lib/templates';
-import { ApiError } from '../../../lib/api';
+import { useProjectsPage } from '../hooks/use-projects-page';
 
-const parseDetailsObject = (value: unknown) => {
-  if (!value) {
-    return {};
-  }
-
-  if (typeof value === 'string') {
-    try {
-      const parsed = JSON.parse(value);
-      return parsed && typeof parsed === 'object' ? parsed : {};
-    } catch {
-      return {};
-    }
-  }
-
-  return typeof value === 'object' ? value : {};
-};
-
-const normalizeNodesForSync = (nodes: any[] = []) =>
-  nodes.map(node => ({
-    ...node,
-    details: parseDetailsObject(node.details),
-    internal_components: (node.internal_components || []).map((component: any) => ({
-      ...component,
-      details: parseDetailsObject(component.details),
-    })),
-  }));
-
-const summarizeInvalidEdges = (invalidEdges: Array<{ source: string; target: string }>) => {
-  if (invalidEdges.length === 0) {
-    return null;
-  }
-
-  const maxExamples = 3;
-  const examples = invalidEdges
-    .slice(0, maxExamples)
-    .map(edge => `${edge.source} -> ${edge.target}`)
-    .join(', ');
-  const extraCount = invalidEdges.length - maxExamples;
-  return extraCount > 0
-    ? `${invalidEdges.length} invalid edge(s) were skipped (${examples}, +${extraCount} more).`
-    : `${invalidEdges.length} invalid edge(s) were skipped (${examples}).`;
-};
-
-const sanitizeImportPayload = (parsed: any) => {
-  const rawNodes = parsed.nodes || parsed.hardwareNodes || [];
-  const normalizedNodes = normalizeNodesForSync(rawNodes);
-  const rawEdges = Array.isArray(parsed.edges) ? parsed.edges : [];
-
-  const nodeIdSet = new Set(normalizedNodes.map(node => node.id));
-  const validEdges: any[] = [];
-  const invalidEdges: Array<{ source: string; target: string }> = [];
-
-  for (const edge of rawEdges) {
-    // Support both frontend-style ({ source, target }) and backend-style
-    // ({ source_node_id, target_node_id }) edge shapes.
-    const source = edge.source ?? edge.source_node_id;
-    const target = edge.target ?? edge.target_node_id;
-
-    if (nodeIdSet.has(source) && nodeIdSet.has(target)) {
-      // Ensure returned edges always have canonical source/target fields.
-      validEdges.push({
-        ...edge,
-        source,
-        target,
-      });
-      continue;
-    }
-
-    invalidEdges.push({
-      source: String(source ?? ''),
-      target: String(target ?? ''),
-    });
-  }
-
-  const settings = {
-    ...(parsed.settings || {}),
-    ...(parsed.boughtItems !== undefined ? { boughtItems: parsed.boughtItems } : {}),
-    ...(parsed.showBought !== undefined ? { showBought: parsed.showBought } : {}),
-  };
-
-  return {
-    payload: {
-      nodes: normalizedNodes,
-      edges: validEdges,
-      services: parsed.services || [],
-      settings,
-    },
-    warning: summarizeInvalidEdges(invalidEdges),
-  };
-};
-
-export default function ProjectsPage() {
-  const navigate = useNavigate();
-  const { user } = useAuth();
-  const isAuthenticated = !!user;
-  const { loadBuild } = useBuilderStore();
-  const [builds, setBuilds] = useState<Build[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-
-  // Modal states
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [newProjectName, setNewProjectName] = useState('');
-  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
-  const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
-  const [isRenameOpen, setIsRenameOpen] = useState(false);
-  const [projectToRename, setProjectToRename] = useState<Build | null>(null);
-  const [renameValue, setRenameValue] = useState('');
-
-  // Share state
-  const [isShareOpen, setIsShareOpen] = useState(false);
-  const [buildToShare, setBuildToShare] = useState<Build | null>(null);
-  const [shareCopied, setShareCopied] = useState(false);
-
-  // Fast Start Wizard State
-  const [isFastStartOpen, setIsFastStartOpen] = useState(false);
-  const [isGeneratingFastStart, setIsGeneratingFastStart] = useState(false);
-
-  useEffect(() => {
-    if (isAuthenticated) {
-      fetchBuilds();
-    } else {
-      setLoading(false);
-    }
-  }, [isAuthenticated]);
-
-  // Import states
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [importPayload, setImportPayload] = useState<{
-    nodes: any[];
-    edges: any[];
-    services: any[];
-    settings: any;
-  } | null>(null);
-  const [importWarning, setImportWarning] = useState<string | null>(null);
-
-  const fetchBuilds = async () => {
-    try {
-      const data = await buildApi.list();
-      setBuilds(data);
-    } catch (error) {
-      console.error('Failed to fetch builds', error);
-      toast.error('Failed to load projects');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCreateNew = () => {
-    setImportPayload(null);
-    setImportWarning(null);
-    setNewProjectName('New Project');
-    setIsCreateOpen(true);
-  };
-
-  const handleImportClick = () => {
-    if (fileInputRef.current) fileInputRef.current.click();
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      const text = ev.target?.result as string;
-      try {
-        const parsed = JSON.parse(text);
-        if (!parsed.hardwareNodes && !parsed.nodes) {
-          toast.error('Invalid .homelab.json file');
-          return;
-        }
-        const { payload, warning } = sanitizeImportPayload(parsed);
-        setImportPayload(payload);
-        setImportWarning(warning);
-        if (warning) {
-          toast.warning(`Import warning: ${warning}`);
-        }
-        let baseName = file.name.replace('.homelab.json', '').replace('.json', '');
-        if (!baseName) baseName = 'Imported Project';
-        setNewProjectName(baseName);
-        setIsCreateOpen(true);
-      } catch (_) {
-        toast.error('Failed to parse JSON');
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = '';
-  };
-
-  const confirmCreate = async () => {
-    try {
-      const name = newProjectName.trim() || (importPayload ? 'Imported Project' : 'New Project');
-      const payload = importPayload || { nodes: [], edges: [], services: [], settings: {} };
-      const newBuild = await buildApi.create({
-        name: name,
-        thumbnail: '',
-        nodes: payload.nodes,
-        edges: payload.edges,
-        services: payload.services,
-        settings: payload.settings,
-      });
-
-      const buildForStore = importPayload
-        ? ({
-            ...newBuild,
-            nodes: payload.nodes,
-            edges: payload.edges,
-            settings: payload.settings,
-          } as Build)
-        : newBuild;
-      loadBuild(newBuild.id, newBuild.name, buildForStore);
-      toast.success(
-        importPayload ? 'Project imported successfully' : 'Project created successfully',
-      );
-      if (importPayload && importWarning) {
-        toast.warning(`Import completed with warnings: ${importWarning}`);
-      }
-      navigate(`/builder/${newBuild.id}`);
-    } catch (error) {
-      console.error('Failed to create', error);
-      if (error instanceof ApiError && error.message.includes('invalid edge references')) {
-        toast.error('Import failed: wiring references missing nodes. Re-export and retry.');
-      } else {
-        toast.error('Failed to create project');
-      }
-    } finally {
-      setIsCreateOpen(false);
-      setImportPayload(null);
-      setImportWarning(null);
-    }
-  };
-
-  const handleFastStartGenerate = async (goal: string, scale: string) => {
-    setIsGeneratingFastStart(true);
-    try {
-      const payload = generateFastStartPayload(goal, scale);
-      const newBuild = await buildApi.create({
-        name: payload.name,
-        thumbnail: '',
-        nodes: payload.nodes,
-        edges: payload.edges,
-        services: [],
-        settings: {},
-      });
-      // generate dynamic IPs instantly
-      await buildApi.calculateNetwork(newBuild.id);
-
-      toast.success(`Generated Template: ${payload.name}`);
-      navigate(`/builder/${newBuild.id}`);
-    } catch (err) {
-      console.error('Failed to generate wizard template', err);
-      toast.error('Failed to generate project template');
-    } finally {
-      setIsGeneratingFastStart(false);
-      setIsFastStartOpen(false);
-    }
-  };
-
-  const handleExport = async (e: React.MouseEvent, build: Build) => {
-    e.stopPropagation();
-    try {
-      // The list view might have truncated relationships, so we fetch the full representation.
-      const fullBuild = await buildApi.get(build.id);
-      const rawData = fullBuild;
-      // Assemble a .homelab.json standard file using relational tables mapped into flat arrays
-      const payload = {
-        version: 1,
-        name: fullBuild.name,
-        exportedAt: new Date().toISOString(),
-        nodes: rawData.nodes || [],
-        edges: rawData.edges || [],
-        boughtItems: rawData.settings?.boughtItems || [],
-        showBought: rawData.settings?.showBought || false,
-      };
-      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${fullBuild.name.replace(/[^a-z0-9]/gi, '-')}.homelab.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success('Project exported');
-    } catch (_) {
-      toast.error('Failed to export project');
-    }
-  };
-
-  const handleOpen = (build: Build) => {
-    // Just navigate, let the builder page fetch the full data
-    navigate(`/builder/${build.id}`);
-  };
-
-  const handleDelete = (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    setProjectToDelete(id);
-    setIsDeleteOpen(true);
-  };
-
-  const confirmDelete = async () => {
-    if (!projectToDelete) return;
-    try {
-      await buildApi.delete(projectToDelete);
-      setBuilds(prev => prev.filter(b => b.id !== projectToDelete));
-      toast.success('Project deleted');
-    } catch (error) {
-      console.error('Failed to delete', error);
-      toast.error('Failed to delete project');
-    } finally {
-      setIsDeleteOpen(false);
-      setProjectToDelete(null);
-    }
-  };
-
-  const handleDuplicate = async (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    try {
-      const duplicatedBuild = await buildApi.duplicate(id);
-      setBuilds(prev => [duplicatedBuild, ...prev]);
-      toast.success('Project duplicated successfully');
-    } catch (error) {
-      console.error('Failed to duplicate', error);
-      toast.error('Failed to duplicate project');
-    }
-  };
-
-  const handleRenameClick = (e: React.MouseEvent, build: Build) => {
-    e.stopPropagation();
-    setProjectToRename(build);
-    setRenameValue(build.name);
-    setIsRenameOpen(true);
-  };
-
-  const confirmRename = async () => {
-    if (!projectToRename || !renameValue.trim()) return;
-    try {
-      const newName = renameValue.trim();
-      // We need full build data to rename cleanly if we use update endpoint since data is required
-      // However, it's safer to fetch the original, rename, and save.
-      const fullBuild = await buildApi.get(projectToRename.id);
-      const updated = await buildApi.update(projectToRename.id, {
-        name: newName,
-        thumbnail: fullBuild.thumbnail,
-        nodes: normalizeNodesForSync(fullBuild.nodes || []),
-        edges: fullBuild.edges || [],
-        services: [],
-        settings: fullBuild.settings || {},
-      });
-      // Update local state listing
-      setBuilds(prev => prev.map(b => (b.id === updated.id ? { ...b, name: updated.name } : b)));
-      toast.success('Project renamed');
-    } catch (error) {
-      console.error('Failed to rename', error);
-      toast.error('Failed to rename project');
-    } finally {
-      setIsRenameOpen(false);
-      setProjectToRename(null);
-    }
-  };
-
-  const handleShareClick = (e: React.MouseEvent, build: Build) => {
-    e.stopPropagation();
-    setBuildToShare(build);
-    setShareCopied(false);
-    setIsShareOpen(true);
-  };
-
-  const handleToggleShare = async () => {
-    if (!buildToShare) return;
-    try {
-      const updated = buildToShare.is_shared
-        ? await buildApi.unshare(buildToShare.id)
-        : await buildApi.share(buildToShare.id);
-      setBuildToShare(updated);
-      setBuilds(prev => prev.map(b => (b.id === updated.id ? { ...b, ...updated } : b)));
-      toast.success(updated.is_shared ? 'Sharing enabled' : 'Sharing disabled');
-    } catch {
-      toast.error('Failed to update sharing');
-    }
-  };
-
-  const handleCopyShareLink = () => {
-    if (!buildToShare?.share_token) return;
-    const url = `${window.location.origin}/shared/${buildToShare.share_token}`;
-    navigator.clipboard.writeText(url).then(() => {
-      setShareCopied(true);
-      setTimeout(() => setShareCopied(false), 2000);
-    });
-  };
-
-  const handleToggleEditable = async () => {
-    if (!buildToShare?.id) return;
-    try {
-      const updated = await buildApi.setShareEditable(
-        buildToShare.id,
-        !buildToShare.shared_editable,
-      );
-      setBuildToShare(updated);
-      setBuilds(prev => prev.map(b => (b.id === updated.id ? { ...b, ...updated } : b)));
-      toast.success(
-        updated.shared_editable ? 'Editing enabled for link viewers' : 'Editing disabled',
-      );
-    } catch {
-      toast.error('Failed to update edit permission');
-    }
-  };
-
-  const filteredBuilds = builds.filter(b => b.name.toLowerCase().includes(search.toLowerCase()));
+// ─── ProjectsPage ─────────────────────────────────────────────────────────────
+function ProjectsPage() {
+  const {
+    loading,
+    search,
+    setSearch,
+    modal,
+    dispatchModal,
+    fileInputRef,
+    buildToShare,
+    filteredBuilds,
+    handleCreateNew,
+    handleImportClick,
+    handleFileChange,
+    confirmCreate,
+    handleFastStartGenerate,
+    handleExport,
+    handleOpen,
+    handleDelete,
+    confirmDelete,
+    handleDuplicate,
+    handleRenameClick,
+    confirmRename,
+    handleShareClick,
+    handleToggleShare,
+    handleCopyShareLink,
+    handleToggleEditable,
+  } = useProjectsPage();
 
   return (
     <div className="container mx-auto py-8 px-4 max-w-7xl">
@@ -489,7 +104,7 @@ export default function ProjectsPage() {
           <Button
             variant="outline"
             className="text-amber-600 border-amber-200 hover:bg-amber-50 hover:text-amber-700 dark:border-amber-800/30 dark:hover:bg-amber-900/20 dark:hover:text-amber-400"
-            onClick={() => setIsFastStartOpen(true)}
+            onClick={() => dispatchModal({ type: 'OPEN_FAST_START' })}
           >
             <Zap className="mr-2 size-4" /> Fast Start
           </Button>
@@ -519,296 +134,302 @@ export default function ProjectsPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredBuilds.map(build => {
-            // The backend preloads the structural `nodes` array for counting
-            let nodeCount = 0;
-            if (build.nodes && Array.isArray(build.nodes)) {
-              nodeCount = build.nodes.length;
-            }
-
-            return (
-              <Card
-                key={build.id}
-                className="group cursor-pointer hover:border-primary/50 transition-all overflow-hidden flex flex-col"
-                onClick={() => handleOpen(build)}
-              >
-                <div className="aspect-video bg-muted/30 relative border-b flex items-center justify-center group-hover:bg-muted/50 transition-colors">
-                  {build.thumbnail ? (
-                    <img
-                      src={build.thumbnail}
-                      alt={build.name}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="flex flex-col items-center gap-2 text-muted-foreground/40">
-                      <Folder className="size-12" />
-                    </div>
-                  )}
-
-                  <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="secondary"
-                          size="icon"
-                          className="size-8"
-                          onClick={e => e.stopPropagation()}
-                        >
-                          <MoreVertical className="size-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={e => {
-                            e.stopPropagation();
-                            handleOpen(build);
-                          }}
-                        >
-                          <Edit2 className="mr-2 size-4" /> Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={e => handleRenameClick(e, build)}>
-                          <Edit2 className="mr-2 size-4" /> Rename
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={e => handleDuplicate(e, build.id)}>
-                          <Folder className="mr-2 size-4" /> Duplicate
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={e => handleExport(e, build)}>
-                          <Download className="mr-2 size-4" /> Export
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={e => handleShareClick(e, build)}>
-                          <Share2 className="mr-2 size-4" /> Share
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          className="text-destructive focus:text-destructive"
-                          onClick={e => handleDelete(e, build.id)}
-                        >
-                          <Trash2 className="mr-2 size-4" /> Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </div>
-
-                <div className="p-4 flex-1 flex flex-col">
-                  <div className="flex items-start justify-between mb-2">
-                    <h3 className="font-semibold truncate pr-2" title={build.name}>
-                      {build.name}
-                    </h3>
-                    <Badge variant="secondary" className="text-[10px] shrink-0">
-                      v1.0
-                    </Badge>
-                  </div>
-
-                  <div className="mt-auto space-y-3">
-                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                      <div className="flex items-center gap-1.5">
-                        <HardDrive className="size-3.5" />
-                        {nodeCount} Nodes
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <Clock className="size-3.5" />
-                        {formatDistanceToNow(new Date(build.updated_at), { addSuffix: true })}
-                      </div>
-                    </div>
-
-                    <div className="pt-3 border-t flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        className="w-full"
-                        onClick={e => {
-                          e.stopPropagation();
-                          handleOpen(build);
-                        }}
-                      >
-                        <Play className="mr-2 size-3.5" /> Open Editor
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            );
-          })}
+          {filteredBuilds.map(build => (
+            <BuildCard
+              key={build.id}
+              build={build}
+              onOpen={handleOpen}
+              onRenameClick={handleRenameClick}
+              onDuplicate={handleDuplicate}
+              onExport={handleExport}
+              onShareClick={handleShareClick}
+              onDelete={handleDelete}
+            />
+          ))}
         </div>
       )}
 
-      {/* Create Project Modal */}
-      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+      <ProjectModals
+        modal={modal as any}
+        onConfirmCreate={confirmCreate}
+        onConfirmDelete={confirmDelete}
+        onConfirmRename={confirmRename}
+        onSetCreateName={(name: string) => dispatchModal({ type: 'SET_CREATE_NAME', name })}
+        onSetRenameValue={(value: string) => dispatchModal({ type: 'SET_RENAME_VALUE', value })}
+        onCloseCreate={() => dispatchModal({ type: 'CLOSE_CREATE' })}
+        onCloseDelete={() => dispatchModal({ type: 'CLOSE_DELETE' })}
+        onCloseRename={() => dispatchModal({ type: 'CLOSE_RENAME' })}
+      />
+
+      <ShareModal
+        build={buildToShare}
+        open={modal.share.open}
+        copied={modal.share.copied}
+        onClose={() => dispatchModal({ type: 'CLOSE_SHARE' })}
+        onToggleShare={handleToggleShare}
+        onToggleEditable={handleToggleEditable}
+        onCopyLink={handleCopyShareLink}
+      />
+
+      <FastStartWizard
+        isOpen={modal.fastStart.open}
+        onClose={() => dispatchModal({ type: 'CLOSE_FAST_START' })}
+        onGenerate={handleFastStartGenerate}
+        isGenerating={modal.fastStart.generating}
+      />
+    </div>
+  );
+}
+
+// ─── ProjectModals ────────────────────────────────────────────────────────────
+function ProjectModals({
+  modal,
+  onConfirmCreate,
+  onConfirmDelete,
+  onConfirmRename,
+  onSetCreateName,
+  onSetRenameValue,
+  onCloseCreate,
+  onCloseDelete,
+  onCloseRename,
+}: {
+  modal: { create: { open: boolean; name: string }; delete: { open: boolean }; rename: { open: boolean; value: string } };
+  onConfirmCreate: () => void;
+  onConfirmDelete: () => void;
+  onConfirmRename: () => void;
+  onSetCreateName: (name: string) => void;
+  onSetRenameValue: (value: string) => void;
+  onCloseCreate: () => void;
+  onCloseDelete: () => void;
+  onCloseRename: () => void;
+}) {
+  return (
+    <>
+      <Dialog open={modal.create.open} onOpenChange={onCloseCreate}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Create New Project</DialogTitle>
-            <DialogDescription>
-              Give your homelab project a name to get started. You can change this later.
-            </DialogDescription>
+            <DialogDescription>Give your homelab project a name to get started. You can change this later.</DialogDescription>
           </DialogHeader>
           <div className="py-4">
-            <Label htmlFor="project-name" className="mb-2 block">
-              Project Name
-            </Label>
+            <Label htmlFor="project-name" className="mb-2 block">Project Name</Label>
             <Input
               id="project-name"
-              value={newProjectName}
-              onChange={e => setNewProjectName(e.target.value)}
+              value={modal.create.name}
+              onChange={e => onSetCreateName(e.target.value)}
               placeholder="e.g. Dream Lab 2026"
               autoFocus
-              onKeyDown={e => {
-                if (e.key === 'Enter') confirmCreate();
-              }}
+              onKeyDown={e => { if (e.key === 'Enter') onConfirmCreate(); }}
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsCreateOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={confirmCreate}>Create Project</Button>
+            <Button variant="outline" onClick={onCloseCreate}>Cancel</Button>
+            <Button onClick={onConfirmCreate}>Create Project</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Modal */}
-      <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
+      <Dialog open={modal.delete.open} onOpenChange={onCloseDelete}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete Project?</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete this project? This action cannot be undone.
-            </DialogDescription>
+            <DialogDescription>This action cannot be undone.</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDeleteOpen(false)}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={confirmDelete}>
-              Delete
-            </Button>
+            <Button variant="outline" onClick={onCloseDelete}>Cancel</Button>
+            <Button variant="destructive" onClick={onConfirmDelete}>Delete</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Rename Modal */}
-      <Dialog open={isRenameOpen} onOpenChange={setIsRenameOpen}>
+      <Dialog open={modal.rename.open} onOpenChange={onCloseRename}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Rename Project</DialogTitle>
           </DialogHeader>
           <div className="py-4">
-            <Label htmlFor="rename-project" className="mb-2 block">
-              New Project Name
-            </Label>
+            <Label htmlFor="rename-project" className="mb-2 block">New Project Name</Label>
             <Input
               id="rename-project"
-              value={renameValue}
-              onChange={e => setRenameValue(e.target.value)}
+              value={modal.rename.value}
+              onChange={e => onSetRenameValue(e.target.value)}
               autoFocus
-              onKeyDown={e => {
-                if (e.key === 'Enter') confirmRename();
-              }}
+              onKeyDown={e => { if (e.key === 'Enter') onConfirmRename(); }}
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsRenameOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={confirmRename}>Save</Button>
+            <Button variant="outline" onClick={onCloseRename}>Cancel</Button>
+            <Button onClick={onConfirmRename}>Save</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Share Modal */}
-      <Dialog open={isShareOpen} onOpenChange={setIsShareOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Share Layout</DialogTitle>
-            <DialogDescription>
-              Control who can view or edit this layout via a link.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="py-4 space-y-4">
-            {/* Public/private toggle */}
-            <div className="flex items-center justify-between p-3 rounded-lg border">
-              <div className="flex items-center gap-2">
-                {buildToShare?.is_shared ? (
-                  <Globe className="size-4 text-green-500" />
-                ) : (
-                  <Lock className="size-4 text-muted-foreground" />
-                )}
-                <span className="text-sm font-medium">
-                  {buildToShare?.is_shared ? 'Public — anyone with the link' : 'Private — only you'}
-                </span>
-              </div>
-              <Button
-                variant={buildToShare?.is_shared ? 'outline' : 'default'}
-                size="sm"
-                onClick={handleToggleShare}
-              >
-                {buildToShare?.is_shared ? 'Disable sharing' : 'Enable sharing'}
-              </Button>
-            </div>
-
-            {/* Editable toggle — only shown when sharing is on */}
-            {buildToShare?.is_shared && (
-              <div className="flex items-center justify-between p-3 rounded-lg border">
-                <div className="flex items-center gap-2">
-                  <Pencil
-                    className={`size-4 ${buildToShare.shared_editable ? 'text-blue-500' : 'text-muted-foreground'}`}
-                  />
-                  <div>
-                    <span className="text-sm font-medium">
-                      {buildToShare.shared_editable ? 'Editing allowed' : 'View only'}
-                    </span>
-                    <p className="text-xs text-muted-foreground">
-                      {buildToShare.shared_editable
-                        ? 'Anyone with the link can move nodes and reconnect cables'
-                        : 'Viewers cannot make changes'}
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  variant={buildToShare.shared_editable ? 'outline' : 'secondary'}
-                  size="sm"
-                  onClick={handleToggleEditable}
-                >
-                  {buildToShare.shared_editable ? 'Make read-only' : 'Allow editing'}
-                </Button>
-              </div>
-            )}
-
-            {/* Share link */}
-            {buildToShare?.is_shared && buildToShare.share_token && (
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Share link</Label>
-                <div className="flex gap-2">
-                  <Input
-                    readOnly
-                    value={`${window.location.origin}/shared/${buildToShare.share_token}`}
-                    className="text-xs font-mono"
-                  />
-                  <Button size="icon" variant="outline" onClick={handleCopyShareLink}>
-                    {shareCopied ? (
-                      <Check className="size-4 text-green-500" />
-                    ) : (
-                      <Copy className="size-4" />
-                    )}
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsShareOpen(false)}>
-              Done
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <FastStartWizard
-        isOpen={isFastStartOpen}
-        onClose={() => setIsFastStartOpen(false)}
-        onGenerate={handleFastStartGenerate}
-        isGenerating={isGeneratingFastStart}
-      />
-    </div>
+    </>
   );
 }
+
+// ─── ShareModal ───────────────────────────────────────────────────────────────
+function ShareModal({ build, open, copied, onClose, onToggleShare, onToggleEditable, onCopyLink }: {
+  build: Build | null;
+  open: boolean;
+  copied: boolean;
+  onClose: () => void;
+  onToggleShare: () => void;
+  onToggleEditable: () => void;
+  onCopyLink: () => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Share Layout</DialogTitle>
+          <DialogDescription>Control who can view or edit this layout via a link.</DialogDescription>
+        </DialogHeader>
+        <div className="py-4 space-y-4">
+          <div className="flex items-center justify-between p-3 rounded-lg border">
+            <div className="flex items-center gap-2">
+              {build?.is_shared ? (
+                <Globe className="size-4 text-green-500" />
+              ) : (
+                <Lock className="size-4 text-muted-foreground" />
+              )}
+              <span className="text-sm font-medium">
+                {build?.is_shared ? 'Public — anyone with the link' : 'Private — only you'}
+              </span>
+            </div>
+            <Button variant={build?.is_shared ? 'outline' : 'default'} size="sm" onClick={onToggleShare}>
+              {build?.is_shared ? 'Disable sharing' : 'Enable sharing'}
+            </Button>
+          </div>
+
+          {build?.is_shared && (
+            <div className="flex items-center justify-between p-3 rounded-lg border">
+              <div className="flex items-center gap-2">
+                <Pencil className={`size-4 ${build.shared_editable ? 'text-blue-500' : 'text-muted-foreground'}`} />
+                <div>
+                  <span className="text-sm font-medium">{build.shared_editable ? 'Editing allowed' : 'View only'}</span>
+                  <p className="text-xs text-muted-foreground">
+                    {build.shared_editable ? 'Anyone with the link can move nodes and reconnect cables' : 'Viewers cannot make changes'}
+                  </p>
+                </div>
+              </div>
+              <Button variant={build.shared_editable ? 'outline' : 'secondary'} size="sm" onClick={onToggleEditable}>
+                {build.shared_editable ? 'Make read-only' : 'Allow editing'}
+              </Button>
+            </div>
+          )}
+
+          {build?.is_shared && build.share_token && (
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Share link</Label>
+              <div className="flex gap-2">
+                <Input readOnly value={`${window.location.origin}/shared/${build.share_token}`} className="text-xs font-mono" />
+                <Button size="icon" variant="outline" onClick={onCopyLink}>
+                  {copied ? <Check className="size-4 text-green-500" /> : <Copy className="size-4" />}
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── BuildCard ────────────────────────────────────────────────────────────────
+const BuildCard = React.memo(function BuildCard({
+  build,
+  onOpen,
+  onRenameClick,
+  onDuplicate,
+  onExport,
+  onShareClick,
+  onDelete,
+}: {
+  build: Build;
+  onOpen: (b: Build) => void;
+  onRenameClick: (e: React.MouseEvent, b: Build) => void;
+  onDuplicate: (e: React.MouseEvent, id: string) => void;
+  onExport: (e: React.MouseEvent, b: Build) => void;
+  onShareClick: (e: React.MouseEvent, b: Build) => void;
+  onDelete: (e: React.MouseEvent, id: string) => void;
+}) {
+  const nodeCount = build.nodes && Array.isArray(build.nodes) ? build.nodes.length : 0;
+
+  return (
+    <Card
+      className="group cursor-pointer hover:border-primary/50 transition-all overflow-hidden flex flex-col"
+      onClick={() => onOpen(build)}
+    >
+      <div className="aspect-video bg-muted/30 relative border-b flex items-center justify-center group-hover:bg-muted/50 transition-colors">
+        {build.thumbnail ? (
+          <img src={build.thumbnail} alt={build.name} className="w-full h-full object-cover" />
+        ) : (
+          <div className="flex flex-col items-center gap-2 text-muted-foreground/40">
+            <Folder className="size-12" />
+          </div>
+        )}
+
+        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="secondary" size="icon" className="size-8" onClick={e => e.stopPropagation()}>
+                <MoreVertical className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={e => { e.stopPropagation(); onOpen(build); }}>
+                <Edit2 className="mr-2 size-4" /> Edit
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={e => onRenameClick(e, build)}>
+                <Edit2 className="mr-2 size-4" /> Rename
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={e => onDuplicate(e, build.id)}>
+                <Folder className="mr-2 size-4" /> Duplicate
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={e => onExport(e, build)}>
+                <Download className="mr-2 size-4" /> Export
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={e => onShareClick(e, build)}>
+                <Share2 className="mr-2 size-4" /> Share
+              </DropdownMenuItem>
+              <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={e => onDelete(e, build.id)}>
+                <Trash2 className="mr-2 size-4" /> Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+
+      <div className="p-4 flex-1 flex flex-col">
+        <div className="flex items-start justify-between mb-2">
+          <h3 className="font-semibold truncate pr-2" title={build.name}>{build.name}</h3>
+          <Badge variant="secondary" className="text-[10px] shrink-0">v1.0</Badge>
+        </div>
+
+        <div className="mt-auto space-y-3">
+          <div className="flex items-center gap-4 text-xs text-muted-foreground">
+            <div className="flex items-center gap-1.5">
+              <HardDrive className="size-3.5" />
+              {nodeCount} Nodes
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Clock className="size-3.5" />
+              {formatDistanceToNow(new Date(build.updated_at), { addSuffix: true })}
+            </div>
+          </div>
+
+          <div className="pt-3 border-t flex items-center gap-2">
+            <Button size="sm" className="w-full" onClick={e => { e.stopPropagation(); onOpen(build); }}>
+              <Play className="mr-2 size-3.5" /> Open Editor
+            </Button>
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+});
+
+export default React.memo(ProjectsPage);

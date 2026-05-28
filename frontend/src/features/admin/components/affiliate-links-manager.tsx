@@ -102,7 +102,7 @@ export function AffiliateLinksManager() {
                                         <div className="space-y-1">
                                             {links.length === 0 && <span className="text-xs text-muted-foreground italic">No links configured</span>}
                                             {links.map((v: any, i: number) => (
-                                                <div key={i} className="flex items-center gap-2 text-xs border rounded p-1 bg-background">
+                                                <div key={v.id || v.url || i} className="flex items-center gap-2 text-xs border rounded p-1 bg-background">
                                                     <Link className="size-3 text-muted-foreground" />
                                                     <span className="truncate max-w-[200px]" title={v.url || v}>{v.url || v}</span>
                                                     <Button variant="ghost" size="icon" className="size-4 ml-auto" onClick={() => handleRemoveLink(comp, i)}>

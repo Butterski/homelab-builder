@@ -13,7 +13,7 @@ export function AdminStats({ stats }: AdminStatsProps) {
   return (
     <div className="grid gap-4 md:grid-cols-3">
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-sm font-medium">Total Users</CardTitle>
           <Users className="size-4 text-muted-foreground" />
         </CardHeader>
@@ -22,7 +22,7 @@ export function AdminStats({ stats }: AdminStatsProps) {
         </CardContent>
       </Card>
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-sm font-medium">Total Services</CardTitle>
           <Server className="size-4 text-muted-foreground" />
         </CardHeader>
@@ -31,7 +31,7 @@ export function AdminStats({ stats }: AdminStatsProps) {
         </CardContent>
       </Card>
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-sm font-medium">Active Builds</CardTitle>
           <Activity className="size-4 text-muted-foreground" />
         </CardHeader>

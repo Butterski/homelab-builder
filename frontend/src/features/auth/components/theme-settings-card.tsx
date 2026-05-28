@@ -164,19 +164,12 @@ export function ThemeSettingsCard() {
             const isActive = theme.id === activeThemeId;
 
             return (
-              <div
+              <button
                 key={theme.id}
-                role="button"
-                tabIndex={0}
+                type="button"
                 onClick={() => void handleThemeChange(theme.id)}
-                onKeyDown={event => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    void handleThemeChange(theme.id);
-                  }
-                }}
                 className={cn(
-                  'rounded-xl border p-4 text-left transition-colors hover:bg-accent/30',
+                  'rounded-xl border p-4 text-left transition-colors hover:bg-accent/30 w-full',
                   isSaving && 'pointer-events-none opacity-70',
                   isActive ? 'border-primary bg-accent/40' : 'border-border bg-card',
                 )}
@@ -213,7 +206,7 @@ export function ThemeSettingsCard() {
                   <span className="h-8 flex-1 rounded-md border" style={{ backgroundColor: theme.tokens.primary }} />
                   <span className="h-8 flex-1 rounded-md border" style={{ backgroundColor: theme.tokens.accent }} />
                 </div>
-              </div>
+              </button>
             );
           })}
         </div>

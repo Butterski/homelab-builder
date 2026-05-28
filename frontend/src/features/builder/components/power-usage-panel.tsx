@@ -6,6 +6,88 @@ import { Label } from '../../../components/ui/label';
 import { Button } from '../../../components/ui/button';
 import { Zap, Info, ChevronDown } from 'lucide-react';
 
+interface PieChartStats {
+  totalPower: number;
+  devicePowers: Array<{ id: string; name: string; type: string; power: number }>;
+  powerByType: Record<string, number>;
+  monthlyCost: number;
+  yearlyCost: number;
+  dailyCost: number;
+}
+
+function PowerPieChart({ stats, colors }: { stats: PieChartStats; colors: string[] }) {
+  if (stats.totalPower === 0) {
+    return null;
+  }
+
+  const radius = 25;
+  const cx = 40;
+  const cy = 40;
+  let currentAngle = -90;
+  const slices: React.ReactNode[] = [];
+  let colorIdx = 0;
+
+  const sortedDevices = stats.devicePowers.filter(d => d.power > 0);
+
+  sortedDevices.forEach(device => {
+    const slicePercent = device.power / stats.totalPower;
+    const sliceAngle = slicePercent * 360;
+    const startAngle = currentAngle;
+    const endAngle = currentAngle + sliceAngle;
+
+    const x1 = cx + radius * Math.cos((startAngle * Math.PI) / 180);
+    const y1 = cy + radius * Math.sin((startAngle * Math.PI) / 180);
+    const x2 = cx + radius * Math.cos((endAngle * Math.PI) / 180);
+    const y2 = cy + radius * Math.sin((endAngle * Math.PI) / 180);
+
+    const largeArc = sliceAngle > 180 ? 1 : 0;
+    const pathData = [
+      `M ${cx} ${cy}`,
+      `L ${x1} ${y1}`,
+      `A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2}`,
+      'Z',
+    ].join(' ');
+
+    slices.push(
+      <path 
+        key={device.id} 
+        d={pathData} 
+        fill={colors[colorIdx % colors.length]} 
+        opacity="0.85"
+        stroke="rgba(0,0,0,0.1)"
+        strokeWidth="0.5"
+      />
+    );
+
+    colorIdx++;
+    currentAngle = endAngle;
+  });
+
+  return (
+    <div className="flex flex-col gap-2">
+      <svg viewBox="0 0 80 80" className="size-20 mx-auto">
+        {slices}
+      </svg>
+      
+      {/* Legend - Compact */}
+      <div className="w-full space-y-1 text-[9px]">
+        {sortedDevices.map((device, idx) => (
+          <div key={device.id} className="flex items-center gap-2">
+            <div
+              className="size-2 rounded-full shrink-0"
+              style={{ backgroundColor: colors[idx % colors.length] }}
+            />
+            <div className="min-w-0 flex-1 flex justify-between">
+              <p className="truncate">{device.name}</p>
+              <p className="text-muted-foreground">{((device.power / stats.totalPower) * 100).toFixed(0)}%</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function PowerUsagePanel() {
   const { hardwareNodes, updateHardware } = useBuilderStore();
   const [costPerKwh, setCostPerKwh] = useState<number>(0.15);
@@ -80,84 +162,6 @@ export function PowerUsagePanel() {
     rack: [0, 0],
   };
 
-  // Pie chart component
-  const PieChart = () => {
-    if (stats.totalPower === 0) {
-      return null;
-    }
-
-    const radius = 25;
-    const cx = 40;
-    const cy = 40;
-    let currentAngle = -90;
-    const slices: React.ReactNode[] = [];
-    const colors = [
-      '#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6',
-      '#ec4899', '#06b6d4', '#6366f1', '#84cc16', '#f97316',
-    ];
-    let colorIdx = 0;
-
-    const sortedDevices = stats.devicePowers.filter(d => d.power > 0);
-
-    sortedDevices.forEach(device => {
-      const slicePercent = device.power / stats.totalPower;
-      const sliceAngle = slicePercent * 360;
-      const startAngle = currentAngle;
-      const endAngle = currentAngle + sliceAngle;
-
-      const x1 = cx + radius * Math.cos((startAngle * Math.PI) / 180);
-      const y1 = cy + radius * Math.sin((startAngle * Math.PI) / 180);
-      const x2 = cx + radius * Math.cos((endAngle * Math.PI) / 180);
-      const y2 = cy + radius * Math.sin((endAngle * Math.PI) / 180);
-
-      const largeArc = sliceAngle > 180 ? 1 : 0;
-      const pathData = [
-        `M ${cx} ${cy}`,
-        `L ${x1} ${y1}`,
-        `A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2}`,
-        'Z',
-      ].join(' ');
-
-      slices.push(
-        <path 
-          key={device.id} 
-          d={pathData} 
-          fill={colors[colorIdx % colors.length]} 
-          opacity="0.85"
-          stroke="rgba(0,0,0,0.1)"
-          strokeWidth="0.5"
-        />
-      );
-
-      colorIdx++;
-      currentAngle = endAngle;
-    });
-
-    return (
-      <div className="flex flex-col gap-2">
-        <svg viewBox="0 0 80 80" className="w-20 h-20 mx-auto">
-          {slices}
-        </svg>
-        
-        {/* Legend - Compact */}
-        <div className="w-full space-y-1 text-[9px]">
-          {sortedDevices.map((device, idx) => (
-            <div key={device.id} className="flex items-center gap-2">
-              <div
-                className="size-2 rounded-full shrink-0"
-                style={{ backgroundColor: colors[idx % colors.length] }}
-              />
-              <div className="min-w-0 flex-1 flex justify-between">
-                <p className="truncate">{device.name}</p>
-                <p className="text-muted-foreground">{((device.power / stats.totalPower) * 100).toFixed(0)}%</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  };
-
   return (
     <div className="flex flex-col h-full overflow-y-auto">
       {/* Header */}
@@ -165,7 +169,7 @@ export function PowerUsagePanel() {
         <div className="flex items-center gap-2">
           <Zap className="size-4 text-primary shrink-0" />
           <div>
-            <h2 className="text-sm font-bold">Power</h2>
+            <h2 className="text-sm font-bold">Power Usage</h2>
             <p className="text-[10px] text-muted-foreground leading-tight">Consumption</p>
           </div>
         </div>
@@ -230,7 +234,7 @@ export function PowerUsagePanel() {
         {/* Power Distribution Visualization - Optional */}
         {showChart && stats.totalPower > 0 && (
           <Card className="p-2 border">
-            <PieChart />
+            <PowerPieChart stats={stats} colors={['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#6366f1', '#84cc16', '#f97316']} />
           </Card>
         )}
 
@@ -241,7 +245,7 @@ export function PowerUsagePanel() {
             <Button
               variant="ghost"
               size="sm"
-              className="h-4 w-4 p-0"
+              className="size-4 p-0"
               title="PSU wattage × 0.3-0.5 = typical draw"
             >
               <Info className="size-3" />
@@ -262,6 +266,7 @@ export function PowerUsagePanel() {
                 return (
                   <div key={node.id}>
                     <button
+                      type="button"
                       onClick={() => setExpandedNodeId(isExpanded ? null : node.id)}
                       className={`w-full p-2 flex items-center justify-between rounded-lg text-left text-[11px] transition-colors ${
                         currentPower > 0

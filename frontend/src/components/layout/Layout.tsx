@@ -68,7 +68,7 @@ export function Layout({ children }: LayoutProps) {
               </div>
             </div>
           ) : (
-             <button className="btn btn-sm btn-secondary btn-full">Login</button>
+             <button type="button" className="btn btn-sm btn-secondary btn-full">Login</button>
           )}
         </div>
       </aside>

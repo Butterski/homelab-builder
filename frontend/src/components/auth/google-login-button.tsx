@@ -13,6 +13,7 @@ export function GoogleLoginButton() {
         return (
             <div className="w-full flex justify-center">
                 <button
+                    type="button"
                     onClick={() => loginWithDev()}
                     className="w-full max-w-sm px-4 py-2 border rounded-full font-medium shadow-sm hover:bg-muted transition-colors flex items-center justify-center gap-2"
                 >

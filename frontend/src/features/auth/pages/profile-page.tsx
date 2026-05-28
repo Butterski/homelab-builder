@@ -42,6 +42,7 @@ export default function ProfilePage() {
       {/* Back button */}
       <button
         onClick={() => navigate(-1)}
+        type="button"
         className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-8 w-fit hover:cursor-pointer"
       >
         <ChevronLeft className="size-4" />

@@ -104,7 +104,7 @@ export function SteeringRulesManager() {
                                     <div className="space-y-2">
                                         {rule.retailer_order.length === 0 && <span className="text-xs italic text-muted-foreground">No preferences set</span>}
                                         {rule.retailer_order.map((store, i) => (
-                                            <div key={i} className="flex items-center gap-2 border rounded p-1.5 w-fit bg-muted/20">
+                                            <div key={store} className="flex items-center gap-2 border rounded p-1.5 w-fit bg-muted/20">
                                                 <span className="text-xs font-semibold w-5 text-center">{i+1}.</span>
                                                 <span className="text-sm min-w-24">{store}</span>
                                                 <div className="flex gap-1 ml-4 border-l pl-2">

@@ -22,7 +22,87 @@ interface SetupStep {
   description: string;
   icon: React.ElementType;
   items: { text: string; code?: string }[];
-  dependsOn?: string[]; // IDs of services that trigger this step
+}
+
+// ─── Sub-components ────────────────────────────────────────────────────────────
+
+function EmptyChecklist() {
+  return (
+    <>
+      <SeoMeta
+        title="Custom Setup Guide | HLBuilder"
+        description="Step-by-step setup checklist generated from your homelab design in HLBuilder."
+        path="/checklist"
+      />
+      <div className="flex flex-col items-center justify-center p-12 text-center border rounded-lg bg-muted/20 min-h-100">
+        <ClipboardList className="size-16 mb-6 text-muted-foreground/50" />
+        <h3 className="text-xl font-bold mb-2">Build your lab first</h3>
+        <p className="text-muted-foreground mb-6 max-w-md">
+          Your setup instructions will be dynamically generated here based on the hardware and
+          services you add in the Visual Builder.
+        </p>
+        <Button onClick={() => (window.location.href = '/builder')}>Go to Visual Builder</Button>
+      </div>
+    </>
+  );
+}
+
+function StepCard({ step, isExpanded, onToggle }: { step: SetupStep; isExpanded: boolean; onToggle: () => void }) {
+  const Icon = step.icon;
+  return (
+    <Card
+      className={`overflow-hidden transition-all duration-200 ${isExpanded ? 'border-primary/50' : 'hover:border-primary/30'}`}
+    >
+      <div
+        className="flex items-center justify-between p-5 cursor-pointer select-none bg-card hover:bg-muted/30 transition-colors"
+        onClick={onToggle}
+      >
+        <div className="flex items-center gap-4">
+          <div
+            className={`p-2 rounded-lg ${isExpanded ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}
+          >
+            <Icon className="size-5" />
+          </div>
+          <div>
+            <CardTitle className="text-lg flex items-center gap-2">{step.title}</CardTitle>
+            <CardDescription className="mt-1">{step.description}</CardDescription>
+          </div>
+        </div>
+        <div className="text-muted-foreground">
+          <ChevronDown
+            className={`size-5 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+          />
+        </div>
+      </div>
+
+      <div
+        className="grid transition-all duration-300 ease-in-out"
+        style={{ gridTemplateRows: isExpanded ? '1fr' : '0fr' }}
+      >
+        <div className="overflow-hidden">
+          <CardContent className="pt-0 pb-6 px-5 sm:px-14 border-t bg-muted/10">
+            <ul className="space-y-4 pt-6">
+              {step.items.map((item, itemIndex) => (
+                <li key={itemIndex} className="flex items-start gap-3">
+                  <CheckCircle2 className="size-5 text-primary/60 shrink-0 mt-0.5" />
+                  <div className="space-y-2 flex-1">
+                    <p className="text-sm leading-relaxed">{item.text}</p>
+                    {item.code && (
+                      <div className="bg-neutral-950 dark:bg-neutral-950 rounded-md p-3 overflow-x-auto border border-primary/20">
+                        <pre className="text-xs text-green-400 font-mono leading-relaxed">
+                          <code>{item.code}</code>
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </div>
+      </div>
+    </Card>
+  );
 }
 
 export default function ChecklistPage() {
@@ -210,24 +290,7 @@ export default function ChecklistPage() {
   const collapseAll = () => setExpandedSteps(new Set());
 
   if (!hasHardware) {
-    return (
-      <>
-        <SeoMeta
-          title="Custom Setup Guide | HLBuilder"
-          description="Step-by-step setup checklist generated from your homelab design in HLBuilder."
-          path="/checklist"
-        />
-        <div className="flex flex-col items-center justify-center p-12 text-center border rounded-lg bg-muted/20 min-h-100">
-          <ClipboardList className="size-16 mb-6 text-muted-foreground/50" />
-          <h3 className="text-xl font-bold mb-2">Build your lab first</h3>
-          <p className="text-muted-foreground mb-6 max-w-md">
-            Your setup instructions will be dynamically generated here based on the hardware and
-            services you add in the Visual Builder.
-          </p>
-          <Button onClick={() => (window.location.href = '/builder')}>Go to Visual Builder</Button>
-        </div>
-      </>
-    );
+    return <EmptyChecklist />;
   }
 
   return (
@@ -263,66 +326,14 @@ export default function ChecklistPage() {
       </div>
 
       <div className="space-y-4">
-        {steps.map(step => {
-          const isExpanded = expandedSteps.has(step.id);
-          const Icon = step.icon;
-
-          return (
-            <Card
-              key={step.id}
-              className={`overflow-hidden transition-all duration-200 ${isExpanded ? 'border-primary/50' : 'hover:border-primary/30'}`}
-            >
-              <div
-                className="flex items-center justify-between p-5 cursor-pointer select-none bg-card hover:bg-muted/30 transition-colors"
-                onClick={() => toggleStep(step.id)}
-              >
-                <div className="flex items-center gap-4">
-                  <div
-                    className={`p-2 rounded-lg ${isExpanded ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}
-                  >
-                    <Icon className="size-5" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-lg flex items-center gap-2">{step.title}</CardTitle>
-                    <CardDescription className="mt-1">{step.description}</CardDescription>
-                  </div>
-                </div>
-                <div className="text-muted-foreground">
-                  <ChevronDown
-                    className={`size-5 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
-                  />
-                </div>
-              </div>
-
-              <div
-                className="grid transition-all duration-300 ease-in-out"
-                style={{ gridTemplateRows: isExpanded ? '1fr' : '0fr' }}
-              >
-                <div className="overflow-hidden">
-                  <CardContent className="pt-0 pb-6 px-5 sm:px-14 border-t bg-muted/10">
-                    <ul className="space-y-4 pt-6">
-                      {step.items.map((item, itemIndex) => (
-                        <li key={itemIndex} className="flex items-start gap-3">
-                          <CheckCircle2 className="size-5 text-primary/60 shrink-0 mt-0.5" />
-                          <div className="space-y-2 flex-1">
-                            <p className="text-sm leading-relaxed">{item.text}</p>
-                            {item.code && (
-                              <div className="bg-black/80 dark:bg-black rounded-md p-3 overflow-x-auto border border-primary/20">
-                                <pre className="text-xs text-green-400 font-mono leading-relaxed">
-                                  <code>{item.code}</code>
-                                </pre>
-                              </div>
-                            )}
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  </CardContent>
-                </div>
-              </div>
-            </Card>
-          );
-        })}
+        {steps.map(step => (
+          <StepCard
+            key={step.id}
+            step={step}
+            isExpanded={expandedSteps.has(step.id)}
+            onToggle={() => toggleStep(step.id)}
+          />
+        ))}
       </div>
     </div>
   );

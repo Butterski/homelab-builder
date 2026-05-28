@@ -109,7 +109,7 @@ function BulkImportPanel() {
         <div className="rounded-xl border bg-card p-5 space-y-3">
             <div className="flex items-center justify-between">
                 <h3 className="font-semibold text-sm">Bulk Import (JSON)</h3>
-                <label className="cursor-pointer">
+                <label className="cursor-pointer" aria-label="Load JSON file for bulk import">
                     <input type="file" accept=".json" className="hidden" onChange={handleFile} />
                     <Button variant="outline" size="sm" asChild>
                         <span><Upload className="size-3.5 mr-1.5" /> Load JSON file</span>
@@ -165,7 +165,7 @@ function HardwareRow({ item }: { item: HardwareComponent }) {
                             </span>
                         ))}
                         {Object.keys(item.spec).length > 3 && (
-                            <button onClick={() => setExpanded(e => !e)} className="text-[10px] text-primary hover:underline">
+                            <button type="button" onClick={() => setExpanded(e => !e)} className="text-[10px] text-primary hover:underline">
                                 {expanded ? "less" : `+${Object.keys(item.spec).length - 3} more`}
                             </button>
                         )}
@@ -220,6 +220,7 @@ export function AdminHardwareManager() {
                     {(["all", "pending", "approved"] as FilterTab[]).map(t => (
                         <button
                             key={t}
+                            type="button"
                             onClick={() => setTab(t)}
                             className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors capitalize ${tab === t ? "bg-background" : "hover:bg-muted"}`}
                         >
@@ -241,7 +242,7 @@ export function AdminHardwareManager() {
                             onChange={e => setSearch(e.target.value)}
                         />
                     </div>
-                    <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => qc.invalidateQueries({ queryKey: ["admin-hardware"] })}>
+                    <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => qc.invalidateQueries({ queryKey: ["admin-hardware"] })} aria-label="Refresh hardware list">
                         <RefreshCw className="size-3.5" />
                     </Button>
                     <Button size="sm" className="h-8" onClick={() => setShowImport(s => !s)}>
@@ -259,7 +260,7 @@ export function AdminHardwareManager() {
                 <div className="flex items-center gap-3 rounded-lg border border-amber-300/50 bg-amber-500/10 px-4 py-3 text-sm">
                     <AlertCircle className="size-4 text-amber-500 shrink-0" />
                     <span><strong>{pendingCount}</strong> component{pendingCount > 1 ? "s" : ""} pending review</span>
-                    <button onClick={() => setTab("pending")} className="ml-auto text-xs text-amber-600 hover:underline font-medium">
+                    <button type="button" onClick={() => setTab("pending")} className="ml-auto text-xs text-amber-600 hover:underline font-medium">
                         Review now →
                     </button>
                 </div>

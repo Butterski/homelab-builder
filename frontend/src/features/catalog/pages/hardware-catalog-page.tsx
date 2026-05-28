@@ -1,4 +1,4 @@
-import { useState, useDeferredValue, memo, useMemo } from 'react';
+import { useState, useDeferredValue, memo, useMemo, useReducer } from 'react';
 import { useHardware, useHardwareCategories, useHardwareFavorites, useAddHardwareFavorite, useRemoveHardwareFavorite, type HardwareComponent } from '../api/use-hardware';
 import { Badge } from '../../../components/ui/badge';
 import { Button } from '../../../components/ui/button';
@@ -47,74 +47,112 @@ const CATEGORY_META: Record<string, { label: string; icon: React.ElementType; co
   modem: { label: 'Modems', icon: Network, color: 'text-blue-600 bg-blue-600/10' },
 };
 
+// ─── Submit Hardware Reducer ─────────────────────────────────────────────────
+type SubmitState = {
+  category: string;
+  brand: string;
+  model: string;
+  price_est: string;
+  currency: string;
+  buy_url: string;
+  buy_store: string;
+  spec_raw: string;
+  loading: boolean;
+  error: string;
+  success: boolean;
+};
+
+type SubmitAction =
+  | { type: 'SET_FIELD'; field: string; value: string }
+  | { type: 'SET_LOADING'; value: boolean }
+  | { type: 'SET_ERROR'; value: string }
+  | { type: 'SET_SUCCESS'; value: boolean };
+
+const initialSubmitState: SubmitState = {
+  category: 'router',
+  brand: '',
+  model: '',
+  price_est: '',
+  currency: 'EUR',
+  buy_url: '',
+  buy_store: '',
+  spec_raw: '',
+  loading: false,
+  error: '',
+  success: false,
+};
+
+function submitReducer(state: SubmitState, action: SubmitAction): SubmitState {
+  switch (action.type) {
+    case 'SET_FIELD':
+      return { ...state, [action.field]: action.value };
+    case 'SET_LOADING':
+      return { ...state, loading: action.value };
+    case 'SET_ERROR':
+      return { ...state, error: action.value };
+    case 'SET_SUCCESS':
+      return { ...state, success: action.value };
+    default:
+      return state;
+  }
+}
+
 // ─── Submit Hardware Modal ────────────────────────────────────────────────────
 function SubmitHardwareModal({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
-  const [formData, setFormData] = useState({
-    category: 'router',
-    brand: '',
-    model: '',
-    price_est: '',
-    currency: 'EUR',
-    buy_url: '',
-    buy_store: '',
-    spec_raw: '',
-  });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState(false);
+  const [state, dispatch] = useReducer(submitReducer, initialSubmitState);
 
   const setField =
-    (k: keyof typeof formData) =>
+    (k: string) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
-      setFormData(f => ({ ...f, [k]: e.target.value }));
+      dispatch({ type: 'SET_FIELD', field: k, value: e.target.value });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
-    if (!formData.brand.trim() || !formData.model.trim()) {
-      setError('Brand and model are required.');
+    dispatch({ type: 'SET_ERROR', value: '' });
+    if (!state.brand.trim() || !state.model.trim()) {
+      dispatch({ type: 'SET_ERROR', value: 'Brand and model are required.' });
       return;
     }
 
     let spec: Record<string, string> = {};
-    if (formData.spec_raw.trim()) {
+    if (state.spec_raw.trim()) {
       try {
-        spec = JSON.parse(formData.spec_raw);
+        spec = JSON.parse(state.spec_raw);
       } catch {
-        setError('Spec must be valid JSON, e.g. {"ram":"4GB","ports":"8"}');
+        dispatch({ type: 'SET_ERROR', value: 'Spec must be valid JSON, e.g. {"ram":"4GB","ports":"8"}' });
         return;
       }
     }
 
-    const buy_urls = formData.buy_url.trim()
-      ? [{ store: formData.buy_store || 'Store', url: formData.buy_url.trim(), condition: 'new' }]
+    const buy_urls = state.buy_url.trim()
+      ? [{ store: state.buy_store || 'Store', url: state.buy_url.trim(), condition: 'new' }]
       : [];
 
-    setLoading(true);
+    dispatch({ type: 'SET_LOADING', value: true });
     try {
       await api.post('/api/hardware', {
-        category: formData.category,
-        brand: formData.brand.trim(),
-        model: formData.model.trim(),
-        price_est: parseFloat(formData.price_est) || 0,
-        currency: formData.currency,
+        category: state.category,
+        brand: state.brand.trim(),
+        model: state.model.trim(),
+        price_est: parseFloat(state.price_est) || 0,
+        currency: state.currency,
         buy_urls,
         spec,
       });
-      setSuccess(true);
+      dispatch({ type: 'SET_SUCCESS', value: true });
       qc.invalidateQueries({ queryKey: ['hardware'] });
       setTimeout(onClose, 1800);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Submission failed. Please try again.');
+      dispatch({ type: 'SET_ERROR', value: err instanceof Error ? err.message : 'Submission failed. Please try again.' });
     } finally {
-      setLoading(false);
+      dispatch({ type: 'SET_LOADING', value: false });
     }
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} role="presentation" />
       <div className="relative z-10 w-full max-w-lg rounded-2xl border bg-card">
         <div className="flex items-center justify-between border-b px-6 py-4">
           <div>
@@ -123,12 +161,12 @@ function SubmitHardwareModal({ onClose }: { onClose: () => void }) {
               Submissions are reviewed before appearing publicly
             </p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted transition-colors">
+          <button type="button" onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted transition-colors">
             <X className="size-4" />
           </button>
         </div>
 
-        {success ? (
+        {state.success ? (
           <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
             <div className="size-14 rounded-full bg-green-500/10 flex items-center justify-center mb-4">
               <Check className="size-7 text-green-500" />
@@ -142,12 +180,13 @@ function SubmitHardwareModal({ onClose }: { onClose: () => void }) {
           <form onSubmit={handleSubmit} className="p-6 space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+                <label htmlFor="hw-category" className="text-xs font-medium text-muted-foreground mb-1.5 block">
                   Category *
                 </label>
                 <select
+                  id="hw-category"
                   className="w-full h-9 rounded-md border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                  value={formData.category}
+                  value={state.category}
                   onChange={setField('category')}
                 >
                   {Object.entries(CATEGORY_META).map(([k, v]) => (
@@ -158,12 +197,13 @@ function SubmitHardwareModal({ onClose }: { onClose: () => void }) {
                 </select>
               </div>
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+                <label htmlFor="hw-brand" className="text-xs font-medium text-muted-foreground mb-1.5 block">
                   Brand *
                 </label>
                 <Input
+                  id="hw-brand"
                   placeholder="e.g. Ubiquiti"
-                  value={formData.brand}
+                  value={state.brand}
                   onChange={setField('brand')}
                   className="h-9 text-sm"
                   required
@@ -172,12 +212,13 @@ function SubmitHardwareModal({ onClose }: { onClose: () => void }) {
             </div>
 
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+              <label htmlFor="hw-model" className="text-xs font-medium text-muted-foreground mb-1.5 block">
                 Model *
               </label>
               <Input
+                id="hw-model"
                 placeholder="e.g. Dream Machine Pro"
-                value={formData.model}
+                value={state.model}
                 onChange={setField('model')}
                 className="h-9 text-sm"
                 required
@@ -186,25 +227,27 @@ function SubmitHardwareModal({ onClose }: { onClose: () => void }) {
 
             <div className="grid grid-cols-3 gap-3">
               <div className="col-span-2">
-                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+                <label htmlFor="hw-price" className="text-xs font-medium text-muted-foreground mb-1.5 block">
                   Estimated Price
                 </label>
                 <Input
+                  id="hw-price"
                   type="number"
                   placeholder="e.g. 379"
-                  value={formData.price_est}
+                  value={state.price_est}
                   onChange={setField('price_est')}
                   className="h-9 text-sm"
                   min="0"
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+                <label htmlFor="hw-currency" className="text-xs font-medium text-muted-foreground mb-1.5 block">
                   Currency
                 </label>
                 <select
+                  id="hw-currency"
                   className="w-full h-9 rounded-md border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                  value={formData.currency}
+                  value={state.currency}
                   onChange={setField('currency')}
                 >
                   <option>EUR</option>
@@ -217,24 +260,26 @@ function SubmitHardwareModal({ onClose }: { onClose: () => void }) {
 
             <div className="grid grid-cols-3 gap-3">
               <div className="col-span-2">
-                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+                <label htmlFor="hw-buy-url" className="text-xs font-medium text-muted-foreground mb-1.5 block">
                   Buy Link (optional)
                 </label>
                 <Input
+                  id="hw-buy-url"
                   type="url"
                   placeholder="https://amazon.de/..."
-                  value={formData.buy_url}
+                  value={state.buy_url}
                   onChange={setField('buy_url')}
                   className="h-9 text-sm"
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+                <label htmlFor="hw-store" className="text-xs font-medium text-muted-foreground mb-1.5 block">
                   Store Name
                 </label>
                 <Input
+                  id="hw-store"
                   placeholder="Amazon DE"
-                  value={formData.buy_store}
+                  value={state.buy_store}
                   onChange={setField('buy_store')}
                   className="h-9 text-sm"
                 />
@@ -242,21 +287,22 @@ function SubmitHardwareModal({ onClose }: { onClose: () => void }) {
             </div>
 
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+              <label htmlFor="hw-spec" className="text-xs font-medium text-muted-foreground mb-1.5 block">
                 Specs (optional JSON)
               </label>
               <textarea
+                id="hw-spec"
                 className="w-full rounded-md border bg-background px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary resize-none"
                 rows={3}
                 placeholder={'{"ram":"4GB","ports":"8x GbE","cpu":"quad-core"}'}
-                value={formData.spec_raw}
+                value={state.spec_raw}
                 onChange={setField('spec_raw')}
               />
             </div>
 
-            {error && (
+            {state.error && (
               <p className="text-sm text-destructive bg-destructive/10 rounded-lg px-3 py-2">
-                {error}
+                {state.error}
               </p>
             )}
 
@@ -264,13 +310,13 @@ function SubmitHardwareModal({ onClose }: { onClose: () => void }) {
               <Button type="button" variant="outline" className="flex-1" onClick={onClose}>
                 Cancel
               </Button>
-              <Button type="submit" className="flex-1" disabled={loading}>
-                {loading ? (
+              <Button type="submit" className="flex-1" disabled={state.loading}>
+                {state.loading ? (
                   <Loader2 className="size-4 animate-spin mr-2" />
                 ) : (
                   <Plus className="size-4 mr-2" />
                 )}
-                {loading ? 'Submitting…' : 'Submit Hardware'}
+                {state.loading ? 'Submitting…' : 'Submit Hardware'}
               </Button>
             </div>
           </form>
@@ -305,7 +351,7 @@ const HardwareCard = memo(function HardwareCard({
 }: {
   item: HardwareComponent;
   isFavorite: boolean;
-  onToggleFavorite: () => void;
+  onToggleFavorite: (id: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const meta = CATEGORY_META[item.category] ?? {
@@ -319,7 +365,7 @@ const HardwareCard = memo(function HardwareCard({
   const usedOffers = urls.filter(u => u.condition === 'used');
 
   const handleLike = () => {
-    onToggleFavorite();
+    onToggleFavorite(item.id);
   };
 
   return (
@@ -368,6 +414,7 @@ const HardwareCard = memo(function HardwareCard({
 
       <div className="mt-auto border-t px-4 py-3 flex items-center gap-2 bg-muted/20">
         <button
+          type="button"
           onClick={() => setExpanded(e => !e)}
           className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors hover:cursor-pointer"
         >
@@ -378,6 +425,7 @@ const HardwareCard = memo(function HardwareCard({
         </button>
         <div className="flex-1" />
         <button
+          type="button"
           onClick={handleLike}
           className={`flex items-center gap-1 text-xs transition-colors hover:cursor-pointer ${isFavorite ? 'text-red-500 hover:text-red-400' : 'text-muted-foreground hover:text-red-400'}`}
         >
@@ -408,16 +456,57 @@ const HardwareCard = memo(function HardwareCard({
   );
 });
 
+// ─── Filter State Reducer ────────────────────────────────────────────────────
+type FilterState = {
+  search: string;
+  category: string;
+  maxPrice: number;
+  page: number;
+  showSubmit: boolean;
+};
+
+type FilterAction =
+  | { type: 'SET_SEARCH'; value: string }
+  | { type: 'SET_CATEGORY'; value: string }
+  | { type: 'SET_MAX_PRICE'; value: number }
+  | { type: 'SET_PAGE'; value: number }
+  | { type: 'SET_SHOW_SUBMIT'; value: boolean }
+  | { type: 'CLEAR_FILTERS' };
+
+const initialFilter: FilterState = {
+  search: '',
+  category: '',
+  maxPrice: 0,
+  page: 0,
+  showSubmit: false,
+};
+
+function filterReducer(state: FilterState, action: FilterAction): FilterState {
+  switch (action.type) {
+    case 'SET_SEARCH':
+      return { ...state, search: action.value, page: 0 };
+    case 'SET_CATEGORY':
+      return { ...state, category: action.value, page: 0 };
+    case 'SET_MAX_PRICE':
+      return { ...state, maxPrice: action.value, page: 0 };
+    case 'SET_PAGE':
+      return { ...state, page: action.value };
+    case 'SET_SHOW_SUBMIT':
+      return { ...state, showSubmit: action.value };
+    case 'CLEAR_FILTERS':
+      return { ...initialFilter, showSubmit: state.showSubmit };
+    default:
+      return state;
+  }
+}
+
 export default function HardwareCatalogPage() {
-  const [search, setSearch] = useState('');
-  const [category, setCategory] = useState('');
-  const [maxPrice, setMaxPrice] = useState(0);
-  const [page, setPage] = useState(0);
-  const [showSubmit, setShowSubmit] = useState(false);
+  const [state, dispatch] = useReducer(filterReducer, initialFilter);
+  const { search, category, maxPrice, page, showSubmit } = state;
   const deferredSearch = useDeferredValue(search);
 
   const { data: favoritesData } = useHardwareFavorites();
-  const favorites = favoritesData?.data || [];
+  const favorites = useMemo(() => favoritesData?.data || [], [favoritesData]);
   const favSet = useMemo(() => new Set(favorites.map(f => f.hardware_component_id)), [favorites]);
 
   const addFavorite = useAddHardwareFavorite();
@@ -431,24 +520,10 @@ export default function HardwareCatalogPage() {
     }
   };
 
-  const handleSearch = (value: string) => {
-    setSearch(value);
-    setPage(0);
-  };
-  const handleCategory = (cat: string) => {
-    setCategory(cat);
-    setPage(0);
-  };
-  const handleMaxPrice = (value: number) => {
-    setMaxPrice(value);
-    setPage(0);
-  };
-  const handleClearFilters = () => {
-    setSearch('');
-    setCategory('');
-    setMaxPrice(0);
-    setPage(0);
-  };
+  const handleSearch = (value: string) => dispatch({ type: 'SET_SEARCH', value });
+  const handleCategory = (cat: string) => dispatch({ type: 'SET_CATEGORY', value: cat });
+  const handleMaxPrice = (value: number) => dispatch({ type: 'SET_MAX_PRICE', value });
+  const handleClearFilters = () => dispatch({ type: 'CLEAR_FILTERS' });
 
   const { data, isLoading, isFetching } = useHardware({
     search: deferredSearch,
@@ -458,14 +533,14 @@ export default function HardwareCatalogPage() {
     offset: page * PAGE_SIZE,
   });
   const { data: categoriesData } = useHardwareCategories();
-  const categories = categoriesData?.data ?? [];
-  const items = data?.data ?? [];
+  const categories = useMemo(() => categoriesData?.data ?? [], [categoriesData]);
+  const items = useMemo(() => data?.data ?? [], [data]);
   const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
   const displayedItems = useMemo(() => {
     if (category === 'favorites') {
-      let res = favorites.map(f => f.hardware_component).filter(Boolean);
+      let res = favorites.flatMap(f => f.hardware_component ? [f.hardware_component] : []);
       if (deferredSearch) {
         const lowSearch = deferredSearch.toLowerCase();
         res = res.filter(
@@ -480,11 +555,11 @@ export default function HardwareCatalogPage() {
       return res;
     }
     return items;
-  }, [category, items, favorites, deferredSearch, maxPrice]);
+  }, [category, favorites, deferredSearch, maxPrice, items]);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto py-8 px-6">
-      {showSubmit && <SubmitHardwareModal onClose={() => setShowSubmit(false)} />}
+      {showSubmit && <SubmitHardwareModal onClose={() => dispatch({ type: 'SET_SHOW_SUBMIT', value: false })} />}
 
       <div className="flex items-start justify-between">
         <div>
@@ -493,7 +568,7 @@ export default function HardwareCatalogPage() {
             {category === 'favorites' ? `${displayedItems.length} favorites` : total > 0 ? `${total} components` : 'Browse'} - routers, switches, NAS, servers, SBCs and more
           </p>
         </div>
-        <Button size="sm" onClick={() => setShowSubmit(true)}>
+        <Button size="sm" onClick={() => dispatch({ type: 'SET_SHOW_SUBMIT', value: true })}>
           <Plus className="size-4 mr-2" /> Submit Hardware
         </Button>
       </div>
@@ -512,6 +587,7 @@ export default function HardwareCatalogPage() {
           className="h-9 rounded-md border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           value={category}
           onChange={e => handleCategory(e.target.value)}
+          aria-label="Filter by category"
         >
           <option value="">All categories</option>
           <option value="favorites">Favorites</option>
@@ -525,6 +601,7 @@ export default function HardwareCatalogPage() {
           className="h-9 rounded-md border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           value={maxPrice}
           onChange={e => handleMaxPrice(Number(e.target.value))}
+          aria-label="Filter by max price"
         >
           <option value={0}>Any price</option>
           <option value={50}>Under €50</option>
@@ -542,12 +619,14 @@ export default function HardwareCatalogPage() {
 
       <div className="flex flex-wrap gap-2">
         <button
+          type="button"
           onClick={() => handleCategory('')}
           className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors hover:cursor-pointer ${!category ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:bg-muted'}`}
         >
           All
         </button>
         <button
+          type="button"
           onClick={() => handleCategory('favorites')}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors hover:cursor-pointer ${category === 'favorites' ? 'bg-red-500/10 text-red-500 border-red-500/20' : 'border-border hover:bg-muted'}`}
         >
@@ -560,6 +639,7 @@ export default function HardwareCatalogPage() {
           return (
             <button
               key={cat}
+              type="button"
               onClick={() => handleCategory(cat === category ? '' : cat)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors hover:cursor-pointer ${cat === category ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:bg-muted'}`}
             >
@@ -592,7 +672,7 @@ export default function HardwareCatalogPage() {
                 key={item.id}
                 item={item}
                 isFavorite={favSet.has(item.id)}
-                onToggleFavorite={() => handleToggleFavorite(item.id)}
+                onToggleFavorite={handleToggleFavorite}
               />
             ))}
           </div>
@@ -601,7 +681,7 @@ export default function HardwareCatalogPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setPage(p => p - 1)}
+                onClick={() => dispatch({ type: 'SET_PAGE', value: page - 1 })}
                 disabled={page === 0 || isFetching}
               >
                 Previous
@@ -612,7 +692,7 @@ export default function HardwareCatalogPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setPage(p => p + 1)}
+                onClick={() => dispatch({ type: 'SET_PAGE', value: page + 1 })}
                 disabled={page >= totalPages - 1 || isFetching}
               >
                 Next

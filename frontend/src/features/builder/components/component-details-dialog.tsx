@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useReducer } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -22,6 +22,37 @@ interface Props {
   title?: string; // Added optional title prop as it's used in VisualBuilder
 }
 
+// ─── Form state reducer ──────────────────────────────────────────────────────
+type FormField = { value: string; unit?: string };
+type FormState = {
+  name: string;
+  model: string;
+  cpuCores: string;
+  ram: FormField;
+  storage: FormField;
+};
+type FormAction =
+  | { type: 'SET_NAME'; payload: string }
+  | { type: 'SET_MODEL'; payload: string }
+  | { type: 'SET_CPU_CORES'; payload: string }
+  | { type: 'SET_RAM_VALUE'; payload: string }
+  | { type: 'SET_RAM_UNIT'; payload: string }
+  | { type: 'SET_STORAGE_VALUE'; payload: string }
+  | { type: 'SET_STORAGE_UNIT'; payload: string };
+
+function formReducer(state: FormState, action: FormAction): FormState {
+  switch (action.type) {
+    case 'SET_NAME': return { ...state, name: action.payload };
+    case 'SET_MODEL': return { ...state, model: action.payload };
+    case 'SET_CPU_CORES': return { ...state, cpuCores: action.payload };
+    case 'SET_RAM_VALUE': return { ...state, ram: { ...state.ram, value: action.payload } };
+    case 'SET_RAM_UNIT': return { ...state, ram: { ...state.ram, unit: action.payload } };
+    case 'SET_STORAGE_VALUE': return { ...state, storage: { ...state.storage, value: action.payload } };
+    case 'SET_STORAGE_UNIT': return { ...state, storage: { ...state.storage, unit: action.payload } };
+    default: return state;
+  }
+}
+
 export function ComponentDetailsDialog({
   open,
   onOpenChange,
@@ -31,26 +62,12 @@ export function ComponentDetailsDialog({
   initialDetails,
   title,
 }: Props) {
-  const [name, setName] = useState(initialName || '');
-  const [model, setModel] = useState(initialDetails?.model || '');
-  const [spec, setSpec] = useState<HardwareSpec>(initialDetails || {});
-
-  // Split states for units and CPU
-  const [cpuCores, setCpuCores] = useState('');
-  const [ramValue, setRamValue] = useState('');
-  const [ramUnit, setRamUnit] = useState('GB');
-  const [storageValue, setStorageValue] = useState('');
-  const [storageUnit, setStorageUnit] = useState('TB');
-
-  // Helper: convert storage/RAM value (raw number OR old string "4TB"/"500GB") -> [display value, unit]
   const formatStorageForDisplay = (val?: number | string): [string, string] => {
     if (val === undefined || val === null || val === '') return ['', 'GB'];
-    // If already a number (new format: raw GB stored as int)
     if (typeof val === 'number') {
       if (val >= 1000 && val % 1000 === 0) return [String(val / 1000), 'TB'];
       return [String(val), 'GB'];
     }
-    // Handle old string format: "4TB", "500GB", "2000"
     const match = val.match(/^(\d+(?:\.\d+)?)\s*(MB|GB|TB)?$/i);
     if (match) {
       const n = parseFloat(match[1]);
@@ -72,49 +89,37 @@ export function ComponentDetailsDialog({
     return ['', 'GB'];
   };
 
-  useEffect(() => {
-    if (open) {
-      setName(initialName || '');
-      setModel(initialDetails?.model || '');
-      setSpec(initialDetails || {});
-
-      // Support both `cpu` (new) and `cpu_cores` (legacy)
-      setCpuCores(initialDetails?.cpu?.toString() || initialDetails?.cpu_cores?.toString() || '');
-
-      // RAM: may be stored as number (GB) OR old string ("32GB")
-      const [rVal, rUnit] = formatRamForDisplay(initialDetails?.ram);
-      setRamValue(rVal);
-      setRamUnit(rUnit);
-
-      // Storage: may be stored as number (GB) OR old string ("4TB", "500GB")
-      const [sVal, sUnit] = formatStorageForDisplay(initialDetails?.storage);
-      setStorageValue(sVal);
-      setStorageUnit(sUnit);
-    }
-  }, [open, initialName, initialDetails]);
+  const [form, dispatch] = useReducer(formReducer, {
+    name: initialName || '',
+    model: initialDetails?.model || '',
+    cpuCores: initialDetails?.cpu?.toString() || initialDetails?.cpu_cores?.toString() || '',
+    ram: { value: formatRamForDisplay(initialDetails?.ram)[0], unit: formatRamForDisplay(initialDetails?.ram)[1] || 'GB' },
+    storage: { value: formatStorageForDisplay(initialDetails?.storage)[0], unit: formatStorageForDisplay(initialDetails?.storage)[1] || 'GB' },
+  });
 
   const handleConfirm = () => {
-    const finalSpec: HardwareSpec = { ...spec, model };
+    const spec: HardwareSpec = {};
+    const finalSpec: HardwareSpec = { ...spec, model: form.model };
 
     // Output cores to `cpu` attribute since that is the new standard
-    if (cpuCores) finalSpec.cpu = parseInt(cpuCores, 10);
+    if (form.cpuCores) finalSpec.cpu = parseInt(form.cpuCores, 10);
 
-    if (ramValue) {
-      const r = parseFloat(ramValue);
+    if (form.ram.value) {
+      const r = parseFloat(form.ram.value);
       if (!isNaN(r)) {
-        finalSpec.ram = ramUnit === 'TB' ? r * 1000 : ramUnit === 'MB' ? r / 1000 : r;
+        finalSpec.ram = form.ram.unit === 'TB' ? r * 1000 : form.ram.unit === 'MB' ? r / 1000 : r;
       }
     }
 
-    if (storageValue) {
-      const s = parseFloat(storageValue);
+    if (form.storage.value) {
+      const s = parseFloat(form.storage.value);
       if (!isNaN(s)) {
-        finalSpec.storage = storageUnit === 'TB' ? s * 1000 : s;
+        finalSpec.storage = form.storage.unit === 'TB' ? s * 1000 : s;
       }
     }
 
     onConfirm({
-      name: name || `New ${initialType}`,
+      name: form.name || `New ${initialType}`,
       details: finalSpec,
     });
     onOpenChange(false);
@@ -128,12 +133,7 @@ export function ComponentDetailsDialog({
         </DialogHeader>
         <div
           className="grid gap-4 py-4"
-          onKeyDown={e => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              handleConfirm();
-            }
-          }}
+          role="presentation"
         >
           {/* Name */}
           <div className="grid grid-cols-4 items-center gap-4">
@@ -142,8 +142,8 @@ export function ComponentDetailsDialog({
             </Label>
             <Input
               id="name"
-              value={name}
-              onChange={e => setName(e.target.value)}
+              value={form.name}
+              onChange={e => dispatch({ type: 'SET_NAME', payload: e.target.value })}
               className="col-span-3"
               placeholder={`e.g. My ${initialType}`}
               autoFocus
@@ -157,8 +157,8 @@ export function ComponentDetailsDialog({
             </Label>
             <Input
               id="model"
-              value={model}
-              onChange={e => setModel(e.target.value)}
+              value={form.model}
+              onChange={e => dispatch({ type: 'SET_MODEL', payload: e.target.value })}
               className="col-span-3"
               placeholder="e.g. Samsung 980 Pro"
             />
@@ -174,8 +174,8 @@ export function ComponentDetailsDialog({
                 <Input
                   id="cpu_cores"
                   type="number"
-                  value={cpuCores}
-                  onChange={e => setCpuCores(e.target.value)}
+                  value={form.cpuCores}
+                  onChange={e => dispatch({ type: 'SET_CPU_CORES', payload: e.target.value })}
                   className="col-span-3"
                   placeholder="e.g. 16"
                 />
@@ -193,15 +193,15 @@ export function ComponentDetailsDialog({
                 <Input
                   id="ram"
                   type="number"
-                  value={ramValue}
-                  onChange={e => setRamValue(e.target.value)}
+                  value={form.ram.value}
+                  onChange={e => dispatch({ type: 'SET_RAM_VALUE', payload: e.target.value })}
                   className="flex-1"
                   placeholder="32"
                 />
                 <select
                   className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                  value={ramUnit}
-                  onChange={e => setRamUnit(e.target.value)}
+                  value={form.ram.unit}
+                  onChange={e => dispatch({ type: 'SET_RAM_UNIT', payload: e.target.value })}
                 >
                   <option value="MB">MB</option>
                   <option value="GB">GB</option>
@@ -220,15 +220,15 @@ export function ComponentDetailsDialog({
                 <Input
                   id="storage"
                   type="number"
-                  value={storageValue}
-                  onChange={e => setStorageValue(e.target.value)}
+                  value={form.storage.value}
+                  onChange={e => dispatch({ type: 'SET_STORAGE_VALUE', payload: e.target.value })}
                   className="flex-1"
                   placeholder="4"
                 />
                 <select
                   className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                  value={storageUnit}
-                  onChange={e => setStorageUnit(e.target.value)}
+                  value={form.storage.unit}
+                  onChange={e => dispatch({ type: 'SET_STORAGE_UNIT', payload: e.target.value })}
                 >
                   <option value="GB">GB</option>
                   <option value="TB">TB</option>

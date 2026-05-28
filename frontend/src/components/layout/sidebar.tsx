@@ -1,4 +1,4 @@
-import { useState, useEffect, type ReactNode } from 'react';
+import React, { useState, useEffect, type ReactNode } from 'react';
 import { NavLink, useNavigate, Link } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -41,7 +41,7 @@ const BASE_NAV_ITEMS = [
   { label: 'Admin', href: '/admin', icon: Settings },
 ];
 
-export function Sidebar({ className }: { className?: string }) {
+export const Sidebar = React.memo(function Sidebar({ className }: { className?: string }) {
   const { user } = useAuth();
   const { currentBuildId } = useBuilderStore();
   const navigate = useNavigate();
@@ -85,17 +85,10 @@ export function Sidebar({ className }: { className?: string }) {
         )}
       >
         {/* Logo */}
-        <div
-          className="flex h-16 items-center border-b border-[#27272A] px-4 shrink-0 group cursor-pointer select-none"
-          role="button"
-          tabIndex={0}
+        <button
+          type="button"
+          className="flex h-16 items-center border-b border-[#27272A] px-4 shrink-0 group select-none w-full"
           onClick={() => navigate('/')}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              navigate('/');
-            }
-          }}
           title="Go to Projects"
         >
           <Logo className="size-8 shrink-0 drop-shadow-sm" interactive />
@@ -107,7 +100,7 @@ export function Sidebar({ className }: { className?: string }) {
           >
             HLBuilder
           </span>
-        </div>
+        </button>
 
         {/* Navigation */}
         <div className="flex-1 overflow-y-auto py-4">
@@ -147,17 +140,10 @@ export function Sidebar({ className }: { className?: string }) {
         {/* User section */}
         {!collapsed && (
           <div className="border-t p-4 animate-in fade-in duration-200">
-            <div
-              className="flex items-center gap-3 rounded-lg border bg-muted/50 p-2 min-h-14 cursor-pointer hover:bg-accent/50 transition-colors"
-              role="button"
-              tabIndex={0}
+            <button
+              type="button"
+              className="flex items-center gap-3 rounded-lg border bg-muted/50 p-2 min-h-14 hover:bg-accent/50 transition-colors w-full text-left"
               onClick={() => (user ? navigate('/profile') : undefined)}
-              onKeyDown={(e) => {
-                if (user && (e.key === 'Enter' || e.key === ' ')) {
-                  e.preventDefault();
-                  navigate('/profile');
-                }
-              }}
               title={user ? 'View profile' : undefined}
             >
               {user ? (
@@ -186,35 +172,32 @@ export function Sidebar({ className }: { className?: string }) {
                   <GoogleLoginButton />
                 </div>
               )}
-            </div>
+            </button>
           </div>
         )}
 
         {/* Collapsed: show avatar only */}
         {collapsed && user && (
           <div className="border-t p-2 flex justify-center animate-in fade-in duration-200">
+            <button
+            type="button"
+            className="p-0 bg-transparent border-none cursor-pointer hover:ring-2 ring-primary/40 transition-all rounded-full"
+            onClick={() => navigate('/profile')}
+            title={user.name}
+          >
             <img
               src={
                 user.avatar_url ||
                 `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.email)}`
               }
-              className="size-8 rounded-full bg-primary/20 cursor-pointer hover:ring-2 ring-primary/40 transition-all"
+              className="size-8 rounded-full bg-primary/20"
               alt={user.name}
-              role="button"
-              tabIndex={0}
-              onClick={() => navigate('/profile')}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  navigate('/profile');
-                }
-              }}
-              title={user.name}
               onError={e => {
                 (e.target as HTMLImageElement).src =
                   `https://api.dicebear.com/7.x/initials/svg?seed=${user.name}`;
               }}
             />
+          </button>
           </div>
         )}
 
@@ -328,6 +311,7 @@ export function Sidebar({ className }: { className?: string }) {
           <div className="border-t p-2 shrink-0">
             <button
               onClick={() => setShowSurvey(true)}
+              type="button"
               title="Beta Feedback Survey"
               className={cn(
                 'relative w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200',
@@ -363,6 +347,7 @@ export function Sidebar({ className }: { className?: string }) {
         <div className="border-t p-2 flex justify-center shrink-0">
           <button
             onClick={() => setCollapsed(c => !c)}
+            type="button"
             className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors hover:cursor-pointer"
             title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
@@ -378,4 +363,4 @@ export function Sidebar({ className }: { className?: string }) {
       {showSurvey && <SurveyModal onClose={() => setShowSurvey(false)} />}
     </>
   );
-}
+})

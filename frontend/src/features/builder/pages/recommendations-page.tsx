@@ -91,7 +91,7 @@ export default function RecommendationsPage() {
           {isLoading && (
             <div className="col-span-1 xl:col-span-2 flex items-center justify-center p-8 text-muted-foreground">
               <Loader2 className="size-6 animate-spin mr-2" />
-              Analyzing requirements...
+              Analyzing requirements…
             </div>
           )}
 

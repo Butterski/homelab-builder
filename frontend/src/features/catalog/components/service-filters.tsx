@@ -22,7 +22,7 @@ export function ServiceFilters({ selectedCategory, onSelectCategory }: ServiceFi
   return (
     <div className="space-y-4">
       <div className="font-semibold mb-2">Categories</div>
-      <div className="flex flex-col space-y-1">
+      <div className="flex flex-col gap-1">
         {CATEGORIES.map((cat) => (
           <Button
             key={cat.id}

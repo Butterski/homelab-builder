@@ -21,7 +21,7 @@ import { InternalComponentManager } from './internal-component-manager';
 import { canNodeHostVMs, nodeHasCPU, nodeHasDynamicPorts, nodeHasRAM, nodeHasStorage, isNetworkNode } from '../../../lib/hardware-config';
 import { getVmResourceUsage } from '../lib/resource-usage';
 import { getNodePortCount, parsePortCount } from '../lib/port-count';
-import { DEFAULT_DEVICE_U } from './rack-node';
+import { DEFAULT_DEVICE_U } from './rack-node-constants';
 import { useHardware } from '../../catalog/api/use-hardware';
 
 const IP_REGEX =
@@ -332,7 +332,7 @@ export function NodePropertiesPanel() {
 
       <CardContent className="space-y-4 pt-4 overflow-y-auto flex-1">
         {/* Name */}
-        <div className="space-y-2">
+        <div className="flex flex-col gap-2">
           <Label htmlFor="name">Name</Label>
           <Input
             id="name"
@@ -404,16 +404,17 @@ export function NodePropertiesPanel() {
                   <span className="text-xs text-muted-foreground">Mounted Devices</span>
                   <div className="space-y-1 max-h-32 overflow-y-auto">
                     {children.map(child => (
-                      <div
+                      <button
                         key={child.id}
-                        className="flex items-center justify-between px-2 py-1 rounded text-xs bg-muted/50 hover:bg-muted cursor-pointer"
+                        type="button"
+                        className="flex items-center justify-between px-2 py-1 rounded text-xs bg-muted/50 hover:bg-muted w-full text-left"
                         onClick={() => selectNode(child.id)}
                       >
                         <span className="truncate">{child.name}</span>
                         <span className="text-muted-foreground font-mono ml-2 shrink-0">
                           {child.details?.rack_units || DEFAULT_DEVICE_U[child.type] || 1}U
                         </span>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -596,8 +597,8 @@ export function NodePropertiesPanel() {
                           className={errors.gateway ? 'border-destructive' : ''}
                         />
                       </div>
-                      <div className="flex items-center justify-between space-y-2 mt-4 pt-4 border-t border-border/50">
-                        <Label htmlFor="dhcp_enabled" className="flex flex-col space-y-1">
+                      <div className="flex items-center justify-between gap-2 mt-4 pt-4 border-t border-border/50">
+                        <Label htmlFor="dhcp_enabled" className="flex flex-col gap-1">
                           <span>DHCP Server Enabled</span>
                           <span className="font-normal text-[10px] text-muted-foreground w-48">
                             Automatically assign IPs for nodes connected to this router.
@@ -663,9 +664,10 @@ export function NodePropertiesPanel() {
                 {filteredHardware.length > 0 ? (
                   <ul className="py-1 text-xs">
                     {filteredHardware.map(item => (
-                      <li
+                      <button
                         key={item.id}
-                        className="relative flex w-full cursor-pointer select-none flex-col rounded-sm py-1.5 px-2 hover:bg-accent hover:text-accent-foreground outline-none"
+                        type="button"
+                        className="relative flex w-full cursor-pointer select-none flex-col rounded-sm p-1.5 hover:bg-accent hover:text-accent-foreground outline-none text-left"
                         onClick={() => {
                           const fullName = `${item.brand} ${item.model}`;
                           setModel(fullName);
@@ -705,7 +707,7 @@ export function NodePropertiesPanel() {
                       >
                         <span className="font-semibold">{item.brand} {item.model}</span>
                         {item.price_est > 0 && <span className="opacity-70 text-[9px]">Est. ~{item.price_est}{item.currency}</span>}
-                      </li>
+                      </button>
                     ))}
                   </ul>
                 ) : (
@@ -755,6 +757,7 @@ export function NodePropertiesPanel() {
                   size="sm"
                   className="h-8 px-2 w-10.5 font-mono text-xs cursor-pointer bg-muted/30 shrink-0"
                   onClick={() => setRamUnit(prev => (prev === 'GB' ? 'TB' : 'GB'))}
+                  aria-label="Toggle RAM unit between GB and TB"
                 >
                   {ramUnit}
                 </Button>

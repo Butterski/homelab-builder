@@ -142,8 +142,9 @@ export function LiveResourceDashboard() {
           cardBorder,
         )}
       >
-        <div
-          className="flex justify-between items-center p-2 px-3 cursor-pointer hover:bg-muted/50"
+        <button
+          type="button"
+          className="flex justify-between items-center p-2 px-3 w-full hover:bg-muted/50"
           onClick={() => setIsExpanded(!isExpanded)}
         >
           <div className="flex items-center gap-2 text-sm font-semibold">
@@ -171,7 +172,7 @@ export function LiveResourceDashboard() {
           <Button variant="ghost" size="icon" className="size-6">
             {isExpanded ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
           </Button>
-        </div>
+        </button>
 
         {isExpanded && (
           <CardContent className="p-4 pt-2 space-y-4">

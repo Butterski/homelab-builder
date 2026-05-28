@@ -123,9 +123,13 @@ export function generateShoppingList(
 ): ShoppingItem[] {
     const items: ShoppingItem[] = []
 
-    const totalRam = services.reduce((acc, s) => acc + (s.requirements?.min_ram_mb || 0), 0)
-    const totalStorage = services.reduce((acc, s) => acc + (s.requirements?.min_storage_gb || 0), 0)
-    const totalCpu = services.reduce((acc, s) => acc + (s.requirements?.min_cpu_cores || 0), 0)
+    // Single iteration: combine 3 reduces into 1 for performance
+    let totalRam = 0, totalStorage = 0, totalCpu = 0;
+    for (const s of services) {
+      totalRam += s.requirements?.min_ram_mb || 0;
+      totalStorage += s.requirements?.min_storage_gb || 0;
+      totalCpu += s.requirements?.min_cpu_cores || 0;
+    }
 
     const hasExplicitCompute = hardwareNodes.some(n => n.type === 'server' || n.type === 'pc')
 
@@ -212,16 +216,17 @@ export function generateShoppingList(
         })
     })
 
-    // Build a category index Map for O(1) category lookups instead of catalog.find() in a loop
-    const catalogByCategory = new Map<string, typeof catalog>()
+    // Build token-based index for O(1) lookups: token -> catalog entry (with category check)
+    // This avoids O(n) array.includes() in a loop (js-set-map-lookups)
+    const catalogTokenIndex = new Map<string, NonNullable<typeof catalog>[0]>()
     for (const c of catalog) {
         const cat = c.category?.toLowerCase()
-        if (cat && c.buy_urls?.length > 0) {
-            const existing = catalogByCategory.get(cat)
-            if (existing) {
-                existing.push(c)
-            } else {
-                catalogByCategory.set(cat, [c])
+        if (cat && c.model && c.buy_urls?.length > 0) {
+            const tokens = c.model.toLowerCase().split(/[\s,-]+/)
+            for (const token of tokens) {
+                if (token.length > 2 && !catalogTokenIndex.has(token)) {
+                    catalogTokenIndex.set(token, c)
+                }
             }
         }
     }
@@ -229,12 +234,18 @@ export function generateShoppingList(
     // Enrich standard generated items with real catalog proxy URLs if they exist!
     for (const item of items) {
         const catKey = item.category.toLowerCase()
-        const catEntries = catalogByCategory.get(catKey)
-        if (!catEntries) continue
-
-        const match = catEntries.find(c =>
-            item.name.toLowerCase().includes(c.model.toLowerCase())
-        )
+        const itemNameLow = item.name.toLowerCase()
+        // Token-based lookup: split item name into tokens and find matching catalog entry
+        const itemTokens = new Set(itemNameLow.split(/[\s,-]+/))
+        let match: (typeof catalog)[0] | undefined
+        for (const token of itemTokens) {
+            if (token.length <= 2) continue
+            const candidate = catalogTokenIndex.get(token)
+            if (candidate && candidate.category?.toLowerCase() === catKey) {
+                match = candidate
+                break
+            }
+        }
 
         if (match) {
             // Replace offers completely with mapped buy_urls from the database!

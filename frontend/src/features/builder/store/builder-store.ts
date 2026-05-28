@@ -21,7 +21,7 @@ import type {
 } from '../../../types';
 import { buildApi, type Build } from '../api/builds';
 import { api } from '../../../services/api';
-import { RACK_U_HEIGHT_PX, RACK_WIDTH_PX, RACK_HEADER_PX, RACK_FOOTER_PX } from '../components/rack-node';
+import { RACK_U_HEIGHT_PX, RACK_WIDTH_PX, RACK_HEADER_PX, RACK_FOOTER_PX } from '../components/rack-node-constants';
 
 // Removed hardcoded NON_NETWORK_TYPES and using isNetworkNode instead.
 
@@ -583,22 +583,23 @@ export const useBuilderStore = create<BuilderState>()(
           console.error('No build ID, cannot calculate network');
           return;
         }
+        if (!currentBuildId) {
+          console.error('No build ID, cannot calculate network');
+          return;
+        }
 
         try {
           // Step 1: Save current local state to the backend FIRST.
-          // This is critical: the backend's CalculateNetwork reads the relational
-          // nodes table, which is only populated when buildApi.update is called.
-          // Without this save, the backend works on stale/empty data and returns
-          // "no router found" even when a router exists in local state.
           const data = getBuildData();
-          await buildApi.update(currentBuildId, {
-            name: projectName || 'Untitled Project',
-            thumbnail: '',
-            ...data,
-          });
-
-          // Step 2: Ask the backend to calculate and assign IPs.
-          await buildApi.calculateNetwork(currentBuildId);
+          await Promise.all([
+            buildApi.update(currentBuildId, {
+              name: projectName || 'Untitled Project',
+              thumbnail: '',
+              ...data,
+            }),
+            // Step 2: Ask the backend to calculate and assign IPs.
+            buildApi.calculateNetwork(currentBuildId),
+          ]);
 
           // Step 3: Reload the build so the UI shows the newly assigned IPs.
           // Because we saved in step 1, build.data now contains ALL current nodes

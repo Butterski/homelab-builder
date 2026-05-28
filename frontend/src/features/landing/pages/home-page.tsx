@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 
 export default function HomePage() {
   return (
-    <div className="flex flex-col min-h-[80vh] items-center justify-center text-center space-y-8 py-12">
+    <div className="flex flex-col min-h-[80vh] items-center justify-center text-center gap-8 py-12">
       <div className="space-y-4 max-w-3xl">
         <h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl md:text-6xl text-primary">
           Build Your Perfect Homelab

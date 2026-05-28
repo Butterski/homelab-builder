@@ -21,7 +21,7 @@ import { Button } from '../../../components/ui/button';
 import { HardwareNode } from '../components/hardware-node';
 import { RackNode } from '../components/rack-node';
 import { CustomEdge } from '../components/custom-edge';
-import { RACK_U_HEIGHT_PX, RACK_WIDTH_PX, RACK_HEADER_PX, RACK_FOOTER_PX } from '../components/rack-node';
+import { RACK_U_HEIGHT_PX, RACK_WIDTH_PX, RACK_HEADER_PX, RACK_FOOTER_PX } from '../components/rack-node-constants';
 import type { HardwareNode as HardwareNodeType, HardwareType } from '../../../types';
 
 const nodeTypes = { hardware: HardwareNode, rack: RackNode };
@@ -85,16 +85,22 @@ export default function SharedBuildPage() {
 
   useEffect(() => {
     if (!token) return;
-    buildApi
-      .getShared(token)
-      .then(b => {
+    (async () => {
+      try {
+        const b = await buildApi.getShared(token);
+        const rfNodes = buildReactFlowNodes(b);
+        const rfEdges = buildReactFlowEdges(b);
+        // Batch all state updates (React 18 auto-batches in async contexts)
         setBuild(b);
-        setNodes(buildReactFlowNodes(b));
-        setEdges(buildReactFlowEdges(b));
-      })
-      .catch(() => setError('This layout is not available or sharing has been disabled.'))
-      .finally(() => setLoading(false));
-  }, [token]);
+        setNodes(rfNodes);
+        setEdges(rfEdges);
+      } catch {
+        setError('This layout is not available or sharing has been disabled.');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [token, setNodes, setEdges]);
 
   const onConnect = useCallback(
     (connection: Connection) => {

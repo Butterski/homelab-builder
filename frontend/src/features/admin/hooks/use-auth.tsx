@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"; // Fixed imports
+import { useState } from "react"; // Fixed imports
 import { api } from "../../../lib/api";
 import { toast } from "sonner";
 import type { ThemeSettings } from "../../../lib/theme-registry";
@@ -16,9 +16,10 @@ export function useAuth() {
     const [loading, setLoading] = useState(true);
     // const { toast } = useToast(); 
 
-    useEffect(() => {
+    // Kick off auth check immediately, not in an effect
+    useState(() => {
         checkAuth();
-    }, []);
+    });
 
     async function checkAuth() {
         try {

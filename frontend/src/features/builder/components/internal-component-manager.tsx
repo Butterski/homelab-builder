@@ -52,7 +52,11 @@ export function InternalComponentManager({ nodeId }: Props) {
                             <div className="mt-0.5 shrink-0">
                                 <Icon className="size-3.5 text-muted-foreground" />
                             </div>
-                            <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setEditingComponent(comp)}>
+                            <button
+                              type="button"
+                              className="flex-1 min-w-0 cursor-pointer text-left bg-transparent border-none p-0"
+                              onClick={() => setEditingComponent(comp)}
+                            >
                                 <div className="flex items-center gap-1.5">
                                     <span className="text-xs font-semibold truncate hover:underline underline-offset-2 decoration-muted-foreground/50">
                                         {comp.name}
@@ -66,7 +70,7 @@ export function InternalComponentManager({ nodeId }: Props) {
                                     {comp.details?.ram && <span>{comp.details.ram} {comp.type === 'gpu' ? 'VRAM' : ''}</span>}
                                     {comp.details?.storage && <span>{comp.details.storage}</span>}
                                 </div>
-                            </div>
+                            </button>
                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <Button
                                     size="icon"

@@ -45,6 +45,7 @@ function ServiceCard({
               <p className="text-xs text-muted-foreground capitalize mt-0.5">{item.category}</p>
             </div>
             <button
+              type="button"
               onClick={handleFavorite}
               className={`shrink-0 p-1.5 rounded-md hover:bg-muted/60 transition-colors hover:cursor-pointer ${isFavorite ? 'text-red-500 hover:text-red-400' : 'text-muted-foreground hover:text-red-400'}`}
             >
@@ -118,7 +119,7 @@ export default function ServiceCatalogPage() {
     fetchServices(); // Ensure they are loaded if arriving directly
   }
 
-  const selections = selectionsData?.data || [];
+  const selections = useMemo(() => selectionsData?.data || [], [selectionsData]);
   const favSet = useMemo(() => {
     const map = new Map<string, string>();
     selections.forEach(s => map.set(s.service_id, s.id));
@@ -174,12 +175,14 @@ export default function ServiceCatalogPage() {
 
       <div className="flex flex-wrap gap-2">
         <button
+          type="button"
           onClick={() => setCategory('')}
           className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${!category || category === 'all' ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:bg-muted'}`}
         >
           All
         </button>
         <button
+          type="button"
           onClick={() => setCategory('favorites')}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors hover:cursor-pointer ${category === 'favorites' ? 'bg-red-500/10 text-red-500 border-red-500/20' : 'border-border hover:bg-muted'}`}
         >
@@ -189,6 +192,7 @@ export default function ServiceCatalogPage() {
         {categories.map(cat => (
           <button
             key={cat}
+            type="button"
             onClick={() => setCategory(cat === category ? '' : cat)}
             className={`px-3 py-1.5 rounded-full text-xs font-medium border capitalize transition-colors ${cat === category ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:bg-muted'}`}
           >

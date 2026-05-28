@@ -1,4 +1,4 @@
-import { useState } from "react"
+import React, { useState } from "react"
 import { useBuilderStore } from "../store/builder-store"
 import type { VirtualMachine, VMType } from "../../../types"
 import { Button } from "../../../components/ui/button"
@@ -23,7 +23,7 @@ interface Props {
     nodeId: string
 }
 
-export function VMManager({ nodeId }: Props) {
+export const VMManager = React.memo(function VMManager({ nodeId }: Props) {
     const { hardwareNodes, addVM, removeVM, updateVM } = useBuilderStore()
     const node = hardwareNodes.find(n => n.id === nodeId)
     const vms = node?.vms || []
@@ -338,6 +338,7 @@ export function VMManager({ nodeId }: Props) {
                         <div className="flex items-center gap-1 shrink-0">
                             {/* Status toggle */}
                             <button
+                                type="button"
                                 onClick={() => cycleStatus(vm)}
                                 className={`size-4 rounded-full ${STATUS_COLORS[vm.status]} hover:opacity-80 transition-opacity`}
                                 title={`Status: ${vm.status}. Click to toggle.`}
@@ -348,6 +349,7 @@ export function VMManager({ nodeId }: Props) {
                                 className="size-6 text-muted-foreground hover:text-primary"
                                 onClick={() => startEditing(vm)}
                                 title="Edit"
+                                aria-label={`Edit ${vm.name}`}
                             >
                                 <Pencil className="size-3" />
                             </Button>
@@ -365,4 +367,4 @@ export function VMManager({ nodeId }: Props) {
             })}
         </div>
     )
-}
+})

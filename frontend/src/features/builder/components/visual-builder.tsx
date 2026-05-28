@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, useEffectEvent } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useEffectEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ReactFlow,
@@ -18,7 +18,7 @@ import { useBuilderStore } from '../store/builder-store';
 import { HardwareToolbox } from './hardware-toolbox';
 import { HardwareNode as HardwareNodeComponent } from './hardware-node';
 import { RackNode } from './rack-node';
-import { RACK_U_HEIGHT_PX, RACK_HEADER_PX, RACK_RAIL_WIDTH, DEFAULT_DEVICE_U } from './rack-node';
+import { RACK_U_HEIGHT_PX, RACK_HEADER_PX, RACK_RAIL_WIDTH, DEFAULT_DEVICE_U } from './rack-node-constants';
 import { NodePropertiesPanel } from './node-properties-panel';
 import { LiveResourceDashboard } from './live-resource-dashboard';
 import { Button } from '../../../components/ui/button';
@@ -68,11 +68,11 @@ function ShortcutHints() {
     <div id="shortcut-hints" className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 flex items-center gap-3 px-3 py-1.5 rounded-full bg-card border border-border text-[10px] text-muted-foreground pointer-events-none select-none">
       {shortcuts.map((sh: Shortcut, iter: number) =>
         iter === shortcuts.length - 1 ? (
-          <span key={iter} className="flex flex-col items-center">
+          <span key={sh.combination} className="flex flex-col items-center">
             <kbd className="font-mono bg-muted px-1 rounded">{sh.combination}</kbd> {sh.name}
           </span>
         ) : (
-          <div key={iter} className="flex items-center gap-3">
+          <div key={sh.combination} className="flex items-center gap-3">
             <span className="flex flex-col items-center">
               <kbd className="font-mono bg-muted px-1 rounded">{sh.combination}</kbd> {sh.name}
             </span>
@@ -84,7 +84,7 @@ function ShortcutHints() {
   );
 }
 
-function Flow() {
+const Flow = React.memo(function Flow() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
@@ -126,7 +126,7 @@ function Flow() {
   };
 
   // Joyride Tour State
-  const [runTour, setRunTour] = useState(false);
+  const [runTour, setRunTour] = useState(() => !localStorage.getItem('hlb_has_seen_tour'));
   const [tourSteps] = useState<Step[]>([
     {
       target: '.tour-toolbox',
@@ -151,13 +151,6 @@ function Flow() {
       placement: 'center',
     },
   ]);
-
-  useEffect(() => {
-    const hasSeenTour = localStorage.getItem('hlb_has_seen_tour');
-    if (!hasSeenTour) {
-      setRunTour(true);
-    }
-  }, []);
 
   // Defensive cleanup: strip any scroll locks left behind by Radix dialogs or Joyride
   useEffect(() => {
@@ -884,7 +877,7 @@ function Flow() {
       </div>
     </div>
   );
-}
+})
 
 export default function VisualBuilderPage() {
   const { id } = useParams<{ id: string }>();

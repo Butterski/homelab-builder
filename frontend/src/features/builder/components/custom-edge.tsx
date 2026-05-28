@@ -46,7 +46,7 @@ export function CustomEdge({
   targetY,
   sourcePosition,
   targetPosition,
-  style = {},
+  style: customStyle,
   markerEnd,
   selected,
   data,
@@ -198,14 +198,14 @@ export function CustomEdge({
         markerEnd={markerEnd}
         className="react-flow__edge-path"
         style={{
-          ...style,
+          ...customStyle,
           stroke: edgeColor,
           strokeWidth: isHighlighted
-            ? Math.max(Number(style.strokeWidth || 2), 3.5)
-            : style.strokeWidth || 2,
+            ? Math.max(Number(customStyle?.strokeWidth || 2), 3.5)
+            : customStyle?.strokeWidth || 2,
           strokeDasharray: '4 8',
-          animationDuration: '1.5s',
-          transition: 'stroke 0.2s, stroke-width 0.2s, filter 0.2s',
+          animationDuration: '1s',
+          animation: 'dash-move 1s linear infinite',
           filter: isHighlighted ? `drop-shadow(0 0 4px ${edgeColor}) brightness(1.3)` : 'none',
         }}
       />
@@ -223,7 +223,7 @@ export function CustomEdge({
         >
           {/* Always show the speed/subnet badge if configured, or on hover */}
           <div
-            className={`px-1.5 py-0.5 rounded text-[9px] font-mono bg-background border transition-opacity ${!isHovered && !selected && speed === '1 GbE' && !subnet ? 'opacity-0' : 'opacity-100'}`}
+            className={`px-1.5 py-0.5 rounded text-[9px] font-mono bg-background border transition-opacity duration-150 ${!isHovered && !selected && speed === '1 GbE' && !subnet ? 'opacity-0' : 'opacity-100'}`}
           >
             <span className="text-primary font-semibold">{speed}</span>
             {subnet && <span className="ml-1 text-muted-foreground">({subnet})</span>}

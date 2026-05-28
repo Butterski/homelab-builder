@@ -12,7 +12,8 @@ export function ServiceCard({ service, selected, onToggle }: ServiceCardProps) {
   const req = service.requirements || { recommended_ram_mb: 0, recommended_cpu_cores: 0 };
 
   return (
-    <div 
+    <button
+      type="button"
       className={`service-card ${selected ? 'selected' : ''}`}
       onClick={() => onToggle(service.id)}
     >
@@ -45,6 +46,6 @@ export function ServiceCard({ service, selected, onToggle }: ServiceCardProps) {
           )}
         </div>
       </div>
-    </div>
+    </button>
   );
 }

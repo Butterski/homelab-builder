@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   HardDrive,
   Router,
@@ -408,7 +408,7 @@ const PRESETS: {
   },
 ];
 
-export function HardwareToolbox() {
+export const HardwareToolbox = React.memo(function HardwareToolbox() {
   const { availableServices, fetchServices } = useBuilderStore();
   const { data: selectionsData } = useUserSelections();
   const { data: favoritesData } = useHardwareFavorites();
@@ -416,6 +416,13 @@ export function HardwareToolbox() {
   React.useEffect(() => {
     fetchServices();
   }, [fetchServices]);
+
+  // Memoize VALID_HARDWARE_TYPES outside component to avoid recreating on each render
+  const VALID_HARDWARE_TYPES = React.useMemo(() => new Set<string>([
+    'router', 'switch', 'nas', 'server', 'pc', 'access_point',
+    'disk', 'gpu', 'hba', 'pcie', 'ups', 'pdu', 'sbc', 'minipc',
+    'iot', 'modem', 'rack'
+  ]), []);
 
   const [activeTab, setActiveTab] = useState<'components' | 'presets' | 'services' | 'power'>('components');
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
@@ -426,97 +433,89 @@ export function HardwareToolbox() {
   const [isMinimized, setIsMinimized] = useState(false);
   const [position, setPosition] = useState({ x: 16, y: 80 });
   const [isDragging, setIsDragging] = useState(false);
-  const dragOffset = useState({ x: 0, y: 0 })[0]; // Ref-like state for drag offset
+  // Ref for drag offset tracking
+  const dragOffset = useRef({ x: 0, y: 0 });
+  const isDraggingRef = useRef(false);
 
-  const favorites = favoritesData?.data || [];
+  const favorites = React.useMemo(() => favoritesData?.data || [], [favoritesData]);
 
   // Dynamic presets combining static presets + My Favorites!
   const dynamicPresets = React.useMemo(() => {
     const list = [...PRESETS];
 
-    const favoriteItems = favorites
-      .map(fav => fav.hardware_component)
-      .filter(Boolean)
-      .map(comp => {
-        let type: string = comp.category;
-        if (comp.category === 'storage') {
-          type = 'disk';
-        } else if (comp.category === 'nic') {
-          type = 'hba';
+    // Single iteration: combine flatMap+map+filter for performance
+    const favoriteItems: any[] = [];
+    for (const fav of favorites) {
+      const comp = fav.hardware_component;
+      if (!comp) continue;
+
+      let type: string = comp.category;
+      if (comp.category === 'storage') {
+        type = 'disk';
+      } else if (comp.category === 'nic') {
+        type = 'hba';
+      }        if (!VALID_HARDWARE_TYPES.has(type)) continue;
+
+      const spec = comp.spec || {};
+      const details: any = {
+        model: `${comp.brand} ${comp.model}`,
+        price_est: comp.price_est,
+        currency: comp.currency,
+        ...spec,
+      };
+
+      let rack_units = spec.rack_units;
+      if (!rack_units && spec.form_factor && typeof spec.form_factor === 'string') {
+        const uMatch = spec.form_factor.match(/(\d+)U/i);
+        if (uMatch) {
+          rack_units = parseInt(uMatch[1], 10);
         }
+      }
+      if (rack_units) details.rack_units = Number(rack_units);
 
-        const VALID_HARDWARE_TYPES = new Set<string>([
-          'router', 'switch', 'nas', 'server', 'pc', 'access_point',
-          'disk', 'gpu', 'hba', 'pcie', 'ups', 'pdu', 'sbc', 'minipc',
-          'iot', 'modem', 'rack'
-        ]);
+      let rack_size = spec.units ? Number(spec.units) : undefined;
+      if (spec.rack_size) {
+        rack_size = Number(spec.rack_size);
+      }
+      if (rack_size) details.rack_size = rack_size;
 
-        if (!VALID_HARDWARE_TYPES.has(type)) {
-          return null;
-        }
+      const name = `${comp.brand} ${comp.model}`;
+      
+      let icon: React.ElementType = Package;
+      if (type === 'router') icon = Router;
+      else if (type === 'switch') icon = CircuitBoard;
+      else if (type === 'server') icon = Server;
+      else if (type === 'pc' || type === 'minipc') icon = Monitor;
+      else if (type === 'sbc') icon = Cpu;
+      else if (type === 'nas' || type === 'disk') icon = HardDrive;
+      else if (type === 'access_point') icon = Wifi;
+      else if (type === 'gpu') icon = Layers;
+      else if (type === 'hba' || type === 'pcie') icon = Plug;
+      else if (type === 'ups' || type === 'pdu') icon = Battery;
+      else if (type === 'iot') icon = Printer;
+      else if (type === 'modem') icon = Globe;
+      else if (type === 'rack') icon = BoxSelect;
 
-        const spec = comp.spec || {};
-        const details: any = {
-          model: `${comp.brand} ${comp.model}`,
-          price_est: comp.price_est,
-          currency: comp.currency,
-          ...spec,
-        };
+      let sub = `${comp.brand} · ~${comp.price_est} ${comp.currency}`;
+      if (comp.category === 'server' || comp.category === 'minipc' || comp.category === 'sbc') {
+        const cpuStr = spec.cpu ? String(spec.cpu).split(' ')[0] : '';
+        const ramStr = spec.ram ? String(spec.ram).split(' ')[0] : '';
+        sub = `${cpuStr}${cpuStr && ramStr ? ' · ' : ''}${ramStr} · ~${comp.price_est} ${comp.currency}`;
+      } else if (comp.category === 'router' || comp.category === 'switch') {
+        const portsStr = spec.ports ? String(spec.ports) : '';
+        sub = `${portsStr} · ~${comp.price_est} ${comp.currency}`;
+      }
 
-        let rack_units = spec.rack_units;
-        if (!rack_units && spec.form_factor && typeof spec.form_factor === 'string') {
-          const uMatch = spec.form_factor.match(/(\d+)U/i);
-          if (uMatch) {
-            rack_units = parseInt(uMatch[1], 10);
-          }
-        }
-        if (rack_units) details.rack_units = Number(rack_units);
-
-        let rack_size = spec.units ? Number(spec.units) : undefined;
-        if (spec.rack_size) {
-          rack_size = Number(spec.rack_size);
-        }
-        if (rack_size) details.rack_size = rack_size;
-
-        const name = `${comp.brand} ${comp.model}`;
-        
-        let icon: React.ElementType = Package;
-        if (type === 'router') icon = Router;
-        else if (type === 'switch') icon = CircuitBoard;
-        else if (type === 'server') icon = Server;
-        else if (type === 'pc' || type === 'minipc') icon = Monitor;
-        else if (type === 'sbc') icon = Cpu;
-        else if (type === 'nas' || type === 'disk') icon = HardDrive;
-        else if (type === 'access_point') icon = Wifi;
-        else if (type === 'gpu') icon = Layers;
-        else if (type === 'hba' || type === 'pcie') icon = Plug;
-        else if (type === 'ups' || type === 'pdu') icon = Battery;
-        else if (type === 'iot') icon = Printer;
-        else if (type === 'modem') icon = Globe;
-        else if (type === 'rack') icon = BoxSelect;
-
-        let sub = `${comp.brand} · ~${comp.price_est} ${comp.currency}`;
-        if (comp.category === 'server' || comp.category === 'minipc' || comp.category === 'sbc') {
-          const cpuStr = spec.cpu ? String(spec.cpu).split(' ')[0] : '';
-          const ramStr = spec.ram ? String(spec.ram).split(' ')[0] : '';
-          sub = `${cpuStr}${cpuStr && ramStr ? ' · ' : ''}${ramStr} · ~${comp.price_est} ${comp.currency}`;
-        } else if (comp.category === 'router' || comp.category === 'switch') {
-          const portsStr = spec.ports ? String(spec.ports) : '';
-          sub = `${portsStr} · ~${comp.price_est} ${comp.currency}`;
-        }
-
-        return {
-          label: name,
-          type: type as HardwareType,
-          icon,
-          sub,
-          data: {
-            name,
-            details,
-          },
-        };
-      })
-      .filter(Boolean) as any[];
+      favoriteItems.push({
+        label: name,
+        type: type as HardwareType,
+        icon,
+        sub,
+        data: {
+          name,
+        },
+      });
+    }
 
     if (favoriteItems.length > 0) {
       list.unshift({
@@ -529,39 +528,33 @@ export function HardwareToolbox() {
   }, [favorites]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    // Only drag from header
     if ((e.target as HTMLElement).closest('button')) return;
     setIsDragging(true);
-    dragOffset.x = e.clientX - position.x;
-    dragOffset.y = e.clientY - position.y;
+    isDraggingRef.current = true;
+    dragOffset.current.x = e.clientX - position.x;
+    dragOffset.current.y = e.clientY - position.y;
   };
 
-  const handleMouseMove = (e: MouseEvent) => {
-    if (!isDragging) return;
-    setPosition({
-      x: e.clientX - dragOffset.x,
-      y: e.clientY - dragOffset.y,
-    });
-  };
-
-  const handleMouseUp = () => {
-    setIsDragging(false);
-  };
-
-  // Global listeners for drag
+  // Global listeners for drag - stable refs pattern to avoid stale closures
   React.useEffect(() => {
-    if (isDragging) {
-      window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseup', handleMouseUp);
-    } else {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    }
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isDraggingRef.current) return;
+      setPosition({
+        x: e.clientX - dragOffset.current.x,
+        y: e.clientY - dragOffset.current.y,
+      });
     };
-  }, [isDragging]);
+    const onMouseUp = () => {
+      setIsDragging(false);
+      isDraggingRef.current = false;
+    };
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, []);
 
   const onDragStart = (event: React.DragEvent, nodeType: HardwareType, data?: object) => {
     event.dataTransfer.setData('application/reactflow', nodeType);
@@ -595,16 +588,19 @@ export function HardwareToolbox() {
   // Filter and group services
   const favServiceIds = new Set(selectionsData?.data?.map(s => s.service_id) || []);
 
-  const filteredServices = availableServices.filter(
-    svc =>
-      svc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      svc.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      svc.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (searchQuery.toLowerCase() === 'favorites' && favServiceIds.has(svc.id)),
-  );
-
-  const servicesByCategory = filteredServices.reduce(
+  // Single iteration: combine filter + reduce for performance
+  const servicesByCategory = availableServices.reduce(
     (acc, svc) => {
+      const lowQ = searchQuery.toLowerCase();
+      const matchesSearch =
+        lowQ === '' ||
+        svc.name.toLowerCase().includes(lowQ) ||
+        svc.description.toLowerCase().includes(lowQ) ||
+        svc.category.toLowerCase().includes(lowQ) ||
+        (lowQ === 'favorites' && favServiceIds.has(svc.id));
+
+      if (!matchesSearch) return acc;
+
       if (!acc[svc.category]) acc[svc.category] = [];
       acc[svc.category].push(svc);
 
@@ -639,6 +635,7 @@ export function HardwareToolbox() {
       <div
         className="flex items-center justify-between px-4 py-3 bg-muted/50 cursor-grab active:cursor-grabbing border-b select-none"
         onMouseDown={handleMouseDown}
+        role="presentation"
       >
         <div className="flex items-center gap-2">
           <span className="font-bold text-xs uppercase tracking-wider text-foreground">
@@ -646,9 +643,11 @@ export function HardwareToolbox() {
           </span>
         </div>
         <button
+          type="button"
           onClick={() => setIsMinimized(!isMinimized)}
           className="size-4 flex items-center justify-center rounded hover:bg-background/50 text-muted-foreground"
           title={isMinimized ? 'Expand' : 'Minimize'}
+          aria-label={isMinimized ? 'Expand library panel' : 'Minimize library panel'}
         >
           {isMinimized ? (
             <ChevronDown className="size-3 hover:cursor-pointer" />
@@ -674,6 +673,7 @@ export function HardwareToolbox() {
               return (
                 <button
                   key={tab.id}
+                  type="button"
                   onClick={() => setActiveTab(tab.id)}
                   className={`flex flex-col items-center gap-1 rounded-t-md px-2 py-2 text-[10px] font-semibold uppercase tracking-wide transition-colors ${tab.id === 'services' ? 'tour-toolbox-services' : ''} ${
                     activeTab === tab.id
@@ -724,6 +724,7 @@ export function HardwareToolbox() {
                   return (
                     <div key={cat.category} className="border rounded-lg overflow-hidden">
                       <button
+                        type="button"
                         className="w-full flex items-center justify-between px-2.5 py-2 text-[10px] font-bold uppercase tracking-wide bg-muted/40 hover:bg-muted/70 transition-colors"
                         onClick={() => toggleCategory(cat.category)}
                       >
@@ -795,7 +796,7 @@ export function HardwareToolbox() {
                 <div className="space-y-1">
                   {sortedServiceCategories.length === 0 && (
                     <div className="text-center py-6 space-y-2">
-                      <p className="text-xs text-muted-foreground">No services found...</p>
+                      <p className="text-xs text-muted-foreground">No services found…</p>
                     </div>
                   )}
 
@@ -807,6 +808,7 @@ export function HardwareToolbox() {
                     return (
                       <div key={catName} className="border rounded-lg overflow-hidden">
                         <button
+                          type="button"
                           className="w-full flex items-center justify-between px-2.5 py-2 text-[10px] font-bold uppercase tracking-wide bg-muted/40 hover:bg-muted/70 transition-colors"
                           onClick={() => toggleServiceCat(catName)}
                         >
@@ -952,4 +954,4 @@ export function HardwareToolbox() {
       )}
     </Card>
   );
-}
+});

@@ -153,6 +153,7 @@ function SettingsPanel({
   return (
     <div className="rounded-xl border bg-card overflow-hidden">
       <button
+        type="button"
         className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium hover:bg-muted/50 transition-colors"
         onClick={onToggle}
       >
@@ -264,6 +265,7 @@ export default function ConfigGeneratorPage() {
     loadingCompose,
   } = state;
 
+  // Load config bundle from backend
   const loadConfigBundle = async (id: string) => {
     dispatch({ loadingCompose: true });
     try {
@@ -271,34 +273,11 @@ export default function ConfigGeneratorPage() {
       dispatch({ configBundle: res });
     } catch (err) {
       console.error('Failed to generate compose', err);
-      toast.error('Failed to generate configurations from backend');
       dispatch({ configBundle: null });
     } finally {
       dispatch({ loadingCompose: false });
     }
   };
-
-  // Load project list on mount
-  useEffect(() => {
-    buildApi
-      .list()
-      .then(list => {
-        dispatch({ builds: list.map(b => ({ id: b.id, name: b.name })) });
-        // If store has a build, try to match it
-        const current = useBuilderStore.getState().currentBuildId;
-        if (current) {
-          dispatch({ selectedBuildId: current });
-          loadConfigBundle(current);
-        } else if (list.length > 0) {
-          // Optionally load first one automatically?
-          // Better to let user choose or stay empty if they navigated here without opening a project
-          // But user complaint is "chooses first one only", implies auto-selection.
-          // Let's default to the first one if nothing loaded.
-          handleSelectBuild(list[0].id);
-        }
-      })
-      .catch(err => console.error('Failed to list builds', err));
-  }, []);
 
   const handleSelectBuild = async (id: string) => {
     if (!id) return;
@@ -307,7 +286,6 @@ export default function ConfigGeneratorPage() {
     try {
       const fullBuild = await buildApi.get(id);
       console.log(`[ConfigGen] Fetched build: ${fullBuild.name}`, fullBuild);
-
       console.log(`[ConfigGen] Loading data into store...`, fullBuild);
       loadBuild(fullBuild.id, fullBuild.name, fullBuild);
       dispatch({ labName: fullBuild.name.toLowerCase().replace(/[^a-z0-9]/g, '-') });
@@ -322,6 +300,23 @@ export default function ConfigGeneratorPage() {
       dispatch({ loadingBuild: false });
     }
   };
+
+  // Load project list on mount
+  useEffect(() => {
+    buildApi
+      .list()
+      .then(list => {
+        dispatch({ builds: list.map(b => ({ id: b.id, name: b.name })) });
+        const current = useBuilderStore.getState().currentBuildId;
+        if (current) {
+          dispatch({ selectedBuildId: current });
+          loadConfigBundle(current);
+        } else if (list.length > 0) {
+          handleSelectBuild(list[0].id);
+        }
+      })
+      .catch(err => console.error('Failed to list builds', err));
+  }, []);
 
   // IP settings
   // IP settings (Defaults)
@@ -479,6 +474,7 @@ export default function ConfigGeneratorPage() {
               return (
                 <button
                   key={tab.id}
+                  type="button"
                   onClick={() => dispatch({ activeTab: tab.id })}
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-colors hover:cursor-pointer ${
                     activeTab === tab.id
