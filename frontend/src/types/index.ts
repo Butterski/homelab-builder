@@ -126,6 +126,9 @@ export type HardwareType =
   | 'switch'
   | 'nas'
   | 'server'
+  | 'server_v2'
+  | 'firewall'
+  | 'vps'
   | 'pc'
   | 'access_point'
   | 'disk'
@@ -155,6 +158,27 @@ export interface HardwareSpec {
   rack_size?: number;     // Total U capacity of a rack (e.g. 24, 42)
   rack_units?: number;    // How many U this device occupies (e.g. 1, 2, 4)
   rack_position?: number; // U-slot position within the rack (0-indexed from top)
+  server_profile?: string;
+  hypervisor_enabled?: boolean;
+  app_host_enabled?: boolean;
+  storage_enabled?: boolean;
+  routing_enabled?: boolean;
+  nat_enabled?: boolean;
+  firewall_enabled?: boolean;
+  network_zone?: 'wan' | 'lan' | 'dmz' | 'cloud';
+  public_ip?: string;
+  provider?: string;
+  region?: string;
+  wan_ip?: string;
+  lan_gateway_ip?: string;
+  lan_subnet?: string;
+  interfaces?: Array<{
+    name?: string;
+    role?: 'wan' | 'lan' | 'dmz' | 'vpn' | string;
+    ip?: string;
+    subnet?: string;
+    dhcp_enabled?: boolean;
+  }>;
 }
 
 export type VMType = 'vm' | 'container' | 'lxc';

@@ -151,18 +151,18 @@ func (SteeringRule) TableName() string { return "steering_rules" }
 
 // Build represents a saved visual builder project
 type Build struct {
-	ID         uuid.UUID       `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
-	UserID     uuid.UUID       `gorm:"type:uuid;not null;index" json:"user_id"` // Owner
-	Name       string          `gorm:"not null" json:"name"`
-	Settings   json.RawMessage `gorm:"type:jsonb;default:'{}'" json:"settings"` // UI state e.g. boughtItems
-	Thumbnail  string          `gorm:"default:''" json:"thumbnail"`             // Base64 or URL
-	TotalPower float64         `gorm:"-" json:"total_power"`                    // Transient, calculated on fetch
+	ID             uuid.UUID       `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	UserID         uuid.UUID       `gorm:"type:uuid;not null;index" json:"user_id"` // Owner
+	Name           string          `gorm:"not null" json:"name"`
+	Settings       json.RawMessage `gorm:"type:jsonb;default:'{}'" json:"settings"` // UI state e.g. boughtItems
+	Thumbnail      string          `gorm:"default:''" json:"thumbnail"`             // Base64 or URL
+	TotalPower     float64         `gorm:"-" json:"total_power"`                    // Transient, calculated on fetch
 	ShareToken     *string         `gorm:"uniqueIndex;default:null" json:"share_token,omitempty"`
 	IsShared       bool            `gorm:"default:false" json:"is_shared"`
 	SharedEditable bool            `gorm:"default:false" json:"shared_editable"`
-	User       *User           `gorm:"foreignKey:UserID" json:"-"`
-	CreatedAt  time.Time       `json:"created_at"`
-	UpdatedAt  time.Time       `json:"updated_at"`
+	User           *User           `gorm:"foreignKey:UserID" json:"-"`
+	CreatedAt      time.Time       `json:"created_at"`
+	UpdatedAt      time.Time       `json:"updated_at"`
 
 	// Relations
 	Nodes []Node `gorm:"foreignKey:BuildID" json:"nodes,omitempty"`
@@ -241,16 +241,18 @@ func (VirtualMachine) TableName() string { return "virtual_machines" }
 
 // Edge represents a connection between nodes
 type Edge struct {
-	ID           uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
-	BuildID      uuid.UUID `gorm:"type:uuid;not null;index" json:"build_id"`
-	SourceNodeID uuid.UUID `gorm:"type:uuid;not null" json:"source_node_id"`
-	SourceHandle string    `json:"source_handle,omitempty"`
-	TargetNodeID uuid.UUID `gorm:"type:uuid;not null" json:"target_node_id"`
-	TargetHandle string    `json:"target_handle,omitempty"`
-	Type         string    `gorm:"default:'ethernet'" json:"type"`
-	Speed        string    `gorm:"default:'1 GbE'" json:"speed"`
-	Subnet       string    `gorm:"default:''" json:"subnet"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID               uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	BuildID          uuid.UUID `gorm:"type:uuid;not null;index" json:"build_id"`
+	SourceNodeID     uuid.UUID `gorm:"type:uuid;not null" json:"source_node_id"`
+	SourceHandle     string    `json:"source_handle,omitempty"`
+	TargetNodeID     uuid.UUID `gorm:"type:uuid;not null" json:"target_node_id"`
+	TargetHandle     string    `json:"target_handle,omitempty"`
+	Type             string    `gorm:"default:'ethernet'" json:"type"`
+	Speed            string    `gorm:"default:'1 GbE'" json:"speed"`
+	Subnet           string    `gorm:"default:''" json:"subnet"`
+	WirelessStandard string    `gorm:"default:''" json:"wireless_standard"`
+	Direction        string    `gorm:"default:'auto'" json:"direction"`
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 func (Edge) TableName() string { return "edges" }
@@ -298,13 +300,12 @@ func (BetaSurvey) TableName() string { return "beta_surveys" } // BETA_SURVEY
 // ─── END BETA_SURVEY ──────────────────────────────────────────────────────────
 
 type UserHardwareFavorite struct {
-	ID                  uuid.UUID         `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
-	UserID              uuid.UUID         `gorm:"type:uuid;not null;uniqueIndex:idx_user_hw_fav" json:"user_id"`
-	HardwareComponentID uuid.UUID         `gorm:"type:uuid;not null;uniqueIndex:idx_user_hw_fav" json:"hardware_component_id"`
-	User                *User             `gorm:"foreignKey:UserID" json:"-"`
+	ID                  uuid.UUID          `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	UserID              uuid.UUID          `gorm:"type:uuid;not null;uniqueIndex:idx_user_hw_fav" json:"user_id"`
+	HardwareComponentID uuid.UUID          `gorm:"type:uuid;not null;uniqueIndex:idx_user_hw_fav" json:"hardware_component_id"`
+	User                *User              `gorm:"foreignKey:UserID" json:"-"`
 	HardwareComponent   *HardwareComponent `gorm:"foreignKey:HardwareComponentID" json:"hardware_component,omitempty"`
-	CreatedAt           time.Time         `json:"created_at"`
+	CreatedAt           time.Time          `json:"created_at"`
 }
 
 func (UserHardwareFavorite) TableName() string { return "user_hardware_favorites" }
-

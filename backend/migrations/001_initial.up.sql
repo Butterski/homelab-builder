@@ -152,8 +152,14 @@ CREATE TABLE edges (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     build_id UUID NOT NULL REFERENCES builds(id) ON DELETE CASCADE,
     source_node_id UUID NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+    source_handle VARCHAR(64) DEFAULT '',
     target_node_id UUID NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+    target_handle VARCHAR(64) DEFAULT '',
     type VARCHAR(50) DEFAULT 'ethernet',
+    speed VARCHAR(50) DEFAULT '1 GbE',
+    subnet VARCHAR(255) DEFAULT '',
+    wireless_standard VARCHAR(50) DEFAULT '',
+    direction VARCHAR(20) DEFAULT 'auto',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 CREATE INDEX idx_edges_build_id ON edges(build_id);

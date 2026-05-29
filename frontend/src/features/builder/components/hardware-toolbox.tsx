@@ -22,6 +22,8 @@ import {
   Printer,
   Globe,
   BoxSelect,
+  Shield,
+  Cloud,
 } from 'lucide-react';
 import type { HardwareType } from '../../../types';
 import { Card } from '../../../components/ui/card';
@@ -40,7 +42,9 @@ const HARDWARE_TOOLS: {
 }[] = [
   { type: 'router', label: 'Router', icon: Router, color: 'text-purple-500' },
   { type: 'switch', label: 'Switch', icon: CircuitBoard, color: 'text-blue-500' },
-  { type: 'server', label: 'Server', icon: Server, color: 'text-orange-500' },
+  { type: 'server_v2', label: 'Server', icon: Server, color: 'text-orange-500' },
+  { type: 'firewall', label: 'Firewall', icon: Shield, color: 'text-red-500' },
+  { type: 'vps', label: 'VPS', icon: Cloud, color: 'text-sky-500' },
   { type: 'pc', label: 'PC', icon: Monitor, color: 'text-cyan-500' },
   { type: 'minipc', label: 'Mini PC', icon: Monitor, color: 'text-sky-500' },
   { type: 'sbc', label: 'SBC', icon: Cpu, color: 'text-green-500' },
@@ -151,17 +155,17 @@ const PRESETS: {
     items: [
       {
         label: 'Dell PowerEdge R720',
-        type: 'server',
+        type: 'server_v2',
         icon: Server,
         sub: '2× E5-2670 · 128GB · ~$300',
         data: {
           name: 'Dell R720',
-          details: { model: 'PowerEdge R720 (2× Xeon E5-2670)', cpu: 16, ram: 128, price_est: 300 },
+          details: { model: 'PowerEdge R720 (2× Xeon E5-2670)', cpu: 16, ram: 128, ports: 4, server_profile: 'hypervisor', hypervisor_enabled: true, app_host_enabled: true, price_est: 300 },
         },
       },
       {
         label: 'HP ProLiant DL380 G9',
-        type: 'server',
+        type: 'server_v2',
         icon: Server,
         sub: '2× E5-2680v4 · 256GB · ~$500',
         data: {
@@ -170,18 +174,87 @@ const PRESETS: {
             model: 'ProLiant DL380 G9 (2× Xeon E5-2680v4)',
             cpu: 28,
             ram: 256,
+            ports: 4,
+            server_profile: 'hypervisor',
+            hypervisor_enabled: true,
+            app_host_enabled: true,
             price_est: 500,
           },
         },
       },
       {
         label: 'Supermicro X10SL7',
-        type: 'server',
+        type: 'server_v2',
         icon: Server,
         sub: 'E3-1245v3 · 32GB · ~$200',
         data: {
           name: 'Supermicro X10SL7',
-          details: { model: 'X10SL7-F (Xeon E3-1245v3)', cpu: 4, ram: 32, price_est: 200 },
+          details: { model: 'X10SL7-F (Xeon E3-1245v3)', cpu: 4, ram: 32, ports: 2, server_profile: 'storage', storage_enabled: true, app_host_enabled: true, price_est: 200 },
+        },
+      },
+    ],
+  },
+  {
+    category: 'Firewall / Cloud',
+    items: [
+      {
+        label: 'OPNsense Firewall',
+        type: 'firewall',
+        icon: Shield,
+        sub: 'NAT - DHCP - 4-port',
+        data: {
+          name: 'OPNsense Firewall',
+          details: {
+            model: 'OPNsense / pfSense appliance',
+            ports: 4,
+            firewall_enabled: true,
+            nat_enabled: true,
+            routing_enabled: true,
+            dhcp_enabled: true,
+            subnet_mask: '255.255.255.0',
+            network_zone: 'lan',
+          },
+        },
+      },
+      {
+        label: 'Hetzner VPS',
+        type: 'vps',
+        icon: Cloud,
+        sub: 'Cloud node - public IP',
+        data: {
+          name: 'Cloud VPS',
+          details: {
+            model: 'Hetzner CX',
+            cpu: 2,
+            ram: 4,
+            storage: 40,
+            ports: 2,
+            provider: 'Hetzner',
+            region: 'eu-central',
+            network_zone: 'cloud',
+          },
+        },
+      },
+      {
+        label: 'Server Gateway',
+        type: 'server_v2',
+        icon: Server,
+        sub: 'Server as NAT/router',
+        data: {
+          name: 'Gateway Server',
+          details: {
+            model: 'Linux gateway host',
+            cpu: 8,
+            ram: 32,
+            storage: 512,
+            ports: 4,
+            server_profile: 'gateway',
+            routing_enabled: true,
+            nat_enabled: true,
+            firewall_enabled: true,
+            dhcp_enabled: true,
+            subnet_mask: '255.255.255.0',
+          },
         },
       },
     ],
@@ -419,7 +492,7 @@ export const HardwareToolbox = React.memo(function HardwareToolbox() {
 
   // Memoize VALID_HARDWARE_TYPES outside component to avoid recreating on each render
   const VALID_HARDWARE_TYPES = React.useMemo(() => new Set<string>([
-    'router', 'switch', 'nas', 'server', 'pc', 'access_point',
+    'router', 'switch', 'nas', 'server', 'server_v2', 'firewall', 'vps', 'pc', 'access_point',
     'disk', 'gpu', 'hba', 'pcie', 'ups', 'pdu', 'sbc', 'minipc',
     'iot', 'modem', 'rack'
   ]), []);
@@ -454,7 +527,10 @@ export const HardwareToolbox = React.memo(function HardwareToolbox() {
         type = 'disk';
       } else if (comp.category === 'nic') {
         type = 'hba';
-      }        if (!VALID_HARDWARE_TYPES.has(type)) continue;
+      } else if (comp.category === 'server') {
+        type = 'server_v2';
+      }
+      if (!VALID_HARDWARE_TYPES.has(type)) continue;
 
       const spec = comp.spec || {};
       const details: any = {
@@ -484,7 +560,9 @@ export const HardwareToolbox = React.memo(function HardwareToolbox() {
       let icon: React.ElementType = Package;
       if (type === 'router') icon = Router;
       else if (type === 'switch') icon = CircuitBoard;
-      else if (type === 'server') icon = Server;
+      else if (type === 'server' || type === 'server_v2') icon = Server;
+      else if (type === 'firewall') icon = Shield;
+      else if (type === 'vps') icon = Cloud;
       else if (type === 'pc' || type === 'minipc') icon = Monitor;
       else if (type === 'sbc') icon = Cpu;
       else if (type === 'nas' || type === 'disk') icon = HardDrive;
@@ -839,12 +917,12 @@ export const HardwareToolbox = React.memo(function HardwareToolbox() {
                                   key={svc.id}
                                   className="flex items-center justify-between gap-2 px-2.5 py-2 cursor-grab hover:bg-primary/5 transition-colors bg-card active:cursor-grabbing group"
                                   onDragStart={e => {
-                                    e.dataTransfer.setData('application/reactflow', 'server');
+                                    e.dataTransfer.setData('application/reactflow', 'server_v2');
                                     e.dataTransfer.setData('service-drag', 'true');
                                     e.dataTransfer.setData(
                                       'application/reactflow-data',
                                       JSON.stringify({
-                                        type: 'server',
+                                        type: 'server_v2',
                                         name: svc.name,
                                         details: {
                                           model: svc.name,

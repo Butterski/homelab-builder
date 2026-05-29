@@ -195,14 +195,16 @@ func (s *BuildService) syncGraph(tx *gorm.DB, buildID uuid.UUID, input SyncGraph
 
 		if ok1 && ok2 {
 			edge := models.Edge{
-				BuildID:      buildID,
-				SourceNodeID: sourceUUID,
-				SourceHandle: le.SourceHandle,
-				TargetNodeID: targetUUID,
-				TargetHandle: le.TargetHandle,
-				Type:         "ethernet",
-				Speed:        le.Speed,
-				Subnet:       le.Subnet,
+				BuildID:          buildID,
+				SourceNodeID:     sourceUUID,
+				SourceHandle:     le.SourceHandle,
+				TargetNodeID:     targetUUID,
+				TargetHandle:     le.TargetHandle,
+				Type:             defaultString(le.Type, "ethernet"),
+				Speed:            le.Speed,
+				Subnet:           le.Subnet,
+				WirelessStandard: le.WirelessStandard,
+				Direction:        defaultString(le.Direction, "auto"),
 			}
 			if err := tx.Create(&edge).Error; err != nil {
 				return err
@@ -345,12 +347,22 @@ type ServiceDTO struct {
 }
 
 type EdgeDTO struct {
-	Source       string `json:"source"`
-	SourceHandle string `json:"source_handle"`
-	Target       string `json:"target"`
-	TargetHandle string `json:"target_handle"`
-	Speed        string `json:"speed"`
-	Subnet       string `json:"subnet"`
+	Source           string `json:"source"`
+	SourceHandle     string `json:"source_handle"`
+	Target           string `json:"target"`
+	TargetHandle     string `json:"target_handle"`
+	Type             string `json:"type"`
+	Speed            string `json:"speed"`
+	Subnet           string `json:"subnet"`
+	WirelessStandard string `json:"wireless_standard"`
+	Direction        string `json:"direction"`
+}
+
+func defaultString(value, fallback string) string {
+	if value == "" {
+		return fallback
+	}
+	return value
 }
 
 // ShareBuild enables public sharing for a build and returns the share token.
@@ -552,15 +564,17 @@ func (s *BuildService) Duplicate(buildID uuid.UUID, userID uuid.UUID) (*models.B
 
 			if ok1 && ok2 {
 				newEdge := models.Edge{
-					ID:           uuid.New(),
-					BuildID:      newBuild.ID,
-					SourceNodeID: sourceUUID,
-					SourceHandle: edge.SourceHandle,
-					TargetNodeID: targetUUID,
-					TargetHandle: edge.TargetHandle,
-					Type:         edge.Type,
-					Speed:        edge.Speed,
-					Subnet:       edge.Subnet,
+					ID:               uuid.New(),
+					BuildID:          newBuild.ID,
+					SourceNodeID:     sourceUUID,
+					SourceHandle:     edge.SourceHandle,
+					TargetNodeID:     targetUUID,
+					TargetHandle:     edge.TargetHandle,
+					Type:             edge.Type,
+					Speed:            edge.Speed,
+					Subnet:           edge.Subnet,
+					WirelessStandard: edge.WirelessStandard,
+					Direction:        edge.Direction,
 				}
 				if err := tx.Create(&newEdge).Error; err != nil {
 					return err

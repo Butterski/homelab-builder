@@ -69,8 +69,14 @@ function buildReactFlowEdges(build: Build): Edge[] {
     sourceHandle: e.source_handle || undefined,
     target: String(e.target_node_id),
     targetHandle: e.target_handle || undefined,
-    type: e.type && e.type !== 'ethernet' ? e.type : 'custom',
-    data: { speed: e.speed || '1 GbE', subnet: e.subnet || '' },
+    type: 'custom',
+    data: {
+      connection_type: e.type || 'ethernet',
+      speed: e.speed || '1 GbE',
+      subnet: e.subnet || '',
+      wireless_standard: e.wireless_standard || 'Wi-Fi 6',
+      direction: e.direction || 'auto',
+    },
   }));
 }
 

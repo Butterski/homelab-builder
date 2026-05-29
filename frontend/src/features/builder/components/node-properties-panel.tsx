@@ -15,7 +15,7 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import type { HardwareType } from '../../../types';
+import type { HardwareSpec, HardwareType } from '../../../types';
 import { VMManager } from './vm-manager';
 import { InternalComponentManager } from './internal-component-manager';
 import { canNodeHostVMs, nodeHasCPU, nodeHasDynamicPorts, nodeHasRAM, nodeHasStorage, isNetworkNode } from '../../../lib/hardware-config';
@@ -49,6 +49,16 @@ export function NodePropertiesPanel() {
   const [ram, setRam] = useState('');
   const [storage, setStorage] = useState('');
   const [ports, setPorts] = useState('');
+  const [hypervisorEnabled, setHypervisorEnabled] = useState(false);
+  const [appHostEnabled, setAppHostEnabled] = useState(false);
+  const [storageEnabled, setStorageEnabled] = useState(false);
+  const [routingEnabled, setRoutingEnabled] = useState(false);
+  const [natEnabled, setNatEnabled] = useState(false);
+  const [firewallEnabled, setFirewallEnabled] = useState(false);
+  const [networkZone, setNetworkZone] = useState<NonNullable<HardwareSpec['network_zone']>>('lan');
+  const [publicIP, setPublicIP] = useState('');
+  const [provider, setProvider] = useState('');
+  const [region, setRegion] = useState('');
 
   const [ramUnit, setRamUnit] = useState<'GB' | 'TB'>('GB');
   const [storageUnit, setStorageUnit] = useState<'GB' | 'TB'>('GB');
@@ -58,6 +68,19 @@ export function NodePropertiesPanel() {
   const [modelSearchOpen, setModelSearchOpen] = useState(false);
 
   const selectedNode = hardwareNodes.find(n => n.id === selectedNodeId);
+  const isGatewayCapable = !!selectedNode && (
+    selectedNode.type === 'router' ||
+    selectedNode.type === 'firewall' ||
+    selectedNode.type === 'server_v2' ||
+    selectedNode.type === 'vps'
+  );
+  const canProvideDHCP = !!selectedNode && (
+    selectedNode.type === 'router' ||
+    (
+      (selectedNode.type === 'firewall' || selectedNode.type === 'server_v2' || selectedNode.type === 'vps') &&
+      (natEnabled || routingEnabled)
+    )
+  );
 
   const { data: hardwareResponse } = useHardware(
     selectedNode ? { category: selectedNode.type, limit: 100 } : {}
@@ -141,8 +164,9 @@ export function NodePropertiesPanel() {
       if (macAddress !== (selectedNode.mac_address || '')) setMacAddress(selectedNode.mac_address || '');
       if (mask !== (selectedNode.subnet_mask || '')) setMask(selectedNode.subnet_mask || '');
       if (gateway !== (selectedNode.gateway || '')) setGateway(selectedNode.gateway || '');
-      if (dhcpEnabled !== (selectedNode.details?.dhcp_enabled ?? true))
-        setDhcpEnabled(selectedNode.details?.dhcp_enabled ?? true);
+      const defaultDhcp = selectedNode.type === 'router' || selectedNode.type === 'firewall';
+      if (dhcpEnabled !== (selectedNode.details?.dhcp_enabled ?? defaultDhcp))
+        setDhcpEnabled(selectedNode.details?.dhcp_enabled ?? defaultDhcp);
       if (dhcpLocked !== (selectedNode.details?.dhcp_locked ?? false))
         setDhcpLocked(selectedNode.details?.dhcp_locked ?? false);
 
@@ -187,6 +211,26 @@ export function NodePropertiesPanel() {
           ? ''
           : String(parsePortCount(portValue) ?? getNodePortCount(selectedNode.type, portValue));
       if (ports !== normalizedPorts) setPorts(normalizedPorts);
+      if (hypervisorEnabled !== (selectedNode.details?.hypervisor_enabled ?? false))
+        setHypervisorEnabled(selectedNode.details?.hypervisor_enabled ?? false);
+      if (appHostEnabled !== (selectedNode.details?.app_host_enabled ?? false))
+        setAppHostEnabled(selectedNode.details?.app_host_enabled ?? false);
+      if (storageEnabled !== (selectedNode.details?.storage_enabled ?? false))
+        setStorageEnabled(selectedNode.details?.storage_enabled ?? false);
+      if (routingEnabled !== (selectedNode.details?.routing_enabled ?? false))
+        setRoutingEnabled(selectedNode.details?.routing_enabled ?? false);
+      if (natEnabled !== (selectedNode.details?.nat_enabled ?? false))
+        setNatEnabled(selectedNode.details?.nat_enabled ?? false);
+      if (firewallEnabled !== (selectedNode.details?.firewall_enabled ?? false))
+        setFirewallEnabled(selectedNode.details?.firewall_enabled ?? false);
+      if (networkZone !== (selectedNode.details?.network_zone || 'lan'))
+        setNetworkZone(selectedNode.details?.network_zone || 'lan');
+      if (publicIP !== (selectedNode.details?.public_ip || ''))
+        setPublicIP(selectedNode.details?.public_ip || '');
+      if (provider !== (selectedNode.details?.provider || ''))
+        setProvider(selectedNode.details?.provider || '');
+      if (region !== (selectedNode.details?.region || ''))
+        setRegion(selectedNode.details?.region || '');
 
       setErrors({});
     }
@@ -217,12 +261,22 @@ export function NodePropertiesPanel() {
           details: {
             ...selectedNode.details,
             model,
-            dhcp_enabled: selectedNode.type === 'router' ? dhcpEnabled : undefined,
+            dhcp_enabled: canProvideDHCP ? dhcpEnabled : undefined,
             dhcp_locked: dhcpLocked,
             cpu: parseNum(cpu),
             ram: rVal ? rVal * (ramUnit === 'TB' ? 1000 : 1) : undefined,
             storage: sVal ? sVal * (storageUnit === 'TB' ? 1000 : 1) : undefined,
             ports: parseNum(ports),
+            hypervisor_enabled: selectedNode.type === 'server_v2' || selectedNode.type === 'vps' ? hypervisorEnabled : undefined,
+            app_host_enabled: selectedNode.type === 'server_v2' || selectedNode.type === 'vps' ? appHostEnabled : undefined,
+            storage_enabled: selectedNode.type === 'server_v2' ? storageEnabled : undefined,
+            routing_enabled: selectedNode.type === 'server_v2' || selectedNode.type === 'firewall' || selectedNode.type === 'vps' ? routingEnabled : undefined,
+            nat_enabled: selectedNode.type === 'server_v2' || selectedNode.type === 'firewall' || selectedNode.type === 'vps' ? natEnabled : undefined,
+            firewall_enabled: selectedNode.type === 'server_v2' || selectedNode.type === 'firewall' ? firewallEnabled : undefined,
+            network_zone: isNetworkNode(selectedNode.type) ? networkZone : undefined,
+            public_ip: selectedNode.type === 'vps' ? publicIP : undefined,
+            provider: selectedNode.type === 'vps' ? provider : undefined,
+            region: selectedNode.type === 'vps' ? region : undefined,
           },
         });
       }
@@ -244,6 +298,16 @@ export function NodePropertiesPanel() {
     storage,
     storageUnit,
     ports,
+    hypervisorEnabled,
+    appHostEnabled,
+    storageEnabled,
+    routingEnabled,
+    natEnabled,
+    firewallEnabled,
+    networkZone,
+    publicIP,
+    provider,
+    region,
   ]);
 
   if (!selectedNode) return null;
@@ -268,11 +332,31 @@ export function NodePropertiesPanel() {
     }
   };
 
-  const isRouter = selectedNode.type === 'router';
+  const isLegacyServer = selectedNode.type === 'server';
+  const isNewServer = selectedNode.type === 'server_v2';
   const isRack = selectedNode.type === 'rack';
   const isInRack = !!selectedNode.parent_id;
   const supportsVMs = canNodeHostVMs(selectedNode.type);
   const isNetworked = isNetworkNode(selectedNode.type);
+
+  const upgradeLegacyServer = () => {
+    updateHardware(selectedNode.id, {
+      type: 'server_v2',
+      details: {
+        ...selectedNode.details,
+        ports: selectedNode.details?.ports || 4,
+        server_profile: selectedNode.details?.server_profile || 'general',
+        hypervisor_enabled: true,
+        app_host_enabled: true,
+        storage_enabled: !!selectedNode.details?.storage,
+        routing_enabled: false,
+        nat_enabled: false,
+        firewall_enabled: false,
+        network_zone: selectedNode.details?.network_zone || 'lan',
+      },
+    });
+    toast.success('Legacy server upgraded.');
+  };
 
   // Resource limit calculations
   const { cpu: usedCpu, ramMb: usedRam } = getVmResourceUsage(selectedNode.vms || []);
@@ -341,6 +425,22 @@ export function NodePropertiesPanel() {
             placeholder={isRack ? 'e.g. Main Rack' : 'e.g. Main Router'}
           />
         </div>
+
+        {isLegacyServer && (
+          <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-amber-300">Legacy Server</p>
+                <p className="text-[10px] text-muted-foreground">
+                  Keeps old builds stable. Upgrade to unlock server roles.
+                </p>
+              </div>
+              <Button size="sm" className="h-8 shrink-0" onClick={upgradeLegacyServer}>
+                Upgrade
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* ── Rack-specific properties ── */}
         {isRack && (
@@ -473,6 +573,65 @@ export function NodePropertiesPanel() {
           </div>
         )}
 
+        {(isNewServer || selectedNode.type === 'firewall' || selectedNode.type === 'vps') && (
+          <div className="space-y-3 border rounded-md p-3 bg-muted/20">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium">Network Roles</span>
+              <select
+                className="h-7 rounded-md border border-input bg-background px-2 text-xs"
+                value={networkZone}
+                onChange={e => setNetworkZone(e.target.value as NonNullable<HardwareSpec['network_zone']>)}
+              >
+                <option value="lan">LAN</option>
+                <option value="wan">WAN</option>
+                <option value="dmz">DMZ</option>
+                <option value="cloud">Cloud</option>
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {isNewServer && (
+                <>
+                  <label className="node-role-toggle">
+                    <input type="checkbox" checked={hypervisorEnabled} onChange={e => setHypervisorEnabled(e.target.checked)} />
+                    Hypervisor
+                  </label>
+                  <label className="node-role-toggle">
+                    <input type="checkbox" checked={appHostEnabled} onChange={e => setAppHostEnabled(e.target.checked)} />
+                    Apps
+                  </label>
+                  <label className="node-role-toggle">
+                    <input type="checkbox" checked={storageEnabled} onChange={e => setStorageEnabled(e.target.checked)} />
+                    Storage
+                  </label>
+                </>
+              )}
+              <label className="node-role-toggle">
+                <input type="checkbox" checked={routingEnabled} onChange={e => setRoutingEnabled(e.target.checked)} />
+                Routing
+              </label>
+              <label className="node-role-toggle">
+                <input type="checkbox" checked={natEnabled} onChange={e => setNatEnabled(e.target.checked)} />
+                NAT
+              </label>
+              {selectedNode.type !== 'vps' && (
+                <label className="node-role-toggle">
+                  <input type="checkbox" checked={firewallEnabled} onChange={e => setFirewallEnabled(e.target.checked)} />
+                  Firewall
+                </label>
+              )}
+            </div>
+            {selectedNode.type === 'vps' && (
+              <div className="grid grid-cols-1 gap-2">
+                <Input className="h-8 text-xs" value={publicIP} onChange={e => setPublicIP(e.target.value)} placeholder="Public IP" />
+                <div className="grid grid-cols-2 gap-2">
+                  <Input className="h-8 text-xs" value={provider} onChange={e => setProvider(e.target.value)} placeholder="Provider" />
+                  <Input className="h-8 text-xs" value={region} onChange={e => setRegion(e.target.value)} placeholder="Region" />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Advanced Network Config Collapsible */}
         {isNetworked && (
           <div className="border rounded-md px-3 pt-3 bg-muted/20">
@@ -503,7 +662,7 @@ export function NodePropertiesPanel() {
                             {errors.ip}
                           </span>
                         )}
-                        {!isRouter && (
+                        {!isGatewayCapable && (
                           <Button
                             variant="ghost"
                             size="sm"
@@ -521,7 +680,7 @@ export function NodePropertiesPanel() {
                         value={ip}
                         onChange={e => handleIpChange(e.target.value)}
                         placeholder={
-                          isRouter ? '192.168.1.1' : dhcpLocked ? 'Static IP' : 'auto from router'
+                          isGatewayCapable ? '192.168.1.1' : dhcpLocked ? 'Static IP' : 'auto from router'
                         }
                         className={
                           errors.ip ? 'border-destructive focus-visible:ring-destructive' : ''
@@ -565,7 +724,7 @@ export function NodePropertiesPanel() {
                   </div>
 
                   {/* Router-specific: Subnet Mask + Gateway */}
-                  {isRouter && (
+                  {isGatewayCapable && (
                     <>
                       <div className="space-y-2">
                         <div className="flex justify-between">
@@ -597,24 +756,25 @@ export function NodePropertiesPanel() {
                           className={errors.gateway ? 'border-destructive' : ''}
                         />
                       </div>
-                      <div className="flex items-center justify-between gap-2 mt-4 pt-4 border-t border-border/50">
-                        <Label htmlFor="dhcp_enabled" className="flex flex-col gap-1">
-                          <span>DHCP Server Enabled</span>
-                          <span className="font-normal text-[10px] text-muted-foreground w-48">
-                            Automatically assign IPs for nodes connected to this router.
-                          </span>
-                        </Label>
-                        <input
-                          type="checkbox"
-                          id="dhcp_enabled"
-                          checked={dhcpEnabled}
-                          onChange={e => setDhcpEnabled(e.target.checked)}
-                          className="size-4 rounded border-gray-300 text-primary focus:ring-primary"
-                        />
-                      </div>
-                      <p className="text-[10px] text-muted-foreground bg-primary/5 rounded-md px-2 py-1.5 mt-2">
-                        💡 Set this router's IP to enable auto-assignment for other nodes.
-                      </p>
+                      {canProvideDHCP && (
+                        <>
+                          <div className="flex items-center justify-between gap-2 mt-4 pt-4 border-t border-border/50">
+                            <Label htmlFor="dhcp_enabled" className="flex flex-col gap-1">
+                              <span>DHCP Server Enabled</span>
+                              <span className="font-normal text-[10px] text-muted-foreground w-48">
+                                Automatically assign IPs for downstream LAN ports.
+                              </span>
+                            </Label>
+                            <input
+                              type="checkbox"
+                              id="dhcp_enabled"
+                              checked={dhcpEnabled}
+                              onChange={e => setDhcpEnabled(e.target.checked)}
+                              className="size-4 rounded border-gray-300 text-primary focus:ring-primary"
+                            />
+                          </div>
+                        </>
+                      )}
                     </>
                   )}
                 </div>

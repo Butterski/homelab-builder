@@ -105,6 +105,77 @@ func TestAllocate_DHCPExclusionRange(t *testing.T) {
 	}
 }
 
+func TestAllocate_DottedSubnetMaskKeepsAssignmentsInGateway24(t *testing.T) {
+	req := models.AllocateRequest{
+		Routers: []models.RouterDTO{
+			{ID: "r1", GatewayIP: "192.168.0.1", Subnet: "192.168.0.1/255.255.255.0", DHCPEnabled: true},
+		},
+		Nodes: []models.NodeDTO{
+			{ID: "srv1", Type: "server_v2", Connections: []string{"r1"}},
+			{ID: "pc1", Type: "pc", Connections: []string{"r1"}},
+		},
+	}
+
+	resp := Allocate(req)
+
+	assertPrefix(t, findNodeIP(resp, "srv1"), "192.168.0.")
+	assertPrefix(t, findNodeIP(resp, "pc1"), "192.168.0.")
+}
+
+func TestAllocate_NATServerWANStaysInParentSubnet(t *testing.T) {
+	req := models.AllocateRequest{
+		Routers: []models.RouterDTO{
+			{ID: "r1", GatewayIP: "192.168.0.1", Subnet: "192.168.0.1/255.255.255.0", DHCPEnabled: true},
+			{ID: "srv1:lan", GatewayIP: "192.168.1.1", Subnet: "192.168.1.1/24", DHCPEnabled: true},
+		},
+		Nodes: []models.NodeDTO{
+			{ID: "srv1", Type: "server_v2", Connections: []string{"r1"}},
+			{ID: "pc1", Type: "pc", Connections: []string{"srv1:lan"}},
+		},
+	}
+
+	resp := Allocate(req)
+
+	assertPrefix(t, findNodeIP(resp, "srv1"), "192.168.0.")
+	assertPrefix(t, findNodeIP(resp, "pc1"), "192.168.1.")
+	if resp.Routers[1].GatewayIP != "192.168.1.1" {
+		t.Fatalf("NAT LAN gateway changed: got %s", resp.Routers[1].GatewayIP)
+	}
+}
+
+func TestAllocate_SyntheticNATRouterNeverClaimsOwnerWAN(t *testing.T) {
+	req := models.AllocateRequest{
+		Routers: []models.RouterDTO{
+			{ID: "srv1:lan", GatewayIP: "192.168.1.1", Subnet: "192.168.1.1/24", DHCPEnabled: true},
+			{ID: "r1", GatewayIP: "192.168.0.1", Subnet: "192.168.0.1/255.255.255.0", DHCPEnabled: true},
+		},
+		Nodes: []models.NodeDTO{
+			{ID: "srv1", Type: "server_v2", Connections: []string{"r1", "srv1:lan"}},
+			{ID: "pc1", Type: "pc", Connections: []string{"srv1:lan"}},
+		},
+	}
+
+	resp := Allocate(req)
+
+	assertPrefix(t, findNodeIP(resp, "srv1"), "192.168.0.")
+	assertPrefix(t, findNodeIP(resp, "pc1"), "192.168.1.")
+}
+
+func TestAllocate_ClassAMaskUsesThe10Network(t *testing.T) {
+	req := models.AllocateRequest{
+		Routers: []models.RouterDTO{
+			{ID: "r1", GatewayIP: "10.25.44.1", Subnet: "10.25.44.1/255.0.0.0", DHCPEnabled: true},
+		},
+		Nodes: []models.NodeDTO{
+			{ID: "srv1", Type: "server_v2", Connections: []string{"r1"}},
+		},
+	}
+
+	resp := Allocate(req)
+
+	assertPrefix(t, findNodeIP(resp, "srv1"), "10.")
+}
+
 func TestAllocate_MultipleServersGetSeparateBlocks(t *testing.T) {
 	req := models.AllocateRequest{
 		Routers: []models.RouterDTO{
@@ -128,6 +199,34 @@ func TestAllocate_MultipleServersGetSeparateBlocks(t *testing.T) {
 	}
 	if ip1 == "" || ip2 == "" {
 		t.Fatalf("servers must have IPs: srv1=%s, srv2=%s", ip1, ip2)
+	}
+}
+
+func TestAllocate_NewServerAndVPSGetComputeBlocks(t *testing.T) {
+	req := models.AllocateRequest{
+		Routers: []models.RouterDTO{
+			{ID: "fw1", GatewayIP: "10.10.0.1"},
+		},
+		Nodes: []models.NodeDTO{
+			{ID: "sw1", Type: "switch", Connections: []string{"fw1", "srv1", "vps1"}},
+			{ID: "srv1", Type: "server_v2", Connections: []string{"sw1"}, VMs: []models.VMDTO{{ID: "vm1"}}},
+			{ID: "vps1", Type: "vps", Connections: []string{"sw1"}, VMs: []models.VMDTO{{ID: "vm2"}}},
+		},
+	}
+
+	resp := Allocate(req)
+
+	if findNodeIP(resp, "srv1") == "" {
+		t.Fatalf("new server did not receive an IP")
+	}
+	if findNodeIP(resp, "vps1") == "" {
+		t.Fatalf("vps did not receive an IP")
+	}
+	if len(findVMIPs(resp, "srv1")) != 1 || findVMIPs(resp, "srv1")[0] == "" {
+		t.Fatalf("server VM did not receive an IP")
+	}
+	if len(findVMIPs(resp, "vps1")) != 1 || findVMIPs(resp, "vps1")[0] == "" {
+		t.Fatalf("vps VM did not receive an IP")
 	}
 }
 
@@ -173,6 +272,13 @@ func assertIP(t *testing.T, resp models.AllocateResponse, nodeID, expectedIP str
 	ip := findNodeIP(resp, nodeID)
 	if ip != expectedIP {
 		t.Errorf("node %s: expected IP %s, got %s", nodeID, expectedIP, ip)
+	}
+}
+
+func assertPrefix(t *testing.T, ip, prefix string) {
+	t.Helper()
+	if len(ip) < len(prefix) || ip[:len(prefix)] != prefix {
+		t.Fatalf("expected IP with prefix %s, got %s", prefix, ip)
 	}
 }
 

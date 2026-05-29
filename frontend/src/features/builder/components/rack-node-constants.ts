@@ -9,6 +9,9 @@ export const RACK_RAIL_WIDTH = 28;  // left rail for U numbers
 // Default U-heights for device types
 export const DEFAULT_DEVICE_U: Record<string, number> = {
   server: 2,
+  server_v2: 2,
+  firewall: 1,
+  vps: 1,
   switch: 1,
   router: 2,
   nas: 2,

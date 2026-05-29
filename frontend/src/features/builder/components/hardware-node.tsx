@@ -16,6 +16,9 @@ import {
   AlertTriangle,
   Printer,
   Globe,
+  Shield,
+  Cloud,
+  Network,
 } from 'lucide-react';
 import { Card } from '../../../components/ui/card';
 import { cn } from '../../../lib/utils';
@@ -68,6 +71,27 @@ const TYPE_CONFIG: Partial<
     bg: 'bg-orange-500',
     iconColor: 'text-orange-400',
     color: '#f97316',
+  },
+  server_v2: {
+    icon: Server,
+    border: 'border-border',
+    bg: 'bg-orange-500',
+    iconColor: 'text-orange-400',
+    color: '#f97316',
+  },
+  firewall: {
+    icon: Shield,
+    border: 'border-border',
+    bg: 'bg-red-500',
+    iconColor: 'text-red-400',
+    color: '#ef4444',
+  },
+  vps: {
+    icon: Cloud,
+    border: 'border-border',
+    bg: 'bg-sky-500',
+    iconColor: 'text-sky-400',
+    color: '#38bdf8',
   },
   nas: {
     icon: HardDrive,
@@ -180,7 +204,10 @@ const TYPE_LABEL: Record<HardwareType, string> = {
   router: 'Gateway',
   switch: 'Switch',
   nas: 'Storage',
-  server: 'Server',
+  server: 'Legacy Server',
+  server_v2: 'Server',
+  firewall: 'Firewall',
+  vps: 'VPS',
   pc: 'Workstation',
   access_point: 'Wi-Fi',
   disk: 'Disk',
@@ -295,7 +322,7 @@ function ComponentChip({ component }: { component: HardwareComponent }) {
 
 // ─── Main node card ────────────────────────────────────────────────────────────
 const CONTAINER_STEP = 10; // mirrors ROLE_ZONE step for compute types
-const POOL_HINT_NODE_TYPES: HardwareType[] = ['server', 'pc', 'minipc', 'sbc', 'nas'];
+const POOL_HINT_NODE_TYPES: HardwareType[] = ['server', 'server_v2', 'vps', 'pc', 'minipc', 'sbc', 'nas'];
 
 export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
   const nodeData = data as unknown as HardwareNodeData;
@@ -308,6 +335,19 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
   const hasVMs = vms.length > 0;
   const hasComponents = components.length > 0;
   const isCompute = isComputeNode(nodeData.type);
+  const isLegacyServer = nodeData.type === 'server';
+  const isNewServer = nodeData.type === 'server_v2';
+  const natEnabled = !!details.nat_enabled;
+  const firewallEnabled = nodeData.type === 'firewall' || !!details.firewall_enabled;
+  const routingEnabled = !!details.routing_enabled;
+  const networkZone = details.network_zone;
+  const interfaces = Array.isArray(details.interfaces) ? details.interfaces : [];
+  const wanInterface = interfaces.find(iface => iface?.role === 'wan');
+  const lanInterface = interfaces.find(iface => iface?.role === 'lan');
+  const wanIP = details.wan_ip || wanInterface?.ip || nodeData.ip;
+  const lanGatewayIP = details.lan_gateway_ip || lanInterface?.ip;
+  const lanSubnet = details.lan_subnet || lanInterface?.subnet;
+  const isDualHomedGateway = !!(natEnabled || routingEnabled) && !!lanGatewayIP;
 
   const validationIssues = useBuilderStore(s => s.validationIssues);
   const nodeIssues = validationIssues.filter((i: HardwareNodeValidationIssue) => i.node_id === id);
@@ -395,10 +435,11 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
   }, [id, numPorts, connectedEdgeCount, updateNodeInternals, hasVMs, hasComponents, hasWarning]);
 
   // Container pool range hint
+  const poolBaseIP = isDualHomedGateway && lanGatewayIP ? lanGatewayIP : nodeData.ip;
   const containerRangeHint =
-    isCompute && nodeData.ip && POOL_HINT_NODE_TYPES.includes(nodeData.type)
+    isCompute && poolBaseIP && POOL_HINT_NODE_TYPES.includes(nodeData.type)
       ? (() => {
-          const parts = nodeData.ip.split('.');
+          const parts = poolBaseIP.split('.');
           const last = parseInt(parts[3] ?? '0', 10);
           const prefix = parts.slice(0, 3).join('.');
           return `${prefix}.${last + 1}-${last + CONTAINER_STEP - 1}`;
@@ -450,6 +491,9 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
               ? 'hardware-node-warning border-orange-500'
               : '',
           selected ? 'scale-[1.015]' : '',
+          natEnabled ? 'hardware-node-nat' : '',
+          firewallEnabled ? 'hardware-node-firewall' : '',
+          nodeData.type === 'vps' ? 'hardware-node-cloud' : '',
         )}
         style={{
           '--node-accent': cfg.color,
@@ -475,6 +519,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
             </span>
             <div className="flex items-center gap-1.5 pt-0.5">
               <span className="node-type-pill">{TYPE_LABEL[nodeData.type] ?? nodeData.type}</span>
+              {isLegacyServer && <span className="node-legacy-pill">Legacy</span>}
               {nodeHasDynamicPorts(nodeData.type) && (
                 <span className="node-port-count">{numPorts} ports</span>
               )}
@@ -519,14 +564,32 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
               <div className="node-telemetry-grid">
                 {isNetworkNode(nodeData.type) && (
                   <div className="node-telemetry-cell">
-                    <span className="node-telemetry-label">IP:</span>
+                    <span className="node-telemetry-label">{isDualHomedGateway ? 'WAN:' : 'IP:'}</span>
                     <span
                       className={cn(
                         'node-telemetry-value font-mono',
-                        nodeData.ip ? 'text-foreground' : 'italic opacity-45 text-muted-foreground',
+                        wanIP ? 'text-foreground' : 'italic opacity-45 text-muted-foreground',
                       )}
                     >
-                      {nodeData.ip || 'unassigned'}
+                      {wanIP || 'unassigned'}
+                    </span>
+                  </div>
+                )}
+
+                {isDualHomedGateway && (
+                  <div className="node-telemetry-cell">
+                    <span className="node-telemetry-label">LAN GW:</span>
+                    <span className="node-telemetry-value font-mono text-emerald-300 truncate">
+                      {lanGatewayIP}
+                    </span>
+                  </div>
+                )}
+
+                {isDualHomedGateway && lanSubnet && (
+                  <div className="node-telemetry-cell">
+                    <span className="node-telemetry-label">LAN:</span>
+                    <span className="node-telemetry-value font-mono text-emerald-300 truncate">
+                      {lanSubnet}
                     </span>
                   </div>
                 )}
@@ -541,6 +604,40 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
                     </span>
                   </div>
                 )}
+                {(natEnabled || firewallEnabled || routingEnabled || networkZone) && (
+                  <div className="node-telemetry-cell node-net-role-cell">
+                    <span className="node-telemetry-label flex items-center gap-1">
+                      <Network className="size-2.5" /> Role:
+                    </span>
+                    <span className="node-telemetry-value node-role-list">
+                      {networkZone && <span>{String(networkZone).toUpperCase()}</span>}
+                      {natEnabled && <span>NAT</span>}
+                      {firewallEnabled && <span>FW</span>}
+                      {routingEnabled && <span>ROUTE</span>}
+                    </span>
+                  </div>
+                )}
+                {nodeData.type === 'vps' && (details.public_ip || details.provider) && (
+                  <div className="node-telemetry-cell">
+                    <span className="node-telemetry-label flex items-center gap-1">
+                      <Cloud className="size-2.5" /> Cloud:
+                    </span>
+                    <span className="node-telemetry-value font-mono text-sky-300 truncate">
+                      {details.public_ip || `${details.provider ?? 'cloud'} ${details.region ?? ''}`.trim()}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {isNewServer && (
+              <div className="node-capability-strip">
+                {details.hypervisor_enabled && <span>Hypervisor</span>}
+                {details.app_host_enabled && <span>Apps</span>}
+                {details.storage_enabled && <span>Storage</span>}
+                {routingEnabled && <span>Router</span>}
+                {natEnabled && <span>NAT</span>}
+                {firewallEnabled && <span>Firewall</span>}
               </div>
             )}
 

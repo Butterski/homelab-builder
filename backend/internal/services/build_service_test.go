@@ -177,6 +177,44 @@ func TestBuildService_Update_InvalidEdgeReferenceRollsBack(t *testing.T) {
 	}
 }
 
+func TestBuildService_PreservesConnectionMetadata(t *testing.T) {
+	tx := testTx(t)
+	svc := NewBuildService(tx)
+	user := models.User{Email: uuid.NewString() + "@t.com", Name: "EdgeTest", GoogleID: uuid.NewString()}
+	tx.Create(&user)
+
+	build, err := svc.Create(user.ID, SyncGraphInput{
+		Name: "Wireless Build",
+		Nodes: []NodeDTO{
+			{ID: "router-1", Type: "router", Name: "Router"},
+			{ID: "ap-1", Type: "access_point", Name: "Access Point"},
+		},
+		Edges: []EdgeDTO{{
+			Source:           "router-1",
+			Target:           "ap-1",
+			Type:             "wireless",
+			Speed:            "1 GbE",
+			WirelessStandard: "Wi-Fi 6",
+			Direction:        "lan",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	loaded, err := svc.GetByID(build.ID)
+	if err != nil {
+		t.Fatalf("GetByID failed: %v", err)
+	}
+	if len(loaded.Edges) != 1 {
+		t.Fatalf("expected 1 edge, got %d", len(loaded.Edges))
+	}
+	edge := loaded.Edges[0]
+	if edge.Type != "wireless" || edge.WirelessStandard != "Wi-Fi 6" || edge.Direction != "lan" {
+		t.Fatalf("edge metadata was not preserved: %+v", edge)
+	}
+}
+
 func TestBuildService_TotalPower(t *testing.T) {
 	tx := testTx(t)
 	svc := NewBuildService(tx)

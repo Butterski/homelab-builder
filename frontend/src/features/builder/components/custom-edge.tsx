@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type CSSProperties, type MouseEvent } from 'react';
 import {
   BaseEdge,
   EdgeLabelRenderer,
@@ -11,7 +11,7 @@ import {
   type EdgeProps,
 } from '@xyflow/react';
 import { Button } from '../../../components/ui/button';
-import { Settings2, X } from 'lucide-react';
+import { Cable, LockKeyhole, Radio, Settings2, Wifi, X } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '../../../components/ui/popover';
 import { Label } from '../../../components/ui/label';
 import { Input } from '../../../components/ui/input';
@@ -36,6 +36,18 @@ const SPEED_COLORS: Record<string, string> = {
   '100 GbE': '#ef4444', // red-500
 };
 
+const WIRELESS_STANDARDS = ['Wi-Fi 4', 'Wi-Fi 5', 'Wi-Fi 6', 'Wi-Fi 6E', 'Wi-Fi 7', '4G LTE', '5G'] as const;
+
+const WIRELESS_COLORS: Record<string, string> = {
+  'Wi-Fi 4': '#94a3b8',
+  'Wi-Fi 5': '#60a5fa',
+  'Wi-Fi 6': '#22d3ee',
+  'Wi-Fi 6E': '#a78bfa',
+  'Wi-Fi 7': '#f472b6',
+  '4G LTE': '#f59e0b',
+  '5G': '#34d399',
+};
+
 export function CustomEdge({
   id,
   source,
@@ -55,7 +67,9 @@ export function CustomEdge({
   const updateEdge = useBuilderStore(s => s.updateEdge);
   const edgePreferences = useBuilderStore(s => s.edgePreferences);
   const nodes = useNodes();
+  const visibleNodes = nodes.filter(n => n.type !== 'networkZone');
   const [isHovered, setIsHovered] = useState(false);
+  const [radialOpen, setRadialOpen] = useState(false);
 
   // Glow when either connected node is selected
   const isNodeSelected = nodes.some(n => (n.id === source || n.id === target) && n.selected);
@@ -125,7 +139,7 @@ export function CustomEdge({
       targetX: tx,
       targetY: ty,
       targetPosition: targetPos,
-      nodes,
+      nodes: visibleNodes,
       options: {
         nodePadding: 20,
         drawEdge: edgePreferences.lineStyle === 'bezier' ? svgDrawSmoothLinePath : undefined,
@@ -151,14 +165,21 @@ export function CustomEdge({
     labelY = fb.edgeCenterY;
   }
 
-  const onEdgeClick = (evt: React.MouseEvent) => {
+  const onEdgeClick = (evt: MouseEvent) => {
     evt.stopPropagation();
     deleteElements({ edges: [{ id }] });
   };
 
   const speed = (data?.speed as string) || '1 GbE';
   const subnet = (data?.subnet as string) || '';
-  const edgeColor = SPEED_COLORS[speed] || '#f97316';
+  const connectionType = (data?.connection_type as string) || 'ethernet';
+  const wirelessStandard = (data?.wireless_standard as string) || 'Wi-Fi 6';
+  const direction = (data?.direction as string) || 'auto';
+  const isWireless = connectionType === 'wireless';
+  const isVpn = connectionType === 'vpn';
+  const edgeColor = isVpn
+    ? '#14b8a6'
+    : isWireless ? WIRELESS_COLORS[wirelessStandard] || '#22d3ee' : SPEED_COLORS[speed] || '#f97316';
 
   const handleSpeedChange = (val: string) => {
     updateEdge(id, { data: { ...(data || {}), speed: val } });
@@ -166,6 +187,20 @@ export function CustomEdge({
 
   const handleSubnetChange = (val: string) => {
     updateEdge(id, { data: { ...(data || {}), subnet: val } });
+  };
+
+  const updateEdgeData = (patch: Record<string, string>) => {
+    updateEdge(id, { data: { ...(data || {}), ...patch } });
+  };
+
+  const chooseWireless = (standard: string) => {
+    updateEdgeData({ connection_type: 'wireless', wireless_standard: standard });
+    setRadialOpen(false);
+  };
+
+  const chooseVpn = () => {
+    updateEdgeData({ connection_type: 'vpn', direction: 'auto' });
+    setRadialOpen(false);
   };
 
   return (
@@ -181,6 +216,11 @@ export function CustomEdge({
         strokeWidth={24}
         pointerEvents="stroke"
         className="cursor-pointer"
+        onAuxClick={evt => {
+          evt.preventDefault();
+          evt.stopPropagation();
+          setRadialOpen(v => !v);
+        }}
       />
       {/* Base tracking line */}
       <BaseEdge
@@ -201,12 +241,15 @@ export function CustomEdge({
           ...customStyle,
           stroke: edgeColor,
           strokeWidth: isHighlighted
-            ? Math.max(Number(customStyle?.strokeWidth || 2), 3.5)
-            : customStyle?.strokeWidth || 2,
-          strokeDasharray: '4 8',
-          animationDuration: '1s',
+            ? Math.max(Number(customStyle?.strokeWidth || 2), isWireless || isVpn ? 4.5 : 3.5)
+            : isVpn ? 4 : isWireless ? 3.25 : customStyle?.strokeWidth || 2,
+          strokeDasharray: isVpn ? '16 8 2 8' : isWireless ? '0.1 12' : '4 8',
+          strokeLinecap: isWireless || isVpn ? 'round' : undefined,
+          animationDuration: isVpn ? '2.4s' : isWireless ? '1.8s' : '1s',
           animation: 'dash-move 1s linear infinite',
-          filter: isHighlighted ? `drop-shadow(0 0 4px ${edgeColor}) brightness(1.3)` : 'none',
+          filter: isWireless || isVpn || isHighlighted
+            ? `drop-shadow(0 0 ${isHighlighted ? 6 : 3}px ${edgeColor}) brightness(${isHighlighted ? 1.28 : 1.12})`
+            : 'none',
         }}
       />
       <EdgeLabelRenderer>
@@ -220,14 +263,73 @@ export function CustomEdge({
           className="flex flex-col items-center gap-1 nodrag nopan"
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
+          onPointerDown={e => e.stopPropagation()}
         >
           {/* Always show the speed/subnet badge if configured, or on hover */}
           <div
-            className={`px-1.5 py-0.5 rounded text-[9px] font-mono bg-background border transition-opacity duration-150 ${!isHovered && !selected && speed === '1 GbE' && !subnet ? 'opacity-0' : 'opacity-100'}`}
+            className={`px-1.5 py-0.5 rounded text-[9px] font-mono bg-background border transition-opacity duration-150 ${!isHovered && !selected && !isWireless && !isVpn && speed === '1 GbE' && !subnet ? 'opacity-0' : 'opacity-100'}`}
+            style={isWireless || isVpn ? { borderColor: edgeColor, boxShadow: `0 0 10px color-mix(in srgb, ${edgeColor} 32%, transparent)` } : undefined}
           >
-            <span className="text-primary font-semibold">{speed}</span>
+            {isVpn ? (
+              <span className="font-semibold inline-flex items-center gap-1" style={{ color: edgeColor }}>
+                <LockKeyhole className="size-2.5" /> VPN tunnel
+              </span>
+            ) : isWireless ? (
+              <span className="font-semibold inline-flex items-center gap-1" style={{ color: edgeColor }}>
+                <Wifi className="size-2.5" /> {wirelessStandard}
+              </span>
+            ) : (
+              <span className="text-primary font-semibold">{speed}</span>
+            )}
             {subnet && <span className="ml-1 text-muted-foreground">({subnet})</span>}
+            {direction !== 'auto' && <span className="ml-1 text-muted-foreground">[{direction}]</span>}
           </div>
+
+          {radialOpen && (
+            <div className="edge-radial-menu nodrag nopan" onMouseDown={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()}>
+              <button
+                type="button"
+                className="edge-radial-center"
+                onClick={() => {
+                  updateEdgeData({ connection_type: 'ethernet' });
+                  setRadialOpen(false);
+                }}
+                title="Cable"
+              >
+                <Cable className="size-3.5" />
+              </button>
+              <button
+                type="button"
+                className="edge-radial-item edge-radial-vpn"
+                style={{
+                  transform: 'translate(0px, 88px)',
+                  '--wireless-color': '#14b8a6',
+                } as CSSProperties}
+                onClick={chooseVpn}
+                title="Site-to-site VPN"
+              >
+                VPN
+              </button>
+              {WIRELESS_STANDARDS.map((standard, index) => {
+                const angle = (Math.PI * 2 * index) / WIRELESS_STANDARDS.length - Math.PI / 2;
+                return (
+                  <button
+                    type="button"
+                    key={standard}
+                    className="edge-radial-item"
+                    style={{
+                      transform: `translate(${Math.cos(angle) * 58}px, ${Math.sin(angle) * 58}px)`,
+                      '--wireless-color': WIRELESS_COLORS[standard],
+                    } as CSSProperties}
+                    onClick={() => chooseWireless(standard)}
+                    title={standard}
+                  >
+                    {standard.replace('Wi-Fi ', '')}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           <div
             className={`flex items-center gap-1 transition-opacity ${isHovered || selected ? 'opacity-100' : 'opacity-0'} pointer-events-auto`}
@@ -243,7 +345,13 @@ export function CustomEdge({
                   <Settings2 className="size-3" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-60 p-3" side="top" align="center">
+              <PopoverContent
+                className="w-60 p-3 nodrag nopan"
+                side="top"
+                align="center"
+                onPointerDown={e => e.stopPropagation()}
+                onClick={e => e.stopPropagation()}
+              >
                 <div className="space-y-3">
                   <div className="space-y-1">
                     <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">
@@ -263,6 +371,56 @@ export function CustomEdge({
                         <SelectItem value="10 GbE">10 GbE</SelectItem>
                         <SelectItem value="40 GbE">40 GbE</SelectItem>
                         <SelectItem value="100 GbE">100 GbE</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs">Medium</Label>
+                    <Select
+                      value={connectionType}
+                      onValueChange={val => updateEdgeData({ connection_type: val })}
+                    >
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue placeholder="Select medium" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ethernet">
+                          <span className="inline-flex items-center gap-2"><Cable className="size-3" /> Cable</span>
+                        </SelectItem>
+                        <SelectItem value="wireless">
+                          <span className="inline-flex items-center gap-2"><Radio className="size-3" /> Wireless</span>
+                        </SelectItem>
+                        <SelectItem value="vpn">
+                          <span className="inline-flex items-center gap-2"><LockKeyhole className="size-3" /> Site-to-site VPN</span>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {isWireless && (
+                    <div className="space-y-2">
+                      <Label className="text-xs">Wireless Type</Label>
+                      <Select value={wirelessStandard} onValueChange={val => updateEdgeData({ wireless_standard: val })}>
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder="Select wireless type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {WIRELESS_STANDARDS.map(standard => (
+                            <SelectItem key={standard} value={standard}>{standard}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    <Label className="text-xs">NAT Direction</Label>
+                    <Select value={direction} onValueChange={val => updateEdgeData({ direction: val })}>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue placeholder="Select direction" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="auto">Auto</SelectItem>
+                        <SelectItem value="wan">WAN / Upstream</SelectItem>
+                        <SelectItem value="lan">LAN / Downstream</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

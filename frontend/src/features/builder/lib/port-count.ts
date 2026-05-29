@@ -4,6 +4,9 @@ const DEFAULT_DYNAMIC_PORTS: Partial<Record<HardwareType, number>> = {
   router: 4,
   switch: 4,
   server: 4,
+  server_v2: 4,
+  firewall: 4,
+  vps: 2,
   modem: 4,
   ups: 2,
 };

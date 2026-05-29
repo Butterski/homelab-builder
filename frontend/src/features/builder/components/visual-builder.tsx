@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect, useEffectEvent } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useEffectEvent, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ReactFlow,
@@ -6,7 +6,9 @@ import {
   Controls,
   useReactFlow,
   useUpdateNodeInternals,
+  ViewportPortal,
   type NodeTypes,
+  type Node as ReactFlowNode,
   ReactFlowProvider,
   Panel,
   ConnectionMode,
@@ -41,6 +43,79 @@ import {
 } from '../../../components/ui/dropdown-menu';
 
 import { CustomEdge } from './custom-edge';
+
+type ZoneBlob = { x: number; y: number; width: number; height: number };
+
+function roundedZonePath(width: number, height: number, inset = 14) {
+  const x = inset;
+  const y = inset;
+  const w = Math.max(80, width - inset * 2);
+  const h = Math.max(80, height - inset * 2);
+  const radius = Math.min(44, Math.max(18, Math.min(w, h) * 0.12));
+  const soft = radius * 0.55;
+
+  return [
+    `M ${x + radius} ${y}`,
+    `L ${x + w - radius} ${y}`,
+    `C ${x + w - soft} ${y}, ${x + w} ${y + soft}, ${x + w} ${y + radius}`,
+    `L ${x + w} ${y + h - radius}`,
+    `C ${x + w} ${y + h - soft}, ${x + w - soft} ${y + h}, ${x + w - radius} ${y + h}`,
+    `L ${x + radius} ${y + h}`,
+    `C ${x + soft} ${y + h}, ${x} ${y + h - soft}, ${x} ${y + h - radius}`,
+    `L ${x} ${y + radius}`,
+    `C ${x} ${y + soft}, ${x + soft} ${y}, ${x + radius} ${y}`,
+    'Z',
+  ].join(' ');
+}
+
+function NetworkZoneNode({ data }: any) {
+  const filterId = `zone-filter-${data.zoneId}`;
+  return (
+    <div
+      className={`network-zone-node network-zone-${data.kind}`}
+      style={{
+        width: data.width,
+        height: data.height,
+        '--network-zone-accent': data.accent,
+        '--network-zone-opacity': data.opacity,
+      } as React.CSSProperties}
+    >
+      <svg className="network-zone-svg" viewBox={`0 0 ${data.width} ${data.height}`} preserveAspectRatio="none">
+        <defs>
+          <filter id={filterId} x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="18" result="blur" />
+            <feColorMatrix
+              in="blur"
+              mode="matrix"
+              values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 19 -8"
+              result="goo"
+            />
+            <feBlend in="SourceGraphic" in2="goo" />
+          </filter>
+        </defs>
+        <g filter={`url(#${filterId})`} className="network-zone-blobs">
+          {data.blobs?.map((blob: ZoneBlob, index: number) => (
+            <rect
+              key={index}
+              x={blob.x}
+              y={blob.y}
+              width={blob.width}
+              height={blob.height}
+              rx="48"
+              ry="48"
+            />
+          ))}
+        </g>
+        <path className="network-zone-fill" d={data.path} />
+        <path className="network-zone-outline" d={data.path} />
+      </svg>
+      <div className="network-zone-node-label">
+        <span>{data.label}</span>
+        <strong>{data.subLabel}</strong>
+      </div>
+    </div>
+  );
+}
 
 const nodeTypes: NodeTypes = {
   hardware: HardwareNodeComponent,
@@ -191,7 +266,6 @@ const Flow = React.memo(function Flow() {
     currentBuildId,
     hardwareNodes,
     projectName,
-    validateNetwork,
     edgePreferences,
     setEdgePreferences,
     undo,
@@ -199,6 +273,234 @@ const Flow = React.memo(function Flow() {
   } = useBuilderStore();
 
   const { screenToFlowPosition, getIntersectingNodes } = useReactFlow();
+  const visualPreferences = {
+    showNetworkZones: edgePreferences.showNetworkZones ?? true,
+    showLanZones: edgePreferences.showLanZones ?? false,
+    showNatZones: edgePreferences.showNatZones ?? true,
+    zoneOpacity: edgePreferences.zoneOpacity ?? 0.7,
+  };
+
+  const networkZones = useMemo<ReactFlowNode[]>(() => {
+    if (!visualPreferences.showNetworkZones) return [];
+
+    const hardwareById = new Map(hardwareNodes.map(node => [node.id, node]));
+    const reactFlowById = new Map(nodes.map(node => [node.id, node]));
+    const edgeByNode = new Map<string, typeof edges>();
+    const natChildIds = new Set<string>();
+
+    edges.forEach(edge => {
+      if (edge.data?.connection_type === 'vpn') return;
+      edgeByNode.set(edge.source, [...(edgeByNode.get(edge.source) || []), edge]);
+      edgeByNode.set(edge.target, [...(edgeByNode.get(edge.target) || []), edge]);
+    });
+
+    const isNatProvider = (node?: HardwareNode) =>
+      !!node &&
+      (node.details?.nat_enabled ||
+        node.details?.firewall_enabled ||
+        (node.type as string) === 'firewall' ||
+        (((node.type as string) === 'server_v2' || (node.type as string) === 'vps' || (node.type as string) === 'firewall') &&
+          !!node.details?.dhcp_enabled &&
+          !!node.details?.routing_enabled));
+
+    const isUpstreamAnchor = (node?: HardwareNode) =>
+      !!node &&
+      (node.type === 'router' ||
+        node.type === 'modem' ||
+        node.details?.public_ip ||
+        node.details?.network_zone === 'wan' ||
+        node.details?.network_zone === 'cloud');
+
+    const isDownstreamFromNat = (otherId: string, direction: unknown) => {
+      if (direction === 'lan') return true;
+      if (direction === 'wan') return false;
+      return !isUpstreamAnchor(hardwareById.get(otherId));
+    };
+
+    const getNodeSize = (node: ReactFlowNode) => {
+      const style = node.style || {};
+      const width = Number(node.measured?.width || node.width || style.width || 230);
+      const height = Number(node.measured?.height || node.height || style.height || 150);
+      return { width, height };
+    };
+
+    const buildZone = (
+      id: string,
+      kind: 'lan' | 'nat' | 'firewall' | 'wireless',
+      label: string,
+      subLabel: string,
+      accent: string,
+      members: ReactFlowNode[],
+      padding: number,
+    ): ReactFlowNode | null => {
+      if (members.length === 0) return null;
+
+      const rawBlobs: Array<ZoneBlob & { absX: number; absY: number }> = [];
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+
+      members.forEach(node => {
+        const size = getNodeSize(node);
+        const x = node.position.x - padding;
+        const y = node.position.y - padding;
+        const width = size.width + padding * 2;
+        const height = size.height + padding * 2;
+
+        rawBlobs.push({ x: 0, y: 0, absX: x, absY: y, width, height });
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x + width);
+        maxY = Math.max(maxY, y + height);
+      });
+
+      const gutter = 18;
+      const position = { x: minX - gutter, y: minY - gutter };
+      const width = Math.max(240, maxX - minX + gutter * 2);
+      const height = Math.max(170, maxY - minY + gutter * 2);
+      const path = roundedZonePath(width, height, kind === 'lan' ? 22 : 14);
+      const blobs = rawBlobs.map(blob => ({
+        x: blob.absX - position.x,
+        y: blob.absY - position.y,
+        width: blob.width,
+        height: blob.height,
+      }));
+
+      return {
+        id,
+        type: 'networkZone',
+        position,
+        data: {
+          zoneId: id.replace(/[^a-zA-Z0-9_-]/g, '-'),
+          kind,
+          label,
+          subLabel,
+          width,
+          height,
+          accent,
+          opacity: visualPreferences.zoneOpacity,
+          path,
+          blobs,
+        },
+        selectable: false,
+        draggable: false,
+        focusable: false,
+        deletable: false,
+        zIndex: 0,
+        style: { width, height, pointerEvents: 'none' },
+      };
+    };
+
+    const zoneNodes: ReactFlowNode[] = [];
+
+    hardwareNodes.filter(isNatProvider).forEach(natNode => {
+      if (!visualPreferences.showNatZones) return;
+      const natId = natNode.id;
+      const visited = new Set<string>();
+      const queue: string[] = [];
+
+      (edgeByNode.get(natId) || []).forEach(edge => {
+        const otherId = edge.source === natId ? edge.target : edge.source;
+        const other = hardwareById.get(otherId);
+        const autoFirewallUpstream =
+          !edge.data?.direction || edge.data.direction === 'auto'
+            ? (natNode.details?.firewall_enabled || (natNode.type as string) === 'firewall') &&
+              other &&
+              (other.type === 'switch' || other.type === 'router' || other.type === 'access_point')
+            : false;
+        if (!autoFirewallUpstream && isDownstreamFromNat(otherId, edge.data?.direction)) {
+          queue.push(otherId);
+        }
+      });
+
+      while (queue.length > 0) {
+        const id = queue.shift()!;
+        if (visited.has(id) || id === natId) continue;
+        const hardware = hardwareById.get(id);
+        if (!hardware || isUpstreamAnchor(hardware)) continue;
+
+        visited.add(id);
+
+        if (isNatProvider(hardware)) continue;
+
+        (edgeByNode.get(id) || []).forEach(edge => {
+          const nextId = edge.source === id ? edge.target : edge.source;
+          if (nextId !== natId && !visited.has(nextId)) queue.push(nextId);
+        });
+      }
+
+      const childNodes = [...visited]
+        .map(id => reactFlowById.get(id))
+        .filter((node): node is ReactFlowNode => !!node);
+      const providerNode = reactFlowById.get(natId);
+      if (providerNode) childNodes.push(providerNode);
+
+      if (childNodes.length === 0 && !providerNode) return;
+      visited.forEach(id => natChildIds.add(id));
+
+      const kind = natNode.details?.firewall_enabled || natNode.type === 'firewall' ? 'firewall' : 'nat';
+      const zone = buildZone(
+        `network-zone-nat-${natId}`,
+        kind,
+        `${natNode.name || 'Protected'} zone`,
+        kind === 'firewall' ? 'Firewall protected' : 'NAT / DHCP',
+        kind === 'firewall' ? '#ef4444' : '#10b981',
+        childNodes,
+        kind === 'firewall' ? 34 : 38,
+      );
+      if (zone) zoneNodes.push(zone);
+    });
+
+    const routers = visualPreferences.showLanZones ? hardwareNodes.filter(node => node.type === 'router') : [];
+    routers.forEach(router => {
+      const routerId = router.id;
+      const visited = new Set<string>();
+      const queue = [routerId];
+
+      while (queue.length > 0) {
+        const id = queue.shift()!;
+        if (visited.has(id)) continue;
+        const hardware = hardwareById.get(id);
+        if (!hardware || natChildIds.has(id)) continue;
+
+        visited.add(id);
+
+        if (id !== routerId && isNatProvider(hardware)) continue;
+
+        (edgeByNode.get(id) || []).forEach(edge => {
+          const nextId = edge.source === id ? edge.target : edge.source;
+          if (!visited.has(nextId) && !natChildIds.has(nextId)) queue.push(nextId);
+        });
+      }
+
+      const members = [...visited]
+        .map(id => reactFlowById.get(id))
+        .filter((node): node is ReactFlowNode => !!node);
+
+      const zone = buildZone(
+        `network-zone-lan-${routerId}`,
+        'lan',
+        `${router.name || 'Router'} LAN`,
+        'Primary network',
+        '#94a3b8',
+        members,
+        34,
+      );
+      if (zone) zoneNodes.unshift(zone);
+    });
+
+    return zoneNodes;
+  }, [nodes, edges, hardwareNodes, visualPreferences.showNetworkZones, visualPreferences.showLanZones, visualPreferences.showNatZones, visualPreferences.zoneOpacity]);
+
+  const flowNodes = useMemo<ReactFlowNode[]>(
+    () =>
+      nodes.map(node => ({
+        ...node,
+        zIndex: node.type === 'rack' ? 10 : 20,
+      })),
+    [nodes],
+  );
 
   useEffect(() => {
     if (id && id !== currentBuildId) {
@@ -238,15 +540,12 @@ const Flow = React.memo(function Flow() {
       });
       setSaveStatus('saved');
       lastSaveTime.current = Date.now();
-
-      // Trigger automatic validation after the changes have been safely persisted
-      await validateNetwork();
     } catch (err) {
       console.error('Failed to save', err);
       setSaveStatus('error');
       toast.error('Failed to auto-save');
     }
-  }, [id, getBuildData, projectName, validateNetwork]);
+  }, [id, getBuildData, projectName]);
 
   // Wrap saveProjectFn with useEffectEvent so it can be called from setTimeout
   // without being a dependency, preventing unnecessary effect re-subscriptions
@@ -331,7 +630,19 @@ const Flow = React.memo(function Flow() {
     setEdgePreferences({ [key]: val });
     // @ts-ignore - useAuth user preferences object might be untyped in this strict context
     if (updatePreferences)
-      updatePreferences({ edgePreferences: { ...edgePreferences, [key]: val } });
+      updatePreferences({
+        edgePreferences: {
+          routingEngine: edgePreferences.routingEngine ?? 'direct',
+          connectionStyle: edgePreferences.connectionStyle ?? 'strict',
+          lineStyle: edgePreferences.lineStyle ?? 'step',
+          ignoreNetworkLoops: edgePreferences.ignoreNetworkLoops ?? false,
+          showNetworkZones: visualPreferences.showNetworkZones,
+          showLanZones: visualPreferences.showLanZones,
+          showNatZones: visualPreferences.showNatZones,
+          zoneOpacity: visualPreferences.zoneOpacity,
+          [key]: val,
+        },
+      });
   };
 
   useEffect(() => {
@@ -702,9 +1013,13 @@ const Flow = React.memo(function Flow() {
 
       <div className="flex-1 h-full relative" ref={reactFlowWrapper}>
         <ReactFlow
-          nodes={nodes}
+          nodes={flowNodes}
           edges={edges}
-          onNodesChange={onNodesChange}
+          onNodesChange={changes =>
+            onNodesChange(
+              changes.filter(change => !('id' in change) || !String(change.id).startsWith('network-zone-')),
+            )
+          }
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           isValidConnection={isValidConnection}
@@ -715,7 +1030,6 @@ const Flow = React.memo(function Flow() {
           onNodeDragStop={onNodeDragStop}
           onNodeClick={(_, node) => {
             if (node.type === 'hardware' || node.type === 'rack') selectNode(node.id);
-            else selectNode(null);
           }}
           onPaneClick={() => selectNode(null)}
           connectionMode={ConnectionMode.Loose}
@@ -731,6 +1045,23 @@ const Flow = React.memo(function Flow() {
           snapGrid={[20, 20]}
         >
           <Background gap={20} size={1} color="#A1A1AA" style={{ opacity: 0.25 }} />
+          <ViewportPortal>
+            <div className="network-zone-viewport-layer">
+              {networkZones.map(zone => (
+                <div
+                  key={zone.id}
+                  className="network-zone-portal-item"
+                  style={{
+                    transform: `translate(${zone.position.x}px, ${zone.position.y}px)`,
+                    width: zone.data?.width as number,
+                    height: zone.data?.height as number,
+                  }}
+                >
+                  <NetworkZoneNode data={zone.data} />
+                </div>
+              ))}
+            </div>
+          </ViewportPortal>
           <Controls />
 
           <Panel position="top-left" className="builder-top-panel flex flex-wrap gap-2 items-start">
@@ -804,10 +1135,53 @@ const Flow = React.memo(function Flow() {
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" className="h-10 bg-card px-3">
                   <Route className="size-4 shrink-0" />
-                  <span className="builder-action-label ml-2">Edge Settings</span>
+                  <span className="builder-action-label ml-2">Visual Settings</span>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-56">
+              <DropdownMenuContent align="start" className="w-64">
+                <DropdownMenuLabel className="text-xs text-muted-foreground uppercase">
+                  Network Zones
+                </DropdownMenuLabel>
+                {[
+                  ['showNetworkZones', 'Show zone overlays'],
+                  ['showNatZones', 'NAT / Firewall zones'],
+                  ['showLanZones', 'Primary LAN outline'],
+                ].map(([key, label]) => (
+                  <DropdownMenuItem
+                    key={key}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handlePrefChange(key, !visualPreferences[key as keyof typeof visualPreferences] as any);
+                    }}
+                    className="flex items-center justify-between cursor-pointer"
+                  >
+                    <span>{label}</span>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(visualPreferences[key as keyof typeof visualPreferences])}
+                      readOnly
+                      className="pointer-events-none"
+                    />
+                  </DropdownMenuItem>
+                ))}
+                <div className="px-2 py-2 space-y-1">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>Zone opacity</span>
+                    <span>{Math.round(visualPreferences.zoneOpacity * 100)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.2"
+                    max="1"
+                    step="0.05"
+                    value={visualPreferences.zoneOpacity}
+                    onChange={e => handlePrefChange('zoneOpacity', Number(e.target.value))}
+                    className="w-full accent-primary"
+                  />
+                </div>
+
+                <DropdownMenuSeparator />
+
                 <DropdownMenuLabel className="text-xs text-muted-foreground uppercase">
                   Pathing AI
                 </DropdownMenuLabel>

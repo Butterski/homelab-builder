@@ -49,6 +49,22 @@ func connectNodes(t *testing.T, db *gorm.DB, buildID, srcID, dstID uuid.UUID) {
 	}
 }
 
+func connectNodesWithMeta(t *testing.T, db *gorm.DB, buildID, srcID, dstID uuid.UUID, sourceHandle, targetHandle, direction string) {
+	t.Helper()
+	e := models.Edge{
+		BuildID:      buildID,
+		SourceNodeID: srcID,
+		TargetNodeID: dstID,
+		SourceHandle: sourceHandle,
+		TargetHandle: targetHandle,
+		Type:         "ethernet",
+		Direction:    direction,
+	}
+	if err := db.Create(&e).Error; err != nil {
+		t.Fatalf("connectNodesWithMeta: %v", err)
+	}
+}
+
 func fetchIP(t *testing.T, db *gorm.DB, nodeID uuid.UUID) string {
 	t.Helper()
 	var n models.Node
@@ -56,6 +72,31 @@ func fetchIP(t *testing.T, db *gorm.DB, nodeID uuid.UUID) string {
 		t.Fatalf("fetchIP: %v", err)
 	}
 	return n.IP
+}
+
+func fetchDetails(t *testing.T, db *gorm.DB, nodeID uuid.UUID) map[string]any {
+	t.Helper()
+	var n models.Node
+	if err := db.First(&n, "id = ?", nodeID).Error; err != nil {
+		t.Fatalf("fetchDetails: %v", err)
+	}
+	var details map[string]any
+	if err := json.Unmarshal(n.Details, &details); err != nil {
+		t.Fatalf("unmarshal details: %v", err)
+	}
+	return details
+}
+
+func setDetails(t *testing.T, db *gorm.DB, node *models.Node, details map[string]any) {
+	t.Helper()
+	payload, err := json.Marshal(details)
+	if err != nil {
+		t.Fatalf("marshal details: %v", err)
+	}
+	node.Details = payload
+	if err := db.Save(node).Error; err != nil {
+		t.Fatalf("save details: %v", err)
+	}
 }
 
 func newBuildID(t *testing.T, db *gorm.DB) uuid.UUID {
@@ -183,6 +224,179 @@ func TestCalculateNetwork_TwoRouters_IndependentSubnets(t *testing.T) {
 	}
 	if ipB != "192.168.2.10" {
 		t.Errorf("Switch B expected 192.168.2.10, got %q", ipB)
+	}
+}
+
+func TestCalculateNetwork_NATServerWANStaysInParent24(t *testing.T) {
+	skipWithoutIPAM(t)
+	tx := testTx(t)
+	svc := NewIPService(tx)
+	buildID := newBuildID(t, tx)
+
+	router := createNode(t, tx, buildID, "router", "Router", "192.168.0.1")
+	setDetails(t, tx, &router, map[string]any{
+		"dhcp_enabled": true,
+		"subnet_mask":  "255.255.255.0",
+	})
+	server := createNode(t, tx, buildID, "server_v2", "NAT Server", "192.168.3.136")
+	setDetails(t, tx, &server, map[string]any{
+		"nat_enabled":  true,
+		"dhcp_enabled": true,
+		"dhcp_locked":  true,
+	})
+	pc := createNode(t, tx, buildID, "pc", "PC", "")
+
+	connectNodes(t, tx, buildID, router.ID, server.ID)
+	connectNodes(t, tx, buildID, server.ID, pc.ID)
+
+	if err := svc.CalculateNetwork(buildID); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if ip := fetchIP(t, tx, server.ID); !hasPrefix(ip, "192.168.0.") {
+		t.Fatalf("server WAN should stay inside router /24, got %q", ip)
+	}
+	serverDetails := fetchDetails(t, tx, server.ID)
+	lanGateway, _ := serverDetails["lan_gateway_ip"].(string)
+	lanSubnet, _ := serverDetails["lan_subnet"].(string)
+	if !hasPrefix(lanGateway, "192.168.1.") {
+		t.Fatalf("server LAN gateway should use the next /24, got gateway=%q subnet=%q", lanGateway, lanSubnet)
+	}
+	if ip := fetchIP(t, tx, pc.ID); !hasPrefix(ip, "192.168.1.") {
+		t.Fatalf("downstream PC should use NAT LAN subnet, got %q", ip)
+	}
+	interfaces, ok := serverDetails["interfaces"].([]any)
+	if !ok || len(interfaces) < 2 {
+		t.Fatalf("NAT server should persist WAN/LAN interfaces, got %#v", serverDetails["interfaces"])
+	}
+}
+
+func TestCalculateNetwork_FirewallOnlyStaysInParentSubnet(t *testing.T) {
+	skipWithoutIPAM(t)
+	tx := testTx(t)
+	svc := NewIPService(tx)
+	buildID := newBuildID(t, tx)
+
+	router := createNode(t, tx, buildID, "router", "Router", "192.168.0.1")
+	setDetails(t, tx, &router, map[string]any{
+		"dhcp_enabled": true,
+		"subnet_mask":  "255.255.255.0",
+	})
+	firewall := createNode(t, tx, buildID, "firewall", "Firewall", "")
+	setDetails(t, tx, &firewall, map[string]any{
+		"firewall_enabled": true,
+		"dhcp_enabled":     true,
+	})
+	pc := createNode(t, tx, buildID, "pc", "PC", "")
+
+	connectNodes(t, tx, buildID, router.ID, firewall.ID)
+	connectNodes(t, tx, buildID, firewall.ID, pc.ID)
+
+	if err := svc.CalculateNetwork(buildID); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if ip := fetchIP(t, tx, firewall.ID); !hasPrefix(ip, "192.168.0.") {
+		t.Fatalf("firewall-only device should get parent subnet IP, got %q", ip)
+	}
+	if ip := fetchIP(t, tx, pc.ID); !hasPrefix(ip, "192.168.0.") {
+		t.Fatalf("PC behind firewall-only device should stay in parent subnet, got %q", ip)
+	}
+}
+
+func TestCalculateNetwork_NATAutoOnlyPropagatesFromBottomPorts(t *testing.T) {
+	skipWithoutIPAM(t)
+	tx := testTx(t)
+	svc := NewIPService(tx)
+	buildID := newBuildID(t, tx)
+
+	router := createNode(t, tx, buildID, "router", "Router", "192.168.0.1")
+	setDetails(t, tx, &router, map[string]any{
+		"dhcp_enabled": true,
+		"subnet_mask":  "255.255.255.0",
+	})
+	server := createNode(t, tx, buildID, "server_v2", "NAT Server", "")
+	setDetails(t, tx, &server, map[string]any{
+		"nat_enabled":  true,
+		"dhcp_enabled": true,
+	})
+	topSwitch := createNode(t, tx, buildID, "switch", "Top Switch", "")
+	bottomPC := createNode(t, tx, buildID, "pc", "Bottom PC", "")
+
+	connectNodesWithMeta(t, tx, buildID, router.ID, server.ID, "source-0", "target-0", "auto")
+	connectNodesWithMeta(t, tx, buildID, topSwitch.ID, server.ID, "source-0", "target-0", "auto")
+	connectNodesWithMeta(t, tx, buildID, server.ID, bottomPC.ID, "source-0", "target-0", "auto")
+
+	if err := svc.CalculateNetwork(buildID); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if ip := fetchIP(t, tx, server.ID); !hasPrefix(ip, "192.168.0.") {
+		t.Fatalf("server WAN should stay in parent subnet, got %q", ip)
+	}
+	if ip := fetchIP(t, tx, topSwitch.ID); !hasPrefix(ip, "192.168.0.") {
+		t.Fatalf("top-port switch should stay in parent subnet, got %q", ip)
+	}
+	if ip := fetchIP(t, tx, bottomPC.ID); !hasPrefix(ip, "192.168.1.") {
+		t.Fatalf("bottom-port PC should receive NAT child subnet, got %q", ip)
+	}
+}
+
+func TestCalculateNetwork_EdgeDirectionOverridesPortDefault(t *testing.T) {
+	skipWithoutIPAM(t)
+	tx := testTx(t)
+	svc := NewIPService(tx)
+	buildID := newBuildID(t, tx)
+
+	router := createNode(t, tx, buildID, "router", "Router", "192.168.0.1")
+	setDetails(t, tx, &router, map[string]any{
+		"dhcp_enabled": true,
+		"subnet_mask":  "255.255.255.0",
+	})
+	server := createNode(t, tx, buildID, "server_v2", "NAT Server", "")
+	setDetails(t, tx, &server, map[string]any{
+		"nat_enabled":  true,
+		"dhcp_enabled": true,
+	})
+	forcedLAN := createNode(t, tx, buildID, "pc", "Forced LAN PC", "")
+	forcedWAN := createNode(t, tx, buildID, "pc", "Forced WAN PC", "")
+
+	connectNodesWithMeta(t, tx, buildID, router.ID, server.ID, "source-0", "target-0", "auto")
+	connectNodesWithMeta(t, tx, buildID, forcedLAN.ID, server.ID, "source-0", "target-0", "lan")
+	connectNodesWithMeta(t, tx, buildID, server.ID, forcedWAN.ID, "source-0", "target-0", "wan")
+
+	if err := svc.CalculateNetwork(buildID); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if ip := fetchIP(t, tx, forcedLAN.ID); !hasPrefix(ip, "192.168.1.") {
+		t.Fatalf("explicit LAN edge should override top-port default, got %q", ip)
+	}
+	if ip := fetchIP(t, tx, forcedWAN.ID); !hasPrefix(ip, "192.168.0.") {
+		t.Fatalf("explicit WAN edge should override bottom-port default, got %q", ip)
+	}
+}
+
+func TestCalculateNetwork_ClassAMaskKeepsAssignmentsInside10Network(t *testing.T) {
+	skipWithoutIPAM(t)
+	tx := testTx(t)
+	svc := NewIPService(tx)
+	buildID := newBuildID(t, tx)
+
+	router := createNode(t, tx, buildID, "router", "Router", "10.25.44.1")
+	setDetails(t, tx, &router, map[string]any{
+		"dhcp_enabled": true,
+		"subnet_mask":  "255.0.0.0",
+	})
+	server := createNode(t, tx, buildID, "server_v2", "Server", "")
+
+	connectNodes(t, tx, buildID, router.ID, server.ID)
+
+	if err := svc.CalculateNetwork(buildID); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ip := fetchIP(t, tx, server.ID); !hasPrefix(ip, "10.") {
+		t.Fatalf("server should stay inside 10.0.0.0/8, got %q", ip)
 	}
 }
 

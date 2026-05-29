@@ -143,6 +143,64 @@ describe('reassignAllIPs', () => {
         const updated = hardwareNodes.find((n) => n.id === 'router-1' || n.name === 'Router')
         expect(updated?.ip).toBe('192.168.1.1')
     })
+
+    it('should overlay generated interface details from backend nodes', async () => {
+        const server = {
+            id: 'server-1',
+            type: 'server_v2' as const,
+            name: 'NAT Server',
+            ip: '192.168.0.136',
+            x: 0,
+            y: 0,
+            vms: [],
+            internal_components: [],
+            details: { nat_enabled: true, dhcp_enabled: true },
+        }
+        useBuilderStore.setState({
+            hardwareNodes: [server],
+            nodes: [
+                {
+                    id: 'server-1',
+                    type: 'hardware',
+                    position: { x: 0, y: 0 },
+                    data: { type: 'server_v2', label: 'NAT Server', details: server.details },
+                },
+            ],
+        })
+
+            ; (buildApi.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+                id: 'build-1',
+                name: 'test',
+                data: JSON.stringify({ hardwareNodes: [server], nodes: [], edges: [] }),
+                nodes: [
+                    {
+                        id: 'server-1',
+                        name: 'NAT Server',
+                        type: 'server_v2',
+                        ip: '192.168.0.136',
+                        details: {
+                            nat_enabled: true,
+                            dhcp_enabled: true,
+                            wan_ip: '192.168.0.136',
+                            lan_gateway_ip: '192.168.1.1',
+                            lan_subnet: '192.168.1.1/24',
+                            interfaces: [
+                                { name: 'WAN', role: 'wan', ip: '192.168.0.136' },
+                                { name: 'LAN', role: 'lan', ip: '192.168.1.1', subnet: '192.168.1.1/24' },
+                            ],
+                        },
+                        virtual_machines: [],
+                    },
+                ],
+            })
+
+        await useBuilderStore.getState().reassignAllIPs()
+
+        const updated = useBuilderStore.getState().hardwareNodes.find((n) => n.id === 'server-1')
+        expect(updated?.details?.wan_ip).toBe('192.168.0.136')
+        expect(updated?.details?.lan_gateway_ip).toBe('192.168.1.1')
+        expect(updated?.details?.interfaces?.some((iface) => iface.role === 'lan')).toBe(true)
+    })
 })
 
 describe('addHardware - must NOT trigger reassignAllIPs', () => {
@@ -215,6 +273,51 @@ describe('onConnect - MUST trigger reassignAllIPs', () => {
         expect(edges[0].source).toBe('router-1')
         expect(edges[0].target).toBe('switch-1')
     })
+
+    it('defaults any access point connection to wireless', () => {
+        useBuilderStore.setState({
+            nodes: [
+                { id: 'ap-1', type: 'hardware', position: { x: 0, y: 0 }, data: { type: 'access_point' } },
+                { id: 'pc-1', type: 'hardware', position: { x: 100, y: 0 }, data: { type: 'pc' } },
+            ],
+            hardwareNodes: [
+                {
+                    id: 'ap-1',
+                    type: 'access_point',
+                    name: 'Access Point',
+                    ip: '',
+                    x: 0,
+                    y: 0,
+                    vms: [],
+                    internal_components: [],
+                    details: {},
+                },
+                {
+                    id: 'pc-1',
+                    type: 'pc',
+                    name: 'PC',
+                    ip: '',
+                    x: 100,
+                    y: 0,
+                    vms: [],
+                    internal_components: [],
+                    details: {},
+                },
+            ],
+            edges: [],
+        })
+
+        useBuilderStore.getState().onConnect({
+            source: 'ap-1',
+            target: 'pc-1',
+            sourceHandle: null,
+            targetHandle: null,
+        })
+
+        const { edges } = useBuilderStore.getState()
+        expect(edges[0].data?.connection_type).toBe('wireless')
+        expect(edges[0].data?.wireless_standard).toBe('Wi-Fi 6')
+    })
 })
 
 describe('removeHardware', () => {
@@ -265,6 +368,48 @@ describe('getBuildData edge sanitization', () => {
         expect(payload.edges).toHaveLength(1)
         expect(payload.edges[0].source).toBe('router-1')
         expect(payload.edges[0].target).toBe('router-1')
+    })
+
+    it('serializes edge connection metadata', () => {
+        useBuilderStore.setState({
+            nodes: [
+                {
+                    id: 'router-1',
+                    type: 'hardware',
+                    position: { x: 0, y: 0 },
+                    data: { type: 'router', name: 'Router' },
+                },
+                {
+                    id: 'ap-1',
+                    type: 'hardware',
+                    position: { x: 100, y: 0 },
+                    data: { type: 'access_point', name: 'AP' },
+                },
+            ],
+            edges: [
+                {
+                    id: 'wireless-edge',
+                    source: 'router-1',
+                    target: 'ap-1',
+                    type: 'custom',
+                    data: {
+                        connection_type: 'wireless',
+                        wireless_standard: 'Wi-Fi 6',
+                        direction: 'lan',
+                        speed: '1 GbE',
+                        subnet: 'VLAN 20',
+                    },
+                },
+            ] as any,
+        })
+
+        const payload = useBuilderStore.getState().getBuildData()
+        expect(payload.edges[0]).toEqual(expect.objectContaining({
+            type: 'wireless',
+            wireless_standard: 'Wi-Fi 6',
+            direction: 'lan',
+            subnet: 'VLAN 20',
+        }))
     })
 })
 

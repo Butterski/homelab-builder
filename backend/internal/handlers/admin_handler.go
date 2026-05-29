@@ -230,10 +230,12 @@ func (h *AdminHandler) ExportAnonymizedTopologies(c *gin.Context) {
 	}
 
 	type ExportedEdge struct {
-		SourceType string `json:"source_type"`
-		TargetType string `json:"target_type"`
-		Type       string `json:"connection_type"`
-		Speed      string `json:"speed"`
+		SourceType       string `json:"source_type"`
+		TargetType       string `json:"target_type"`
+		Type             string `json:"connection_type"`
+		Speed            string `json:"speed"`
+		WirelessStandard string `json:"wireless_standard"`
+		Direction        string `json:"direction"`
 	}
 
 	type ExportedBuild struct {
@@ -287,10 +289,12 @@ func (h *AdminHandler) ExportAnonymizedTopologies(c *gin.Context) {
 			tgt, tgtOk := nodeMap[e.TargetNodeID]
 			if srcOk && tgtOk {
 				eEdges = append(eEdges, ExportedEdge{
-					SourceType: src.Type,
-					TargetType: tgt.Type,
-					Type:       e.Type,
-					Speed:      e.Speed,
+					SourceType:       src.Type,
+					TargetType:       tgt.Type,
+					Type:             e.Type,
+					Speed:            e.Speed,
+					WirelessStandard: e.WirelessStandard,
+					Direction:        e.Direction,
 				})
 			}
 		}
@@ -305,4 +309,3 @@ func (h *AdminHandler) ExportAnonymizedTopologies(c *gin.Context) {
 	c.Header("Content-Disposition", "attachment; filename=homelab_topologies_anonymized.json")
 	c.JSON(http.StatusOK, dataset)
 }
-

@@ -27,8 +27,12 @@ func setupTestDB(t *testing.T) *gorm.DB {
 	if dbName == "" {
 		dbName = "homelab_builder_test"
 	}
+	password := os.Getenv("DB_PASSWORD")
+	if password == "" {
+		password = "homelab_password"
+	}
 
-	dsn := fmt.Sprintf("host=%s user=homelab password=homelab_password dbname=%s port=5432 sslmode=disable", host, dbName)
+	dsn := fmt.Sprintf("host=%s user=homelab password=%s dbname=%s port=5432 sslmode=disable", host, password, dbName)
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
 

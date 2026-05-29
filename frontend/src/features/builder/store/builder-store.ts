@@ -81,6 +81,10 @@ interface BuilderState {
     connectionStyle: 'floating' | 'strict';
     lineStyle: 'bezier' | 'step' | 'straight';
     ignoreNetworkLoops: boolean;
+    showNetworkZones: boolean;
+    showLanZones: boolean;
+    showNatZones: boolean;
+    zoneOpacity: number;
   };
   setEdgePreferences: (prefs: Partial<BuilderState['edgePreferences']>) => void;
 
@@ -130,6 +134,10 @@ export const useBuilderStore = create<BuilderState>()(
         connectionStyle: 'strict',
         lineStyle: 'step',
         ignoreNetworkLoops: false,
+        showNetworkZones: true,
+        showLanZones: false,
+        showNatZones: true,
+        zoneOpacity: 0.7,
       },
       validationIssues: [],
       availableServices: [],
@@ -200,12 +208,29 @@ export const useBuilderStore = create<BuilderState>()(
           edges: state.edges,
           hardwareNodes: state.hardwareNodes,
         };
+        const hardwareById = new Map(state.hardwareNodes.map(n => [n.id, n]));
+        const sourceHardware = connection.source ? hardwareById.get(connection.source) : undefined;
+        const targetHardware = connection.target ? hardwareById.get(connection.target) : undefined;
+        const isAccessPointLink =
+          sourceHardware?.type === 'access_point' || targetHardware?.type === 'access_point';
+
         // Default new edges to custom type
-        const newEdges = addEdge({ ...connection, type: 'custom' }, state.edges);
+        const newEdges = addEdge({
+          ...connection,
+          type: 'custom',
+          data: {
+            connection_type: isAccessPointLink ? 'wireless' : 'ethernet',
+            speed: '1 GbE',
+            subnet: '',
+            wireless_standard: isAccessPointLink ? 'Wi-Fi 6' : '',
+            direction: 'auto',
+          },
+        }, state.edges);
         set({
           historyPast: [...state.historyPast, snap].slice(-50),
           historyFuture: [],
           edges: newEdges,
+          validationIssues: [],
         });
 
         // Trigger graph-aware IP recalculation whenever a new edge is drawn
@@ -591,15 +616,13 @@ export const useBuilderStore = create<BuilderState>()(
         try {
           // Step 1: Save current local state to the backend FIRST.
           const data = getBuildData();
-          await Promise.all([
-            buildApi.update(currentBuildId, {
-              name: projectName || 'Untitled Project',
-              thumbnail: '',
-              ...data,
-            }),
-            // Step 2: Ask the backend to calculate and assign IPs.
-            buildApi.calculateNetwork(currentBuildId),
-          ]);
+          await buildApi.update(currentBuildId, {
+            name: projectName || 'Untitled Project',
+            thumbnail: '',
+            ...data,
+          });
+          // Step 2: Ask the backend to calculate and assign IPs.
+          await buildApi.calculateNetwork(currentBuildId);
 
           // Step 3: Reload the build so the UI shows the newly assigned IPs.
           // Because we saved in step 1, build.data now contains ALL current nodes
@@ -613,14 +636,27 @@ export const useBuilderStore = create<BuilderState>()(
           interface NodeIpEntry {
             nodeIp: string;
             vmMap: VmIpMap;
+            details: Record<string, unknown>;
           }
+          const parseDetails = (details: unknown): Record<string, unknown> => {
+            if (!details) return {};
+            if (typeof details === 'string') {
+              try {
+                const parsed = JSON.parse(details);
+                return parsed && typeof parsed === 'object' ? parsed : {};
+              } catch {
+                return {};
+              }
+            }
+            return typeof details === 'object' ? details as Record<string, unknown> : {};
+          };
           const ipById = new Map<string, NodeIpEntry>();
           ((build as any).nodes ?? []).forEach((n: any) => {
             const vmIps: VmIpMap = new Map();
             (n.virtual_machines ?? []).forEach((vm: any) => {
               if (vm.ip) vmIps.set(vm.id, vm.ip);
             });
-            ipById.set(n.id, { nodeIp: n.ip, vmMap: vmIps });
+            ipById.set(n.id, { nodeIp: n.ip, vmMap: vmIps, details: parseDetails(n.details) });
           });
 
           // Patch local state
@@ -630,6 +666,10 @@ export const useBuilderStore = create<BuilderState>()(
             return {
               ...hn,
               ip: entry.nodeIp,
+              details: {
+                ...(hn.details ?? {}),
+                ...entry.details,
+              },
               vms: hn.vms?.map(vm => ({ ...vm, ip: entry.vmMap.get(vm.id) || vm.ip })),
             };
           });
@@ -642,6 +682,10 @@ export const useBuilderStore = create<BuilderState>()(
               data: {
                 ...rfn.data,
                 ip: entry.nodeIp,
+                details: {
+                  ...((rfn.data?.details as Record<string, unknown> | undefined) ?? {}),
+                  ...entry.details,
+                },
                 vms: (Array.isArray(rfn.data?.vms) ? rfn.data.vms : []).map((vm: any) => ({
                   ...vm,
                   ip: entry.vmMap.get(vm.id) || vm.ip,
@@ -765,10 +809,13 @@ export const useBuilderStore = create<BuilderState>()(
           sourceHandle: e.source_handle || undefined,
           target: String(e.target_node_id),
           targetHandle: e.target_handle || undefined,
-          type: e.type && e.type !== 'ethernet' ? e.type : 'custom',
+          type: 'custom',
           data: {
+            connection_type: e.type || 'ethernet',
             speed: e.speed || '1 GbE',
             subnet: e.subnet || '',
+            wireless_standard: e.wireless_standard || 'Wi-Fi 6',
+            direction: e.direction || 'auto',
           },
         }));
 
@@ -809,8 +856,11 @@ export const useBuilderStore = create<BuilderState>()(
           source_handle: e.sourceHandle || '',
           target: e.target,
           target_handle: e.targetHandle || '',
+          type: (e.data?.connection_type as string) || 'ethernet',
           speed: (e.data?.speed as string) || '1 GbE',
           subnet: (e.data?.subnet as string) || '',
+          wireless_standard: (e.data?.wireless_standard as string) || '',
+          direction: (e.data?.direction as string) || 'auto',
         }));
 
         const validNodeIDs = new Set(nodesPayload.map(n => n.id));

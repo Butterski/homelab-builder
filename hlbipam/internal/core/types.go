@@ -16,6 +16,9 @@ var DefaultDeviceZones = map[string]ZoneConfig{
 	"disk":         {BaseOffset: 90, Step: 1, CanHostVMs: false, Label: "Disk"},
 	"nas":          {BaseOffset: 100, Step: 10, CanHostVMs: true, Label: "NAS"},
 	"server":       {BaseOffset: 150, Step: 10, CanHostVMs: true, Label: "Server"},
+	"server_v2":    {BaseOffset: 150, Step: 10, CanHostVMs: true, Label: "Server"},
+	"firewall":     {BaseOffset: 2, Step: 1, CanHostVMs: false, Label: "Firewall"},
+	"vps":          {BaseOffset: 120, Step: 10, CanHostVMs: true, Label: "VPS"},
 	"pc":           {BaseOffset: 160, Step: 10, CanHostVMs: true, Label: "PC"},
 	"minipc":       {BaseOffset: 170, Step: 10, CanHostVMs: true, Label: "Mini PC"},
 	"sbc":          {BaseOffset: 180, Step: 10, CanHostVMs: true, Label: "SBC"},
@@ -28,7 +31,7 @@ var DefaultDeviceZones = map[string]ZoneConfig{
 
 var FallbackZone = ZoneConfig{BaseOffset: 220, Step: 1, CanHostVMs: false, Label: "Device"}
 
-var VMHostTypeOrder = []string{"nas", "server", "pc", "minipc", "sbc", "iot"}
+var VMHostTypeOrder = []string{"nas", "vps", "server_v2", "server", "pc", "minipc", "sbc", "iot"}
 
 var NonNetworkTypes = map[string]bool{
 	"disk": true, "gpu": true, "hba": true, "pcie": true, "pdu": true, "ups": true, "rack": true,

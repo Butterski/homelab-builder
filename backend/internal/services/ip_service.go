@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Butterski/homelab-builder/backend/internal/models"
@@ -94,6 +96,35 @@ var nonNetworkTypes = map[string]bool{
 	"disk": true, "gpu": true, "hba": true, "pcie": true, "pdu": true, "ups": true, "rack": true,
 }
 
+func ipInGatewaySubnet(ipValue string, gatewayValue string, maskValue string) bool {
+	ip := net.ParseIP(ipValue).To4()
+	gateway := net.ParseIP(gatewayValue).To4()
+	if ip == nil || gateway == nil {
+		return false
+	}
+
+	if maskValue == "" {
+		maskValue = "255.255.255.0"
+	}
+
+	var mask net.IPMask
+	if strings.Contains(maskValue, ".") {
+		maskIP := net.ParseIP(maskValue).To4()
+		if maskIP == nil {
+			return false
+		}
+		mask = net.IPMask(maskIP)
+	} else {
+		_, subnet, err := net.ParseCIDR(gatewayValue + "/" + maskValue)
+		if err != nil {
+			return false
+		}
+		mask = subnet.Mask
+	}
+
+	return (&net.IPNet{IP: gateway.Mask(mask), Mask: mask}).Contains(ip)
+}
+
 // ─── Public API ─────────────────────────────────────────────────────────────
 
 // CalculateNetwork loads the build's topology from the DB, sends it to
@@ -129,27 +160,110 @@ func (s *IPService) CalculateNetwork(buildID uuid.UUID) error {
 			return val
 		}
 
-		// 2. Build adjacency from edges (as connection lists per node)
+		type networkDetails struct {
+			DHCPEnabled     bool   `json:"dhcp_enabled"`
+			DHCPLocked      bool   `json:"dhcp_locked"`
+			SubnetMask      string `json:"subnet_mask"`
+			NATEnabled      bool   `json:"nat_enabled"`
+			RoutingEnabled  bool   `json:"routing_enabled"`
+			FirewallEnabled bool   `json:"firewall_enabled"`
+			NetworkZone     string `json:"network_zone"`
+			PublicIP        string `json:"public_ip"`
+			LANGatewayIP    string `json:"lan_gateway_ip"`
+			LANSubnet       string `json:"lan_subnet"`
+		}
+
+		nodeByID := make(map[string]models.Node, len(nodes))
+		detailsByID := make(map[string]networkDetails, len(nodes))
+		realGatewayIDs := make(map[string]bool, len(nodes))
+		natGatewayIDs := make(map[string]string, len(nodes))
+		natNodeByRouterID := make(map[string]string, len(nodes))
+		for _, n := range nodes {
+			nid := n.ID.String()
+			var details networkDetails
+			_ = json.Unmarshal(n.Details, &details)
+			nodeByID[nid] = n
+			detailsByID[nid] = details
+			realGatewayIDs[nid] = n.Type == "router"
+			if (n.Type == "server_v2" || n.Type == "vps" || n.Type == "firewall") &&
+				(details.NATEnabled || (details.RoutingEnabled && details.DHCPEnabled)) {
+				natGatewayIDs[nid] = nid + ":lan"
+				natNodeByRouterID[nid+":lan"] = nid
+			}
+		}
+
+		isUpstreamAnchor := func(id string) bool {
+			n, ok := nodeByID[id]
+			if !ok {
+				return false
+			}
+			d := detailsByID[id]
+			return n.Type == "router" || n.Type == "modem" || d.PublicIP != "" || d.NetworkZone == "wan" || d.NetworkZone == "cloud"
+		}
+
+		// 2. Build adjacency from edges (as connection lists per node). NAT-capable
+		// gateway nodes only traverse LAN/downstream edges, so a NAT boundary creates
+		// a real downstream allocation island instead of one flattened subnet.
 		adj := make(map[string][]string, len(nodes))
 
 		// Map: nodeID -> neighborID -> port index
 		edgePorts := make(map[string]map[string]int, len(nodes))
 
-		for _, e := range edges {
-			src := e.SourceNodeID.String()
-			tgt := e.TargetNodeID.String()
+		addConnection := func(src, tgt string, port int) {
 			adj[src] = append(adj[src], tgt)
-			adj[tgt] = append(adj[tgt], src)
-
 			if edgePorts[src] == nil {
 				edgePorts[src] = make(map[string]int)
 			}
-			if edgePorts[tgt] == nil {
-				edgePorts[tgt] = make(map[string]int)
+			edgePorts[src][tgt] = port
+		}
+		isAutoLANPort := func(handle string, isSourceEndpoint bool) bool {
+			if handle == "" {
+				return isSourceEndpoint
+			}
+			return handle != "target-0"
+		}
+
+		for _, e := range edges {
+			if e.Type == "vpn" {
+				continue
+			}
+			src := e.SourceNodeID.String()
+			tgt := e.TargetNodeID.String()
+			direction := e.Direction
+			if direction == "" {
+				direction = "auto"
 			}
 
-			edgePorts[src][tgt] = extractPort(e.SourceHandle)
-			edgePorts[tgt][src] = extractPort(e.TargetHandle)
+			if natRouterID, ok := natGatewayIDs[src]; ok {
+				natHandle := e.SourceHandle
+				downstream := direction == "lan" ||
+					(direction == "auto" && isAutoLANPort(natHandle, true) && !isUpstreamAnchor(tgt))
+				if downstream {
+					addConnection(natRouterID, tgt, extractPort(e.SourceHandle))
+					addConnection(tgt, natRouterID, extractPort(e.TargetHandle))
+				} else {
+					addConnection(src, tgt, extractPort(e.SourceHandle))
+					addConnection(tgt, src, extractPort(e.TargetHandle))
+				}
+				continue
+			}
+
+			if natRouterID, ok := natGatewayIDs[tgt]; ok {
+				natHandle := e.TargetHandle
+				downstream := direction == "lan" ||
+					(direction == "auto" && isAutoLANPort(natHandle, false) && !isUpstreamAnchor(src))
+				if downstream {
+					addConnection(natRouterID, src, extractPort(e.TargetHandle))
+					addConnection(src, natRouterID, extractPort(e.SourceHandle))
+				} else {
+					addConnection(src, tgt, extractPort(e.SourceHandle))
+					addConnection(tgt, src, extractPort(e.TargetHandle))
+				}
+				continue
+			}
+
+			addConnection(src, tgt, extractPort(e.SourceHandle))
+			addConnection(tgt, src, extractPort(e.TargetHandle))
 		}
 
 		// Sort adj arrays by port index. Note that React Flow edges might be drawn:
@@ -163,6 +277,43 @@ func (s *IPService) CalculateNetwork(buildID uuid.UUID) error {
 			})
 		}
 
+		usedGatewayIPs := make(map[string]bool, len(nodes))
+		for _, n := range nodes {
+			if n.IP != "" {
+				usedGatewayIPs[n.IP] = true
+			}
+			if details := detailsByID[n.ID.String()]; details.LANGatewayIP != "" {
+				usedGatewayIPs[details.LANGatewayIP] = true
+			}
+		}
+		nextNATLAN := func(nid string) (string, string) {
+			details := detailsByID[nid]
+			if details.LANGatewayIP != "" {
+				return details.LANGatewayIP, details.LANSubnet
+			}
+			for _, neighborID := range adj[nid] {
+				if !realGatewayIDs[neighborID] {
+					continue
+				}
+				parent := net.ParseIP(nodeByID[neighborID].IP).To4()
+				if parent == nil {
+					continue
+				}
+				for offset := 1; offset < 255; offset++ {
+					third := (int(parent[2]) + offset) % 255
+					if third == 0 {
+						third = 1
+					}
+					gateway := fmt.Sprintf("%d.%d.%d.1", parent[0], parent[1], third)
+					if !usedGatewayIPs[gateway] {
+						usedGatewayIPs[gateway] = true
+						return gateway, gateway + "/24"
+					}
+				}
+			}
+			return "", ""
+		}
+
 		// 3. Build hlbIPAM request
 		req := ipamRequest{
 			Routers: make([]ipamRouter, 0),
@@ -171,32 +322,47 @@ func (s *IPService) CalculateNetwork(buildID uuid.UUID) error {
 
 		for _, n := range nodes {
 			nid := n.ID.String()
-			if n.Type == "router" {
-				var details struct {
-					DHCPEnabled bool   `json:"dhcp_enabled"`
-					DHCPLocked  bool   `json:"dhcp_locked"`
-					SubnetMask  string `json:"subnet_mask"`
-				}
-				_ = json.Unmarshal(n.Details, &details)
-
-				subnet := ""
-				if n.IP != "" && details.SubnetMask != "" {
-					subnet = n.IP + "/" + details.SubnetMask // IPAM can parse IP and Mask
-				}
-
-				req.Routers = append(req.Routers, ipamRouter{
-					ID:          nid,
-					GatewayIP:   n.IP,
-					Subnet:      subnet,
-					DHCPEnabled: details.DHCPEnabled,
-				})
-			} else {
-				var details struct {
-					DHCPLocked bool `json:"dhcp_locked"`
-				}
-				_ = json.Unmarshal(n.Details, &details)
+			details := detailsByID[nid]
+			if !realGatewayIDs[nid] {
+				continue
 			}
 
+			subnet := ""
+			if n.IP != "" && details.SubnetMask != "" {
+				subnet = n.IP + "/" + details.SubnetMask // IPAM can parse IP and Mask
+			}
+
+			req.Routers = append(req.Routers, ipamRouter{
+				ID:          nid,
+				GatewayIP:   n.IP,
+				Subnet:      subnet,
+				DHCPEnabled: details.DHCPEnabled,
+			})
+		}
+
+		for _, n := range nodes {
+			nid := n.ID.String()
+			details := detailsByID[nid]
+			natRouterID, ok := natGatewayIDs[nid]
+			if !ok {
+				continue
+			}
+			lanGateway, lanSubnet := nextNATLAN(nid)
+			if lanSubnet == "" && lanGateway != "" {
+				lanSubnet = lanGateway + "/24"
+			}
+
+			req.Routers = append(req.Routers, ipamRouter{
+				ID:          natRouterID,
+				GatewayIP:   lanGateway,
+				Subnet:      lanSubnet,
+				DHCPEnabled: details.DHCPEnabled || details.NATEnabled,
+			})
+		}
+
+		for _, n := range nodes {
+			nid := n.ID.String()
+			details := detailsByID[nid]
 			vms := make([]ipamVM, 0, len(n.VirtualMachines))
 			for _, vm := range n.VirtualMachines {
 				vms = append(vms, ipamVM{
@@ -208,17 +374,25 @@ func (s *IPService) CalculateNetwork(buildID uuid.UUID) error {
 			existingIP := ""
 
 			// Extract DHCPLocked from node details
-			var details struct {
-				DHCPLocked bool `json:"dhcp_locked"`
-			}
-			_ = json.Unmarshal(n.Details, &details)
-
 			if nonNetworkTypes[n.Type] {
 				// Don't send existing IP for non-network types
-			} else if n.Type == "router" {
-				existingIP = n.IP // preserve router IPs as existing
+			} else if realGatewayIDs[nid] {
+				existingIP = n.IP // preserve gateway IPs as existing
 			} else if details.DHCPLocked {
-				existingIP = n.IP // preserve locked static IPs
+				preserveLocked := true
+				if _, isNATGateway := natGatewayIDs[nid]; isNATGateway {
+					preserveLocked = false
+					for _, neighborID := range adj[nid] {
+						if realGatewayIDs[neighborID] &&
+							ipInGatewaySubnet(n.IP, nodeByID[neighborID].IP, detailsByID[neighborID].SubnetMask) {
+							preserveLocked = true
+							break
+						}
+					}
+				}
+				if preserveLocked {
+					existingIP = n.IP // preserve locked static IPs
+				}
 			}
 
 			req.Nodes = append(req.Nodes, ipamNode{
@@ -252,9 +426,20 @@ func (s *IPService) CalculateNetwork(buildID uuid.UUID) error {
 
 		// Map router gateway IPs from hlbIPAM response
 		routerIPByID := make(map[string]string, len(result.Routers))
+		type natInterfaceAllocation struct {
+			gatewayIP string
+			subnet    string
+		}
+		natLANByNodeID := make(map[string]natInterfaceAllocation, len(natGatewayIDs))
 		for _, rr := range result.Routers {
 			if rr.GatewayIP != "" {
 				routerIPByID[rr.ID] = rr.GatewayIP
+			}
+			if nodeID, ok := natNodeByRouterID[rr.ID]; ok {
+				natLANByNodeID[nodeID] = natInterfaceAllocation{
+					gatewayIP: rr.GatewayIP,
+					subnet:    rr.Subnet,
+				}
 			}
 		}
 
@@ -263,10 +448,66 @@ func (s *IPService) CalculateNetwork(buildID uuid.UUID) error {
 			nid := nodes[i].ID.String()
 			if ip, ok := ipByID[nid]; ok {
 				nodes[i].IP = ip
+			} else if !nonNetworkTypes[nodes[i].Type] && !realGatewayIDs[nid] && !detailsByID[nid].DHCPLocked {
+				nodes[i].IP = ""
 			}
 			// Also update router gateway IPs from hlbIPAM
 			if ip, ok := routerIPByID[nid]; ok {
 				nodes[i].IP = ip
+			}
+			if _, isNatCapable := natGatewayIDs[nid]; isNatCapable || nodes[i].Type == "server_v2" || nodes[i].Type == "vps" {
+				var details map[string]any
+				if len(nodes[i].Details) > 0 {
+					_ = json.Unmarshal(nodes[i].Details, &details)
+				}
+				if details == nil {
+					details = make(map[string]any)
+				}
+
+				if lan, ok := natLANByNodeID[nid]; ok && lan.gatewayIP != "" {
+					dhcpEnabled := detailsByID[nid].DHCPEnabled || detailsByID[nid].NATEnabled
+					details["wan_ip"] = nodes[i].IP
+					details["lan_gateway_ip"] = lan.gatewayIP
+					details["lan_subnet"] = lan.subnet
+
+					interfaces := make([]map[string]any, 0, 3)
+					if existing, ok := details["interfaces"].([]any); ok {
+						for _, item := range existing {
+							if iface, ok := item.(map[string]any); ok {
+								role, _ := iface["role"].(string)
+								if role != "wan" && role != "lan" {
+									interfaces = append(interfaces, iface)
+								}
+							}
+						}
+					}
+					interfaces = append(interfaces,
+						map[string]any{
+							"name": "WAN",
+							"role": "wan",
+							"ip":   nodes[i].IP,
+						},
+						map[string]any{
+							"name":         "LAN",
+							"role":         "lan",
+							"ip":           lan.gatewayIP,
+							"subnet":       lan.subnet,
+							"dhcp_enabled": dhcpEnabled,
+						},
+					)
+					details["interfaces"] = interfaces
+				} else {
+					delete(details, "wan_ip")
+					delete(details, "lan_gateway_ip")
+					delete(details, "lan_subnet")
+					delete(details, "interfaces")
+				}
+
+				updatedDetails, err := json.Marshal(details)
+				if err != nil {
+					return fmt.Errorf("marshal node details: %w", err)
+				}
+				nodes[i].Details = updatedDetails
 			}
 			for j := range nodes[i].VirtualMachines {
 				vmid := nodes[i].VirtualMachines[j].ID.String()
@@ -331,12 +572,123 @@ func (s *IPService) ValidateNetwork(buildID uuid.UUID) (json.RawMessage, error) 
 		return nil, err
 	}
 
+	type validateDetails struct {
+		DHCPEnabled    bool   `json:"dhcp_enabled"`
+		DHCPLocked     bool   `json:"dhcp_locked"`
+		SubnetMask     string `json:"subnet_mask"`
+		NATEnabled     bool   `json:"nat_enabled"`
+		RoutingEnabled bool   `json:"routing_enabled"`
+		NetworkZone    string `json:"network_zone"`
+		PublicIP       string `json:"public_ip"`
+		LANGatewayIP   string `json:"lan_gateway_ip"`
+		LANSubnet      string `json:"lan_subnet"`
+	}
+	nodeByID := make(map[string]models.Node, len(nodes))
+	detailsByID := make(map[string]validateDetails, len(nodes))
+	natGatewayIDs := make(map[string]string, len(nodes))
+	for _, n := range nodes {
+		nid := n.ID.String()
+		var details validateDetails
+		_ = json.Unmarshal(n.Details, &details)
+		nodeByID[nid] = n
+		detailsByID[nid] = details
+		if (n.Type == "server_v2" || n.Type == "vps" || n.Type == "firewall") &&
+			(details.NATEnabled || (details.RoutingEnabled && details.DHCPEnabled)) {
+			natGatewayIDs[nid] = nid + ":lan"
+		}
+	}
+
+	isUpstreamAnchor := func(id string) bool {
+		n, ok := nodeByID[id]
+		if !ok {
+			return false
+		}
+		d := detailsByID[id]
+		return n.Type == "router" || n.Type == "modem" || d.PublicIP != "" || d.NetworkZone == "wan" || d.NetworkZone == "cloud"
+	}
+
 	adj := make(map[string][]string, len(nodes))
+	addConnection := func(src, tgt string) {
+		adj[src] = append(adj[src], tgt)
+	}
+	isAutoLANPort := func(handle string, isSourceEndpoint bool) bool {
+		if handle == "" {
+			return isSourceEndpoint
+		}
+		return handle != "target-0"
+	}
 	for _, e := range edges {
+		if e.Type == "vpn" {
+			continue
+		}
 		src := e.SourceNodeID.String()
 		tgt := e.TargetNodeID.String()
-		adj[src] = append(adj[src], tgt)
-		adj[tgt] = append(adj[tgt], src)
+		direction := e.Direction
+		if direction == "" {
+			direction = "auto"
+		}
+
+		if natRouterID, ok := natGatewayIDs[src]; ok {
+			natHandle := e.SourceHandle
+			if direction == "lan" || (direction == "auto" && isAutoLANPort(natHandle, true) && !isUpstreamAnchor(tgt)) {
+				addConnection(natRouterID, tgt)
+				addConnection(tgt, natRouterID)
+			} else {
+				addConnection(src, tgt)
+				addConnection(tgt, src)
+			}
+			continue
+		}
+		if natRouterID, ok := natGatewayIDs[tgt]; ok {
+			natHandle := e.TargetHandle
+			if direction == "lan" || (direction == "auto" && isAutoLANPort(natHandle, false) && !isUpstreamAnchor(src)) {
+				addConnection(natRouterID, src)
+				addConnection(src, natRouterID)
+			} else {
+				addConnection(src, tgt)
+				addConnection(tgt, src)
+			}
+			continue
+		}
+		addConnection(src, tgt)
+		addConnection(tgt, src)
+	}
+
+	usedGatewayIPs := make(map[string]bool, len(nodes))
+	for _, n := range nodes {
+		if n.IP != "" {
+			usedGatewayIPs[n.IP] = true
+		}
+		if details := detailsByID[n.ID.String()]; details.LANGatewayIP != "" {
+			usedGatewayIPs[details.LANGatewayIP] = true
+		}
+	}
+	nextNATLAN := func(nid string) (string, string) {
+		details := detailsByID[nid]
+		if details.LANGatewayIP != "" {
+			return details.LANGatewayIP, details.LANSubnet
+		}
+		for _, neighborID := range adj[nid] {
+			if n := nodeByID[neighborID]; n.Type != "router" && n.Type != "firewall" {
+				continue
+			}
+			parent := net.ParseIP(nodeByID[neighborID].IP).To4()
+			if parent == nil {
+				continue
+			}
+			for offset := 1; offset < 255; offset++ {
+				third := (int(parent[2]) + offset) % 255
+				if third == 0 {
+					third = 1
+				}
+				gateway := fmt.Sprintf("%d.%d.%d.1", parent[0], parent[1], third)
+				if !usedGatewayIPs[gateway] {
+					usedGatewayIPs[gateway] = true
+					return gateway, gateway + "/24"
+				}
+			}
+		}
+		return "", ""
 	}
 
 	req := ipamRequest{
@@ -346,16 +698,31 @@ func (s *IPService) ValidateNetwork(buildID uuid.UUID) (json.RawMessage, error) 
 
 	for _, n := range nodes {
 		nid := n.ID.String()
-		if n.Type == "router" {
-			var details struct {
-				DHCPEnabled bool `json:"dhcp_enabled"`
+		details := detailsByID[nid]
+		isGateway := n.Type == "router"
+		if isGateway {
+			subnet := ""
+			if n.IP != "" && details.SubnetMask != "" {
+				subnet = n.IP + "/" + details.SubnetMask
 			}
-			_ = json.Unmarshal(n.Details, &details)
 
 			req.Routers = append(req.Routers, ipamRouter{
 				ID:          nid,
 				GatewayIP:   n.IP,
+				Subnet:      subnet,
 				DHCPEnabled: details.DHCPEnabled,
+			})
+		}
+		if natRouterID, ok := natGatewayIDs[nid]; ok {
+			lanGateway, lanSubnet := nextNATLAN(nid)
+			if lanSubnet == "" && lanGateway != "" {
+				lanSubnet = lanGateway + "/24"
+			}
+			req.Routers = append(req.Routers, ipamRouter{
+				ID:          natRouterID,
+				GatewayIP:   lanGateway,
+				Subnet:      lanSubnet,
+				DHCPEnabled: details.DHCPEnabled || details.NATEnabled,
 			})
 		}
 
@@ -367,11 +734,34 @@ func (s *IPService) ValidateNetwork(buildID uuid.UUID) (json.RawMessage, error) 
 			})
 		}
 
+		existingIP := ""
+		if nonNetworkTypes[n.Type] {
+			// non-network devices do not own addresses
+		} else if isGateway {
+			existingIP = n.IP
+		} else if details.DHCPLocked {
+			preserveLocked := true
+			if _, isNATGateway := natGatewayIDs[nid]; isNATGateway {
+				preserveLocked = false
+				for _, neighborID := range adj[nid] {
+					neighbor := nodeByID[neighborID]
+					if neighbor.Type == "router" &&
+						ipInGatewaySubnet(n.IP, neighbor.IP, detailsByID[neighborID].SubnetMask) {
+						preserveLocked = true
+						break
+					}
+				}
+			}
+			if preserveLocked {
+				existingIP = n.IP
+			}
+		}
+
 		req.Nodes = append(req.Nodes, ipamNode{
 			ID:          nid,
 			Type:        n.Type,
 			Connections: adj[nid],
-			ExistingIP:  n.IP,
+			ExistingIP:  existingIP,
 			VMs:         vms,
 		})
 	}

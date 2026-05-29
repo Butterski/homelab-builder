@@ -3,6 +3,7 @@ package core
 import (
 	"fmt"
 	"net"
+	"strings"
 
 	"github.com/Butterski/hlbipam/internal/models"
 	"github.com/Butterski/hlbipam/internal/utils"
@@ -87,6 +88,13 @@ func Allocate(req models.AllocateRequest) models.AllocateResponse {
 
 	visited := make(map[string]bool, totalNodes+len(req.Routers))
 
+	natOwnerID := func(routerID string) string {
+		return strings.TrimSuffix(routerID, ":lan")
+	}
+	isSyntheticNATRouter := func(routerID string) bool {
+		return strings.HasSuffix(routerID, ":lan")
+	}
+
 	results := make([]models.NodeResult, totalNodes)
 	for i := range req.Nodes {
 		results[i] = models.NodeResult{
@@ -128,7 +136,7 @@ func Allocate(req models.AllocateRequest) models.AllocateResponse {
 		}
 
 		sa := NewSubnetAllocator(r.Subnet, r.GatewayIP, zones, r.DHCPEnabled)
-		
+
 		dhcpReserved := uint32(0)
 		if r.DHCPEnabled {
 			dhcpReserved = sa.DHCPEnd - sa.DHCPStart + 1
@@ -170,6 +178,12 @@ func Allocate(req models.AllocateRequest) models.AllocateResponse {
 			queue = queue[1:]
 
 			for _, neighborID := range adj[cur] {
+				if isSyntheticNATRouter(r.ID) && neighborID == natOwnerID(r.ID) {
+					continue
+				}
+				if cur == natOwnerID(neighborID) && isSyntheticNATRouter(neighborID) {
+					continue
+				}
 				if visited[neighborID] {
 					continue
 				}
@@ -194,6 +208,9 @@ func Allocate(req models.AllocateRequest) models.AllocateResponse {
 
 				zone := GetZone(n.Type, sa.Zones)
 				pn := pendingNode{entry: entry, dto: n}
+				if cur != r.ID && len(n.Connections) == 1 && n.Connections[0] == r.ID && zone.CanHostVMs {
+					continue
+				}
 				if zone.CanHostVMs {
 					vmHostsByType[n.Type] = append(vmHostsByType[n.Type], pn)
 				} else {
@@ -280,7 +297,7 @@ func Allocate(req models.AllocateRequest) models.AllocateResponse {
 						}
 					}
 				}
-				
+
 				// SEAL the block
 				for k := 1; k < zone.Step; k++ {
 					sa.Reserve(hostIP + uint32(k))

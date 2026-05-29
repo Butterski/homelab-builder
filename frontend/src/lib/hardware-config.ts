@@ -15,6 +15,9 @@ export interface HardwareFeatures {
 
 export const HARDWARE_FEATURES: Record<HardwareType, HardwareFeatures> = {
   server:       { hasCPU: true,  hasRAM: true,  hasStorage: true,  canHostVMs: true,  isCompute: true,  hasDynamicPorts: true, isNetworked: true,  canBeNested: false, canHostNested: true,  canConnectToAny: false },
+  server_v2:    { hasCPU: true,  hasRAM: true,  hasStorage: true,  canHostVMs: true,  isCompute: true,  hasDynamicPorts: true, isNetworked: true,  canBeNested: false, canHostNested: true,  canConnectToAny: true },
+  firewall:     { hasCPU: true,  hasRAM: true,  hasStorage: true,  canHostVMs: false, isCompute: false, hasDynamicPorts: true, isNetworked: true,  canBeNested: false, canHostNested: false, canConnectToAny: true },
+  vps:          { hasCPU: true,  hasRAM: true,  hasStorage: true,  canHostVMs: true,  isCompute: true,  hasDynamicPorts: true, isNetworked: true,  canBeNested: false, canHostNested: true,  canConnectToAny: true },
   pc:           { hasCPU: true,  hasRAM: true,  hasStorage: true,  canHostVMs: true,  isCompute: true,  hasDynamicPorts: false, isNetworked: true,  canBeNested: false, canHostNested: true,  canConnectToAny: false },
   minipc:       { hasCPU: true,  hasRAM: true,  hasStorage: true,  canHostVMs: true,  isCompute: true,  hasDynamicPorts: false, isNetworked: true,  canBeNested: false, canHostNested: true,  canConnectToAny: false },
   sbc:          { hasCPU: true,  hasRAM: true,  hasStorage: true,  canHostVMs: true,  isCompute: true,  hasDynamicPorts: false, isNetworked: true,  canBeNested: false, canHostNested: true,  canConnectToAny: false },
