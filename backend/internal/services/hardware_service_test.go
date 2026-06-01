@@ -136,3 +136,51 @@ func TestHardwareService_Favorites(t *testing.T) {
 	}
 }
 
+func TestHardwareService_NormalizesCategories(t *testing.T) {
+	tx := testTx(t)
+	s := NewHardwareService(tx)
+
+	approved := true
+	components := []models.HardwareComponent{
+		{Category: "mini pcs", Brand: "Brand", Model: "One", Approved: &approved},
+		{Category: "mini_pc", Brand: "Brand", Model: "Two", Approved: &approved},
+		{Category: "server_v2", Brand: "Brand", Model: "Three", Approved: &approved},
+	}
+	for _, component := range components {
+		if _, err := s.Create(CreateHardwareInput{
+			Category: component.Category,
+			Brand:    component.Brand,
+			Model:    component.Model,
+		}, nil, true); err != nil {
+			t.Fatalf("failed to create component: %v", err)
+		}
+	}
+
+	cats, err := s.GetCategories()
+	if err != nil {
+		t.Fatalf("failed to get categories: %v", err)
+	}
+	if !containsString(cats, "minipc") {
+		t.Fatalf("expected normalized minipc category, got %+v", cats)
+	}
+	if containsString(cats, "mini_pc") || containsString(cats, "mini pcs") {
+		t.Fatalf("expected aliases to be removed, got %+v", cats)
+	}
+
+	result, err := s.GetAll(HardwareFilter{Category: "Mini PCs"})
+	if err != nil {
+		t.Fatalf("failed to get filtered hardware: %v", err)
+	}
+	if result.Total != 2 {
+		t.Fatalf("expected category alias filter to return 2 mini PCs, got %d", result.Total)
+	}
+}
+
+func containsString(values []string, expected string) bool {
+	for _, value := range values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
+}

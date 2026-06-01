@@ -98,6 +98,10 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 
 	// API routes (require database)
 	if db != nil {
+		if err := services.SeedExpandedDefaultServices(db); err != nil {
+			log.Printf("Warning: failed to seed expanded default services: %v", err)
+		}
+
 		authService := services.NewAuthService(db)
 		serviceService := services.NewServiceService(db)
 		serviceHandler := handlers.NewServiceHandler(serviceService)
@@ -111,6 +115,8 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 		adminHandler := handlers.NewAdminHandler(db, serviceService)
 		hardwareService := services.NewHardwareService(db)
 		hardwareHandler := handlers.NewHardwareHandler(hardwareService)
+		hardwareBlueprintService := services.NewHardwareBlueprintService(db)
+		hardwareBlueprintHandler := handlers.NewHardwareBlueprintHandler(hardwareBlueprintService)
 		steeringService := services.NewSteeringService(db)
 		steeringHandler := handlers.NewSteeringHandler(steeringService)
 		catalogCompService := services.NewCatalogComponentService(db)
@@ -150,6 +156,7 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 			api.GET("/hardware/:id", hardwareHandler.GetByID)
 			api.POST("/hardware/:id/like", hardwareHandler.Like)
 			api.POST("/hardware", hardwareHandler.Create) // community submission
+			api.GET("/hardware-blueprints/community", hardwareBlueprintHandler.ListCommunity)
 
 			// Component Catalog
 			api.GET("/catalog-components", catalogCompHandler.GetAll)
@@ -167,6 +174,18 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 			protected.GET("/hardware/favorites", hardwareHandler.GetFavorites)
 			protected.POST("/hardware/favorites", hardwareHandler.AddFavorite)
 			protected.DELETE("/hardware/favorites/:id", hardwareHandler.RemoveFavorite)
+			protected.GET("/hardware-blueprints", hardwareBlueprintHandler.ListMine)
+			protected.POST("/hardware-blueprints", hardwareBlueprintHandler.Create)
+			protected.POST("/hardware-blueprints/import", hardwareBlueprintHandler.Import)
+			protected.GET("/hardware-blueprints/:id/export", hardwareBlueprintHandler.Export)
+			protected.POST("/hardware-blueprints/:id/share-code", hardwareBlueprintHandler.CreateShareCode)
+			protected.PATCH("/hardware-blueprints/:id/submit", hardwareBlueprintHandler.Submit)
+			protected.POST("/hardware-blueprints/:id/vote", hardwareBlueprintHandler.Vote)
+			protected.POST("/hardware-blueprints/:id/review", hardwareBlueprintHandler.Review)
+
+			protected.GET("/my-services", serviceHandler.GetAllForCurrentUser)
+			protected.POST("/my-services", serviceHandler.CreatePrivate)
+			protected.PATCH("/my-services/:id/submit-community", serviceHandler.SubmitPrivateToCommunity)
 
 			// Builds
 			buildService := services.NewBuildService(db)
@@ -223,6 +242,9 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 			admin.PATCH("/hardware/:id/approve", hardwareHandler.AdminApprove)
 			admin.PATCH("/hardware/:id/buy-urls", hardwareHandler.AdminUpdateBuyURLs)
 			admin.POST("/hardware/bulk-import", hardwareHandler.AdminBulkImport)
+			admin.GET("/hardware-blueprints", hardwareBlueprintHandler.AdminListPending)
+			admin.PATCH("/hardware-blueprints/:id/visibility", hardwareBlueprintHandler.AdminSetVisibility)
+			admin.PATCH("/hardware-blueprints/:id/moderate", hardwareBlueprintHandler.AdminModerate)
 
 			// Steering rules
 			admin.GET("/steering", steeringHandler.GetAll)

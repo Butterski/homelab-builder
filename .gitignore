@@ -10,6 +10,8 @@
 
 # Output of the go coverage tool
 *.out
+.gocache/
+*.go.[0-9]*
 
 # Dependency directories
 vendor/

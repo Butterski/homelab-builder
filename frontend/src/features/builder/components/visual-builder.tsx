@@ -783,8 +783,9 @@ const Flow = React.memo(function Flow() {
             rack_units: deviceU,
             rack_position: uSlot,
           },
-          internal_components: [],
-          vms: [],
+          internal_components: data.internal_components || [],
+          vms: data.vms || [],
+          power_draw: data.power_draw,
           parent_id: rackTarget.id,
         };
         addHardware(newNode);
@@ -839,8 +840,9 @@ const Flow = React.memo(function Flow() {
         x: position.x,
         y: position.y,
         details: data.details || {},
-        internal_components: [],
-        vms: [],
+        internal_components: data.internal_components || [],
+        vms: data.vms || [],
+        power_draw: data.power_draw,
       };
       addHardware(newNode);
     },

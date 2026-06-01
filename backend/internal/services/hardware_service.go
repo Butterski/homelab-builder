@@ -2,6 +2,7 @@ package services
 
 import (
 	"encoding/json"
+	"sort"
 	"strings"
 
 	"github.com/Butterski/homelab-builder/backend/internal/models"
@@ -37,7 +38,7 @@ func (s *HardwareService) GetAll(f HardwareFilter) (*HardwareListResult, error) 
 	q := s.db.Model(&models.HardwareComponent{})
 
 	if f.Category != "" {
-		q = q.Where("category = ?", f.Category)
+		q = q.Where("category = ?", NormalizeHardwareCategory(f.Category))
 	}
 	if f.Brand != "" {
 		q = q.Where("LOWER(brand) = LOWER(?)", f.Brand)
@@ -93,16 +94,29 @@ func (s *HardwareService) GetCategories() ([]string, error) {
 	var cats []string
 	err := s.db.Model(&models.HardwareComponent{}).
 		Where("approved = true").
-		Distinct("category").
-		Order("category").
 		Pluck("category", &cats).Error
-	return cats, err
+	if err != nil {
+		return nil, err
+	}
+
+	seen := map[string]bool{}
+	normalized := make([]string, 0, len(cats))
+	for _, cat := range cats {
+		n := NormalizeHardwareCategory(cat)
+		if n == "" || seen[n] {
+			continue
+		}
+		seen[n] = true
+		normalized = append(normalized, n)
+	}
+	sort.Strings(normalized)
+	return normalized, nil
 }
 
 func (s *HardwareService) GetBrands(category string) ([]string, error) {
 	q := s.db.Model(&models.HardwareComponent{}).Where("approved = true")
 	if category != "" {
-		q = q.Where("category = ?", category)
+		q = q.Where("category = ?", NormalizeHardwareCategory(category))
 	}
 	var brands []string
 	err := q.Distinct("brand").Order("brand").Pluck("brand", &brands).Error
@@ -136,7 +150,7 @@ func (s *HardwareService) Create(input CreateHardwareInput, submittedBy *uuid.UU
 	}
 
 	c := models.HardwareComponent{
-		Category:     input.Category,
+		Category:     NormalizeHardwareCategory(input.Category),
 		Brand:        input.Brand,
 		Model:        input.Model,
 		Spec:         spec,
@@ -167,7 +181,7 @@ func (s *HardwareService) Update(id uuid.UUID, input CreateHardwareInput) (*mode
 	if input.BuyURLs != nil {
 		buyURLs = input.BuyURLs
 	}
-	c.Category = input.Category
+	c.Category = NormalizeHardwareCategory(input.Category)
 	c.Brand = input.Brand
 	c.Model = input.Model
 	c.Spec = spec
@@ -225,7 +239,7 @@ func (s *HardwareService) BulkImport(items []CreateHardwareInput, submittedBy *u
 		}
 		approvedTrue := true
 		components = append(components, models.HardwareComponent{
-			Category:     input.Category,
+			Category:     NormalizeHardwareCategory(input.Category),
 			Brand:        input.Brand,
 			Model:        input.Model,
 			Spec:         spec,
@@ -285,4 +299,3 @@ func (s *HardwareService) RemoveHardwareFavorite(userID uuid.UUID, componentID u
 	s.db.Model(&models.HardwareComponent{}).Where("id = ?", componentID).UpdateColumn("likes", gorm.Expr("GREATEST(0, likes - 1)"))
 	return nil
 }
-

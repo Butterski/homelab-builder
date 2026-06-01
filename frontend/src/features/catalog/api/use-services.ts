@@ -31,3 +31,41 @@ export function useRemoveSelection() {
         onSuccess: () => qc.invalidateQueries({ queryKey: ["user-selections"] }),
     })
 }
+
+export interface CustomServicePayload {
+    name: string
+    description: string
+    category: string
+    official_website?: string
+    docs_url?: string
+    github_url?: string
+    tags: string
+    docker_support: boolean
+    min_cpu_cores: number
+    recommended_cpu_cores: number
+    min_ram_mb: number
+    recommended_ram_mb: number
+    min_storage_gb: number
+    recommended_storage_gb: number
+}
+
+export function useCreateCustomService() {
+    const qc = useQueryClient()
+    return useMutation({
+        mutationFn: (payload: CustomServicePayload) =>
+            api.post<{ data: Service }>("/api/my-services", payload),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: ["services"] })
+            qc.invalidateQueries({ queryKey: ["user-selections"] })
+        },
+    })
+}
+
+export function useSubmitCustomService() {
+    const qc = useQueryClient()
+    return useMutation({
+        mutationFn: (serviceId: string) =>
+            api.patch<{ data: Service }>(`/api/my-services/${serviceId}/submit-community`, {}),
+        onSuccess: () => qc.invalidateQueries({ queryKey: ["services"] }),
+    })
+}

@@ -41,6 +41,23 @@ func (h *ServiceHandler) GetAll(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": svcs})
 }
 
+func (h *ServiceHandler) GetAllForCurrentUser(c *gin.Context) {
+	userID, err := getServiceUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+		return
+	}
+	svcs, err := h.service.GetAllForUser(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to fetch services. Please try again.",
+			"code":  "internal_error",
+		})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": svcs})
+}
+
 func (h *ServiceHandler) GetByID(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -112,10 +129,6 @@ func (h *ServiceHandler) SubmitCommunity(c *gin.Context) {
 		return
 	}
 
-	// Force inactive state for community submissions
-	isActive := false
-	input.IsActive = &isActive
-
 	if errs := validateServiceInput(input.Name, input.Category, input.MinRAMMB, input.RecommendedRAMMB, input.MinCPUCores, input.RecommendedCPUCores, input.MinStorageGB, input.RecommendedStorageGB); len(errs) > 0 {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":  "Validation failed",
@@ -125,7 +138,7 @@ func (h *ServiceHandler) SubmitCommunity(c *gin.Context) {
 		return
 	}
 
-	svc, err := h.service.Create(input)
+	svc, err := h.service.CreateCommunitySubmission(input)
 	if err != nil {
 		if strings.Contains(err.Error(), "duplicate") || strings.Contains(err.Error(), "unique") {
 			c.JSON(http.StatusConflict, gin.H{
@@ -142,6 +155,69 @@ func (h *ServiceHandler) SubmitCommunity(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"data": svc, "message": "Service submitted for review"})
+}
+
+func (h *ServiceHandler) CreatePrivate(c *gin.Context) {
+	userID, err := getServiceUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+		return
+	}
+
+	var input services.CreateServiceInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid request body. Name and category are required.",
+			"code":  "validation_error",
+		})
+		return
+	}
+
+	if errs := validateServiceInput(input.Name, input.Category, input.MinRAMMB, input.RecommendedRAMMB, input.MinCPUCores, input.RecommendedCPUCores, input.MinStorageGB, input.RecommendedStorageGB); len(errs) > 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":  "Validation failed",
+			"code":   "validation_error",
+			"errors": errs,
+		})
+		return
+	}
+
+	svc, err := h.service.CreatePrivate(userID, input)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to create service. Please try again.",
+			"code":  "internal_error",
+		})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"data": svc})
+}
+
+func (h *ServiceHandler) SubmitPrivateToCommunity(c *gin.Context) {
+	userID, err := getServiceUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+		return
+	}
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid service ID format",
+			"code":  "invalid_id",
+			"field": "id",
+		})
+		return
+	}
+
+	svc, err := h.service.SubmitPrivateToCommunity(id, userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to submit service. Please try again.",
+			"code":  "internal_error",
+		})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": svc, "message": "Service submitted for review"})
 }
 
 func (h *ServiceHandler) Update(c *gin.Context) {
@@ -270,4 +346,16 @@ func getAllowedCategories() []string {
 		cats = append(cats, cat)
 	}
 	return cats
+}
+
+func getServiceUserID(c *gin.Context) (uuid.UUID, error) {
+	userIDVal, exists := c.Get("user_id")
+	if !exists {
+		return uuid.Nil, fmt.Errorf("user_id not found in context")
+	}
+	userID, ok := userIDVal.(uuid.UUID)
+	if !ok {
+		return uuid.Nil, fmt.Errorf("invalid user_id type")
+	}
+	return userID, nil
 }

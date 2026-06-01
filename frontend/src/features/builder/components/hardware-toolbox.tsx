@@ -24,14 +24,18 @@ import {
   BoxSelect,
   Shield,
   Cloud,
+  Plus,
 } from 'lucide-react';
 import type { HardwareType } from '../../../types';
 import { Card } from '../../../components/ui/card';
 import { useUserSelections } from '../../catalog/api/use-services';
 import { useHardwareFavorites } from '../../catalog/api/use-hardware';
+import { useHardwareBlueprints } from '../../catalog/api/use-hardware-blueprints';
 import { useBuilderStore } from '../store/builder-store';
 import { Github } from '../../../components/icons/github';
 import { PowerUsagePanel } from './power-usage-panel';
+import { HardwareBlueprintCreator } from '../../catalog/components/hardware-blueprint-creator';
+import { hardwareBlueprintToDragData, hardwareComponentToDragData } from '../lib/catalog-mapper';
 
 // ─── Basic component types ─────────────────────────────────────────────────────
 const HARDWARE_TOOLS: {
@@ -485,6 +489,7 @@ export const HardwareToolbox = React.memo(function HardwareToolbox() {
   const { availableServices, fetchServices } = useBuilderStore();
   const { data: selectionsData } = useUserSelections();
   const { data: favoritesData } = useHardwareFavorites();
+  const { data: blueprintsData } = useHardwareBlueprints();
 
   React.useEffect(() => {
     fetchServices();
@@ -499,22 +504,37 @@ export const HardwareToolbox = React.memo(function HardwareToolbox() {
 
   const [activeTab, setActiveTab] = useState<'components' | 'presets' | 'services' | 'power'>('components');
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
-    new Set(['My Favorites', 'Single Board Computers', 'Mini PCs']),
+    new Set(['My Blueprints', 'My Favorites', 'Single Board Computers', 'Mini PCs']),
   );
   const [collapsedServiceCats, setCollapsedServiceCats] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [isMinimized, setIsMinimized] = useState(false);
   const [position, setPosition] = useState({ x: 16, y: 80 });
   const [isDragging, setIsDragging] = useState(false);
+  const [creatorOpen, setCreatorOpen] = useState(false);
   // Ref for drag offset tracking
   const dragOffset = useRef({ x: 0, y: 0 });
   const isDraggingRef = useRef(false);
 
   const favorites = React.useMemo(() => favoritesData?.data || [], [favoritesData]);
+  const blueprints = React.useMemo(() => blueprintsData?.data || [], [blueprintsData]);
 
   // Dynamic presets combining static presets + My Favorites!
   const dynamicPresets = React.useMemo(() => {
     const list = [...PRESETS];
+
+    if (blueprints.length > 0) {
+      list.unshift({
+        category: 'My Blueprints',
+        items: blueprints.map(blueprint => ({
+          label: blueprint.name,
+          type: blueprint.node_type,
+          icon: Server,
+          sub: `${blueprint.services?.length || 0} services - ${blueprint.visibility}`,
+          data: hardwareBlueprintToDragData(blueprint),
+        })),
+      });
+    }
 
     // Single iteration: combine flatMap+map+filter for performance
     const favoriteItems: any[] = [];
@@ -522,23 +542,12 @@ export const HardwareToolbox = React.memo(function HardwareToolbox() {
       const comp = fav.hardware_component;
       if (!comp) continue;
 
-      let type: string = comp.category;
-      if (comp.category === 'storage') {
-        type = 'disk';
-      } else if (comp.category === 'nic') {
-        type = 'hba';
-      } else if (comp.category === 'server') {
-        type = 'server_v2';
-      }
+      const dragData = hardwareComponentToDragData(comp);
+      const type: string = dragData.type;
       if (!VALID_HARDWARE_TYPES.has(type)) continue;
 
       const spec = comp.spec || {};
-      const details: any = {
-        model: `${comp.brand} ${comp.model}`,
-        price_est: comp.price_est,
-        currency: comp.currency,
-        ...spec,
-      };
+      const details: any = dragData.details || {};
 
       let rack_units = spec.rack_units;
       if (!rack_units && spec.form_factor && typeof spec.form_factor === 'string') {
@@ -589,9 +598,7 @@ export const HardwareToolbox = React.memo(function HardwareToolbox() {
         type: type as HardwareType,
         icon,
         sub,
-        data: {
-          name,
-        },
+        data: dragData,
       });
     }
 
@@ -603,7 +610,7 @@ export const HardwareToolbox = React.memo(function HardwareToolbox() {
     }
 
     return list;
-  }, [favorites]);
+  }, [blueprints, favorites]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('button')) return;
@@ -699,6 +706,8 @@ export const HardwareToolbox = React.memo(function HardwareToolbox() {
   });
 
   return (
+    <>
+    <HardwareBlueprintCreator open={creatorOpen} onClose={() => setCreatorOpen(false)} />
     <Card
       className="absolute z-50 shadow-none border flex flex-col overflow-hidden bg-card"
       style={{
@@ -797,6 +806,14 @@ export const HardwareToolbox = React.memo(function HardwareToolbox() {
             {/* ── Presets tab ── */}
             {activeTab === 'presets' && (
               <div className="space-y-1">
+                <button
+                  type="button"
+                  className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-md border border-primary/30 bg-primary/10 px-2.5 py-2 text-[10px] font-bold uppercase tracking-wide text-primary hover:bg-primary/15"
+                  onClick={() => setCreatorOpen(true)}
+                >
+                  <Plus className="size-3.5" />
+                  New Blueprint
+                </button>
                 {dynamicPresets.map(cat => {
                   const isOpen = expandedCategories.has(cat.category);
                   return (
@@ -1031,5 +1048,6 @@ export const HardwareToolbox = React.memo(function HardwareToolbox() {
         </>
       )}
     </Card>
+    </>
   );
 });

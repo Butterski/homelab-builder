@@ -23,6 +23,7 @@ type User struct {
 
 type Service struct {
 	ID              uuid.UUID           `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	UserID          *uuid.UUID          `gorm:"type:uuid;index" json:"user_id,omitempty"`
 	Name            string              `gorm:"not null" json:"name"`
 	Description     string              `gorm:"default:''" json:"description"`
 	Category        string              `gorm:"not null;default:'other'" json:"category"`
@@ -33,6 +34,8 @@ type Service struct {
 	Tags            string              `gorm:"type:jsonb;default:'[]'" json:"tags"`
 	DockerSupport   bool                `gorm:"default:true" json:"docker_support"`
 	IsActive        bool                `gorm:"default:true" json:"is_active"`
+	Visibility      string              `gorm:"not null;default:'public';index" json:"visibility"`
+	User            *User               `gorm:"foreignKey:UserID" json:"-"`
 	Requirements    *ServiceRequirement `gorm:"foreignKey:ServiceID" json:"requirements,omitempty"`
 	CreatedAt       time.Time           `json:"created_at"`
 	UpdatedAt       time.Time           `json:"updated_at"`
@@ -124,6 +127,102 @@ type HardwareComponent struct {
 }
 
 func (HardwareComponent) TableName() string { return "hardware_components" }
+
+type HardwareBlueprint struct {
+	ID               uuid.UUID             `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	UserID           uuid.UUID             `gorm:"type:uuid;not null;index" json:"user_id"`
+	Name             string                `gorm:"not null" json:"name"`
+	Description      string                `gorm:"type:text;default:''" json:"description"`
+	Category         string                `gorm:"not null;index" json:"category"`
+	NodeType         string                `gorm:"not null;index" json:"node_type"`
+	Visibility       string                `gorm:"not null;default:'private';index" json:"visibility"`
+	Tags             json.RawMessage       `gorm:"type:jsonb;not null;default:'[]'" json:"tags"`
+	NodeData         json.RawMessage       `gorm:"type:jsonb;not null;default:'{}'" json:"node_data"`
+	Services         json.RawMessage       `gorm:"type:jsonb;not null;default:'[]'" json:"services"`
+	Upvotes          int                   `gorm:"default:0" json:"upvotes"`
+	Downvotes        int                   `gorm:"default:0" json:"downvotes"`
+	ShareCode        *string               `gorm:"uniqueIndex" json:"share_code,omitempty"`
+	ModerationStatus string                `gorm:"not null;default:'none';index" json:"moderation_status"`
+	ModerationNote   string                `gorm:"type:text;default:''" json:"moderation_note"`
+	ReviewedBy       *uuid.UUID            `gorm:"type:uuid" json:"reviewed_by,omitempty"`
+	ReviewedAt       *time.Time            `json:"reviewed_at,omitempty"`
+	Fit              *HardwareBlueprintFit `gorm:"-" json:"fit,omitempty"`
+	User             *User                 `gorm:"foreignKey:UserID" json:"-"`
+	CreatedAt        time.Time             `json:"created_at"`
+	UpdatedAt        time.Time             `json:"updated_at"`
+}
+
+func (HardwareBlueprint) TableName() string { return "hardware_blueprints" }
+
+type HardwareBlueprintFit struct {
+	Score       int                          `json:"score"`
+	Grade       string                       `json:"grade"`
+	Label       string                       `json:"label"`
+	Summary     string                       `json:"summary"`
+	Capacity    HardwareBlueprintFitResource `json:"capacity"`
+	Demand      HardwareBlueprintFitResource `json:"demand"`
+	Utilization HardwareBlueprintUtilization `json:"utilization"`
+	Factors     []HardwareBlueprintFitFactor `json:"factors"`
+}
+
+type HardwareBlueprintFitResource struct {
+	CPUCores    float64 `json:"cpu_cores"`
+	RAMGB       float64 `json:"ram_gb"`
+	StorageGB   float64 `json:"storage_gb"`
+	PowerW      float64 `json:"power_w"`
+	Ports       float64 `json:"ports"`
+	NetworkGbps float64 `json:"network_gbps"`
+	DriveBays   int     `json:"drive_bays"`
+	Disks       int     `json:"disks"`
+	GPUs        int     `json:"gpus"`
+}
+
+type HardwareBlueprintUtilization struct {
+	CPU     float64 `json:"cpu"`
+	RAM     float64 `json:"ram"`
+	Storage float64 `json:"storage"`
+	Ports   float64 `json:"ports"`
+	Network float64 `json:"network"`
+}
+
+type HardwareBlueprintFitFactor struct {
+	Key    string  `json:"key"`
+	Label  string  `json:"label"`
+	Score  float64 `json:"score"`
+	Weight float64 `json:"weight"`
+	Note   string  `json:"note"`
+}
+
+type HardwareBlueprintVote struct {
+	ID          uuid.UUID          `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	BlueprintID uuid.UUID          `gorm:"type:uuid;not null;uniqueIndex:idx_blueprint_vote" json:"blueprint_id"`
+	UserID      uuid.UUID          `gorm:"type:uuid;not null;uniqueIndex:idx_blueprint_vote" json:"user_id"`
+	Value       int                `gorm:"not null;default:1" json:"value"`
+	Blueprint   *HardwareBlueprint `gorm:"foreignKey:BlueprintID" json:"-"`
+	User        *User              `gorm:"foreignKey:UserID" json:"-"`
+	CreatedAt   time.Time          `json:"created_at"`
+	UpdatedAt   time.Time          `json:"updated_at"`
+}
+
+func (HardwareBlueprintVote) TableName() string { return "hardware_blueprint_votes" }
+
+type HardwareBlueprintReview struct {
+	ID              uuid.UUID          `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	BlueprintID     uuid.UUID          `gorm:"type:uuid;not null;uniqueIndex:idx_blueprint_review" json:"blueprint_id"`
+	UserID          uuid.UUID          `gorm:"type:uuid;not null;uniqueIndex:idx_blueprint_review" json:"user_id"`
+	UseCase         string             `gorm:"default:''" json:"use_case"`
+	Stability       string             `gorm:"default:''" json:"stability"`
+	Noise           string             `gorm:"default:''" json:"noise"`
+	Power           string             `gorm:"default:''" json:"power"`
+	WouldBuildAgain bool               `gorm:"default:false" json:"would_build_again"`
+	Tags            json.RawMessage    `gorm:"type:jsonb;not null;default:'[]'" json:"tags"`
+	Blueprint       *HardwareBlueprint `gorm:"foreignKey:BlueprintID" json:"-"`
+	User            *User              `gorm:"foreignKey:UserID" json:"-"`
+	CreatedAt       time.Time          `json:"created_at"`
+	UpdatedAt       time.Time          `json:"updated_at"`
+}
+
+func (HardwareBlueprintReview) TableName() string { return "hardware_blueprint_reviews" }
 
 type HardwareReview struct {
 	ID               uuid.UUID  `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`

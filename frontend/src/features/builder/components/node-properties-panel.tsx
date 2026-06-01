@@ -13,6 +13,7 @@ import {
   Lock,
   Unlock,
   ChevronDown,
+  Save,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { HardwareSpec, HardwareType } from '../../../types';
@@ -23,6 +24,7 @@ import { getVmResourceUsage } from '../lib/resource-usage';
 import { getNodePortCount, parsePortCount } from '../lib/port-count';
 import { DEFAULT_DEVICE_U } from './rack-node-constants';
 import { useHardware } from '../../catalog/api/use-hardware';
+import { HardwareBlueprintCreator } from '../../catalog/components/hardware-blueprint-creator';
 
 const IP_REGEX =
   /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
@@ -66,6 +68,7 @@ export function NodePropertiesPanel() {
   const [errors, setErrors] = useState<{ ip?: string; mask?: string; gateway?: string; macAddress?: string }>({});
   const [netOpen, setNetOpen] = useState(false);
   const [modelSearchOpen, setModelSearchOpen] = useState(false);
+  const [blueprintCreatorOpen, setBlueprintCreatorOpen] = useState(false);
 
   const selectedNode = hardwareNodes.find(n => n.id === selectedNodeId);
   const isGatewayCapable = !!selectedNode && (
@@ -384,6 +387,12 @@ export function NodePropertiesPanel() {
   const hasWarning = cpuWarning || ramWarning;
 
   return (
+    <>
+    <HardwareBlueprintCreator
+      open={blueprintCreatorOpen}
+      onClose={() => setBlueprintCreatorOpen(false)}
+      initialNode={selectedNode}
+    />
     <Card className="absolute top-8 right-8 w-80 shadow-none z-10 border-l animate-in slide-in-from-right-10 bg-card max-h-[calc(100vh-6rem)] flex flex-col">
       <CardHeader className="flex flex-row items-center justify-between py-3 bg-muted/50 border-b shrink-0">
         <CardTitle className="text-sm font-medium flex items-center gap-2">
@@ -393,6 +402,15 @@ export function NodePropertiesPanel() {
           </span>
         </CardTitle>
         <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setBlueprintCreatorOpen(true)}
+            className="size-6 rounded-full hover:bg-primary/10 hover:text-primary"
+            title="Save Blueprint"
+          >
+            <Save className="size-4" />
+          </Button>
           <Button
             variant="ghost"
             size="icon"
@@ -978,5 +996,6 @@ export function NodePropertiesPanel() {
         )}
       </CardContent>
     </Card>
+    </>
   );
 }

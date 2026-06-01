@@ -7,7 +7,23 @@ if (typeof window !== 'undefined') {
 const rawApiUrl = import.meta.env.VITE_API_URL;
 const API_BASE = rawApiUrl && rawApiUrl !== 'http://localhost:8080' ? rawApiUrl : defaultApiBase;
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
+class ApiRequestError extends Error {
+    status: number;
+    code: string;
+
+    constructor(status: number, code: string, message: string) {
+        super(message);
+        this.name = 'ApiRequestError';
+        this.status = status;
+        this.code = code;
+    }
+}
+
+async function request<T>(
+    path: string,
+    options?: RequestInit,
+    config: { suppressAuthRedirect?: boolean } = {},
+): Promise<T> {
     const token = localStorage.getItem('auth_token');
     const headers: HeadersInit = {
         'Content-Type': 'application/json',
@@ -18,7 +34,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
 
     if (!res.ok) {
-        if (res.status === 401) {
+        if (res.status === 401 && !config.suppressAuthRedirect) {
             // Token expired or invalid
             localStorage.removeItem('auth_token');
             // Only redirect if we're not on a public page or checking /me
@@ -38,7 +54,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
         }
 
         const error = await res.json().catch(() => ({ error: 'Request failed' }));
-        throw new Error(error.error || `HTTP ${res.status}`);
+        throw new ApiRequestError(res.status, error.code || 'request_failed', error.error || `HTTP ${res.status}`);
     }
 
     return res.json();
@@ -46,8 +62,20 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 export const api = {
     // Services
-    getServices: () =>
-        request<{ data: import('../types').Service[] }>('/api/services'),
+    getServices: async () => {
+        try {
+            return await request<{ data: import('../types').Service[] }>(
+                '/api/my-services',
+                undefined,
+                { suppressAuthRedirect: true },
+            );
+        } catch (error) {
+            if (error instanceof ApiRequestError && error.status === 401) {
+                return request<{ data: import('../types').Service[] }>('/api/services');
+            }
+            throw error;
+        }
+    },
 
     getService: (id: string) =>
         request<{ data: import('../types').Service }>(`/api/services/${id}`),

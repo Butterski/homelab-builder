@@ -5,6 +5,7 @@ import { Skeleton } from "../../../components/ui/skeleton"
 import { LoadingScreen } from "../../../components/ui/loading-screen"
 import { ServicesTable } from "../components/services-table"
 import { AdminHardwareManager } from "../components/hardware-manager"
+import { BlueprintModerationManager } from "../components/blueprint-moderation-manager"
 import { SteeringRulesManager } from "../components/steering-rules-manager"
 import { CatalogComponentsManager } from "../components/catalog-components-manager"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../../components/ui/card"
@@ -84,12 +85,13 @@ const getAvatarColor = (id: string) => {
 
 // ─── Extracted sub-components to reduce component size ───────────────────────
 function TabSwitcher({ tab, onTabChange }: { tab: string; onTabChange: (t: any) => void }) {
-  const tabs = ["insights", "users", "services", "hardware", "links", "steering", "mass-planner"] as const;
+  const tabs = ["insights", "users", "services", "hardware", "blueprints", "links", "steering", "mass-planner"] as const;
   const labels: Record<string, string> = {
     insights: "Topology Insights",
     users: "Active Homelabers",
     services: "Service Catalog",
     hardware: "Community Hardware",
+    blueprints: "Blueprint Review",
     links: "Buy Links (Affiliate)",
     steering: "Store Steering",
     "mass-planner": "Component Planner",
@@ -362,7 +364,7 @@ function AdminPage() {
   const { data: stats, isLoading: statsLoading } = useAdminStats()
   const { data: services, isLoading: servicesLoading } = useAdminServices()
   const { data: users, isLoading: usersLoading } = useAdminUsers()
-  const [tab, setTab] = useState<"insights" | "users" | "services" | "hardware" | "links" | "steering" | "mass-planner">("insights")
+  const [tab, setTab] = useState<"insights" | "users" | "services" | "hardware" | "blueprints" | "links" | "steering" | "mass-planner">("insights")
 
   const [userSearch, setUserSearch] = useState("")
   const [userMinBuilds, setUserMinBuilds] = useState<number>(0)
@@ -453,6 +455,7 @@ function AdminPage() {
         </div>
       )}
       {tab === "hardware" && <AdminHardwareManager />}
+      {tab === "blueprints" && <BlueprintModerationManager />}
       {tab === "links" && (
         <div className="flex flex-col items-center justify-center p-12 border border-dashed rounded-xl bg-muted/10 text-center gap-3">
           <div className="text-4xl">⏳</div>

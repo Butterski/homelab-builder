@@ -16,7 +16,21 @@ func NewServiceService(db *gorm.DB) *ServiceService {
 
 func (s *ServiceService) GetAll() ([]models.Service, error) {
 	var services []models.Service
-	err := s.db.Where("is_active = ?", true).
+	err := s.db.Where("is_active = ? AND user_id IS NULL AND visibility = ?", true, "public").
+		Preload("Requirements").
+		Order("category, name").
+		Find(&services).Error
+	return services, err
+}
+
+func (s *ServiceService) GetAllForUser(userID uuid.UUID) ([]models.Service, error) {
+	var services []models.Service
+	err := s.db.Where(
+		"is_active = ? AND ((user_id IS NULL AND visibility = ?) OR user_id = ?)",
+		true,
+		"public",
+		userID,
+	).
 		Preload("Requirements").
 		Order("category, name").
 		Find(&services).Error
@@ -52,6 +66,22 @@ type CreateServiceInput struct {
 }
 
 func (s *ServiceService) Create(input CreateServiceInput) (*models.Service, error) {
+	return s.create(input, nil, "public")
+}
+
+func (s *ServiceService) CreatePrivate(userID uuid.UUID, input CreateServiceInput) (*models.Service, error) {
+	isActive := true
+	input.IsActive = &isActive
+	return s.create(input, &userID, "private")
+}
+
+func (s *ServiceService) CreateCommunitySubmission(input CreateServiceInput) (*models.Service, error) {
+	isActive := false
+	input.IsActive = &isActive
+	return s.create(input, nil, "pending")
+}
+
+func (s *ServiceService) create(input CreateServiceInput, userID *uuid.UUID, visibility string) (*models.Service, error) {
 	isActive := true
 	if input.IsActive != nil {
 		isActive = *input.IsActive
@@ -62,6 +92,7 @@ func (s *ServiceService) Create(input CreateServiceInput) (*models.Service, erro
 	}
 
 	service := models.Service{
+		UserID:          userID,
 		Name:            input.Name,
 		Description:     input.Description,
 		Category:        input.Category,
@@ -72,6 +103,7 @@ func (s *ServiceService) Create(input CreateServiceInput) (*models.Service, erro
 		Tags:            input.Tags,
 		DockerSupport:   input.DockerSupport,
 		IsActive:        isActive,
+		Visibility:      visibility,
 	}
 
 	err := s.db.Transaction(func(tx *gorm.DB) error {
@@ -210,6 +242,18 @@ func (s *ServiceService) Delete(id uuid.UUID) error {
 	return s.db.Model(&models.Service{}).
 		Where("id = ?", id).
 		Update("is_active", false).Error
+}
+
+func (s *ServiceService) SubmitPrivateToCommunity(id, userID uuid.UUID) (*models.Service, error) {
+	var service models.Service
+	if err := s.db.First(&service, "id = ? AND user_id = ?", id, userID).Error; err != nil {
+		return nil, err
+	}
+	service.Visibility = "pending"
+	if err := s.db.Save(&service).Error; err != nil {
+		return nil, err
+	}
+	return s.GetByID(id)
 }
 
 func (s *ServiceService) HardDelete(id uuid.UUID) error {

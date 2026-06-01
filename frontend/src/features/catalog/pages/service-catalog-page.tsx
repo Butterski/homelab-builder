@@ -1,10 +1,20 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useBuilderStore } from '../../builder/store/builder-store';
-import { useUserSelections, useAddSelection, useRemoveSelection } from '../api/use-services';
+import {
+  useUserSelections,
+  useAddSelection,
+  useRemoveSelection,
+  useCreateCustomService,
+  useSubmitCustomService,
+  type CustomServicePayload,
+} from '../api/use-services';
+import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
-import { Search, Heart, Package, Book, Globe } from 'lucide-react';
+import { Search, Heart, Package, Book, Globe, Plus, X, Loader2, Check } from 'lucide-react';
 import type { Service } from '../../../types';
 import { Github } from '../../../components/icons/github';
+import { toast } from 'sonner';
+import { filterServiceCatalog, isUserService, serviceVisibilityLabel } from '../lib/service-catalog';
 
 function ServiceCard({
   item,
@@ -17,6 +27,7 @@ function ServiceCard({
 }) {
   const addSelection = useAddSelection();
   const removeSelection = useRemoveSelection();
+  const visibilityLabel = serviceVisibilityLabel(item);
 
   const handleFavorite = () => {
     if (isFavorite && selectionId) {
@@ -40,8 +51,15 @@ function ServiceCard({
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2 max-w-full">
-            <div className="truncate">
-              <h3 className="font-semibold text-base truncate">{item.name}</h3>
+            <div className="min-w-0">
+              <div className="flex min-w-0 items-center gap-2">
+                <h3 className="truncate text-base font-semibold">{item.name}</h3>
+                {visibilityLabel && (
+                  <span className="shrink-0 rounded-md border border-primary/20 bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                    {visibilityLabel}
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-muted-foreground capitalize mt-0.5">{item.category}</p>
             </div>
             <button
@@ -109,15 +127,218 @@ function ServiceCard({
   );
 }
 
+const SERVICE_CATEGORIES = [
+  'media',
+  'networking',
+  'monitoring',
+  'storage',
+  'management',
+  'home_automation',
+  'gaming',
+  'other',
+];
+
+function CustomServiceModal({
+  onClose,
+  onSaved,
+}: {
+  onClose: () => void;
+  onSaved: (service: Service, submittedToCommunity: boolean) => void;
+}) {
+  const { fetchServices } = useBuilderStore();
+  const createService = useCreateCustomService();
+  const submitService = useSubmitCustomService();
+  const [name, setName] = useState('');
+  const [category, setCategory] = useState('other');
+  const [description, setDescription] = useState('');
+  const [tags, setTags] = useState('custom, useful');
+  const [website, setWebsite] = useState('');
+  const [docs, setDocs] = useState('');
+  const [github, setGithub] = useState('');
+  const [minCpu, setMinCpu] = useState('0.5');
+  const [recCpu, setRecCpu] = useState('1');
+  const [minRam, setMinRam] = useState('256');
+  const [recRam, setRecRam] = useState('512');
+  const [minStorage, setMinStorage] = useState('1');
+  const [recStorage, setRecStorage] = useState('5');
+  const [dockerSupport, setDockerSupport] = useState(true);
+  const [submitToCommunity, setSubmitToCommunity] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
+
+  const parseNumber = (value: string) => Number(value || 0);
+
+  const handleSave = async () => {
+    setError('');
+    if (!name.trim() || !description.trim()) {
+      setError('Name and description are required.');
+      return;
+    }
+
+    const payload: CustomServicePayload = {
+      name: name.trim(),
+      description: description.trim(),
+      category,
+      official_website: website.trim(),
+      docs_url: docs.trim(),
+      github_url: github.trim(),
+      tags: JSON.stringify(tags.split(',').map(tag => tag.trim()).filter(Boolean)),
+      docker_support: dockerSupport,
+      min_cpu_cores: parseNumber(minCpu),
+      recommended_cpu_cores: parseNumber(recCpu),
+      min_ram_mb: parseNumber(minRam),
+      recommended_ram_mb: parseNumber(recRam),
+      min_storage_gb: parseNumber(minStorage),
+      recommended_storage_gb: parseNumber(recStorage),
+    };
+
+    try {
+      const created = await createService.mutateAsync(payload);
+      let savedService = created.data;
+      if (submitToCommunity) {
+        const submitted = await submitService.mutateAsync(created.data.id);
+        savedService = submitted.data;
+      }
+      await fetchServices();
+      onSaved(savedService, submitToCommunity);
+      setSuccess(true);
+      setTimeout(onClose, 900);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not save service.';
+      setError(message);
+      toast.error(message);
+    }
+  };
+
+  const pending = createService.isPending || submitService.isPending;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/65" onClick={onClose} role="presentation" />
+      <div className="relative z-10 w-full max-w-3xl overflow-hidden rounded-xl border bg-card shadow-xl">
+        <div className="flex items-center justify-between border-b px-6 py-4">
+          <div>
+            <h2 className="text-lg font-semibold">Custom Service</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">Private first, community optional</p>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-md p-1.5 hover:bg-muted">
+            <X className="size-4" />
+          </button>
+        </div>
+
+        {success ? (
+          <div className="flex flex-col items-center justify-center px-6 py-12 text-center">
+            <div className="mb-4 flex size-14 items-center justify-center rounded-full bg-green-500/10 text-green-600">
+              <Check className="size-7" />
+            </div>
+            <p className="font-semibold">Service saved</p>
+          </div>
+        ) : (
+          <div className="max-h-[78vh] space-y-5 overflow-y-auto p-6">
+            <div className="grid gap-3 sm:grid-cols-[1fr_190px]">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">Name</label>
+                <Input value={name} onChange={event => setName(event.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">Category</label>
+                <select
+                  className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                  value={category}
+                  onChange={event => setCategory(event.target.value)}
+                >
+                  {SERVICE_CATEGORIES.map(cat => (
+                    <option key={cat} value={cat}>
+                      {cat.replace('_', ' ')}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Description</label>
+              <textarea
+                className="min-h-20 w-full resize-none rounded-md border bg-background px-3 py-2 text-sm"
+                value={description}
+                onChange={event => setDescription(event.target.value)}
+              />
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <ServiceNumber label="Min CPU" value={minCpu} setValue={setMinCpu} />
+              <ServiceNumber label="Rec CPU" value={recCpu} setValue={setRecCpu} />
+              <ServiceNumber label="Min RAM MB" value={minRam} setValue={setMinRam} />
+              <ServiceNumber label="Rec RAM MB" value={recRam} setValue={setRecRam} />
+              <ServiceNumber label="Min Disk GB" value={minStorage} setValue={setMinStorage} />
+              <ServiceNumber label="Rec Disk GB" value={recStorage} setValue={setRecStorage} />
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Input placeholder="Website" value={website} onChange={event => setWebsite(event.target.value)} />
+              <Input placeholder="Docs" value={docs} onChange={event => setDocs(event.target.value)} />
+              <Input placeholder="GitHub" value={github} onChange={event => setGithub(event.target.value)} />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Tags</label>
+              <Input value={tags} onChange={event => setTags(event.target.value)} />
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className="flex items-center justify-between rounded-md border bg-muted/20 px-3 py-2 text-sm">
+                <span>Docker support</span>
+                <input type="checkbox" className="size-4" checked={dockerSupport} onChange={event => setDockerSupport(event.target.checked)} />
+              </label>
+              <label className="flex items-center justify-between rounded-md border bg-muted/20 px-3 py-2 text-sm">
+                <span>Submit to community</span>
+                <input type="checkbox" className="size-4" checked={submitToCommunity} onChange={event => setSubmitToCommunity(event.target.checked)} />
+              </label>
+            </div>
+
+            {error && <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
+
+            <div className="flex justify-end gap-2 border-t pt-4">
+              <Button variant="outline" onClick={onClose} disabled={pending}>Cancel</Button>
+              <Button onClick={handleSave} disabled={pending}>
+                {pending ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
+                Save Service
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ServiceNumber({
+  label,
+  value,
+  setValue,
+}: {
+  label: string;
+  value: string;
+  setValue: (value: string) => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label className="text-xs font-medium text-muted-foreground">{label}</label>
+      <Input type="number" min="0" step="0.5" value={value} onChange={event => setValue(event.target.value)} />
+    </div>
+  );
+}
+
 export default function ServiceCatalogPage() {
   const { availableServices, fetchServices } = useBuilderStore();
   const { data: selectionsData, isLoading } = useUserSelections();
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
+  const [showCreator, setShowCreator] = useState(false);
 
-  if (availableServices.length === 0) {
-    fetchServices(); // Ensure they are loaded if arriving directly
-  }
+  useEffect(() => {
+    fetchServices();
+  }, [fetchServices]);
 
   const selections = useMemo(() => selectionsData?.data || [], [selectionsData]);
   const favSet = useMemo(() => {
@@ -126,23 +347,8 @@ export default function ServiceCatalogPage() {
     return map;
   }, [selections]);
 
-  // Filter Logic
   const items = useMemo(() => {
-    let res = availableServices;
-    if (category === 'favorites') {
-      res = res.filter(s => favSet.has(s.id));
-    } else if (category && category !== 'all') {
-      res = res.filter(s => s.category.toLowerCase() === category.toLowerCase());
-    }
-    if (search) {
-      const lowSearch = search.toLowerCase();
-      res = res.filter(
-        s =>
-          s.name.toLowerCase().includes(lowSearch) ||
-          s.description?.toLowerCase().includes(lowSearch),
-      );
-    }
-    return res;
+    return filterServiceCatalog(availableServices, { category, search, favoriteIds: favSet });
   }, [availableServices, category, search, favSet]);
 
   const categories = useMemo(() => {
@@ -150,8 +356,23 @@ export default function ServiceCatalogPage() {
     return Array.from(cats).sort();
   }, [availableServices]);
 
+  const myServicesCount = useMemo(() => availableServices.filter(isUserService).length, [availableServices]);
+
+  const handleServiceSaved = (service: Service, submittedToCommunity: boolean) => {
+    setSearch('');
+    setCategory('mine');
+    toast.success(
+      submittedToCommunity
+        ? `${service.name} saved and submitted for review`
+        : `${service.name} saved to My services`,
+    );
+  };
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto py-8 px-6">
+      {showCreator && (
+        <CustomServiceModal onClose={() => setShowCreator(false)} onSaved={handleServiceSaved} />
+      )}
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Service Library</h1>
@@ -159,6 +380,9 @@ export default function ServiceCatalogPage() {
             Discover and favorite self-hosted services for your homelab
           </p>
         </div>
+        <Button size="sm" onClick={() => setShowCreator(true)}>
+          <Plus className="size-4 mr-2" /> Create Service
+        </Button>
       </div>
 
       <div className="flex flex-wrap gap-3 items-center">
@@ -188,6 +412,17 @@ export default function ServiceCatalogPage() {
         >
           <Heart className={`size-3 ${category === 'favorites' ? 'fill-red-500' : ''}`} />
           Favorites
+        </button>
+        <button
+          type="button"
+          onClick={() => setCategory(category === 'mine' ? '' : 'mine')}
+          className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors hover:cursor-pointer ${category === 'mine' ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:bg-muted'}`}
+        >
+          <Package className="size-3" />
+          My services
+          <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${category === 'mine' ? 'bg-background/20' : 'bg-muted text-muted-foreground'}`}>
+            {myServicesCount}
+          </span>
         </button>
         {categories.map(cat => (
           <button

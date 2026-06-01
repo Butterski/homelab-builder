@@ -23,6 +23,7 @@ export type ServiceCategory =
 
 export interface Service {
   id: string;
+  user_id?: string;
   name: string;
   description: string;
   category: string;
@@ -33,6 +34,7 @@ export interface Service {
   tags?: string;
   docker_support: boolean;
   is_active: boolean;
+  visibility?: 'public' | 'private' | 'pending';
   requirements: ServiceRequirement | null;
   created_at: string;
 }
@@ -153,6 +155,8 @@ export interface HardwareSpec {
   price_est?: number;
   currency?: string;
   url?: string;
+  blueprint_id?: string;
+  blueprint_visibility?: string;
   dhcp_enabled?: boolean;
   dhcp_locked?: boolean;
   rack_size?: number;     // Total U capacity of a rack (e.g. 24, 42)

@@ -126,6 +126,43 @@
   --sidebar-ring: #3f3f46;
 }
 
+:root {
+  --scrollbar-track: color-mix(in srgb, var(--background) 84%, var(--card));
+  --scrollbar-thumb: color-mix(in srgb, var(--primary) 46%, var(--ring));
+  --scrollbar-thumb-hover: color-mix(in srgb, var(--primary) 68%, var(--ring));
+  --scrollbar-thumb-border: color-mix(in srgb, var(--background) 84%, var(--card));
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+*::-webkit-scrollbar {
+  width: 0.65rem;
+  height: 0.65rem;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb {
+  min-height: 2.5rem;
+  border: 2px solid var(--scrollbar-thumb-border);
+  border-radius: 999px;
+  background: var(--scrollbar-thumb);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 /* ─── Micro-Animations ──────────────────────────────────────────────────────── */
 
 @keyframes fadeInUp {
