@@ -1,7 +1,7 @@
 {
   "name": "HLBuilder",
   "short_name": "HLBuilder",
-  "description": "Visually design your homelab network",
+  "description": "Plan a homelab network visually with routers, switches, servers, storage, IP assignments, and self-hosted services.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0f172a",

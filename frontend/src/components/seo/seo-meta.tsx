@@ -7,10 +7,13 @@ type SeoMetaProps = {
   image?: string;
   type?: 'website' | 'article';
   keywords?: string[];
+  robots?: string;
   structuredData?: Record<string, unknown> | Array<Record<string, unknown>>;
 };
 
 const DEFAULT_IMAGE = 'https://hlbldr.com/og-image.png';
+const DEFAULT_SITE_URL = 'https://hlbldr.com';
+const SITE_URL = (import.meta.env.VITE_PUBLIC_SITE_URL || DEFAULT_SITE_URL).replace(/\/$/, '');
 
 function upsertMeta(selector: string, create: () => HTMLMetaElement) {
   let element = document.head.querySelector(selector) as HTMLMetaElement | null;
@@ -46,6 +49,7 @@ export function SeoMeta({
   image = DEFAULT_IMAGE,
   type = 'website',
   keywords,
+  robots,
   structuredData,
 }: SeoMetaProps) {
   useEffect(() => {
@@ -91,6 +95,28 @@ export function SeoMeta({
           keywordsMeta.element.removeAttribute('content');
         } else {
           keywordsMeta.element.setAttribute('content', previousKeywords);
+        }
+      });
+    }
+
+    if (robots) {
+      const robotsMeta = upsertMeta('meta[name="robots"]', () => {
+        const element = document.createElement('meta');
+        element.setAttribute('name', 'robots');
+        return element;
+      });
+      const previousRobots = robotsMeta.element.getAttribute('content');
+      robotsMeta.element.setAttribute('content', robots);
+      updates.push(() => {
+        if (robotsMeta.created) {
+          robotsMeta.element.remove();
+          return;
+        }
+
+        if (previousRobots === null) {
+          robotsMeta.element.removeAttribute('content');
+        } else {
+          robotsMeta.element.setAttribute('content', previousRobots);
         }
       });
     }
@@ -236,7 +262,7 @@ export function SeoMeta({
     });
 
     if (path) {
-      const fullUrl = new URL(path, window.location.origin).toString();
+      const fullUrl = new URL(path, `${SITE_URL}/`).toString();
 
       const canonical = upsertCanonical();
       const previousCanonical = canonical.element.getAttribute('href');
@@ -291,7 +317,7 @@ export function SeoMeta({
         updates[index]();
       }
     };
-  }, [description, image, keywords, path, structuredData, title, type]);
+  }, [description, image, keywords, path, robots, structuredData, title, type]);
 
   return null;
 }

@@ -1,8 +1,14 @@
 import { ScrollText } from "lucide-react"
+import { SeoMeta } from "../../../components/seo/seo-meta"
 
 export default function TermsOfServicePage() {
     return (
         <div className="flex-1 overflow-y-auto p-6 lg:p-12 relative h-full">
+            <SeoMeta
+                title="Terms of Service | HLBuilder"
+                description="Read the HLBuilder terms for account use, saved builds, acceptable use, beta limitations, and project contact details."
+                path="/terms"
+            />
             <div className="mx-auto max-w-3xl space-y-8 pb-24">
                 <div className="space-y-4">
                     <div className="inline-flex items-center justify-center p-3 bg-primary/10 text-primary rounded-full mb-2">

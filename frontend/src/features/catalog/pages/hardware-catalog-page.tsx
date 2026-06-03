@@ -37,6 +37,7 @@ import {
 import { Badge } from '../../../components/ui/badge';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
+import { SeoMeta } from '../../../components/seo/seo-meta';
 import { api } from '../../../lib/api';
 import { cn } from '../../../lib/utils';
 import { hardwareCategoryLabel, normalizeHardwareCategory } from '../../../lib/hardware-taxonomy';
@@ -67,6 +68,20 @@ import {
 } from '../lib/blueprint-fit';
 
 const PAGE_SIZE = 24;
+
+const hardwareStructuredData = {
+  '@context': 'https://schema.org',
+  '@type': 'CollectionPage',
+  name: 'Homelab hardware catalog',
+  url: 'https://hlbldr.com/hardware',
+  description:
+    'Browse homelab routers, switches, NAS devices, servers, mini PCs, SBCs, UPS units, and reusable build blueprints.',
+  isPartOf: {
+    '@type': 'WebSite',
+    name: 'HLBuilder',
+    url: 'https://hlbldr.com/',
+  },
+};
 
 const CATEGORY_META: Record<string, { label: string; icon: ElementType; color: string }> = {
   router: { label: 'Routers', icon: Network, color: 'text-blue-500 bg-blue-500/10' },
@@ -815,6 +830,19 @@ export default function HardwareCatalogPage() {
 
   return (
     <div className="app-page mx-auto max-w-7xl space-y-6 px-6 py-8">
+      <SeoMeta
+        title="Homelab Hardware Catalog | HLBuilder"
+        description="Browse homelab routers, switches, NAS devices, servers, mini PCs, SBCs, UPS units, and reusable hardware blueprints."
+        path="/hardware"
+        keywords={[
+          'homelab hardware',
+          'homelab server hardware',
+          'homelab router',
+          'homelab NAS',
+          'mini PC homelab',
+        ]}
+        structuredData={hardwareStructuredData}
+      />
       {showSubmit && <SubmitHardwareModal onClose={() => dispatch({ type: 'SET_SHOW_SUBMIT', value: false })} />}
       <HardwareBlueprintCreator open={showCreator} onClose={() => dispatch({ type: 'SET_SHOW_CREATOR', value: false })} />
       {showImport && <ImportBlueprintModal onClose={() => dispatch({ type: 'SET_SHOW_IMPORT', value: false })} />}

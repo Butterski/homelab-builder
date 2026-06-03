@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Homelab network planning | HLBuilder docs</title>
+    <meta
+      name="description"
+      content="Plan a homelab network with routers, switches, access points, IP ranges, and service hosts before buying or rewiring hardware."
+    />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://hlbldr.com/docs/homelab-network-planning/" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="stylesheet" href="/docs/docs.css" />
+    <meta property="og:type" content="article" />
+    <meta property="og:title" content="Homelab network planning | HLBuilder docs" />
+    <meta
+      property="og:description"
+      content="Plan routers, switches, access points, IP ranges, and service hosts before buying or rewiring homelab hardware."
+    />
+    <meta property="og:url" content="https://hlbldr.com/docs/homelab-network-planning/" />
+    <meta property="og:image" content="https://hlbldr.com/og-image.png" />
+    <script type="application/ld+json">
+      [
+        {
+          "@context": "https://schema.org",
+          "@type": "TechArticle",
+          "headline": "Homelab network planning",
+          "description": "Plan a homelab network with routers, switches, access points, IP ranges, and service hosts.",
+          "author": {
+            "@type": "Organization",
+            "name": "HLBuilder"
+          },
+          "publisher": {
+            "@type": "Organization",
+            "name": "HLBuilder",
+            "logo": {
+              "@type": "ImageObject",
+              "url": "https://hlbldr.com/logo.svg"
+            }
+          },
+          "datePublished": "2026-06-03",
+          "dateModified": "2026-06-03",
+          "mainEntityOfPage": "https://hlbldr.com/docs/homelab-network-planning/"
+        },
+        {
+          "@context": "https://schema.org",
+          "@type": "FAQPage",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "What should be planned first in a homelab network?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Start with the router, switching path, wireless coverage, and IP ranges. Add compute and storage after the network shape is clear."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Why does HLBuilder need devices to be connected?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "HLBuilder calculates network assignments from the saved topology. Connected devices can inherit the expected network path, while disconnected devices remain visible as planning gaps."
+              }
+            }
+          ]
+        }
+      ]
+    </script>
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="/">
+          <img src="/logo.svg" alt="" />
+          <span>HLBuilder</span>
+        </a>
+        <div class="nav-links">
+          <a href="/docs/">Docs</a>
+          <a href="/hardware">Hardware</a>
+          <a href="/services">Services</a>
+          <a href="/">Open app</a>
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Network planning</p>
+          <h1>Plan the homelab network before the hardware list.</h1>
+          <p class="lead">
+            HLBuilder works best when the diagram starts with network flow: gateway, switch, access
+            point, storage, and compute. That order makes IP assignments and service placement much
+            easier to reason about.
+          </p>
+        </div>
+        <aside class="panel">
+          <h2>Short answer</h2>
+          <p>
+            Draw the router first, connect the switch path, then attach servers, NAS devices, mini
+            PCs, SBCs, and wireless gear. Save the build before calculating network data so the
+            backend reads the current topology.
+          </p>
+        </aside>
+      </section>
+
+      <section class="section">
+        <h2>The planning order</h2>
+        <ol class="steps">
+          <li>
+            Pick the gateway and decide which subnet the lab should use. HLBuilder assigns router
+            nodes to the gateway role and calculates reachable devices from there.
+          </li>
+          <li>
+            Add switches and access points next. This shows whether servers, NAS devices, and Wi-Fi
+            clients have a clear path back to the router.
+          </li>
+          <li>
+            Place storage and compute nodes only after the network path is visible. This keeps the
+            design from turning into a list of disconnected hardware.
+          </li>
+          <li>
+            Save the layout, then run network calculation. HLBuilder reads the saved nodes and
+            edges, assigns IPs, and exposes missing router or orphan-device problems.
+          </li>
+        </ol>
+      </section>
+
+      <section class="section">
+        <h2>Use predictable ranges</h2>
+        <p>
+          A small lab is easier to operate when device roles stay in predictable address ranges.
+          HLBuilder uses role-based ranges for routers, switches, access points, NAS units, servers,
+          mini PCs, and other node types. That makes the diagram, generated configs, and future
+          troubleshooting line up.
+        </p>
+        <p>
+          If two routers share the same /24, keep the design intentional. HLBuilder tracks used
+          offsets for the shared subnet so reachable devices do not receive duplicate addresses.
+          The better fix is still a clear routing plan.
+        </p>
+      </section>
+
+      <section class="section">
+        <h2>Topology checks to make before buying gear</h2>
+        <ul class="plain-list">
+          <li>Every server or NAS that needs a static address has a path back to a router.</li>
+          <li>Switch ports and uplinks match the number of wired devices in the layout.</li>
+          <li>Access points are connected where PoE, roaming, and wired backhaul make sense.</li>
+          <li>UPS and PDU placement matches the devices that should survive a power event.</li>
+          <li>Experimental machines sit where a mistake will not break storage or DNS.</li>
+        </ul>
+      </section>
+
+      <section class="section">
+        <h2>Common questions</h2>
+        <div class="answer-box">
+          <h3>What should be planned first in a homelab network?</h3>
+          <p>
+            Start with the router, switching path, wireless coverage, and IP ranges. Add compute
+            and storage after the network shape is clear.
+          </p>
+        </div>
+        <div class="answer-box">
+          <h3>Why does HLBuilder need devices to be connected?</h3>
+          <p>
+            HLBuilder calculates network assignments from the saved topology. Connected devices can
+            inherit the expected network path, while disconnected devices remain visible as planning
+            gaps.
+          </p>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Next step</h2>
+        <p>
+          Open HLBuilder, create a project, and add only the network backbone first. Once the router,
+          switch, and storage path are clear, add service hosts and browse hardware ideas.
+        </p>
+        <div class="cta-row">
+          <a class="button" href="/">Open HLBuilder</a>
+          <a class="button secondary" href="/docs/homelab-hardware-sizing/">Read hardware sizing</a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <a href="/docs/">Docs index</a>
+      <a href="/how-to-build-a-homelab">Full homelab guide</a>
+      <a href="/sitemap.xml">Sitemap</a>
+    </footer>
+  </body>
+</html>

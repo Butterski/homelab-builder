@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mini PC cluster homelab layout | HLBuilder docs</title>
+    <meta name="description" content="Design a mini PC cluster homelab layout with router, switch, NAS, and multiple compute nodes in HLBuilder." />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://hlbldr.com/docs/articles/mini-pc-cluster-homelab-layout/" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="stylesheet" href="/docs/docs.css" />
+    <meta property="og:type" content="article" />
+    <meta property="og:title" content="Mini PC cluster homelab layout | HLBuilder docs" />
+    <meta property="og:description" content="Design a mini PC cluster homelab layout with router, switch, NAS, and multiple compute nodes in HLBuilder." />
+    <meta property="og:url" content="https://hlbldr.com/docs/articles/mini-pc-cluster-homelab-layout/" />
+    <meta property="og:image" content="https://hlbldr.com/og-image.png" />
+    <script type="application/ld+json">
+      [
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "Mini PC cluster homelab layout",
+    "description": "Design a mini PC cluster homelab layout with router, switch, NAS, and multiple compute nodes in HLBuilder.",
+    "author": {
+      "@type": "Organization",
+      "name": "HLBuilder"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "name": "HLBuilder",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://hlbldr.com/logo.svg"
+      }
+    },
+    "datePublished": "2026-06-03",
+    "dateModified": "2026-06-03",
+    "mainEntityOfPage": "https://hlbldr.com/docs/articles/mini-pc-cluster-homelab-layout/"
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Is a mini PC cluster good for a first homelab?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "It can be, if the user wants several small hosts and understands the extra cabling, power, and management work."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "What does HLBuilder add to a mini PC cluster plan?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "It shows each host, the switch path, shared storage, and service placement on the same canvas."
+        }
+      }
+    ]
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "Docs",
+        "item": "https://hlbldr.com/docs/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "Articles",
+        "item": "https://hlbldr.com/docs/articles/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 3,
+        "name": "Mini PC cluster homelab layout",
+        "item": "https://hlbldr.com/docs/articles/mini-pc-cluster-homelab-layout/"
+      }
+    ]
+  }
+]
+    </script>
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="/">
+          <img src="/logo.svg" alt="" />
+          <span>HLBuilder</span>
+        </a>
+        <div class="nav-links">
+          <a href="/docs/">Docs</a>
+          <a href="/docs/articles/">Articles</a>
+          <a href="/hardware">Hardware</a>
+          <a href="/services">Services</a>
+          <a href="/">Open app</a>
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Mini PC cluster</p>
+          <h1>Mini PC cluster homelab layout with small compute nodes</h1>
+          <p class="lead">Put each mini PC on the wired switch path, keep shared storage visible, and label which services or virtual machines belong to each host. HLBuilder can show each mini PC as a separate compute node.</p>
+          <div class="article-meta">
+            <span>Published 2026-06-03</span>
+            <span>Visual builder example</span>
+            <span>Static SEO article</span>
+          </div>
+        </div>
+        <aside class="panel" aria-label="Reader question">
+          <h2>Question answered</h2>
+          <p>How should several mini PCs be arranged in a homelab diagram?</p>
+          <p>Put each mini PC on the wired switch path, keep shared storage visible, and label which services or virtual machines belong to each host. HLBuilder can show each mini PC as a separate compute node.</p>
+        </aside>
+      </section>
+
+      <div class="article-layout">
+        <article class="article-body">
+          <figure class="builder-example real-builder-example">
+            <iframe
+              class="builder-visual-frame"
+              src="/docs/visuals/mini-pc-cluster-homelab-layout"
+              title="Mini PC cluster homelab layout visual builder example"
+              loading="lazy"
+            ></iframe>
+            <figcaption>
+              A mini PC cluster diagram keeps each small compute host visible. Shared NAS storage and the switch path stay clear.
+              This embedded preview is rendered by the same ReactFlow HardwareNode, RackNode, and CustomEdge components used in HLBuilder's visual builder.
+              <noscript>Components shown: Router (gateway), Switch (cluster ports), Mini PC A (apps), Mini PC B (containers), Mini PC C (lab tests), NAS (shared data).</noscript>
+            </figcaption>
+          </figure>
+
+          <section class="section" id="draw-each-host">
+            <h2>Draw each host separately</h2>
+            <p>A cluster made from small PCs should not be drawn as one vague server. Each mini PC has its own network path, service load, and failure behavior. HLBuilder can show those hosts as separate nodes.</p>
+            <p>This helps when a user needs to move a workload. A service can shift from one mini PC to another without redrawing the whole lab.</p>
+          </section>
+
+          <section class="section" id="keep-storage-visible">
+            <h2>Keep shared storage visible</h2>
+            <p>A mini PC layout often depends on separate storage. Put the NAS or storage server on the same diagram, then connect it through the switch path. The storage node should not be hidden in text.</p>
+            <p>This matters for backups too. If all mini PCs depend on one NAS, the diagram should make that dependency obvious.</p>
+          </section>
+
+          <section class="section" id="avoid-flat-lists">
+            <h2>Avoid a flat host list</h2>
+            <p>A flat list says there are three mini PCs. A topology says how they connect and which services they host. HLBuilder is useful because the canvas carries both the hardware role and the connection path.</p>
+            <p>When a cluster grows, add the next mini PC to the diagram before buying it. That checks switch ports, IP ranges, and storage needs in one place.</p>
+          </section>
+
+          <section class="section" id="builder-checks">
+            <h2>Builder checks</h2>
+            <div class="visual-checks">
+              <div>
+                <h3>Check</h3>
+                <p>Each mini PC appears as its own node.</p>
+              </div>
+              <div>
+                <h3>Check</h3>
+                <p>Shared storage appears as a NAS or storage server node.</p>
+              </div>
+              <div>
+                <h3>Check</h3>
+                <p>Service groups are labeled per host.</p>
+              </div>
+              <div>
+                <h3>Check</h3>
+                <p>Switch capacity is visible before another node is added.</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="section" id="questions">
+            <h2>Common questions</h2>
+            <div class="answer-box">
+              <h3>Is a mini PC cluster good for a first homelab?</h3>
+              <p>It can be, if the user wants several small hosts and understands the extra cabling, power, and management work.</p>
+            </div>
+            <div class="answer-box">
+              <h3>What does HLBuilder add to a mini PC cluster plan?</h3>
+              <p>It shows each host, the switch path, shared storage, and service placement on the same canvas.</p>
+            </div>
+          </section>
+
+          <section class="section" id="related">
+            <h2>Related HLBuilder pages</h2>
+            <div class="related-links">
+              <a class="button secondary" href="/docs/">Docs index</a>
+              <a class="button secondary" href="/hardware">Hardware catalog</a>
+              <a class="button secondary" href="/services">Service library</a>
+              <a class="button secondary" href="/">Open HLBuilder</a>
+            </div>
+          </section>
+        </article>
+
+        <aside class="toc" aria-label="Article sections">
+          <h2>On this page</h2>
+          <a href="#draw-each-host">Draw each host separately</a>
+          <a href="#keep-storage-visible">Keep shared storage visible</a>
+          <a href="#avoid-flat-lists">Avoid a flat host list</a>
+          <a href="#builder-checks">Builder checks</a>
+          <a href="#questions">Common questions</a>
+          <a href="#related">Related pages</a>
+        </aside>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <a href="/docs/">Docs index</a>
+      <a href="/docs/articles/">Articles</a>
+      <a href="/how-to-build-a-homelab">Full homelab guide</a>
+      <a href="/sitemap.xml">Sitemap</a>
+    </footer>
+  </body>
+</html>

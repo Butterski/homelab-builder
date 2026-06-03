@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Self-hosted media server layout | HLBuilder docs</title>
+    <meta name="description" content="Plan a self-hosted media server layout with server, NAS, router, switch, and access point nodes in HLBuilder." />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://hlbldr.com/docs/articles/self-hosted-media-server-layout/" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="stylesheet" href="/docs/docs.css" />
+    <meta property="og:type" content="article" />
+    <meta property="og:title" content="Self-hosted media server layout | HLBuilder docs" />
+    <meta property="og:description" content="Plan a self-hosted media server layout with server, NAS, router, switch, and access point nodes in HLBuilder." />
+    <meta property="og:url" content="https://hlbldr.com/docs/articles/self-hosted-media-server-layout/" />
+    <meta property="og:image" content="https://hlbldr.com/og-image.png" />
+    <script type="application/ld+json">
+      [
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "Self-hosted media server layout",
+    "description": "Plan a self-hosted media server layout with server, NAS, router, switch, and access point nodes in HLBuilder.",
+    "author": {
+      "@type": "Organization",
+      "name": "HLBuilder"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "name": "HLBuilder",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://hlbldr.com/logo.svg"
+      }
+    },
+    "datePublished": "2026-06-03",
+    "dateModified": "2026-06-03",
+    "mainEntityOfPage": "https://hlbldr.com/docs/articles/self-hosted-media-server-layout/"
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Does a media server need a NAS?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "No. A media server can store files locally, but a separate NAS node makes storage and backup planning clearer."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How does HLBuilder help media server planning?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "It shows the media host, storage device, network path, and client branch in one topology."
+        }
+      }
+    ]
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "Docs",
+        "item": "https://hlbldr.com/docs/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "Articles",
+        "item": "https://hlbldr.com/docs/articles/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 3,
+        "name": "Self-hosted media server layout",
+        "item": "https://hlbldr.com/docs/articles/self-hosted-media-server-layout/"
+      }
+    ]
+  }
+]
+    </script>
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="/">
+          <img src="/logo.svg" alt="" />
+          <span>HLBuilder</span>
+        </a>
+        <div class="nav-links">
+          <a href="/docs/">Docs</a>
+          <a href="/docs/articles/">Articles</a>
+          <a href="/hardware">Hardware</a>
+          <a href="/services">Services</a>
+          <a href="/">Open app</a>
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Media services</p>
+          <h1>Self-hosted media server layout for a homelab</h1>
+          <p class="lead">Put the media server on a wired branch, keep the media library storage visible, and show how clients reach it. HLBuilder can use server, NAS, switch, router, and access point nodes for that plan.</p>
+          <div class="article-meta">
+            <span>Published 2026-06-03</span>
+            <span>Visual builder example</span>
+            <span>Static SEO article</span>
+          </div>
+        </div>
+        <aside class="panel" aria-label="Reader question">
+          <h2>Question answered</h2>
+          <p>How should a media server be placed in a homelab network?</p>
+          <p>Put the media server on a wired branch, keep the media library storage visible, and show how clients reach it. HLBuilder can use server, NAS, switch, router, and access point nodes for that plan.</p>
+        </aside>
+      </section>
+
+      <div class="article-layout">
+        <article class="article-body">
+          <figure class="builder-example real-builder-example">
+            <iframe
+              class="builder-visual-frame"
+              src="/docs/visuals/self-hosted-media-server-layout"
+              title="Self-hosted media server layout visual builder example"
+              loading="lazy"
+            ></iframe>
+            <figcaption>
+              The media host and NAS sit on the wired side. Wireless clients reach the media service through the access point branch.
+              This embedded preview is rendered by the same ReactFlow HardwareNode, RackNode, and CustomEdge components used in HLBuilder's visual builder.
+              <noscript>Components shown: Router (gateway), Switch (wired core), NAS (library), Media server (streaming apps), Access point (TVs and phones).</noscript>
+            </figcaption>
+          </figure>
+
+          <section class="section" id="split-library-host">
+            <h2>Split the library from the host</h2>
+            <p>A media plan usually has two different concerns: where files live and where the media service runs. HLBuilder can show that split with a NAS node and a server node.</p>
+            <p>If one machine does both jobs, the diagram can still label both duties. The point is to make file storage and service hosting visible instead of burying them under one name.</p>
+          </section>
+
+          <section class="section" id="show-clients">
+            <h2>Show how clients reach the service</h2>
+            <p>A media server is only useful if clients can reach it. Add the access point when TVs, phones, or tablets are part of the plan. Add wired clients if playback devices sit on Ethernet.</p>
+            <p>The visual example does not need every household device. One access point node can represent the wireless branch, while the server and NAS remain on the wired branch.</p>
+          </section>
+
+          <section class="section" id="keep-internet-exposure-separate">
+            <h2>Keep public access separate</h2>
+            <p>If remote access is planned, draw that as a separate decision. The service host should not imply public exposure just because it exists. Keep the router, reverse proxy, and media server relationship visible.</p>
+            <p>HLBuilder helps by keeping network nodes and service hosts on the same canvas. That reduces guessing when the setup guide is generated later.</p>
+          </section>
+
+          <section class="section" id="builder-checks">
+            <h2>Builder checks</h2>
+            <div class="visual-checks">
+              <div>
+                <h3>Check</h3>
+                <p>Media storage is visible as NAS or storage duty.</p>
+              </div>
+              <div>
+                <h3>Check</h3>
+                <p>Media service host is visible as server or mini PC duty.</p>
+              </div>
+              <div>
+                <h3>Check</h3>
+                <p>Client path is shown through switch or access point.</p>
+              </div>
+              <div>
+                <h3>Check</h3>
+                <p>Remote access is treated as a separate design choice.</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="section" id="questions">
+            <h2>Common questions</h2>
+            <div class="answer-box">
+              <h3>Does a media server need a NAS?</h3>
+              <p>No. A media server can store files locally, but a separate NAS node makes storage and backup planning clearer.</p>
+            </div>
+            <div class="answer-box">
+              <h3>How does HLBuilder help media server planning?</h3>
+              <p>It shows the media host, storage device, network path, and client branch in one topology.</p>
+            </div>
+          </section>
+
+          <section class="section" id="related">
+            <h2>Related HLBuilder pages</h2>
+            <div class="related-links">
+              <a class="button secondary" href="/docs/">Docs index</a>
+              <a class="button secondary" href="/hardware">Hardware catalog</a>
+              <a class="button secondary" href="/services">Service library</a>
+              <a class="button secondary" href="/">Open HLBuilder</a>
+            </div>
+          </section>
+        </article>
+
+        <aside class="toc" aria-label="Article sections">
+          <h2>On this page</h2>
+          <a href="#split-library-host">Split the library from the host</a>
+          <a href="#show-clients">Show how clients reach the service</a>
+          <a href="#keep-internet-exposure-separate">Keep public access separate</a>
+          <a href="#builder-checks">Builder checks</a>
+          <a href="#questions">Common questions</a>
+          <a href="#related">Related pages</a>
+        </aside>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <a href="/docs/">Docs index</a>
+      <a href="/docs/articles/">Articles</a>
+      <a href="/how-to-build-a-homelab">Full homelab guide</a>
+      <a href="/sitemap.xml">Sitemap</a>
+    </footer>
+  </body>
+</html>

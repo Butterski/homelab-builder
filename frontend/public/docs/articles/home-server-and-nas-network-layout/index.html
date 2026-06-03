@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Home server and NAS network layout | HLBuilder docs</title>
+    <meta name="description" content="Plan where a home server and NAS should sit in a homelab network with visual examples from HLBuilder." />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://hlbldr.com/docs/articles/home-server-and-nas-network-layout/" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="stylesheet" href="/docs/docs.css" />
+    <meta property="og:type" content="article" />
+    <meta property="og:title" content="Home server and NAS network layout | HLBuilder docs" />
+    <meta property="og:description" content="Plan where a home server and NAS should sit in a homelab network with visual examples from HLBuilder." />
+    <meta property="og:url" content="https://hlbldr.com/docs/articles/home-server-and-nas-network-layout/" />
+    <meta property="og:image" content="https://hlbldr.com/og-image.png" />
+    <script type="application/ld+json">
+      [
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "Home server and NAS network layout",
+    "description": "Plan where a home server and NAS should sit in a homelab network with visual examples from HLBuilder.",
+    "author": {
+      "@type": "Organization",
+      "name": "HLBuilder"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "name": "HLBuilder",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://hlbldr.com/logo.svg"
+      }
+    },
+    "datePublished": "2026-06-03",
+    "dateModified": "2026-06-03",
+    "mainEntityOfPage": "https://hlbldr.com/docs/articles/home-server-and-nas-network-layout/"
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Should a NAS and home server be one machine?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "They can be one machine, but the plan should still separate storage duties from service duties so backup and recovery are easier to understand."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How does HLBuilder show NAS planning?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "HLBuilder has a NAS node type, service hosts, edges, and hardware catalog entries that keep storage planning visible."
+        }
+      }
+    ]
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "Docs",
+        "item": "https://hlbldr.com/docs/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "Articles",
+        "item": "https://hlbldr.com/docs/articles/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 3,
+        "name": "Home server and NAS network layout",
+        "item": "https://hlbldr.com/docs/articles/home-server-and-nas-network-layout/"
+      }
+    ]
+  }
+]
+    </script>
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="/">
+          <img src="/logo.svg" alt="" />
+          <span>HLBuilder</span>
+        </a>
+        <div class="nav-links">
+          <a href="/docs/">Docs</a>
+          <a href="/docs/articles/">Articles</a>
+          <a href="/hardware">Hardware</a>
+          <a href="/services">Services</a>
+          <a href="/">Open app</a>
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Storage layout</p>
+          <h1>Home server and NAS network layout for storage-heavy labs</h1>
+          <p class="lead">Place the NAS and server on the wired switch path, then keep backup and service traffic visible in the diagram. In HLBuilder, NAS and server nodes use separate roles so storage is not confused with compute.</p>
+          <div class="article-meta">
+            <span>Published 2026-06-03</span>
+            <span>Visual builder example</span>
+            <span>Static SEO article</span>
+          </div>
+        </div>
+        <aside class="panel" aria-label="Reader question">
+          <h2>Question answered</h2>
+          <p>Where should a NAS sit relative to a home server in a homelab network?</p>
+          <p>Place the NAS and server on the wired switch path, then keep backup and service traffic visible in the diagram. In HLBuilder, NAS and server nodes use separate roles so storage is not confused with compute.</p>
+        </aside>
+      </section>
+
+      <div class="article-layout">
+        <article class="article-body">
+          <figure class="builder-example real-builder-example">
+            <iframe
+              class="builder-visual-frame"
+              src="/docs/visuals/home-server-and-nas-network-layout"
+              title="Home server and NAS network layout visual builder example"
+              loading="lazy"
+            ></iframe>
+            <figcaption>
+              The NAS and server both sit on the wired switch path. This keeps storage traffic and service hosting visible on the same topology.
+              This embedded preview is rendered by the same ReactFlow HardwareNode, RackNode, and CustomEdge components used in HLBuilder's visual builder.
+              <noscript>Components shown: Router (gateway), Switch (wired core), NAS (snapshots), Server (VMs), Mini PC (light apps).</noscript>
+            </figcaption>
+          </figure>
+
+          <section class="section" id="separate-storage-compute">
+            <h2>Separate storage from compute</h2>
+            <p>A server runs services. A NAS stores data. Some hardware can do both, but the diagram should still show the role clearly. HLBuilder has separate NAS and server node types for that reason.</p>
+            <p>The layout becomes easier to change when storage and compute are not mixed in the user interface. A user can move a service host without losing sight of the backup target.</p>
+          </section>
+
+          <section class="section" id="keep-storage-wired">
+            <h2>Keep storage on the wired path</h2>
+            <p>Storage traffic should be easy to locate in the diagram. Put the NAS on the switch path, then place servers or mini PCs that use that storage nearby. The visual builder does not need to model every packet; it needs to show dependency.</p>
+            <p>If the NAS is also the backup target, label it that way. This helps a user check whether the only copy of important data is sitting on the same host as the services that change often.</p>
+          </section>
+
+          <section class="section" id="plan-expansion">
+            <h2>Plan storage expansion on the canvas</h2>
+            <p>HLBuilder can represent a future NAS, server, or storage device before it is purchased. That makes expansion a visible design choice instead of a surprise after the switch ports are already full.</p>
+            <p>Use the hardware catalog after the topology is clear. Browse NAS devices, drives, and network parts with the role already known.</p>
+          </section>
+
+          <section class="section" id="builder-checks">
+            <h2>Builder checks</h2>
+            <div class="visual-checks">
+              <div>
+                <h3>Check</h3>
+                <p>NAS and server nodes use different roles.</p>
+              </div>
+              <div>
+                <h3>Check</h3>
+                <p>NAS sits on a wired switch branch.</p>
+              </div>
+              <div>
+                <h3>Check</h3>
+                <p>Backup target is named in the diagram.</p>
+              </div>
+              <div>
+                <h3>Check</h3>
+                <p>Future storage expansion has a visible port path.</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="section" id="questions">
+            <h2>Common questions</h2>
+            <div class="answer-box">
+              <h3>Should a NAS and home server be one machine?</h3>
+              <p>They can be one machine, but the plan should still separate storage duties from service duties so backup and recovery are easier to understand.</p>
+            </div>
+            <div class="answer-box">
+              <h3>How does HLBuilder show NAS planning?</h3>
+              <p>HLBuilder has a NAS node type, service hosts, edges, and hardware catalog entries that keep storage planning visible.</p>
+            </div>
+          </section>
+
+          <section class="section" id="related">
+            <h2>Related HLBuilder pages</h2>
+            <div class="related-links">
+              <a class="button secondary" href="/docs/">Docs index</a>
+              <a class="button secondary" href="/hardware">Hardware catalog</a>
+              <a class="button secondary" href="/services">Service library</a>
+              <a class="button secondary" href="/">Open HLBuilder</a>
+            </div>
+          </section>
+        </article>
+
+        <aside class="toc" aria-label="Article sections">
+          <h2>On this page</h2>
+          <a href="#separate-storage-compute">Separate storage from compute</a>
+          <a href="#keep-storage-wired">Keep storage on the wired path</a>
+          <a href="#plan-expansion">Plan storage expansion on the canvas</a>
+          <a href="#builder-checks">Builder checks</a>
+          <a href="#questions">Common questions</a>
+          <a href="#related">Related pages</a>
+        </aside>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <a href="/docs/">Docs index</a>
+      <a href="/docs/articles/">Articles</a>
+      <a href="/how-to-build-a-homelab">Full homelab guide</a>
+      <a href="/sitemap.xml">Sitemap</a>
+    </footer>
+  </body>
+</html>

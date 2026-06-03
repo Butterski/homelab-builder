@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Homelab rack layout planning | HLBuilder docs</title>
+    <meta name="description" content="Plan a homelab rack layout with rack, switch, server, NAS, UPS, and PDU components shown as visual builder examples." />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://hlbldr.com/docs/articles/homelab-rack-layout-planning/" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="stylesheet" href="/docs/docs.css" />
+    <meta property="og:type" content="article" />
+    <meta property="og:title" content="Homelab rack layout planning | HLBuilder docs" />
+    <meta property="og:description" content="Plan a homelab rack layout with rack, switch, server, NAS, UPS, and PDU components shown as visual builder examples." />
+    <meta property="og:url" content="https://hlbldr.com/docs/articles/homelab-rack-layout-planning/" />
+    <meta property="og:image" content="https://hlbldr.com/og-image.png" />
+    <script type="application/ld+json">
+      [
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "Homelab rack layout planning",
+    "description": "Plan a homelab rack layout with rack, switch, server, NAS, UPS, and PDU components shown as visual builder examples.",
+    "author": {
+      "@type": "Organization",
+      "name": "HLBuilder"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "name": "HLBuilder",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://hlbldr.com/logo.svg"
+      }
+    },
+    "datePublished": "2026-06-03",
+    "dateModified": "2026-06-03",
+    "mainEntityOfPage": "https://hlbldr.com/docs/articles/homelab-rack-layout-planning/"
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Can HLBuilder plan rack hardware?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "HLBuilder can represent racks and rack-related hardware roles, then connect those roles to the network topology."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "What should be included in a first rack diagram?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Include the rack, switch, one compute or storage device, UPS, and PDU so network and power planning are visible."
+        }
+      }
+    ]
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "Docs",
+        "item": "https://hlbldr.com/docs/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "Articles",
+        "item": "https://hlbldr.com/docs/articles/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 3,
+        "name": "Homelab rack layout planning",
+        "item": "https://hlbldr.com/docs/articles/homelab-rack-layout-planning/"
+      }
+    ]
+  }
+]
+    </script>
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="/">
+          <img src="/logo.svg" alt="" />
+          <span>HLBuilder</span>
+        </a>
+        <div class="nav-links">
+          <a href="/docs/">Docs</a>
+          <a href="/docs/articles/">Articles</a>
+          <a href="/hardware">Hardware</a>
+          <a href="/services">Services</a>
+          <a href="/">Open app</a>
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Rack planning</p>
+          <h1>Homelab rack layout planning before hardware is mounted</h1>
+          <p class="lead">Draw rack-mounted devices with their network and power dependencies visible. HLBuilder can show rack, switch, server, NAS, UPS, and PDU components before hardware is moved into place.</p>
+          <div class="article-meta">
+            <span>Published 2026-06-03</span>
+            <span>Visual builder example</span>
+            <span>Static SEO article</span>
+          </div>
+        </div>
+        <aside class="panel" aria-label="Reader question">
+          <h2>Question answered</h2>
+          <p>How should rack equipment be planned before a homelab rack is built?</p>
+          <p>Draw rack-mounted devices with their network and power dependencies visible. HLBuilder can show rack, switch, server, NAS, UPS, and PDU components before hardware is moved into place.</p>
+        </aside>
+      </section>
+
+      <div class="article-layout">
+        <article class="article-body">
+          <figure class="builder-example real-builder-example">
+            <iframe
+              class="builder-visual-frame"
+              src="/docs/visuals/homelab-rack-layout-planning"
+              title="Homelab rack layout planning visual builder example"
+              loading="lazy"
+            ></iframe>
+            <figcaption>
+              A rack plan can show network and power roles together. The switch, server, NAS, UPS, and PDU are distinct components instead of one rack label.
+              This embedded preview is rendered by the same ReactFlow HardwareNode, RackNode, and CustomEdge components used in HLBuilder's visual builder.
+              <noscript>Components shown: Rack (24U plan), Top switch (uplinks), Server (VM host), NAS (storage bays), UPS (runtime), PDU (outlets).</noscript>
+            </figcaption>
+          </figure>
+
+          <section class="section" id="draw-rack-as-container">
+            <h2>Draw the rack as more than a box</h2>
+            <p>A rack is a container for network, compute, storage, and power decisions. HLBuilder has rack and hardware components that can make those decisions visible before anything is mounted.</p>
+            <p>Start with the rack size, then place the switch, server, NAS, UPS, and PDU roles. The exact model can come later from the catalog.</p>
+          </section>
+
+          <section class="section" id="show-power-and-network">
+            <h2>Show power and network together</h2>
+            <p>Rack planning is not only about where equipment fits. The network path and power path both matter. A switch without a visible uplink or a NAS without visible power coverage leaves questions unanswered.</p>
+            <p>The visual example should show at least one network device, one compute or storage device, and one power device. That gives the user a complete planning view.</p>
+          </section>
+
+          <section class="section" id="avoid-overpacking">
+            <h2>Leave room in the plan</h2>
+            <p>A rack diagram should leave empty space for future devices, cable management, and airflow. HLBuilder can represent future nodes before they exist, which helps avoid filling every unit on the first pass.</p>
+            <p>Use the diagram to check whether adding a second server also means adding switch ports, outlets, or UPS capacity.</p>
+          </section>
+
+          <section class="section" id="builder-checks">
+            <h2>Builder checks</h2>
+            <div class="visual-checks">
+              <div>
+                <h3>Check</h3>
+                <p>Rack node exists before rack devices are placed.</p>
+              </div>
+              <div>
+                <h3>Check</h3>
+                <p>Switch, compute, storage, and power roles are separate.</p>
+              </div>
+              <div>
+                <h3>Check</h3>
+                <p>PDU and UPS needs are visible in the diagram.</p>
+              </div>
+              <div>
+                <h3>Check</h3>
+                <p>Future expansion space is represented before buying hardware.</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="section" id="questions">
+            <h2>Common questions</h2>
+            <div class="answer-box">
+              <h3>Can HLBuilder plan rack hardware?</h3>
+              <p>HLBuilder can represent racks and rack-related hardware roles, then connect those roles to the network topology.</p>
+            </div>
+            <div class="answer-box">
+              <h3>What should be included in a first rack diagram?</h3>
+              <p>Include the rack, switch, one compute or storage device, UPS, and PDU so network and power planning are visible.</p>
+            </div>
+          </section>
+
+          <section class="section" id="related">
+            <h2>Related HLBuilder pages</h2>
+            <div class="related-links">
+              <a class="button secondary" href="/docs/">Docs index</a>
+              <a class="button secondary" href="/hardware">Hardware catalog</a>
+              <a class="button secondary" href="/services">Service library</a>
+              <a class="button secondary" href="/">Open HLBuilder</a>
+            </div>
+          </section>
+        </article>
+
+        <aside class="toc" aria-label="Article sections">
+          <h2>On this page</h2>
+          <a href="#draw-rack-as-container">Draw the rack as more than a box</a>
+          <a href="#show-power-and-network">Show power and network together</a>
+          <a href="#avoid-overpacking">Leave room in the plan</a>
+          <a href="#builder-checks">Builder checks</a>
+          <a href="#questions">Common questions</a>
+          <a href="#related">Related pages</a>
+        </aside>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <a href="/docs/">Docs index</a>
+      <a href="/docs/articles/">Articles</a>
+      <a href="/how-to-build-a-homelab">Full homelab guide</a>
+      <a href="/sitemap.xml">Sitemap</a>
+    </footer>
+  </body>
+</html>

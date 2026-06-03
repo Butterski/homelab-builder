@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Homelab network diagram examples | HLBuilder docs</title>
+    <meta name="description" content="See homelab network diagram examples for routers, switches, servers, NAS devices, access points, and service hosts in HLBuilder." />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://hlbldr.com/docs/articles/homelab-network-diagram-examples/" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="stylesheet" href="/docs/docs.css" />
+    <meta property="og:type" content="article" />
+    <meta property="og:title" content="Homelab network diagram examples | HLBuilder docs" />
+    <meta property="og:description" content="See homelab network diagram examples for routers, switches, servers, NAS devices, access points, and service hosts in HLBuilder." />
+    <meta property="og:url" content="https://hlbldr.com/docs/articles/homelab-network-diagram-examples/" />
+    <meta property="og:image" content="https://hlbldr.com/og-image.png" />
+    <script type="application/ld+json">
+      [
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "Homelab network diagram examples",
+    "description": "See homelab network diagram examples for routers, switches, servers, NAS devices, access points, and service hosts in HLBuilder.",
+    "author": {
+      "@type": "Organization",
+      "name": "HLBuilder"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "name": "HLBuilder",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://hlbldr.com/logo.svg"
+      }
+    },
+    "datePublished": "2026-06-03",
+    "dateModified": "2026-06-03",
+    "mainEntityOfPage": "https://hlbldr.com/docs/articles/homelab-network-diagram-examples/"
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "What is a good first homelab network diagram?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "A good first diagram shows the router, the switch path, storage, compute nodes, and access points. It should make disconnected devices obvious."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Why use HLBuilder for network diagrams?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "HLBuilder uses visual nodes and edges, then uses the saved topology for network calculations and setup planning."
+        }
+      }
+    ]
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "Docs",
+        "item": "https://hlbldr.com/docs/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "Articles",
+        "item": "https://hlbldr.com/docs/articles/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 3,
+        "name": "Homelab network diagram examples",
+        "item": "https://hlbldr.com/docs/articles/homelab-network-diagram-examples/"
+      }
+    ]
+  }
+]
+    </script>
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="/">
+          <img src="/logo.svg" alt="" />
+          <span>HLBuilder</span>
+        </a>
+        <div class="nav-links">
+          <a href="/docs/">Docs</a>
+          <a href="/docs/articles/">Articles</a>
+          <a href="/hardware">Hardware</a>
+          <a href="/services">Services</a>
+          <a href="/">Open app</a>
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Network diagrams</p>
+          <h1>Homelab network diagram examples that can be built in HLBuilder</h1>
+          <p class="lead">Start with the router, add the switching path, then attach servers, storage, access points, and service hosts. In HLBuilder that shape is visible because every node and cable sits on the same builder canvas.</p>
+          <div class="article-meta">
+            <span>Published 2026-06-03</span>
+            <span>Visual builder example</span>
+            <span>Static SEO article</span>
+          </div>
+        </div>
+        <aside class="panel" aria-label="Reader question">
+          <h2>Question answered</h2>
+          <p>How should a first homelab network diagram be arranged before hardware is bought?</p>
+          <p>Start with the router, add the switching path, then attach servers, storage, access points, and service hosts. In HLBuilder that shape is visible because every node and cable sits on the same builder canvas.</p>
+        </aside>
+      </section>
+
+      <div class="article-layout">
+        <article class="article-body">
+          <figure class="builder-example real-builder-example">
+            <iframe
+              class="builder-visual-frame"
+              src="/docs/visuals/homelab-network-diagram-examples"
+              title="Homelab network diagram examples visual builder example"
+              loading="lazy"
+            ></iframe>
+            <figcaption>
+              A basic HLBuilder canvas starts with the router and switch path. Servers, NAS storage, and access points sit on reachable branches instead of floating as isolated notes.
+              This embedded preview is rendered by the same ReactFlow HardwareNode, RackNode, and CustomEdge components used in HLBuilder's visual builder.
+              <noscript>Components shown: Router (192.168.1.1), Managed switch (core ports), Server (VM host), NAS (backup target), Access point (lab Wi-Fi).</noscript>
+            </figcaption>
+          </figure>
+
+          <section class="section" id="start-with-path">
+            <h2>Start with the network path</h2>
+            <p>The first useful diagram is a path diagram. It answers one question: how does each device reach the gateway? HLBuilder makes this concrete with router, switch, access point, server, NAS, mini PC, SBC, UPS, PDU, and rack nodes.</p>
+            <p>A diagram that starts with endpoints can look complete while hiding missing uplinks. Put the router in first, draw the switch connection, then place servers and storage on the ports they will use. The visual builder makes disconnected nodes easy to spot because they sit outside the connected path.</p>
+          </section>
+
+          <section class="section" id="use-roles">
+            <h2>Use device roles in the drawing</h2>
+            <p>Device roles matter because the IP plan and setup steps depend on them. A NAS is not the same as a compute server, and an access point is not the same as a switch. HLBuilder keeps those roles separate instead of treating the lab as one flat list.</p>
+            <p>For a small lab, the diagram can stay simple: router, switch, NAS, one compute node, and one access point. The value comes from seeing which devices are infrastructure and which devices run services.</p>
+          </section>
+
+          <section class="section" id="review-before-buying">
+            <h2>Review the diagram before buying</h2>
+            <p>A visual example is useful before a shopping list. It exposes missing switch ports, unclear storage placement, and servers that have no path to a gateway. It also gives a baseline for automatic IP assignment after the build is saved.</p>
+            <p>Use the first diagram as a sketch, then add real parts from the hardware catalog. That keeps the page grounded in devices that could exist in the actual lab.</p>
+          </section>
+
+          <section class="section" id="builder-checks">
+            <h2>Builder checks</h2>
+            <div class="visual-checks">
+              <div>
+                <h3>Check</h3>
+                <p>Every compute or storage node has a path back to the router.</p>
+              </div>
+              <div>
+                <h3>Check</h3>
+                <p>The switch has enough visible ports for the devices in the diagram.</p>
+              </div>
+              <div>
+                <h3>Check</h3>
+                <p>Wi-Fi equipment is separate from wired servers and storage.</p>
+              </div>
+              <div>
+                <h3>Check</h3>
+                <p>The diagram names the role of each node before model numbers are chosen.</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="section" id="questions">
+            <h2>Common questions</h2>
+            <div class="answer-box">
+              <h3>What is a good first homelab network diagram?</h3>
+              <p>A good first diagram shows the router, the switch path, storage, compute nodes, and access points. It should make disconnected devices obvious.</p>
+            </div>
+            <div class="answer-box">
+              <h3>Why use HLBuilder for network diagrams?</h3>
+              <p>HLBuilder uses visual nodes and edges, then uses the saved topology for network calculations and setup planning.</p>
+            </div>
+          </section>
+
+          <section class="section" id="related">
+            <h2>Related HLBuilder pages</h2>
+            <div class="related-links">
+              <a class="button secondary" href="/docs/">Docs index</a>
+              <a class="button secondary" href="/hardware">Hardware catalog</a>
+              <a class="button secondary" href="/services">Service library</a>
+              <a class="button secondary" href="/">Open HLBuilder</a>
+            </div>
+          </section>
+        </article>
+
+        <aside class="toc" aria-label="Article sections">
+          <h2>On this page</h2>
+          <a href="#start-with-path">Start with the network path</a>
+          <a href="#use-roles">Use device roles in the drawing</a>
+          <a href="#review-before-buying">Review the diagram before buying</a>
+          <a href="#builder-checks">Builder checks</a>
+          <a href="#questions">Common questions</a>
+          <a href="#related">Related pages</a>
+        </aside>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <a href="/docs/">Docs index</a>
+      <a href="/docs/articles/">Articles</a>
+      <a href="/how-to-build-a-homelab">Full homelab guide</a>
+      <a href="/sitemap.xml">Sitemap</a>
+    </footer>
+  </body>
+</html>

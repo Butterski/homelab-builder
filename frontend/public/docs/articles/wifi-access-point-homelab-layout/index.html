@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Wi-Fi access point homelab layout | HLBuilder docs</title>
+    <meta name="description" content="Plan where Wi-Fi access points belong in a homelab topology with router, switch, server, NAS, and client branches." />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://hlbldr.com/docs/articles/wifi-access-point-homelab-layout/" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="stylesheet" href="/docs/docs.css" />
+    <meta property="og:type" content="article" />
+    <meta property="og:title" content="Wi-Fi access point homelab layout | HLBuilder docs" />
+    <meta property="og:description" content="Plan where Wi-Fi access points belong in a homelab topology with router, switch, server, NAS, and client branches." />
+    <meta property="og:url" content="https://hlbldr.com/docs/articles/wifi-access-point-homelab-layout/" />
+    <meta property="og:image" content="https://hlbldr.com/og-image.png" />
+    <script type="application/ld+json">
+      [
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "Wi-Fi access point homelab layout",
+    "description": "Plan where Wi-Fi access points belong in a homelab topology with router, switch, server, NAS, and client branches.",
+    "author": {
+      "@type": "Organization",
+      "name": "HLBuilder"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "name": "HLBuilder",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://hlbldr.com/logo.svg"
+      }
+    },
+    "datePublished": "2026-06-03",
+    "dateModified": "2026-06-03",
+    "mainEntityOfPage": "https://hlbldr.com/docs/articles/wifi-access-point-homelab-layout/"
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Should an access point be drawn as a router?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "No. If it is being used as an access point, draw it as an access point so the gateway role stays clear."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How does HLBuilder show Wi-Fi planning?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "HLBuilder has an access point node type that can connect to router or switch nodes on the visual canvas."
+        }
+      }
+    ]
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "Docs",
+        "item": "https://hlbldr.com/docs/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "Articles",
+        "item": "https://hlbldr.com/docs/articles/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 3,
+        "name": "Wi-Fi access point homelab layout",
+        "item": "https://hlbldr.com/docs/articles/wifi-access-point-homelab-layout/"
+      }
+    ]
+  }
+]
+    </script>
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="/">
+          <img src="/logo.svg" alt="" />
+          <span>HLBuilder</span>
+        </a>
+        <div class="nav-links">
+          <a href="/docs/">Docs</a>
+          <a href="/docs/articles/">Articles</a>
+          <a href="/hardware">Hardware</a>
+          <a href="/services">Services</a>
+          <a href="/">Open app</a>
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Wi-Fi layout</p>
+          <h1>Wi-Fi access point homelab layout for mixed wired and wireless labs</h1>
+          <p class="lead">Access points should sit on their own branch from the router or switch path. In HLBuilder, an access point node separates wireless clients from wired servers and storage.</p>
+          <div class="article-meta">
+            <span>Published 2026-06-03</span>
+            <span>Visual builder example</span>
+            <span>Static SEO article</span>
+          </div>
+        </div>
+        <aside class="panel" aria-label="Reader question">
+          <h2>Question answered</h2>
+          <p>Where should access points appear in a homelab network diagram?</p>
+          <p>Access points should sit on their own branch from the router or switch path. In HLBuilder, an access point node separates wireless clients from wired servers and storage.</p>
+        </aside>
+      </section>
+
+      <div class="article-layout">
+        <article class="article-body">
+          <figure class="builder-example real-builder-example">
+            <iframe
+              class="builder-visual-frame"
+              src="/docs/visuals/wifi-access-point-homelab-layout"
+              title="Wi-Fi access point homelab layout visual builder example"
+              loading="lazy"
+            ></iframe>
+            <figcaption>
+              The access point is a separate branch. Wired storage and compute stay on the switch path, while wireless clients reach services through the AP.
+              This embedded preview is rendered by the same ReactFlow HardwareNode, RackNode, and CustomEdge components used in HLBuilder's visual builder.
+              <noscript>Components shown: Router (gateway), Switch (wired core), Access point (wireless clients), Server (services), NAS (storage), SBC (IoT bridge).</noscript>
+            </figcaption>
+          </figure>
+
+          <section class="section" id="separate-wireless">
+            <h2>Separate wireless from wired infrastructure</h2>
+            <p>Wireless clients should not blur the wired plan. Put the access point on the diagram as a separate component. That keeps servers, storage, and lab infrastructure on the wired side of the topology.</p>
+            <p>HLBuilder has an access point node type, so a user can represent Wi-Fi coverage without pretending the access point is a switch or router.</p>
+          </section>
+
+          <section class="section" id="show-uplink">
+            <h2>Show the uplink clearly</h2>
+            <p>The most useful access point detail is how it connects back to the network. Draw the uplink from the switch or router. If the access point depends on PoE, the switch branch should make that dependency clear enough for planning.</p>
+            <p>The diagram does not need to include every phone or laptop. One access point node can represent the wireless branch while the service hosts stay visible elsewhere.</p>
+          </section>
+
+          <section class="section" id="keep-services-wired">
+            <h2>Keep service hosts wired when possible</h2>
+            <p>A homelab service host should usually be drawn on the wired path. That makes storage, backups, and IP assignment easier to follow. Wireless access can still be part of the user path, but it should not hide where the service runs.</p>
+            <p>Use the service library after the network path is clear. That keeps service placement tied to nodes instead of just a list of app names.</p>
+          </section>
+
+          <section class="section" id="builder-checks">
+            <h2>Builder checks</h2>
+            <div class="visual-checks">
+              <div>
+                <h3>Check</h3>
+                <p>Access point appears as its own node.</p>
+              </div>
+              <div>
+                <h3>Check</h3>
+                <p>Uplink to switch or router is visible.</p>
+              </div>
+              <div>
+                <h3>Check</h3>
+                <p>Wired servers and NAS devices remain on wired branches.</p>
+              </div>
+              <div>
+                <h3>Check</h3>
+                <p>Wireless branch is labeled separately from service hosting.</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="section" id="questions">
+            <h2>Common questions</h2>
+            <div class="answer-box">
+              <h3>Should an access point be drawn as a router?</h3>
+              <p>No. If it is being used as an access point, draw it as an access point so the gateway role stays clear.</p>
+            </div>
+            <div class="answer-box">
+              <h3>How does HLBuilder show Wi-Fi planning?</h3>
+              <p>HLBuilder has an access point node type that can connect to router or switch nodes on the visual canvas.</p>
+            </div>
+          </section>
+
+          <section class="section" id="related">
+            <h2>Related HLBuilder pages</h2>
+            <div class="related-links">
+              <a class="button secondary" href="/docs/">Docs index</a>
+              <a class="button secondary" href="/hardware">Hardware catalog</a>
+              <a class="button secondary" href="/services">Service library</a>
+              <a class="button secondary" href="/">Open HLBuilder</a>
+            </div>
+          </section>
+        </article>
+
+        <aside class="toc" aria-label="Article sections">
+          <h2>On this page</h2>
+          <a href="#separate-wireless">Separate wireless from wired infrastructure</a>
+          <a href="#show-uplink">Show the uplink clearly</a>
+          <a href="#keep-services-wired">Keep service hosts wired when possible</a>
+          <a href="#builder-checks">Builder checks</a>
+          <a href="#questions">Common questions</a>
+          <a href="#related">Related pages</a>
+        </aside>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <a href="/docs/">Docs index</a>
+      <a href="/docs/articles/">Articles</a>
+      <a href="/how-to-build-a-homelab">Full homelab guide</a>
+      <a href="/sitemap.xml">Sitemap</a>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Homelab backup network layout | HLBuilder docs</title>
+    <meta name="description" content="Create a homelab backup network layout that shows servers, NAS storage, UPS protection, and recovery paths in HLBuilder." />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://hlbldr.com/docs/articles/homelab-backup-network-layout/" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="stylesheet" href="/docs/docs.css" />
+    <meta property="og:type" content="article" />
+    <meta property="og:title" content="Homelab backup network layout | HLBuilder docs" />
+    <meta property="og:description" content="Create a homelab backup network layout that shows servers, NAS storage, UPS protection, and recovery paths in HLBuilder." />
+    <meta property="og:url" content="https://hlbldr.com/docs/articles/homelab-backup-network-layout/" />
+    <meta property="og:image" content="https://hlbldr.com/og-image.png" />
+    <script type="application/ld+json">
+      [
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "Homelab backup network layout",
+    "description": "Create a homelab backup network layout that shows servers, NAS storage, UPS protection, and recovery paths in HLBuilder.",
+    "author": {
+      "@type": "Organization",
+      "name": "HLBuilder"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "name": "HLBuilder",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://hlbldr.com/logo.svg"
+      }
+    },
+    "datePublished": "2026-06-03",
+    "dateModified": "2026-06-03",
+    "mainEntityOfPage": "https://hlbldr.com/docs/articles/homelab-backup-network-layout/"
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Where should a backup NAS sit in a homelab?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "It should sit on a reliable wired path, with its relationship to service hosts and power equipment visible in the diagram."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Can HLBuilder plan backups?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "HLBuilder can show backup devices, service hosts, power nodes, and network paths, which helps turn backup intent into a visible layout."
+        }
+      }
+    ]
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "Docs",
+        "item": "https://hlbldr.com/docs/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "Articles",
+        "item": "https://hlbldr.com/docs/articles/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 3,
+        "name": "Homelab backup network layout",
+        "item": "https://hlbldr.com/docs/articles/homelab-backup-network-layout/"
+      }
+    ]
+  }
+]
+    </script>
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="/">
+          <img src="/logo.svg" alt="" />
+          <span>HLBuilder</span>
+        </a>
+        <div class="nav-links">
+          <a href="/docs/">Docs</a>
+          <a href="/docs/articles/">Articles</a>
+          <a href="/hardware">Hardware</a>
+          <a href="/services">Services</a>
+          <a href="/">Open app</a>
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Backups</p>
+          <h1>Homelab backup network layout with visible recovery paths</h1>
+          <p class="lead">Backups should appear as a visible NAS, server, or storage branch, not as a note outside the topology. HLBuilder can show the backup target, protected hosts, and UPS coverage together.</p>
+          <div class="article-meta">
+            <span>Published 2026-06-03</span>
+            <span>Visual builder example</span>
+            <span>Static SEO article</span>
+          </div>
+        </div>
+        <aside class="panel" aria-label="Reader question">
+          <h2>Question answered</h2>
+          <p>How should backups appear in a homelab network diagram?</p>
+          <p>Backups should appear as a visible NAS, server, or storage branch, not as a note outside the topology. HLBuilder can show the backup target, protected hosts, and UPS coverage together.</p>
+        </aside>
+      </section>
+
+      <div class="article-layout">
+        <article class="article-body">
+          <figure class="builder-example real-builder-example">
+            <iframe
+              class="builder-visual-frame"
+              src="/docs/visuals/homelab-backup-network-layout"
+              title="Homelab backup network layout visual builder example"
+              loading="lazy"
+            ></iframe>
+            <figcaption>
+              The backup target, service host, and UPS are visible. The diagram shows what depends on storage and what should stay powered during a short outage.
+              This embedded preview is rendered by the same ReactFlow HardwareNode, RackNode, and CustomEdge components used in HLBuilder's visual builder.
+              <noscript>Components shown: Router (gateway), Switch (backup path), Service host (app data), Backup NAS (restore target), UPS (router + NAS), PDU (rack power).</noscript>
+            </figcaption>
+          </figure>
+
+          <section class="section" id="make-target-visible">
+            <h2>Make the backup target visible</h2>
+            <p>A backup plan that lives only in notes is easy to forget. Put the backup target on the builder canvas. Use a NAS node, storage server node, or another visible device role.</p>
+            <p>Once the target is visible, the user can check whether it shares the same switch path, power device, or host as the data being backed up.</p>
+          </section>
+
+          <section class="section" id="show-power">
+            <h2>Show power dependencies</h2>
+            <p>Backups often depend on more than network connectivity. The router, switch, NAS, and service host may need UPS coverage. HLBuilder has UPS and PDU node types that can make that relationship visible.</p>
+            <p>The diagram should show which devices must stay online long enough for a safe shutdown or a clean backup window. It does not need electrical detail to be useful.</p>
+          </section>
+
+          <section class="section" id="plan-restore">
+            <h2>Plan the restore path</h2>
+            <p>A backup layout should answer where data can be restored. If the NAS is the target, show the service host that would receive restored data. If another server is the target, show that server separately.</p>
+            <p>The goal is a topology that makes recovery decisions obvious before the first failure. HLBuilder gives that plan a place to live next to the rest of the lab.</p>
+          </section>
+
+          <section class="section" id="builder-checks">
+            <h2>Builder checks</h2>
+            <div class="visual-checks">
+              <div>
+                <h3>Check</h3>
+                <p>Backup target is a visible node.</p>
+              </div>
+              <div>
+                <h3>Check</h3>
+                <p>Protected hosts are connected to the same topology.</p>
+              </div>
+              <div>
+                <h3>Check</h3>
+                <p>UPS or PDU nodes show power dependency where needed.</p>
+              </div>
+              <div>
+                <h3>Check</h3>
+                <p>Restore destination is named, not assumed.</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="section" id="questions">
+            <h2>Common questions</h2>
+            <div class="answer-box">
+              <h3>Where should a backup NAS sit in a homelab?</h3>
+              <p>It should sit on a reliable wired path, with its relationship to service hosts and power equipment visible in the diagram.</p>
+            </div>
+            <div class="answer-box">
+              <h3>Can HLBuilder plan backups?</h3>
+              <p>HLBuilder can show backup devices, service hosts, power nodes, and network paths, which helps turn backup intent into a visible layout.</p>
+            </div>
+          </section>
+
+          <section class="section" id="related">
+            <h2>Related HLBuilder pages</h2>
+            <div class="related-links">
+              <a class="button secondary" href="/docs/">Docs index</a>
+              <a class="button secondary" href="/hardware">Hardware catalog</a>
+              <a class="button secondary" href="/services">Service library</a>
+              <a class="button secondary" href="/">Open HLBuilder</a>
+            </div>
+          </section>
+        </article>
+
+        <aside class="toc" aria-label="Article sections">
+          <h2>On this page</h2>
+          <a href="#make-target-visible">Make the backup target visible</a>
+          <a href="#show-power">Show power dependencies</a>
+          <a href="#plan-restore">Plan the restore path</a>
+          <a href="#builder-checks">Builder checks</a>
+          <a href="#questions">Common questions</a>
+          <a href="#related">Related pages</a>
+        </aside>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <a href="/docs/">Docs index</a>
+      <a href="/docs/articles/">Articles</a>
+      <a href="/how-to-build-a-homelab">Full homelab guide</a>
+      <a href="/sitemap.xml">Sitemap</a>
+    </footer>
+  </body>
+</html>

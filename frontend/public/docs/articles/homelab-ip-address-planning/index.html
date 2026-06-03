@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Homelab IP address planning | HLBuilder docs</title>
+    <meta name="description" content="Plan homelab IP addresses with router, switch, server, NAS, mini PC, and access point roles in HLBuilder." />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://hlbldr.com/docs/articles/homelab-ip-address-planning/" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="stylesheet" href="/docs/docs.css" />
+    <meta property="og:type" content="article" />
+    <meta property="og:title" content="Homelab IP address planning | HLBuilder docs" />
+    <meta property="og:description" content="Plan homelab IP addresses with router, switch, server, NAS, mini PC, and access point roles in HLBuilder." />
+    <meta property="og:url" content="https://hlbldr.com/docs/articles/homelab-ip-address-planning/" />
+    <meta property="og:image" content="https://hlbldr.com/og-image.png" />
+    <script type="application/ld+json">
+      [
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "Homelab IP address planning",
+    "description": "Plan homelab IP addresses with router, switch, server, NAS, mini PC, and access point roles in HLBuilder.",
+    "author": {
+      "@type": "Organization",
+      "name": "HLBuilder"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "name": "HLBuilder",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://hlbldr.com/logo.svg"
+      }
+    },
+    "datePublished": "2026-06-03",
+    "dateModified": "2026-06-03",
+    "mainEntityOfPage": "https://hlbldr.com/docs/articles/homelab-ip-address-planning/"
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Why plan IP addresses from a diagram?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "A diagram shows reachability and role. That prevents disconnected devices from looking valid in an address list."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "What does HLBuilder do for IP planning?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "HLBuilder reads saved topology data and assigns addresses by router reachability and node type."
+        }
+      }
+    ]
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "Docs",
+        "item": "https://hlbldr.com/docs/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "Articles",
+        "item": "https://hlbldr.com/docs/articles/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 3,
+        "name": "Homelab IP address planning",
+        "item": "https://hlbldr.com/docs/articles/homelab-ip-address-planning/"
+      }
+    ]
+  }
+]
+    </script>
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="/">
+          <img src="/logo.svg" alt="" />
+          <span>HLBuilder</span>
+        </a>
+        <div class="nav-links">
+          <a href="/docs/">Docs</a>
+          <a href="/docs/articles/">Articles</a>
+          <a href="/hardware">Hardware</a>
+          <a href="/services">Services</a>
+          <a href="/">Open app</a>
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div>
+          <p class="eyebrow">IP planning</p>
+          <h1>Homelab IP address planning from the visual topology</h1>
+          <p class="lead">Assign addresses from the topology, not from a spreadsheet alone. HLBuilder uses router reachability and device roles so servers, NAS devices, switches, and access points can be planned from the saved diagram.</p>
+          <div class="article-meta">
+            <span>Published 2026-06-03</span>
+            <span>Visual builder example</span>
+            <span>Static SEO article</span>
+          </div>
+        </div>
+        <aside class="panel" aria-label="Reader question">
+          <h2>Question answered</h2>
+          <p>How should IP addresses be planned for a homelab?</p>
+          <p>Assign addresses from the topology, not from a spreadsheet alone. HLBuilder uses router reachability and device roles so servers, NAS devices, switches, and access points can be planned from the saved diagram.</p>
+        </aside>
+      </section>
+
+      <div class="article-layout">
+        <article class="article-body">
+          <figure class="builder-example real-builder-example">
+            <iframe
+              class="builder-visual-frame"
+              src="/docs/visuals/homelab-ip-address-planning"
+              title="Homelab IP address planning visual builder example"
+              loading="lazy"
+            ></iframe>
+            <figcaption>
+              Role-based IP planning is easier when every device type is visible. The router starts the subnet, then infrastructure and service hosts follow predictable ranges.
+              This embedded preview is rendered by the same ReactFlow HardwareNode, RackNode, and CustomEdge components used in HLBuilder's visual builder.
+              <noscript>Components shown: Router (192.168.1.1), Switch (.10 range), Access point (.20 range), NAS (.100 range), Server (.150 range), Mini PC (.170 range).</noscript>
+            </figcaption>
+          </figure>
+
+          <section class="section" id="use-topology">
+            <h2>Use topology before numbers</h2>
+            <p>An IP plan should know which devices are reachable from the router. HLBuilder calculates from saved nodes and edges, so the visual topology matters before any address list is trusted.</p>
+            <p>That makes orphan devices obvious. If a server is not connected to a router path, it should not quietly receive a normal service address.</p>
+          </section>
+
+          <section class="section" id="keep-roles-predictable">
+            <h2>Keep role ranges predictable</h2>
+            <p>HLBuilder maps node types to role ranges inside a subnet. Routers, switches, access points, NAS units, servers, mini PCs, and SBCs can each sit in a predictable part of the plan.</p>
+            <p>Predictable ranges make the generated plan easier to read. The user can look at an address and understand whether it belongs to infrastructure, storage, or compute.</p>
+          </section>
+
+          <section class="section" id="save-before-calculate">
+            <h2>Save before calculating</h2>
+            <p>The frontend should save the current build before asking the backend to calculate network data. That order matters because calculation reads the saved nodes and edges.</p>
+            <p>For the user, this means the canvas and address list stay tied together. A changed cable should be saved before the address plan is reviewed.</p>
+          </section>
+
+          <section class="section" id="builder-checks">
+            <h2>Builder checks</h2>
+            <div class="visual-checks">
+              <div>
+                <h3>Check</h3>
+                <p>Router node exists and has a gateway role.</p>
+              </div>
+              <div>
+                <h3>Check</h3>
+                <p>All addressable devices are connected through the topology.</p>
+              </div>
+              <div>
+                <h3>Check</h3>
+                <p>Device roles match the address ranges expected by the plan.</p>
+              </div>
+              <div>
+                <h3>Check</h3>
+                <p>The build is saved before network calculation runs.</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="section" id="questions">
+            <h2>Common questions</h2>
+            <div class="answer-box">
+              <h3>Why plan IP addresses from a diagram?</h3>
+              <p>A diagram shows reachability and role. That prevents disconnected devices from looking valid in an address list.</p>
+            </div>
+            <div class="answer-box">
+              <h3>What does HLBuilder do for IP planning?</h3>
+              <p>HLBuilder reads saved topology data and assigns addresses by router reachability and node type.</p>
+            </div>
+          </section>
+
+          <section class="section" id="related">
+            <h2>Related HLBuilder pages</h2>
+            <div class="related-links">
+              <a class="button secondary" href="/docs/">Docs index</a>
+              <a class="button secondary" href="/hardware">Hardware catalog</a>
+              <a class="button secondary" href="/services">Service library</a>
+              <a class="button secondary" href="/">Open HLBuilder</a>
+            </div>
+          </section>
+        </article>
+
+        <aside class="toc" aria-label="Article sections">
+          <h2>On this page</h2>
+          <a href="#use-topology">Use topology before numbers</a>
+          <a href="#keep-roles-predictable">Keep role ranges predictable</a>
+          <a href="#save-before-calculate">Save before calculating</a>
+          <a href="#builder-checks">Builder checks</a>
+          <a href="#questions">Common questions</a>
+          <a href="#related">Related pages</a>
+        </aside>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <a href="/docs/">Docs index</a>
+      <a href="/docs/articles/">Articles</a>
+      <a href="/how-to-build-a-homelab">Full homelab guide</a>
+      <a href="/sitemap.xml">Sitemap</a>
+    </footer>
+  </body>
+</html>

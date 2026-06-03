@@ -1,4 +1,6 @@
 User-agent: *
 Allow: /
+Allow: /docs/
+Allow: /llms.txt
 
 Sitemap: https://hlbldr.com/sitemap.xml

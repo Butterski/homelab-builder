@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>UPS and power planning for a homelab | HLBuilder docs</title>
+    <meta name="description" content="Plan UPS and power dependencies for a homelab with router, switch, NAS, server, PDU, and UPS nodes in HLBuilder." />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://hlbldr.com/docs/articles/ups-and-power-planning-for-homelab/" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="stylesheet" href="/docs/docs.css" />
+    <meta property="og:type" content="article" />
+    <meta property="og:title" content="UPS and power planning for a homelab | HLBuilder docs" />
+    <meta property="og:description" content="Plan UPS and power dependencies for a homelab with router, switch, NAS, server, PDU, and UPS nodes in HLBuilder." />
+    <meta property="og:url" content="https://hlbldr.com/docs/articles/ups-and-power-planning-for-homelab/" />
+    <meta property="og:image" content="https://hlbldr.com/og-image.png" />
+    <script type="application/ld+json">
+      [
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "UPS and power planning for a homelab",
+    "description": "Plan UPS and power dependencies for a homelab with router, switch, NAS, server, PDU, and UPS nodes in HLBuilder.",
+    "author": {
+      "@type": "Organization",
+      "name": "HLBuilder"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "name": "HLBuilder",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://hlbldr.com/logo.svg"
+      }
+    },
+    "datePublished": "2026-06-03",
+    "dateModified": "2026-06-03",
+    "mainEntityOfPage": "https://hlbldr.com/docs/articles/ups-and-power-planning-for-homelab/"
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Should a UPS be included in a homelab diagram?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes, when power behavior matters. A visible UPS node shows which devices are expected to stay online or shut down cleanly."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Does HLBuilder calculate UPS runtime?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "HLBuilder can show power equipment and device roles. Runtime still depends on the actual UPS and load selected by the user."
+        }
+      }
+    ]
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "Docs",
+        "item": "https://hlbldr.com/docs/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "Articles",
+        "item": "https://hlbldr.com/docs/articles/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 3,
+        "name": "UPS and power planning for a homelab",
+        "item": "https://hlbldr.com/docs/articles/ups-and-power-planning-for-homelab/"
+      }
+    ]
+  }
+]
+    </script>
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="/">
+          <img src="/logo.svg" alt="" />
+          <span>HLBuilder</span>
+        </a>
+        <div class="nav-links">
+          <a href="/docs/">Docs</a>
+          <a href="/docs/articles/">Articles</a>
+          <a href="/hardware">Hardware</a>
+          <a href="/services">Services</a>
+          <a href="/">Open app</a>
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Power planning</p>
+          <h1>UPS and power planning for a homelab network</h1>
+          <p class="lead">Show the UPS and PDU as visible components connected to the devices they protect. HLBuilder can place power equipment next to router, switch, NAS, and server nodes so runtime decisions are part of the plan.</p>
+          <div class="article-meta">
+            <span>Published 2026-06-03</span>
+            <span>Visual builder example</span>
+            <span>Static SEO article</span>
+          </div>
+        </div>
+        <aside class="panel" aria-label="Reader question">
+          <h2>Question answered</h2>
+          <p>How should UPS and power devices be shown in a homelab design?</p>
+          <p>Show the UPS and PDU as visible components connected to the devices they protect. HLBuilder can place power equipment next to router, switch, NAS, and server nodes so runtime decisions are part of the plan.</p>
+        </aside>
+      </section>
+
+      <div class="article-layout">
+        <article class="article-body">
+          <figure class="builder-example real-builder-example">
+            <iframe
+              class="builder-visual-frame"
+              src="/docs/visuals/ups-and-power-planning-for-homelab"
+              title="UPS and power planning for a homelab visual builder example"
+              loading="lazy"
+            ></iframe>
+            <figcaption>
+              The UPS protects the gateway path and storage. The PDU makes rack power visible rather than hidden in a note.
+              This embedded preview is rendered by the same ReactFlow HardwareNode, RackNode, and CustomEdge components used in HLBuilder's visual builder.
+              <noscript>Components shown: UPS (protected power), Router (gateway), Switch (core), PDU (rack outlets), NAS (data), Server (services).</noscript>
+            </figcaption>
+          </figure>
+
+          <section class="section" id="draw-power">
+            <h2>Draw power equipment on the same plan</h2>
+            <p>Power devices should not live in a separate note. Put the UPS and PDU on the canvas with the network devices they support. This makes the plan easier to review before hardware is purchased.</p>
+            <p>HLBuilder includes UPS and PDU node types, so power planning can sit next to network planning instead of after it.</p>
+          </section>
+
+          <section class="section" id="protect-gateway-storage">
+            <h2>Protect the gateway and storage path</h2>
+            <p>A useful UPS plan starts with the devices that keep the lab reachable and recoverable. That usually means the router, switch, and storage device need attention before experimental hosts.</p>
+            <p>A visual example can show which devices should stay powered during a short outage. The details of runtime still need real hardware specs, but the dependency map can be drawn early.</p>
+          </section>
+
+          <section class="section" id="tie-power-to-services">
+            <h2>Tie power decisions to services</h2>
+            <p>Service placement affects power planning. A DNS host, backup target, or storage device has a different power need from a temporary test node. HLBuilder can show those service hosts on the same diagram as the UPS.</p>
+            <p>This gives the user a planning path: choose services, place hosts, then decide which hardware needs protected power.</p>
+          </section>
+
+          <section class="section" id="builder-checks">
+            <h2>Builder checks</h2>
+            <div class="visual-checks">
+              <div>
+                <h3>Check</h3>
+                <p>UPS and PDU nodes are visible.</p>
+              </div>
+              <div>
+                <h3>Check</h3>
+                <p>Gateway and storage devices are marked as protected when needed.</p>
+              </div>
+              <div>
+                <h3>Check</h3>
+                <p>Experimental hosts are not treated the same as core infrastructure.</p>
+              </div>
+              <div>
+                <h3>Check</h3>
+                <p>Power planning is reviewed before the shopping list.</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="section" id="questions">
+            <h2>Common questions</h2>
+            <div class="answer-box">
+              <h3>Should a UPS be included in a homelab diagram?</h3>
+              <p>Yes, when power behavior matters. A visible UPS node shows which devices are expected to stay online or shut down cleanly.</p>
+            </div>
+            <div class="answer-box">
+              <h3>Does HLBuilder calculate UPS runtime?</h3>
+              <p>HLBuilder can show power equipment and device roles. Runtime still depends on the actual UPS and load selected by the user.</p>
+            </div>
+          </section>
+
+          <section class="section" id="related">
+            <h2>Related HLBuilder pages</h2>
+            <div class="related-links">
+              <a class="button secondary" href="/docs/">Docs index</a>
+              <a class="button secondary" href="/hardware">Hardware catalog</a>
+              <a class="button secondary" href="/services">Service library</a>
+              <a class="button secondary" href="/">Open HLBuilder</a>
+            </div>
+          </section>
+        </article>
+
+        <aside class="toc" aria-label="Article sections">
+          <h2>On this page</h2>
+          <a href="#draw-power">Draw power equipment on the same plan</a>
+          <a href="#protect-gateway-storage">Protect the gateway and storage path</a>
+          <a href="#tie-power-to-services">Tie power decisions to services</a>
+          <a href="#builder-checks">Builder checks</a>
+          <a href="#questions">Common questions</a>
+          <a href="#related">Related pages</a>
+        </aside>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <a href="/docs/">Docs index</a>
+      <a href="/docs/articles/">Articles</a>
+      <a href="/how-to-build-a-homelab">Full homelab guide</a>
+      <a href="/sitemap.xml">Sitemap</a>
+    </footer>
+  </body>
+</html>

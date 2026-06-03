@@ -6,13 +6,44 @@ import { Github } from "../../../components/icons/github"
 import { Discord } from "../../../components/icons/discord"
 import { BuyMeACoffee } from "../../../components/icons/buymeacoffee"
 import { lazy, Suspense } from "react"
+import { SeoMeta } from "../../../components/seo/seo-meta"
 
 const BuilderDemoPreview = lazy(() => import("../../builder/components/builder-demo-preview").then(m => ({ default: m.BuilderDemoPreview })))
 
+const homeStructuredData = [
+    {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        name: "HLBuilder",
+        url: "https://hlbldr.com/",
+        description: "A visual planner for homelab network topology, hardware roles, IP assignments, and self-hosted services.",
+    },
+    {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        name: "HLBuilder",
+        applicationCategory: "DeveloperApplication",
+        operatingSystem: "Web",
+        url: "https://hlbldr.com/",
+        description: "Design homelab network layouts, map routers and servers, plan services, and review hardware choices before buying gear.",
+        offers: {
+            "@type": "Offer",
+            price: "0",
+            priceCurrency: "USD",
+        },
+    },
+]
 
 export default function LoginPage() {
     return (
         <div className="flex flex-col items-center justify-center min-h-[80vh] px-4 text-center">
+            <SeoMeta
+                title="HLBuilder | Visual Homelab Network Planner"
+                description="Plan a homelab network visually with routers, switches, servers, storage, automatic IP assignments, and self-hosted service planning."
+                path="/"
+                keywords={["homelab builder", "homelab planner", "network topology planner", "self-hosting planner"]}
+                structuredData={homeStructuredData}
+            />
             <div className="mb-6">
                 <AnimatedLogo className="h-32 w-auto text-primary drop-shadow-[0_10px_15px_rgba(0,0,0,0.1)] dark:drop-shadow-[0_10px_15px_rgba(255,255,255,0.05)]" />
             </div>
@@ -109,6 +140,8 @@ export default function LoginPage() {
             </div>
 
             <div className="mt-3 flex items-center justify-center gap-3 text-xs text-muted-foreground/60">
+                <a href="/docs/" className="hover:text-muted-foreground transition-colors">Docs</a>
+                <span>&middot;</span>
                 <Link to="/privacy" className="hover:text-muted-foreground transition-colors">Privacy Policy</Link>
                 <span>·</span>
                 <Link to="/terms" className="hover:text-muted-foreground transition-colors">Terms of Service</Link>

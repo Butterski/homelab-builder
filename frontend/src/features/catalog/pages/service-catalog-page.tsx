@@ -13,8 +13,23 @@ import { Input } from '../../../components/ui/input';
 import { Search, Heart, Package, Book, Globe, Plus, X, Loader2, Check } from 'lucide-react';
 import type { Service } from '../../../types';
 import { Github } from '../../../components/icons/github';
+import { SeoMeta } from '../../../components/seo/seo-meta';
 import { toast } from 'sonner';
 import { filterServiceCatalog, isUserService, serviceVisibilityLabel } from '../lib/service-catalog';
+
+const servicesStructuredData = {
+  '@context': 'https://schema.org',
+  '@type': 'CollectionPage',
+  name: 'Self-hosted service library',
+  url: 'https://hlbldr.com/services',
+  description:
+    'Browse self-hosted services for homelab planning, including media, networking, monitoring, storage, management, home automation, and gaming services.',
+  isPartOf: {
+    '@type': 'WebSite',
+    name: 'HLBuilder',
+    url: 'https://hlbldr.com/',
+  },
+};
 
 function ServiceCard({
   item,
@@ -370,6 +385,19 @@ export default function ServiceCatalogPage() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto py-8 px-6">
+      <SeoMeta
+        title="Self-Hosted Service Library | HLBuilder"
+        description="Browse self-hosted services for a homelab, compare categories, and plan which workloads belong in your network design."
+        path="/services"
+        keywords={[
+          'self-hosted services',
+          'homelab services',
+          'self-hosting planner',
+          'homelab apps',
+          'home server services',
+        ]}
+        structuredData={servicesStructuredData}
+      />
       {showCreator && (
         <CustomServiceModal onClose={() => setShowCreator(false)} onSaved={handleServiceSaved} />
       )}

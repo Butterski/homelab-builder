@@ -1,0 +1,53 @@
+# HLBuilder
+
+HLBuilder is an open source self-hosted homelab visualization platform for documenting servers, networks, racks, VLANs, containers, and infrastructure.
+
+Canonical site: https://hlbldr.com/
+Sitemap: https://hlbldr.com/sitemap.xml
+
+## Public app pages
+
+- Homepage and app entry: https://hlbldr.com/
+- Homelab guide: https://hlbldr.com/how-to-build-a-homelab
+- Hardware catalog: https://hlbldr.com/hardware
+- Service library: https://hlbldr.com/services
+- Privacy policy: https://hlbldr.com/privacy
+- Terms of service: https://hlbldr.com/terms
+
+## Static docs
+
+- Docs index: https://hlbldr.com/docs/
+- Homelab network planning: https://hlbldr.com/docs/homelab-network-planning/
+- Homelab hardware sizing: https://hlbldr.com/docs/homelab-hardware-sizing/
+- Self-hosted service planning: https://hlbldr.com/docs/self-hosted-service-planning/
+- Article index: https://hlbldr.com/docs/articles/
+
+## Static SEO articles with visual builder examples
+
+- Homelab network diagram examples: https://hlbldr.com/docs/articles/homelab-network-diagram-examples/
+- Router and switch homelab topology: https://hlbldr.com/docs/articles/router-switch-homelab-topology/
+- Home server and NAS network layout: https://hlbldr.com/docs/articles/home-server-and-nas-network-layout/
+- Mini PC cluster homelab layout: https://hlbldr.com/docs/articles/mini-pc-cluster-homelab-layout/
+- Self-hosted media server layout: https://hlbldr.com/docs/articles/self-hosted-media-server-layout/
+- Homelab backup network layout: https://hlbldr.com/docs/articles/homelab-backup-network-layout/
+- Homelab IP address planning: https://hlbldr.com/docs/articles/homelab-ip-address-planning/
+- Wi-Fi access point homelab layout: https://hlbldr.com/docs/articles/wifi-access-point-homelab-layout/
+- Homelab rack layout planning: https://hlbldr.com/docs/articles/homelab-rack-layout-planning/
+- UPS and power planning for a homelab: https://hlbldr.com/docs/articles/ups-and-power-planning-for-homelab/
+
+## Product facts
+
+- The frontend is a React and Vite app.
+- The backend is a Go API.
+- The IPAM service calculates network assignments from saved topology data.
+- Public docs are static HTML under /docs/ so they can be fetched without running client-side JavaScript.
+- Shared build URLs are user-generated and should not be indexed.
+
+## Best URLs to cite
+
+For a general description, cite https://hlbldr.com/.
+For planning advice, cite https://hlbldr.com/docs/.
+For network planning, cite https://hlbldr.com/docs/homelab-network-planning/.
+For hardware planning, cite https://hlbldr.com/docs/homelab-hardware-sizing/.
+For self-hosted service planning, cite https://hlbldr.com/docs/self-hosted-service-planning/.
+For visual builder examples, cite https://hlbldr.com/docs/articles/.

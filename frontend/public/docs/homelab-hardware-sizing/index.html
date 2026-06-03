@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Homelab hardware sizing | HLBuilder docs</title>
+    <meta
+      name="description"
+      content="Size homelab hardware from services, RAM, storage, power, network ports, and expansion needs before buying servers or NAS devices."
+    />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://hlbldr.com/docs/homelab-hardware-sizing/" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="stylesheet" href="/docs/docs.css" />
+    <meta property="og:type" content="article" />
+    <meta property="og:title" content="Homelab hardware sizing | HLBuilder docs" />
+    <meta
+      property="og:description"
+      content="Size homelab hardware from services, RAM, storage, power, network ports, and expansion needs."
+    />
+    <meta property="og:url" content="https://hlbldr.com/docs/homelab-hardware-sizing/" />
+    <meta property="og:image" content="https://hlbldr.com/og-image.png" />
+    <script type="application/ld+json">
+      [
+        {
+          "@context": "https://schema.org",
+          "@type": "TechArticle",
+          "headline": "Homelab hardware sizing",
+          "description": "Size homelab hardware from services, RAM, storage, power, network ports, and expansion needs.",
+          "author": {
+            "@type": "Organization",
+            "name": "HLBuilder"
+          },
+          "publisher": {
+            "@type": "Organization",
+            "name": "HLBuilder",
+            "logo": {
+              "@type": "ImageObject",
+              "url": "https://hlbldr.com/logo.svg"
+            }
+          },
+          "datePublished": "2026-06-03",
+          "dateModified": "2026-06-03",
+          "mainEntityOfPage": "https://hlbldr.com/docs/homelab-hardware-sizing/"
+        },
+        {
+          "@context": "https://schema.org",
+          "@type": "FAQPage",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "How should a first homelab be sized?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Start from the services the lab must run, then choose enough RAM, storage, network ports, and power headroom for those workloads."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Should hardware be chosen before services?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "No. A service list gives the hardware plan a target. Without that list, it is easy to buy parts that do not match the work."
+              }
+            }
+          ]
+        }
+      ]
+    </script>
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="/">
+          <img src="/logo.svg" alt="" />
+          <span>HLBuilder</span>
+        </a>
+        <div class="nav-links">
+          <a href="/docs/">Docs</a>
+          <a href="/hardware">Hardware</a>
+          <a href="/services">Services</a>
+          <a href="/">Open app</a>
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Hardware sizing</p>
+          <h1>Size homelab hardware from workloads, not wish lists.</h1>
+          <p class="lead">
+            The useful order is services, resource needs, storage shape, network ports, then
+            hardware. HLBuilder helps keep that chain visible while the design changes.
+          </p>
+        </div>
+        <aside class="panel">
+          <h2>Short answer</h2>
+          <p>
+            Write down the services first. Then choose compute nodes, NAS storage, memory, disks,
+            NICs, and UPS capacity around that list. Leave room for one future batch of services,
+            but avoid buying gear for vague plans.
+          </p>
+        </aside>
+      </section>
+
+      <section class="section">
+        <h2>The sizing sequence</h2>
+        <ol class="steps">
+          <li>
+            Add the services you want to run. Media, monitoring, storage, home automation, gaming,
+            and networking services put different pressure on the lab.
+          </li>
+          <li>
+            Group services by role. DNS and reverse proxy work are infrastructure. Media, backups,
+            and experiments can live on separate hosts when the budget allows it.
+          </li>
+          <li>
+            Pick compute hardware after the workload list exists. Mini PCs are useful for quiet
+            compute, NAS devices fit storage-heavy plans, and used servers fit expansion-heavy
+            plans.
+          </li>
+          <li>
+            Check port count, disk bays, RAM slots, idle power, and UPS sizing before treating a
+            part as a good fit.
+          </li>
+        </ol>
+      </section>
+
+      <section class="section">
+        <h2>Hardware constraints that usually decide the build</h2>
+        <div class="grid">
+          <div class="doc-card">
+            <h3>Memory</h3>
+            <p>
+              Containers and virtual machines compete for RAM. Plan memory per host and leave enough
+              unused space for updates, backups, and temporary spikes.
+            </p>
+          </div>
+          <div class="doc-card">
+            <h3>Storage</h3>
+            <p>
+              Storage plans need drive bays, boot media, data disks, backup targets, and room for
+              snapshots. A NAS-first design often keeps recovery simpler.
+            </p>
+          </div>
+          <div class="doc-card">
+            <h3>Power and noise</h3>
+            <p>
+              A home lab runs near people. Idle draw, fan noise, and UPS runtime matter more than
+              peak benchmark numbers for many builds.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>How HLBuilder supports sizing</h2>
+        <p>
+          The hardware catalog groups routers, switches, NAS devices, servers, mini PCs, SBCs, UPS
+          units, storage, NICs, HBAs, GPUs, racks, and PDUs. The service library adds workloads to
+          the plan so hardware choices stay tied to the services a user wants to run.
+        </p>
+        <p>
+          Reusable hardware blueprints are useful when the plan has repeated node shapes, such as a
+          small Proxmox host, a storage node, or a low-power service box.
+        </p>
+        <div class="cta-row">
+          <a class="button" href="/hardware">Browse hardware</a>
+          <a class="button secondary" href="/services">Browse services</a>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Common questions</h2>
+        <div class="answer-box">
+          <h3>How should a first homelab be sized?</h3>
+          <p>
+            Start from the services the lab must run, then choose enough RAM, storage, network
+            ports, and power headroom for those workloads.
+          </p>
+        </div>
+        <div class="answer-box">
+          <h3>Should hardware be chosen before services?</h3>
+          <p>
+            No. A service list gives the hardware plan a target. Without that list, it is easy to
+            buy parts that do not match the work.
+          </p>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Next step</h2>
+        <p>
+          Open the service library, pick a small set of workloads, then map those workloads onto a
+          few hardware candidates in the builder.
+        </p>
+        <div class="cta-row">
+          <a class="button" href="/">Open HLBuilder</a>
+          <a class="button secondary" href="/docs/self-hosted-service-planning/">Read service planning</a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <a href="/docs/">Docs index</a>
+      <a href="/how-to-build-a-homelab">Full homelab guide</a>
+      <a href="/sitemap.xml">Sitemap</a>
+    </footer>
+  </body>
+</html>

@@ -18,6 +18,7 @@ import { Save, Pencil, Eye } from 'lucide-react';
 import { buildApi, type Build } from '../api/builds';
 import { LoadingScreen } from '../../../components/ui/loading-screen';
 import { Button } from '../../../components/ui/button';
+import { SeoMeta } from '../../../components/seo/seo-meta';
 import { HardwareNode } from '../components/hardware-node';
 import { RackNode } from '../components/rack-node';
 import { CustomEdge } from '../components/custom-edge';
@@ -167,6 +168,11 @@ export default function SharedBuildPage() {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center h-screen gap-4">
+        <SeoMeta
+          title="Shared Layout Unavailable | HLBuilder"
+          description="This shared HLBuilder layout is unavailable or sharing has been disabled."
+          robots="noindex, nofollow"
+        />
         <p className="text-muted-foreground text-lg">{error}</p>
         <Link to="/" className="text-primary underline text-sm">
           Go to HLBuilder
@@ -179,6 +185,11 @@ export default function SharedBuildPage() {
 
   return (
     <div className="flex flex-col h-screen bg-background">
+      <SeoMeta
+        title={`${build?.name || 'Shared Homelab Layout'} | HLBuilder`}
+        description="A shared HLBuilder homelab network layout."
+        robots="noindex, nofollow"
+      />
       <header className="flex items-center justify-between px-4 py-2 border-b shrink-0">
         <div className="flex items-center gap-2">
           {editable ? (

@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Self-hosted service planning | HLBuilder docs</title>
+    <meta
+      name="description"
+      content="Plan where self-hosted services should run in a homelab, including DNS, reverse proxy, monitoring, media, storage, and experiments."
+    />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://hlbldr.com/docs/self-hosted-service-planning/" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="stylesheet" href="/docs/docs.css" />
+    <meta property="og:type" content="article" />
+    <meta property="og:title" content="Self-hosted service planning | HLBuilder docs" />
+    <meta
+      property="og:description"
+      content="Plan where self-hosted services should run in a homelab, from DNS and reverse proxy to media and monitoring."
+    />
+    <meta property="og:url" content="https://hlbldr.com/docs/self-hosted-service-planning/" />
+    <meta property="og:image" content="https://hlbldr.com/og-image.png" />
+    <script type="application/ld+json">
+      [
+        {
+          "@context": "https://schema.org",
+          "@type": "TechArticle",
+          "headline": "Self-hosted service planning",
+          "description": "Plan where self-hosted services should run in a homelab.",
+          "author": {
+            "@type": "Organization",
+            "name": "HLBuilder"
+          },
+          "publisher": {
+            "@type": "Organization",
+            "name": "HLBuilder",
+            "logo": {
+              "@type": "ImageObject",
+              "url": "https://hlbldr.com/logo.svg"
+            }
+          },
+          "datePublished": "2026-06-03",
+          "dateModified": "2026-06-03",
+          "mainEntityOfPage": "https://hlbldr.com/docs/self-hosted-service-planning/"
+        },
+        {
+          "@context": "https://schema.org",
+          "@type": "FAQPage",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "Where should self-hosted services run in a homelab?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Run network services on reliable infrastructure hosts, keep storage services close to storage hardware, and place experiments away from DNS, backups, and authentication."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "How does HLBuilder help with service planning?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "HLBuilder connects service choices to hardware nodes and the network topology, so the service plan can be checked against compute, storage, and IP layout."
+              }
+            }
+          ]
+        }
+      ]
+    </script>
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="/">
+          <img src="/logo.svg" alt="" />
+          <span>HLBuilder</span>
+        </a>
+        <div class="nav-links">
+          <a href="/docs/">Docs</a>
+          <a href="/hardware">Hardware</a>
+          <a href="/services">Services</a>
+          <a href="/">Open app</a>
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Service planning</p>
+          <h1>Place self-hosted services where failures are easy to understand.</h1>
+          <p class="lead">
+            A homelab service plan should show which workloads are infrastructure, which workloads
+            store data, and which workloads are experiments. HLBuilder turns that plan into nodes,
+            virtual machines, and network connections.
+          </p>
+        </div>
+        <aside class="panel">
+          <h2>Short answer</h2>
+          <p>
+            Put DNS, reverse proxy, monitoring, and backups on reliable hosts. Keep media,
+            automation, and experiments separated when possible. The diagram should make each
+            dependency visible before anything is exposed to the internet.
+          </p>
+        </aside>
+      </section>
+
+      <section class="section">
+        <h2>Group services by blast radius</h2>
+        <ol class="steps">
+          <li>
+            Infrastructure services include DNS, reverse proxy, monitoring, authentication helpers,
+            and backup tooling. Place these on hosts that are easy to restore.
+          </li>
+          <li>
+            Data services include storage, sync, media libraries, and databases. Put them near the
+            storage design and verify backup paths in the diagram.
+          </li>
+          <li>
+            Experiment services include test containers, lab clusters, gaming servers, and short-run
+            projects. Keep them away from the services that make the household network work.
+          </li>
+        </ol>
+      </section>
+
+      <section class="section">
+        <h2>Use the service library as a planning input</h2>
+        <p>
+          The HLBuilder service library includes categories such as media, networking, monitoring,
+          storage, management, home automation, gaming, and other services. Favoriting services
+          turns a vague app list into a plan that can be mapped onto hardware nodes.
+        </p>
+        <p>
+          Custom services help when the catalog does not include a workload. Add the name,
+          description, resource estimates, and source links, then decide whether the service should
+          stay private or be submitted for community review.
+        </p>
+      </section>
+
+      <section class="section">
+        <h2>Service placement checks</h2>
+        <ul class="plain-list">
+          <li>DNS can restart without taking down the machine needed to repair it.</li>
+          <li>Reverse proxy rules point to stable internal addresses.</li>
+          <li>Monitoring can still report when a media host or experiment host fails.</li>
+          <li>Backup targets are not on the same host as the only copy of the data.</li>
+          <li>Public services are separate from experiments that change often.</li>
+        </ul>
+      </section>
+
+      <section class="section">
+        <h2>How this maps into HLBuilder</h2>
+        <p>
+          In the visual builder, a compute node can hold virtual machines or containers. Add service
+          names to the host that will run them, then review the IP layout and topology. This makes
+          it easier to catch a service placed on a disconnected node or a host with the wrong role.
+        </p>
+        <div class="cta-row">
+          <a class="button" href="/services">Browse services</a>
+          <a class="button secondary" href="/">Open builder</a>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Common questions</h2>
+        <div class="answer-box">
+          <h3>Where should self-hosted services run in a homelab?</h3>
+          <p>
+            Run network services on reliable infrastructure hosts, keep storage services close to
+            storage hardware, and place experiments away from DNS, backups, and authentication.
+          </p>
+        </div>
+        <div class="answer-box">
+          <h3>How does HLBuilder help with service planning?</h3>
+          <p>
+            HLBuilder connects service choices to hardware nodes and the network topology, so the
+            service plan can be checked against compute, storage, and IP layout.
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <a href="/docs/">Docs index</a>
+      <a href="/how-to-build-a-homelab">Full homelab guide</a>
+      <a href="/sitemap.xml">Sitemap</a>
+    </footer>
+  </body>
+</html>

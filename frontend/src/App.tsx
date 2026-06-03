@@ -15,6 +15,7 @@ const HardwareCatalogPage = lazy(() => import('./features/catalog/pages/hardware
 const ServiceCatalogPage = lazy(() => import('./features/catalog/pages/service-catalog-page'));
 const ChecklistPage = lazy(() => import('./features/setup-guide/pages/checklist-page'));
 const HomelabGuidePage = lazy(() => import('./features/guides/pages/homelab-guide-page'));
+const ArticleVisualPage = lazy(() => import('./features/guides/pages/article-visual-page'));
 const ConfigGeneratorPage = lazy(() => import('./features/builder/pages/config-generator-page'));
 const ProfilePage = lazy(() => import('./features/auth/pages/profile-page'));
 const DonatePage = lazy(() => import('./features/donate/pages/donate-page'));
@@ -100,15 +101,16 @@ function AppContent() {
   const isLandingPage = !user && location.pathname === '/';
   const isSharedRoute = location.pathname.startsWith('/shared/');
   const isBuilderRoute = location.pathname.startsWith('/builder/');
+  const isArticleVisualRoute = location.pathname.startsWith('/docs/visuals/');
 
   return (
     <div className="flex h-screen bg-background text-foreground overflow-hidden">
-      {!isLandingPage && !isSharedRoute && <Sidebar onOpenCommandPalette={() => setCommandOpen(true)} />}
-      {!isLandingPage && !isSharedRoute && (
+      {!isLandingPage && !isSharedRoute && !isArticleVisualRoute && <Sidebar onOpenCommandPalette={() => setCommandOpen(true)} />}
+      {!isLandingPage && !isSharedRoute && !isArticleVisualRoute && (
         <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} />
       )}
       <main
-        className={`flex-1 min-h-0 relative ${isBuilderRoute || isSharedRoute ? 'overflow-hidden' : 'overflow-auto'}`}
+        className={`flex-1 min-h-0 relative ${isBuilderRoute || isSharedRoute || isArticleVisualRoute ? 'overflow-hidden' : 'overflow-auto'}`}
       >
         <Suspense fallback={<LoadingScreen message="Loading HLBuilder..." />}>
           <Routes>
@@ -167,6 +169,7 @@ function AppContent() {
             <Route path="/hardware" element={<HardwareCatalogPage />} />
             <Route path="/services" element={<ServiceCatalogPage />} />
             <Route path="/how-to-build-a-homelab" element={<HomelabGuidePage />} />
+            <Route path="/docs/visuals/:slug" element={<ArticleVisualPage />} />
             <Route path="/privacy" element={<PrivacyPolicyPage />} />
             <Route path="/terms" element={<TermsOfServicePage />} />
             {/* Public shared build viewer */}

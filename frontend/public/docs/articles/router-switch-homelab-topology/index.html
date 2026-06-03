@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Router and switch homelab topology | HLBuilder docs</title>
+    <meta name="description" content="Plan a router and switch homelab topology in HLBuilder with gateway, core switch, access point, NAS, and server nodes." />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://hlbldr.com/docs/articles/router-switch-homelab-topology/" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="stylesheet" href="/docs/docs.css" />
+    <meta property="og:type" content="article" />
+    <meta property="og:title" content="Router and switch homelab topology | HLBuilder docs" />
+    <meta property="og:description" content="Plan a router and switch homelab topology in HLBuilder with gateway, core switch, access point, NAS, and server nodes." />
+    <meta property="og:url" content="https://hlbldr.com/docs/articles/router-switch-homelab-topology/" />
+    <meta property="og:image" content="https://hlbldr.com/og-image.png" />
+    <script type="application/ld+json">
+      [
+  {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "headline": "Router and switch homelab topology",
+    "description": "Plan a router and switch homelab topology in HLBuilder with gateway, core switch, access point, NAS, and server nodes.",
+    "author": {
+      "@type": "Organization",
+      "name": "HLBuilder"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "name": "HLBuilder",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://hlbldr.com/logo.svg"
+      }
+    },
+    "datePublished": "2026-06-03",
+    "dateModified": "2026-06-03",
+    "mainEntityOfPage": "https://hlbldr.com/docs/articles/router-switch-homelab-topology/"
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Does every homelab need a managed switch?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "No. A managed switch is useful when the plan needs separation, PoE, or more control, but a small first lab can start with the switching hardware already available."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Why draw the switch separately?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "A separate switch node shows uplinks, wired capacity, and which devices depend on the same backbone."
+        }
+      }
+    ]
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "Docs",
+        "item": "https://hlbldr.com/docs/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "Articles",
+        "item": "https://hlbldr.com/docs/articles/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 3,
+        "name": "Router and switch homelab topology",
+        "item": "https://hlbldr.com/docs/articles/router-switch-homelab-topology/"
+      }
+    ]
+  }
+]
+    </script>
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="/">
+          <img src="/logo.svg" alt="" />
+          <span>HLBuilder</span>
+        </a>
+        <div class="nav-links">
+          <a href="/docs/">Docs</a>
+          <a href="/docs/articles/">Articles</a>
+          <a href="/hardware">Hardware</a>
+          <a href="/services">Services</a>
+          <a href="/">Open app</a>
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Topology</p>
+          <h1>Router and switch homelab topology for a small lab</h1>
+          <p class="lead">Use one gateway router, one core switch, and a clear branch for servers, storage, Wi-Fi, and management gear. HLBuilder turns that layout into connected nodes, not a loose device list.</p>
+          <div class="article-meta">
+            <span>Published 2026-06-03</span>
+            <span>Visual builder example</span>
+            <span>Static SEO article</span>
+          </div>
+        </div>
+        <aside class="panel" aria-label="Reader question">
+          <h2>Question answered</h2>
+          <p>What should the router and switch layout look like in a small homelab?</p>
+          <p>Use one gateway router, one core switch, and a clear branch for servers, storage, Wi-Fi, and management gear. HLBuilder turns that layout into connected nodes, not a loose device list.</p>
+        </aside>
+      </section>
+
+      <div class="article-layout">
+        <article class="article-body">
+          <figure class="builder-example real-builder-example">
+            <iframe
+              class="builder-visual-frame"
+              src="/docs/visuals/router-switch-homelab-topology"
+              title="Router and switch homelab topology visual builder example"
+              loading="lazy"
+            ></iframe>
+            <figcaption>
+              The router owns the gateway role. The switch collects wired devices, while access point, NAS, and server nodes branch from the switch.
+              This embedded preview is rendered by the same ReactFlow HardwareNode, RackNode, and CustomEdge components used in HLBuilder's visual builder.
+              <noscript>Components shown: Router (gateway), Core switch (wired backbone), Access point (clients), NAS (storage), Server (services).</noscript>
+            </figcaption>
+          </figure>
+
+          <section class="section" id="gateway-first">
+            <h2>Put the gateway first</h2>
+            <p>A homelab topology needs one obvious gateway before anything else is added. In HLBuilder that usually means placing the router node first and giving it the network role that other devices can reach.</p>
+            <p>This prevents a common planning mistake: adding servers, storage, and Wi-Fi gear before deciding where the lab enters the rest of the home network. The router position gives the rest of the diagram a direction.</p>
+          </section>
+
+          <section class="section" id="switch-backbone">
+            <h2>Use the switch as the wired backbone</h2>
+            <p>The switch node should collect wired devices that need stable connectivity. Servers and NAS devices should usually appear on the switch side of the diagram, not behind the access point or a random branch.</p>
+            <p>HLBuilder supports switch nodes as separate components, so a user can reason about uplinks and device count before choosing a specific switch from the catalog.</p>
+          </section>
+
+          <section class="section" id="label-branches">
+            <h2>Label the branches by use</h2>
+            <p>A small topology is easier to read when branches have a purpose. One branch can hold storage, one can hold service hosts, and one can hold wireless clients. The diagram does not need to be large to be useful.</p>
+            <p>When the topology is saved, network calculation has real nodes and edges to read. That is better than trying to assign addresses from a list that does not show how devices connect.</p>
+          </section>
+
+          <section class="section" id="builder-checks">
+            <h2>Builder checks</h2>
+            <div class="visual-checks">
+              <div>
+                <h3>Check</h3>
+                <p>Router node exists before network calculation is run.</p>
+              </div>
+              <div>
+                <h3>Check</h3>
+                <p>Switch node is connected to the router, not left as a standalone item.</p>
+              </div>
+              <div>
+                <h3>Check</h3>
+                <p>Servers and NAS devices sit on wired branches.</p>
+              </div>
+              <div>
+                <h3>Check</h3>
+                <p>Access point is visible as its own node instead of hidden in notes.</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="section" id="questions">
+            <h2>Common questions</h2>
+            <div class="answer-box">
+              <h3>Does every homelab need a managed switch?</h3>
+              <p>No. A managed switch is useful when the plan needs separation, PoE, or more control, but a small first lab can start with the switching hardware already available.</p>
+            </div>
+            <div class="answer-box">
+              <h3>Why draw the switch separately?</h3>
+              <p>A separate switch node shows uplinks, wired capacity, and which devices depend on the same backbone.</p>
+            </div>
+          </section>
+
+          <section class="section" id="related">
+            <h2>Related HLBuilder pages</h2>
+            <div class="related-links">
+              <a class="button secondary" href="/docs/">Docs index</a>
+              <a class="button secondary" href="/hardware">Hardware catalog</a>
+              <a class="button secondary" href="/services">Service library</a>
+              <a class="button secondary" href="/">Open HLBuilder</a>
+            </div>
+          </section>
+        </article>
+
+        <aside class="toc" aria-label="Article sections">
+          <h2>On this page</h2>
+          <a href="#gateway-first">Put the gateway first</a>
+          <a href="#switch-backbone">Use the switch as the wired backbone</a>
+          <a href="#label-branches">Label the branches by use</a>
+          <a href="#builder-checks">Builder checks</a>
+          <a href="#questions">Common questions</a>
+          <a href="#related">Related pages</a>
+        </aside>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <a href="/docs/">Docs index</a>
+      <a href="/docs/articles/">Articles</a>
+      <a href="/how-to-build-a-homelab">Full homelab guide</a>
+      <a href="/sitemap.xml">Sitemap</a>
+    </footer>
+  </body>
+</html>

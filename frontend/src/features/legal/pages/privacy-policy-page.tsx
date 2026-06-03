@@ -1,8 +1,14 @@
 import { Shield } from "lucide-react"
+import { SeoMeta } from "../../../components/seo/seo-meta"
 
 export default function PrivacyPolicyPage() {
     return (
         <div className="flex-1 overflow-y-auto p-6 lg:p-12 relative h-full">
+            <SeoMeta
+                title="Privacy Policy | HLBuilder"
+                description="Read how HLBuilder handles Google sign-in profile data, saved homelab builds, browser storage, and account deletion requests."
+                path="/privacy"
+            />
             <div className="mx-auto max-w-3xl space-y-8 pb-24">
                 <div className="space-y-4">
                     <div className="inline-flex items-center justify-center p-3 bg-primary/10 text-primary rounded-full mb-2">
