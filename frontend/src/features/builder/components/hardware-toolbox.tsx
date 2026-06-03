@@ -709,7 +709,7 @@ export const HardwareToolbox = React.memo(function HardwareToolbox() {
     <>
     <HardwareBlueprintCreator open={creatorOpen} onClose={() => setCreatorOpen(false)} />
     <Card
-      className="absolute z-50 shadow-none border flex flex-col overflow-hidden bg-card"
+      className="builder-floating-panel absolute z-50 flex flex-col overflow-hidden"
       style={{
         left: position.x,
         top: position.y,
@@ -720,7 +720,7 @@ export const HardwareToolbox = React.memo(function HardwareToolbox() {
     >
       {/* Header / Drag Handle */}
       <div
-        className="flex items-center justify-between px-4 py-3 bg-muted/50 cursor-grab active:cursor-grabbing border-b select-none"
+        className="flex cursor-grab select-none items-center justify-between border-b bg-muted/35 px-4 py-3 active:cursor-grabbing"
         onMouseDown={handleMouseDown}
         role="presentation"
       >
@@ -764,8 +764,8 @@ export const HardwareToolbox = React.memo(function HardwareToolbox() {
                   onClick={() => setActiveTab(tab.id)}
                   className={`flex flex-col items-center gap-1 rounded-t-md px-2 py-2 text-[10px] font-semibold uppercase tracking-wide transition-colors ${tab.id === 'services' ? 'tour-toolbox-services' : ''} ${
                     activeTab === tab.id
-                      ? 'text-primary bg-primary/10'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                      ? 'bg-primary/10 text-primary shadow-[inset_0_-2px_0_var(--primary)]'
+                      : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
                   }`}
                 >
                   <Icon className="size-3.5" />
@@ -788,7 +788,7 @@ export const HardwareToolbox = React.memo(function HardwareToolbox() {
                     return (
                       <div
                         key={tool.type}
-                        className="flex min-h-14 flex-col items-center justify-center rounded-md border bg-background/40 p-2.5 cursor-grab hover:bg-primary/5 hover:border-primary/50 transition-colors active:cursor-grabbing"
+                        className="builder-tool-tile flex min-h-14 cursor-grab flex-col items-center justify-center p-2.5 active:cursor-grabbing"
                         onDragStart={e => onDragStart(e, tool.type)}
                         draggable
                       >
@@ -817,10 +817,10 @@ export const HardwareToolbox = React.memo(function HardwareToolbox() {
                 {dynamicPresets.map(cat => {
                   const isOpen = expandedCategories.has(cat.category);
                   return (
-                    <div key={cat.category} className="border rounded-lg overflow-hidden">
+                    <div key={cat.category} className="app-surface overflow-hidden rounded-lg">
                       <button
                         type="button"
-                        className="w-full flex items-center justify-between px-2.5 py-2 text-[10px] font-bold uppercase tracking-wide bg-muted/40 hover:bg-muted/70 transition-colors"
+                        className="flex w-full items-center justify-between bg-muted/35 px-2.5 py-2 text-[10px] font-bold uppercase tracking-wide transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                         onClick={() => toggleCategory(cat.category)}
                       >
                         {cat.category}
@@ -829,7 +829,7 @@ export const HardwareToolbox = React.memo(function HardwareToolbox() {
                         />
                       </button>
                       <div
-                        className="grid transition-all duration-300 ease-in-out"
+                        className="grid transition-[grid-template-rows] duration-300 ease-in-out"
                         style={{ gridTemplateRows: isOpen ? '1fr' : '0fr' }}
                       >
                         <div className="overflow-hidden">
@@ -839,7 +839,7 @@ export const HardwareToolbox = React.memo(function HardwareToolbox() {
                               return (
                                 <div
                                   key={preset.label}
-                                  className="flex items-center gap-2 px-2.5 py-2 cursor-grab hover:bg-primary/5 transition-colors active:cursor-grabbing"
+                                  className="flex cursor-grab items-center gap-2 px-2.5 py-2 transition-colors hover:bg-primary/5 active:cursor-grabbing"
                                   onDragStart={e => onDragStart(e, preset.type, preset.data)}
                                   draggable
                                 >
@@ -901,10 +901,10 @@ export const HardwareToolbox = React.memo(function HardwareToolbox() {
                       searchQuery !== '' ? true : !collapsedServiceCats.has(catName);
 
                     return (
-                      <div key={catName} className="border rounded-lg overflow-hidden">
+                      <div key={catName} className="app-surface overflow-hidden rounded-lg">
                         <button
                           type="button"
-                          className="w-full flex items-center justify-between px-2.5 py-2 text-[10px] font-bold uppercase tracking-wide bg-muted/40 hover:bg-muted/70 transition-colors"
+                          className="flex w-full items-center justify-between bg-muted/35 px-2.5 py-2 text-[10px] font-bold uppercase tracking-wide transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                           onClick={() => toggleServiceCat(catName)}
                         >
                           <span className="flex items-center gap-1.5 focus:outline-none">
@@ -924,7 +924,7 @@ export const HardwareToolbox = React.memo(function HardwareToolbox() {
                         </button>
 
                         <div
-                          className="grid transition-all duration-300 ease-in-out"
+                          className="grid transition-[grid-template-rows] duration-300 ease-in-out"
                           style={{ gridTemplateRows: isEffectivelyOpen ? '1fr' : '0fr' }}
                         >
                           <div className="overflow-hidden">
@@ -932,7 +932,7 @@ export const HardwareToolbox = React.memo(function HardwareToolbox() {
                               {svcs.map(svc => (
                                 <div
                                   key={svc.id}
-                                  className="flex items-center justify-between gap-2 px-2.5 py-2 cursor-grab hover:bg-primary/5 transition-colors bg-card active:cursor-grabbing group"
+                                  className="group flex cursor-grab items-center justify-between gap-2 bg-card px-2.5 py-2 transition-colors hover:bg-primary/5 active:cursor-grabbing"
                                   onDragStart={e => {
                                     e.dataTransfer.setData('application/reactflow', 'server_v2');
                                     e.dataTransfer.setData('service-drag', 'true');
@@ -1040,7 +1040,7 @@ export const HardwareToolbox = React.memo(function HardwareToolbox() {
             )}
           </div>
 
-          <div className="border-t px-4 py-2.5 shrink-0 bg-muted/20">
+          <div className="shrink-0 border-t bg-muted/20 px-4 py-2.5">
             <p className="text-[10px] text-muted-foreground text-center">
               Drag to canvas · Connect to router for auto-IP
             </p>

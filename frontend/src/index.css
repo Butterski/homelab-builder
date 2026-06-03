@@ -6,8 +6,29 @@
     @apply border-border;
     @apply border-border outline-ring/50;
   }
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
   body {
     @apply bg-background text-foreground font-sans antialiased;
+    overflow-x: hidden;
+    text-rendering: optimizeLegibility;
+    -webkit-tap-highlight-color: transparent;
+  }
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    touch-action: manipulation;
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
   }
 }
 
@@ -196,6 +217,114 @@
   }
 }
 
+@layer components {
+  .app-page {
+    position: relative;
+    min-height: 100%;
+    background:
+      radial-gradient(circle at 8% -8%, color-mix(in srgb, var(--primary) 10%, transparent), transparent 26rem),
+      radial-gradient(circle at 88% 0%, color-mix(in srgb, var(--chart-2) 8%, transparent), transparent 24rem);
+  }
+
+  .app-hero {
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+    padding-bottom: 1.25rem;
+  }
+
+  .app-surface,
+  .app-card {
+    border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--card) 94%, var(--muted)), var(--card));
+    box-shadow:
+      0 1px 0 color-mix(in srgb, var(--foreground) 5%, transparent) inset,
+      0 18px 60px color-mix(in srgb, #000 18%, transparent);
+  }
+
+  .app-card {
+    border-radius: var(--radius-xl);
+  }
+
+  .app-chip,
+  .app-pill {
+    display: inline-flex;
+    align-items: center;
+    min-height: 1.75rem;
+    border: 1px solid color-mix(in srgb, var(--primary) 24%, var(--border));
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--primary) 9%, transparent);
+    color: color-mix(in srgb, var(--primary) 84%, var(--foreground));
+    padding: 0.2rem 0.65rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0;
+  }
+
+  .app-pill {
+    color: var(--muted-foreground);
+    background: color-mix(in srgb, var(--muted) 34%, transparent);
+    transition:
+      background-color 0.18s ease,
+      border-color 0.18s ease,
+      color 0.18s ease;
+  }
+
+  .app-pill:hover {
+    border-color: color-mix(in srgb, var(--primary) 42%, var(--border));
+    background: color-mix(in srgb, var(--primary) 8%, var(--muted));
+    color: var(--foreground);
+  }
+
+  .app-empty-state {
+    border: 1px dashed color-mix(in srgb, var(--border) 92%, transparent);
+    border-radius: var(--radius-xl);
+    background: color-mix(in srgb, var(--card) 62%, transparent);
+  }
+
+  .app-sidebar {
+    box-shadow:
+      1px 0 0 color-mix(in srgb, var(--foreground) 3%, transparent) inset,
+      18px 0 80px color-mix(in srgb, #000 18%, transparent);
+  }
+
+  .builder-glass-panel,
+  .builder-floating-panel,
+  .builder-control-button {
+    border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+    border-radius: var(--radius-lg);
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--card) 92%, var(--muted)), var(--card));
+    box-shadow:
+      0 1px 0 color-mix(in srgb, var(--foreground) 5%, transparent) inset,
+      0 16px 44px color-mix(in srgb, #000 20%, transparent);
+    backdrop-filter: blur(12px);
+  }
+
+  .builder-floating-panel {
+    border-radius: var(--radius-xl);
+  }
+
+  .builder-control-button {
+    background: color-mix(in srgb, var(--card) 88%, transparent);
+  }
+
+  .builder-tool-tile {
+    border: 1px solid color-mix(in srgb, var(--border) 86%, transparent);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--background) 54%, var(--card));
+    transition:
+      background-color 0.18s ease,
+      border-color 0.18s ease,
+      transform 0.18s ease;
+  }
+
+  .builder-tool-tile:hover {
+    border-color: color-mix(in srgb, var(--primary) 48%, var(--border));
+    background: color-mix(in srgb, var(--primary) 8%, var(--card));
+    transform: translateY(-1px);
+  }
+}
+
 /* Entrance animations for cards and panels */
 .animate-fade-in-up {
   animation: fadeInUp 0.3s ease-out both;
@@ -269,6 +398,14 @@
 
 /* Builder canvas and hardware nodes */
 .builder-flow-canvas {
+  background:
+    radial-gradient(circle at 20% 15%, color-mix(in srgb, var(--primary) 7%, transparent), transparent 25rem),
+    radial-gradient(circle at 78% 18%, color-mix(in srgb, var(--chart-2) 6%, transparent), transparent 28rem),
+    var(--background);
+}
+
+.builder-workbench {
+  border-bottom: 1px solid var(--border);
   background: var(--background);
 }
 
@@ -313,11 +450,18 @@
   border-radius: 8px !important;
   border: 1px solid var(--border);
   background: var(--card);
-  box-shadow: none;
+  box-shadow:
+    0 1px 0 color-mix(in srgb, var(--foreground) 5%, transparent) inset,
+    0 12px 34px color-mix(in srgb, #000 18%, transparent);
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
 }
 
 .hardware-node-card:hover {
   border-color: color-mix(in srgb, var(--node-accent) 44%, var(--border));
+  transform: translateY(-1px);
 }
 
 .hardware-node-nat,
@@ -752,6 +896,25 @@
 .edge-radial-item:hover {
   border-color: var(--wireless-color, #38bdf8);
   background: color-mix(in srgb, var(--wireless-color, #38bdf8) 12%, var(--card));
+}
+
+.react-flow__controls {
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border) 90%, transparent) !important;
+  border-radius: var(--radius-lg) !important;
+  background: var(--card) !important;
+  box-shadow: 0 16px 44px color-mix(in srgb, #000 18%, transparent);
+}
+
+.react-flow__controls-button {
+  border-color: color-mix(in srgb, var(--border) 78%, transparent) !important;
+  background: var(--card) !important;
+  color: var(--foreground) !important;
+  fill: var(--foreground) !important;
+}
+
+.react-flow__controls-button:hover {
+  background: var(--accent) !important;
 }
 
 .node-role-toggle {

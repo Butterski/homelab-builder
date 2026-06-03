@@ -14,6 +14,7 @@ import {
   ClipboardList,
   CheckCircle2,
   AppWindow,
+  Search,
 } from 'lucide-react';
 import { Github } from '../icons/github';
 import { Discord } from '../icons/discord';
@@ -24,7 +25,6 @@ import { useBuilderStore } from '../../features/builder/store/builder-store';
 import { GoogleLoginButton } from '../auth/google-login-button';
 import { LayoutTemplate } from 'lucide-react';
 import { Logo } from '../ui/logo';
-// BETA_SURVEY
 import { useSurvey } from '../../features/survey/api/use-survey';
 import { SurveyModal } from '../../features/survey/components/survey-modal';
 
@@ -41,12 +41,17 @@ const BASE_NAV_ITEMS = [
   { label: 'Admin', href: '/admin', icon: Settings },
 ];
 
-export const Sidebar = React.memo(function Sidebar({ className }: { className?: string }) {
+export const Sidebar = React.memo(function Sidebar({
+  className,
+  onOpenCommandPalette,
+}: {
+  className?: string;
+  onOpenCommandPalette?: () => void;
+}) {
   const { user } = useAuth();
   const { currentBuildId } = useBuilderStore();
   const navigate = useNavigate();
 
-  // BETA_SURVEY
   const [showSurvey, setShowSurvey] = useState(false);
   const { data: survey } = useSurvey({ enabled: !!user });
   const surveyDone = !!survey;
@@ -79,7 +84,7 @@ export const Sidebar = React.memo(function Sidebar({ className }: { className?: 
     <>
       <aside
         className={cn(
-          'hidden md:flex flex-col border-r border-[#27272A] bg-background h-full transition-all duration-300 ease-in-out overflow-hidden',
+          'app-sidebar hidden md:flex h-full flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-300 ease-out',
           collapsed ? 'w-16' : 'w-64',
           className,
         )}
@@ -87,14 +92,14 @@ export const Sidebar = React.memo(function Sidebar({ className }: { className?: 
         {/* Logo */}
         <button
           type="button"
-          className="flex h-16 items-center border-b border-[#27272A] px-4 shrink-0 group select-none w-full"
+          className="group flex h-16 w-full shrink-0 select-none items-center border-b border-sidebar-border px-4 text-left transition-colors hover:bg-sidebar-accent/55 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sidebar-ring"
           onClick={() => navigate('/')}
           title="Go to Projects"
         >
           <Logo className="size-8 shrink-0 drop-shadow-sm" interactive />
           <span
             className={cn(
-              'ml-3 text-xl font-bold tracking-tight whitespace-nowrap transition-all duration-300',
+              'ml-3 text-xl font-bold tracking-tight whitespace-nowrap transition-[opacity,width] duration-300',
               collapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100',
             )}
           >
@@ -114,16 +119,17 @@ export const Sidebar = React.memo(function Sidebar({ className }: { className?: 
                     title={collapsed ? item.label : undefined}
                     className={({ isActive }) =>
                       cn(
-                        'group flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground',
-                        isActive ? 'bg-accent text-accent-foreground' : 'text-muted-foreground',
+                        'group flex min-h-10 items-center rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground/68 transition-[background-color,color,box-shadow,transform] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sidebar-ring',
+                        isActive &&
+                          'translate-x-0.5 bg-sidebar-accent text-sidebar-accent-foreground shadow-[0_0_0_1px_color-mix(in_oklab,var(--sidebar-primary)_28%,transparent),0_12px_28px_-22px_var(--sidebar-primary)] [&>svg]:rounded-md [&>svg]:bg-sidebar-primary [&>svg]:p-0.5 [&>svg]:text-sidebar-primary-foreground',
                         collapsed && 'justify-center px-2',
                       )
                     }
                   >
-                    <item.icon className={cn('size-4 shrink-0', !collapsed && 'mr-2')} />
+                    <item.icon className={cn('size-4 shrink-0', !collapsed && 'mr-2')} aria-hidden="true" />
                     <span
                       className={cn(
-                        'whitespace-nowrap transition-all duration-300',
+                        'whitespace-nowrap transition-[opacity,width] duration-300',
                         collapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100',
                       )}
                     >
@@ -139,10 +145,10 @@ export const Sidebar = React.memo(function Sidebar({ className }: { className?: 
 
         {/* User section */}
         {!collapsed && (
-          <div className="border-t p-4 animate-in fade-in duration-200">
+          <div className="border-t border-sidebar-border p-4 animate-in fade-in duration-200">
             <button
               type="button"
-              className="flex items-center gap-3 rounded-lg border bg-muted/50 p-2 min-h-14 hover:bg-accent/50 transition-colors w-full text-left"
+              className="flex min-h-14 w-full items-center gap-3 rounded-lg border border-sidebar-border bg-sidebar-accent/45 p-2 text-left transition-colors hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sidebar-ring"
               onClick={() => (user ? navigate('/profile') : undefined)}
               title={user ? 'View profile' : undefined}
             >
@@ -176,12 +182,37 @@ export const Sidebar = React.memo(function Sidebar({ className }: { className?: 
           </div>
         )}
 
+        <div className="shrink-0 border-t border-sidebar-border p-2">
+          <button
+            type="button"
+            onClick={onOpenCommandPalette}
+            title="Open command palette"
+            className={cn(
+              'group flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground/68 transition-[background-color,color] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sidebar-ring',
+              collapsed && 'justify-center px-2',
+            )}
+          >
+            <Search className={cn('size-4 shrink-0', !collapsed && 'mr-2')} aria-hidden="true" />
+            <span
+              className={cn(
+                'flex min-w-0 flex-1 items-center justify-between gap-2 whitespace-nowrap transition-[opacity,width] duration-300',
+                collapsed ? 'w-0 overflow-hidden opacity-0' : 'opacity-100',
+              )}
+            >
+              <span>Command menu</span>
+              <kbd className="rounded border border-sidebar-border bg-sidebar px-1.5 py-0.5 text-[10px] text-sidebar-foreground/60">
+                Ctrl K
+              </kbd>
+            </span>
+          </button>
+        </div>
+
         {/* Collapsed: show avatar only */}
         {collapsed && user && (
-          <div className="border-t p-2 flex justify-center animate-in fade-in duration-200">
+          <div className="flex justify-center border-t border-sidebar-border p-2 animate-in fade-in duration-200">
             <button
             type="button"
-            className="p-0 bg-transparent border-none cursor-pointer hover:ring-2 ring-primary/40 transition-all rounded-full"
+            className="rounded-full border-none bg-transparent p-0 transition-shadow hover:ring-2 hover:ring-sidebar-ring/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
             onClick={() => navigate('/profile')}
             title={user.name}
           >
@@ -204,7 +235,7 @@ export const Sidebar = React.memo(function Sidebar({ className }: { className?: 
         {/* Social Links */}
         <div
           className={cn(
-            'border-t p-4 flex items-center shrink-0',
+            'flex shrink-0 items-center border-t border-sidebar-border p-4',
             collapsed ? 'flex-col p-2 gap-4' : 'justify-center gap-5',
           )}
         >
@@ -212,16 +243,16 @@ export const Sidebar = React.memo(function Sidebar({ className }: { className?: 
             href="https://github.com/Butterski/homelab-builder"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-muted-foreground hover:text-primary transition-colors"
+            className="text-sidebar-foreground/62 transition-colors hover:text-sidebar-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sidebar-ring"
             title="Project Site"
           >
-            <Globe className="size-4" />
+            <Globe className="size-4" aria-hidden="true" />
           </a>
           <a
             href="https://github.com/Butterski"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-muted-foreground hover:text-primary transition-colors"
+            className="text-sidebar-foreground/62 transition-colors hover:text-sidebar-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sidebar-ring"
             title="GitHub"
           >
             <Github className="size-4" />
@@ -230,16 +261,16 @@ export const Sidebar = React.memo(function Sidebar({ className }: { className?: 
             href="https://github.com/sponsors/Butterski"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-muted-foreground hover:text-pink-500 transition-colors"
+            className="text-sidebar-foreground/62 transition-colors hover:text-pink-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sidebar-ring"
             title="Sponsor"
           >
-            <Heart className="size-4" />
+            <Heart className="size-4" aria-hidden="true" />
           </a>
           <a
             href="https://discord.gg/8PQb2M2fBB"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-muted-foreground hover:text-zinc-500 transition-colors"
+            className="text-sidebar-foreground/62 transition-colors hover:text-sidebar-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sidebar-ring"
             title="Discord"
           >
             <Discord className="size-4" />
@@ -248,7 +279,7 @@ export const Sidebar = React.memo(function Sidebar({ className }: { className?: 
             href="https://buymeacoffee.com/butterski"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-muted-foreground hover:text-yellow-500 transition-colors"
+            className="text-sidebar-foreground/62 transition-colors hover:text-yellow-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sidebar-ring"
             title="Buy Me a Coffee"
           >
             <BuyMeACoffee className="size-4" />
@@ -269,13 +300,13 @@ export const Sidebar = React.memo(function Sidebar({ className }: { className?: 
         )}
 
         {/* DONATE - Glowing funding goal button */}
-        <div className="border-t p-2 shrink-0">
+        <div className="shrink-0 border-t border-sidebar-border p-2">
           <NavLink
             to="/donate"
             title="Support the Project"
             className={({ isActive }) =>
               cn(
-                'relative w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200 overflow-hidden group',
+                'group relative flex w-full items-center gap-2 overflow-hidden rounded-lg px-3 py-2 text-sm font-medium transition-[background-color,color] duration-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sidebar-ring',
                 isActive
                   ? 'bg-pink-500/15 text-pink-500'
                   : 'text-pink-500/80 hover:bg-pink-500/10 hover:text-pink-500',
@@ -295,7 +326,7 @@ export const Sidebar = React.memo(function Sidebar({ className }: { className?: 
 
             <div
               className={cn(
-                'flex flex-col flex-1 whitespace-nowrap transition-all duration-300',
+                'flex flex-col flex-1 whitespace-nowrap transition-[opacity,width] duration-300',
                 collapsed ? 'opacity-0 w-0' : 'opacity-100',
               )}
             >
@@ -306,15 +337,15 @@ export const Sidebar = React.memo(function Sidebar({ className }: { className?: 
           </NavLink>
         </div>
 
-        {/* BETA_SURVEY - Glowing survey button */}
+        {/* Usage survey button */}
         {user && (
-          <div className="border-t p-2 shrink-0">
+          <div className="shrink-0 border-t border-sidebar-border p-2">
             <button
               onClick={() => setShowSurvey(true)}
               type="button"
-              title="Beta Feedback Survey"
+              title="Usage Survey"
               className={cn(
-                'relative w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200',
+                'relative flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-[background-color,color] duration-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sidebar-ring',
                 surveyDone
                   ? 'text-muted-foreground hover:bg-accent hover:text-foreground'
                   : 'text-primary hover:bg-primary/10',
@@ -332,23 +363,21 @@ export const Sidebar = React.memo(function Sidebar({ className }: { className?: 
               )}
               <span
                 className={cn(
-                  'whitespace-nowrap transition-all duration-300',
+                  'whitespace-nowrap transition-[opacity,width] duration-300',
                   collapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100',
                 )}
               >
-                {surveyDone ? 'Survey done' : 'Beta Survey'}
+                {surveyDone ? 'Survey done' : 'Usage Survey'}
               </span>
             </button>
           </div>
         )}
-        {/* END BETA_SURVEY */}
-
         {/* Collapse toggle */}
-        <div className="border-t p-2 flex justify-center shrink-0">
+        <div className="flex shrink-0 justify-center border-t border-sidebar-border p-2">
           <button
             onClick={() => setCollapsed(c => !c)}
             type="button"
-            className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors hover:cursor-pointer"
+            className="rounded-md p-2 text-sidebar-foreground/62 transition-colors hover:cursor-pointer hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sidebar-ring"
             title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
             {collapsed ? (
@@ -359,7 +388,6 @@ export const Sidebar = React.memo(function Sidebar({ className }: { className?: 
           </button>
         </div>
       </aside>
-      {/* BETA_SURVEY modal portal */}
       {showSurvey && <SurveyModal onClose={() => setShowSurvey(false)} />}
     </>
   );

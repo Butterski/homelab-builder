@@ -1,4 +1,4 @@
-import { useState } from "react"; // Fixed imports
+import { useEffect, useState } from "react";
 import { api } from "../../../lib/api";
 import { toast } from "sonner";
 import type { ThemeSettings } from "../../../lib/theme-registry";
@@ -14,31 +14,38 @@ interface User {
 export function useAuth() {
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
-    // const { toast } = useToast(); 
+    useEffect(() => {
+        let cancelled = false;
 
-    // Kick off auth check immediately, not in an effect
-    useState(() => {
-        checkAuth();
-    });
+        async function checkAuth() {
+            try {
+                const token = localStorage.getItem('auth_token');
+                const rawClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+                const isAuthDisabled = !rawClientId || rawClientId === "your-client-id" || rawClientId === "your_client_id_here";
 
-    async function checkAuth() {
-        try {
-            const token = localStorage.getItem('auth_token');
-            const rawClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-            const isAuthDisabled = !rawClientId || rawClientId === "your-client-id" || rawClientId === "your_client_id_here";
-
-            if (token || isAuthDisabled) {
-                // In local mode without a client ID, backend will automatically return the Local Admin
-                const user = await api.get<User>('/auth/me');
-                setUser(user);
+                if (token || isAuthDisabled) {
+                    // In local mode without a client ID, backend will automatically return the Local Admin.
+                    const user = await api.get<User>('/auth/me');
+                    if (!cancelled) {
+                        setUser(user);
+                    }
+                }
+            } catch (error) {
+                console.error("Auth check failed", error);
+                localStorage.removeItem('auth_token');
+            } finally {
+                if (!cancelled) {
+                    setLoading(false);
+                }
             }
-        } catch (error) {
-            console.error("Auth check failed", error);
-            localStorage.removeItem('auth_token'); // Clear invalid token
-        } finally {
-            setLoading(false);
         }
-    }
+
+        void checkAuth();
+
+        return () => {
+            cancelled = true;
+        };
+    }, []);
 
     async function loginWithDev() {
         setLoading(true);

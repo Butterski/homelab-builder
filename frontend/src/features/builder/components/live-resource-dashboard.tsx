@@ -1,7 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useBuilderStore } from '../store/builder-store';
 import { Card, CardContent } from '../../../components/ui/card';
-import { Button } from '../../../components/ui/button';
 import { Progress } from '../../../components/ui/progress';
 import { Activity, ChevronDown, ChevronUp, Cpu, HardDrive, Package } from 'lucide-react';
 import { cn } from '../../../lib/utils';
@@ -135,10 +134,10 @@ export function LiveResourceDashboard() {
   };
 
   return (
-    <div className="builder-resource-dashboard absolute top-4 right-4 z-50 transition-all duration-300 pointer-events-auto" data-hide-export="true">
+    <div className="builder-resource-dashboard absolute top-4 right-4 z-50 transition-[top,right] duration-300 pointer-events-auto" data-hide-export="true">
       <Card
         className={cn(
-          `shadow-none overflow-hidden transition-all duration-300 bg-card ${isExpanded ? 'w-[320px]' : 'w-48'}`,
+          `shadow-none overflow-hidden transition-[width] duration-300 bg-card ${isExpanded ? 'w-[320px]' : 'w-48'}`,
           cardBorder,
         )}
       >
@@ -169,9 +168,9 @@ export function LiveResourceDashboard() {
               <span className={cn('relative inline-flex rounded-full size-2', lightColor)} />
             </span>
           </div>
-          <Button variant="ghost" size="icon" className="size-6">
+          <span className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground">
             {isExpanded ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
-          </Button>
+          </span>
         </button>
 
         {isExpanded && (

@@ -1,4 +1,3 @@
-// BETA_SURVEY - Remove this entire file + its features after beta ends.
 import { useState } from "react"
 import { useSurvey, useSubmitSurvey, useUpdateSurvey } from "../api/use-survey"
 import { X, Star, ExternalLink } from "lucide-react"
@@ -39,7 +38,7 @@ const defaultForm: FormState = {
     company_contact: "",
 }
 
-export function SurveyModal({ onClose }: SurveyModalProps) { // BETA_SURVEY
+export function SurveyModal({ onClose }: SurveyModalProps) {
     const { data: existing } = useSurvey()
     const submitMut = useSubmitSurvey()
     const updateMut = useUpdateSurvey()
@@ -64,17 +63,17 @@ export function SurveyModal({ onClose }: SurveyModalProps) { // BETA_SURVEY
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 pt-5 pb-1">
                     <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold uppercase tracking-widest text-primary/70 bg-primary/10 px-2 py-0.5 rounded-full">Beta Survey</span>
+                        <span className="text-xs font-bold uppercase tracking-widest text-primary/70 bg-primary/10 px-2 py-0.5 rounded-full">Usage Survey</span>
                     </div>
                     <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-accent">
                         <X className="size-4" />
                     </button>
                 </div>
 
-                {/* DB Wipe Warning Banner */}
+                {/* Data reset notice */}
                 <div className="mx-6 mt-3 mb-1 rounded-lg bg-amber-500/10 border border-amber-500/30 px-4 py-2.5 text-xs text-amber-600 dark:text-amber-400 flex gap-2 items-start">
                     <span className="text-base leading-none mt-0.5">⚠️</span>
-                    <span><strong>Beta DB Wipe Notice:</strong> The database will be wiped after the beta period ends. You'll be notified in advance so you can export your work before then.</span>
+                    <span><strong>Data reset notice:</strong> The database may be reset while HLBuilder is still being tested. You'll be notified in advance so you can export your work before then.</span>
                 </div>
 
                 <div className="px-6 pb-6 pt-4 space-y-5">
@@ -83,9 +82,9 @@ export function SurveyModal({ onClose }: SurveyModalProps) { // BETA_SURVEY
                     {step === "intro" && (
                         <div className="space-y-4 text-center py-4">
                             <div className="text-4xl">🚀</div>
-                            <h2 className="text-xl font-bold">Thanks for testing HLBuilder!</h2>
+                            <h2 className="text-xl font-bold">Thanks for using HLBuilder!</h2>
                             <p className="text-sm text-muted-foreground">This quick survey helps us understand what you need. It takes about 2 minutes and your answers directly shape the roadmap.</p>
-                            <Button className="w-full" onClick={() => setStep("usage")}>Start Survey</Button>
+                            <Button className="w-full" onClick={() => setStep("usage")}>Start survey</Button>
                         </div>
                     )}
 
@@ -214,7 +213,7 @@ export function SurveyModal({ onClose }: SurveyModalProps) { // BETA_SURVEY
                     {step === "contact" && (
                         <div className="space-y-4">
                             <h3 className="font-semibold text-lg">Discord handle <span className="text-muted-foreground text-sm font-normal">(optional)</span></h3>
-                            <p className="text-sm text-muted-foreground">Share your Discord username to get a <strong>Beta Tester</strong> rank once we open our server.</p>
+                            <p className="text-sm text-muted-foreground">Share your Discord username if you want us to connect your feedback with future community access.</p>
                             <input
                               id="discord-handle"
                               value={form.discord_handle} onChange={e => set("discord_handle", e.target.value)}

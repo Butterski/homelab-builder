@@ -73,20 +73,21 @@ function ProjectsPage() {
   } = useProjectsPage();
 
   return (
-    <div className="container mx-auto py-8 px-4 max-w-7xl">
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-8">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">My Projects</h1>
-          <p className="text-muted-foreground mt-1">
+    <div className="app-page mx-auto max-w-7xl px-4 py-8">
+      <div className="app-hero mb-8 flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
+        <div className="min-w-0">
+          <span className="app-chip mb-3">Workspace</span>
+          <h1 className="text-3xl font-bold tracking-tight text-balance">My Projects</h1>
+          <p className="mt-1 text-muted-foreground">
             Manage your homelab designs and configurations.
           </p>
         </div>
-        <div className="flex items-center gap-2 w-full md:w-auto">
-          <div className="relative flex-1 md:w-64">
+        <div className="flex w-full flex-wrap items-center gap-2 md:w-auto md:justify-end">
+          <div className="relative min-w-0 flex-1 basis-full sm:basis-64 md:w-64">
             <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
             <Input
               placeholder="Search projects..."
-              className="pl-9"
+              className="h-10 pl-9"
               value={search}
               onChange={e => setSearch(e.target.value)}
             />
@@ -98,17 +99,17 @@ function ProjectsPage() {
             className="hidden"
             onChange={handleFileChange}
           />
-          <Button variant="outline" onClick={handleImportClick}>
+          <Button variant="outline" onClick={handleImportClick} className="flex-1 sm:flex-none">
             <Upload className="mr-2 size-4" /> Import
           </Button>
           <Button
             variant="outline"
-            className="text-amber-600 border-amber-200 hover:bg-amber-50 hover:text-amber-700 dark:border-amber-800/30 dark:hover:bg-amber-900/20 dark:hover:text-amber-400"
+            className="flex-1 border-amber-200 text-amber-600 hover:bg-amber-50 hover:text-amber-700 sm:flex-none dark:border-amber-800/30 dark:hover:bg-amber-900/20 dark:hover:text-amber-400"
             onClick={() => dispatchModal({ type: 'OPEN_FAST_START' })}
           >
             <Zap className="mr-2 size-4" /> Fast Start
           </Button>
-          <Button onClick={handleCreateNew}>
+          <Button onClick={handleCreateNew} className="flex-1 sm:flex-none">
             <Plus className="mr-2 size-4" /> New Project
           </Button>
         </div>
@@ -117,12 +118,12 @@ function ProjectsPage() {
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {[1, 2, 3].map(i => (
-            <div key={i} className="h-64 rounded-xl border bg-muted/20 animate-pulse" />
+            <div key={i} className="app-card h-64 animate-pulse" />
           ))}
         </div>
       ) : filteredBuilds.length === 0 ? (
-        <div className="text-center py-20 border-2 border-dashed rounded-xl">
-          <div className="bg-primary/10 p-4 rounded-full w-fit mx-auto mb-4">
+        <div className="app-empty-state py-20 text-center">
+          <div className="mx-auto mb-4 w-fit rounded-full bg-primary/10 p-4">
             <Folder className="size-8 text-primary" />
           </div>
           <h3 className="text-lg font-semibold mb-2">No projects found</h3>
@@ -323,7 +324,7 @@ function ShareModal({ build, open, copied, onClose, onToggleShare, onToggleEdita
               <Label className="text-xs text-muted-foreground">Share link</Label>
               <div className="flex gap-2">
                 <Input readOnly value={`${window.location.origin}/shared/${build.share_token}`} className="text-xs font-mono" />
-                <Button size="icon" variant="outline" onClick={onCopyLink}>
+                <Button size="icon" variant="outline" onClick={onCopyLink} aria-label="Copy Share Link">
                   {copied ? <Check className="size-4 text-green-500" /> : <Copy className="size-4" />}
                 </Button>
               </div>
@@ -360,10 +361,10 @@ const BuildCard = React.memo(function BuildCard({
 
   return (
     <Card
-      className="group cursor-pointer hover:border-primary/50 transition-all overflow-hidden flex flex-col"
+      className="app-card group flex cursor-pointer flex-col overflow-hidden transition-[border-color,transform] hover:-translate-y-0.5 hover:border-primary/50"
       onClick={() => onOpen(build)}
     >
-      <div className="aspect-video bg-muted/30 relative border-b flex items-center justify-center group-hover:bg-muted/50 transition-colors">
+      <div className="relative flex aspect-video items-center justify-center border-b bg-[radial-gradient(circle_at_50%_35%,color-mix(in_srgb,var(--primary)_12%,transparent),transparent_42%),color-mix(in_srgb,var(--muted)_55%,transparent)] transition-colors group-hover:bg-muted/50">
         {build.thumbnail ? (
           <img src={build.thumbnail} alt={build.name} className="w-full h-full object-cover" />
         ) : (
@@ -372,10 +373,10 @@ const BuildCard = React.memo(function BuildCard({
           </div>
         )}
 
-        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="absolute right-2 top-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="secondary" size="icon" className="size-8" onClick={e => e.stopPropagation()}>
+              <Button variant="secondary" size="icon" className="size-8" onClick={e => e.stopPropagation()} aria-label={`Open Actions For ${build.name}`}>
                 <MoreVertical className="size-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -403,8 +404,8 @@ const BuildCard = React.memo(function BuildCard({
         </div>
       </div>
 
-      <div className="p-4 flex-1 flex flex-col">
-        <div className="flex items-start justify-between mb-2">
+      <div className="flex flex-1 flex-col p-4">
+        <div className="mb-2 flex items-start justify-between">
           <h3 className="font-semibold truncate pr-2" title={build.name}>{build.name}</h3>
           <Badge variant="secondary" className="text-[10px] shrink-0">v1.0</Badge>
         </div>
@@ -421,7 +422,7 @@ const BuildCard = React.memo(function BuildCard({
             </div>
           </div>
 
-          <div className="pt-3 border-t flex items-center gap-2">
+          <div className="flex items-center gap-2 border-t pt-3">
             <Button size="sm" className="w-full" onClick={e => { e.stopPropagation(); onOpen(build); }}>
               <Play className="mr-2 size-3.5" /> Open Editor
             </Button>

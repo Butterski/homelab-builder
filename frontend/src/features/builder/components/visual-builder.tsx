@@ -24,7 +24,7 @@ import { RACK_U_HEIGHT_PX, RACK_HEADER_PX, RACK_RAIL_WIDTH, DEFAULT_DEVICE_U } f
 import { NodePropertiesPanel } from './node-properties-panel';
 import { LiveResourceDashboard } from './live-resource-dashboard';
 import { Button } from '../../../components/ui/button';
-import { Wand2, Menu, Save, Folder, Download, LogOut, Route, Image as ImageIcon } from 'lucide-react';
+import { Wand2, Menu, Save, Folder, Download, LogOut, Route, Image as ImageIcon, Map as MapIcon } from 'lucide-react';
 import type { HardwareType, HardwareNode } from '../../../types';
 import { buildApi } from '../api/builds';
 import { toPng, toSvg } from 'html-to-image';
@@ -201,7 +201,7 @@ const Flow = React.memo(function Flow() {
   };
 
   // Joyride Tour State
-  const [runTour, setRunTour] = useState(() => !localStorage.getItem('hlb_has_seen_tour'));
+  const [runTour, setRunTour] = useState(false);
   const [tourSteps] = useState<Step[]>([
     {
       target: '.tour-toolbox',
@@ -994,22 +994,24 @@ const Flow = React.memo(function Flow() {
   // ...
 
   return (
-    <div className="flex h-full border-b bg-background overflow-hidden relative">
-      <Joyride
-        steps={tourSteps}
-        run={runTour}
-        continuous={true}
-        showSkipButton={true}
-        showProgress={true}
-        callback={handleJoyrideCallback}
-        locale={{ last: 'Close' }}
-        styles={{
-          options: {
-            primaryColor: '#f97316',
-            zIndex: 10000,
-          },
-        }}
-      />
+    <div className="builder-workbench flex h-full overflow-hidden relative">
+      {runTour && (
+        <Joyride
+          steps={tourSteps}
+          run
+          callback={handleJoyrideCallback}
+          locale={{ last: 'Close' }}
+          continuous
+          showProgress
+          showSkipButton
+          styles={{
+            options: {
+              primaryColor: 'var(--primary)',
+              zIndex: 10000,
+            },
+          }}
+        />
+      )}
 
       <HardwareToolbox />
 
@@ -1069,7 +1071,7 @@ const Flow = React.memo(function Flow() {
           <Panel position="top-left" className="builder-top-panel flex flex-wrap gap-2 items-start">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" className="size-10 bg-card shrink-0">
+                <Button variant="outline" size="icon" className="builder-control-button size-10 shrink-0" aria-label="Open Project Menu">
                   <Menu className="size-4" />
                 </Button>
               </DropdownMenuTrigger>
@@ -1098,6 +1100,9 @@ const Flow = React.memo(function Flow() {
                 <DropdownMenuItem onClick={() => navigate('/services')}>
                   <Wand2 className="mr-2 size-4" /> Component Catalog
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setRunTour(true)}>
+                  <MapIcon className="mr-2 size-4" /> Start Guided Tour
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={logout} className="text-red-500 focus:text-red-500">
                   <LogOut className="mr-2 size-4" /> Sign Out
@@ -1105,7 +1110,7 @@ const Flow = React.memo(function Flow() {
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <div className="builder-project-title flex flex-col min-w-0 rounded-lg border bg-card px-3 py-2 h-12 justify-center">
+            <div className="builder-project-title builder-glass-panel flex h-12 min-w-0 flex-col justify-center px-3 py-2">
               <h2 className="text-sm font-semibold leading-none truncate max-w-52">
                 {projectName || 'HLBuilder'}
               </h2>
@@ -1127,7 +1132,7 @@ const Flow = React.memo(function Flow() {
               onClick={() => reassignAllIPs()}
               title="Fix IP Conflicts"
               size="sm"
-              className="h-10 bg-card px-3"
+              className="builder-control-button h-10 px-3"
             >
               <Wand2 className="size-4" />
               <span className="builder-action-label ml-2">Reassign IPs</span>
@@ -1135,7 +1140,7 @@ const Flow = React.memo(function Flow() {
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-10 bg-card px-3">
+                <Button variant="outline" size="sm" className="builder-control-button h-10 px-3">
                   <Route className="size-4 shrink-0" />
                   <span className="builder-action-label ml-2">Visual Settings</span>
                 </Button>

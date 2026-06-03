@@ -2,11 +2,16 @@ import {
   ArrowRight,
   BookOpen,
   Boxes,
+  CheckCircle2,
   Cpu,
+  ExternalLink,
+  KeyRound,
+  LockKeyhole,
   Network,
   Server,
   Shield,
   Sparkles,
+  UserCheck,
   Wrench,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -91,6 +96,63 @@ const faqItems = [
     answer:
       'A homelab builder helps you plan topology, hardware roles, and IP assignments before you spend money or re-cable your network. It reduces guesswork and makes changes easier to reason about.',
   },
+];
+
+const ssoSetupSteps = [
+  {
+    title: 'Create the Google OAuth client',
+    body:
+      'In Google Cloud, create or select a project, open the Clients page, create a Web application client, and copy the OAuth client ID. Google says the client ID is required for the Sign in with Google button and for backend ID token checks.',
+    icon: KeyRound,
+    sourceLabel: 'Google Identity Services setup',
+    sourceUrl: 'https://developers.google.com/identity/gsi/web/guides/get-google-api-clientid',
+  },
+  {
+    title: 'Set the allowed browser origins',
+    body:
+      'Add the exact HLBuilder origin to Authorized JavaScript origins. For local work, add http://localhost:5173 or http://127.0.0.1:5173. For a deployed install, add the public HTTPS origin, such as https://lab.example.com.',
+    icon: Network,
+    sourceLabel: 'Google client ID setup',
+    sourceUrl: 'https://developers.google.com/identity/gsi/web/guides/get-google-api-clientid',
+  },
+  {
+    title: 'Configure the consent screen',
+    body:
+      'In Google Auth platform, set the app name, support email, audience, contact email, and test users when the app is external and still in testing. Google says apps using OAuth 2.0 need a consent screen configuration.',
+    icon: UserCheck,
+    sourceLabel: 'OAuth consent screen',
+    sourceUrl: 'https://developers.google.com/workspace/guides/configure-oauth-consent',
+  },
+  {
+    title: 'Use only sign-in scopes',
+    body:
+      'HLBuilder needs Google sign-in identity, not Google Drive, Gmail, or Calendar access. Google lists email, profile, and openid as the default authentication scope set for Sign in with Google.',
+    icon: CheckCircle2,
+    sourceLabel: 'Google client ID setup',
+    sourceUrl: 'https://developers.google.com/identity/gsi/web/guides/get-google-api-clientid',
+  },
+  {
+    title: 'Put the client ID into HLBuilder',
+    body:
+      'Set VITE_GOOGLE_CLIENT_ID for the frontend and GOOGLE_CLIENT_ID for the backend. Set JWT_SECRET too, because HLBuilder creates its own app session after the Google ID token is accepted.',
+    icon: LockKeyhole,
+    sourceLabel: 'HLBuilder environment variables',
+    sourceUrl: '#sso-env',
+  },
+];
+
+const ssoUsageSteps = [
+  'Open HLBuilder and use the Google sign-in button on the login screen.',
+  'Google returns an ID token to the browser. The HLBuilder frontend sends that credential to the backend login endpoint.',
+  'The backend checks the token, creates or finds the user account, then returns the HLBuilder session token used by the app.',
+  'After sign-in, create projects, save builder layouts, store theme preferences, and reopen the same account from another browser.',
+];
+
+const ssoChecks = [
+  'If the Google button does not appear, confirm VITE_GOOGLE_CLIENT_ID is set in the frontend environment and restart the Vite container or dev server.',
+  'If login fails after choosing a Google account, check that GOOGLE_CLIENT_ID in the backend matches the frontend client ID.',
+  'If Google blocks the browser origin, compare the full scheme, host, and port in Authorized JavaScript origins.',
+  'If a team wants Google Workspace-only access, add a backend allowlist for the Google hd claim before treating a domain as trusted.',
 ];
 
 export default function HomelabGuidePage() {
@@ -291,7 +353,7 @@ export default function HomelabGuidePage() {
                 Give the lab a clear gateway, stable subnets, and enough managed switching to separate trusted devices from experiments. Even a small setup benefits from separating infrastructure, servers, and IoT traffic.
               </p>
               <p>
-                Use a router you understand, then decide whether you need VLANs, multiple SSIDs, PoE, or 2.5 GbE. Buy switches and access points that match that plan instead of mixing random features later.
+                Use a router you understand, then decide whether you need VLANs, multiple SSIDs, PoE, or 2.5 GbE. Buy switches and access points that match that plan instead of mixing random hardware capabilities later.
               </p>
               <p>
                 Good IP hygiene matters. Reserve predictable ranges for routers, switches, servers, and storage so your diagrams, config exports, and troubleshooting stay aligned.
@@ -351,6 +413,165 @@ export default function HomelabGuidePage() {
               </CardContent>
             </Card>
           </div>
+        </section>
+
+        <section className="rounded-[2rem] border border-border/70 bg-card/80 p-8 lg:p-10 space-y-8" id="google-sso">
+          <div className="space-y-3 max-w-3xl">
+            <Badge variant="outline" className="border-primary/35 bg-primary/10 text-primary">
+              Google SSO
+            </Badge>
+            <h2 className="text-3xl font-bold tracking-tight">Use Google SSO with HLBuilder</h2>
+            <p className="text-muted-foreground leading-7">
+              HLBuilder uses Google sign-in on the frontend and verifies the returned Google ID token on the backend before creating an app session. This setup is a good fit for a personal lab, a family lab, or a small team that already uses Google accounts.
+            </p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {ssoSetupSteps.map(step => (
+              <Card key={step.title} className="border-border/70 bg-background/75">
+                <CardHeader className="space-y-3">
+                  <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <step.icon className="size-5" aria-hidden="true" />
+                  </div>
+                  <CardTitle className="text-lg leading-7">{step.title}</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <p className="text-sm leading-7 text-muted-foreground">{step.body}</p>
+                  <a
+                    href={step.sourceUrl}
+                    target={step.sourceUrl.startsWith('#') ? undefined : '_blank'}
+                    rel={step.sourceUrl.startsWith('#') ? undefined : 'noreferrer'}
+                    className="inline-flex items-center gap-1.5 text-sm font-medium text-primary transition-colors hover:text-primary/80"
+                  >
+                    {step.sourceLabel}
+                    {!step.sourceUrl.startsWith('#') && <ExternalLink className="size-3.5" aria-hidden="true" />}
+                  </a>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
+            <Card className="border-border/70 bg-background/75" id="sso-env">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-2xl">
+                  <LockKeyhole className="size-5 text-primary" aria-hidden="true" />
+                  HLBuilder environment values
+                </CardTitle>
+                <CardDescription>
+                  Use the same Google client ID in the frontend and backend.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 text-sm leading-7 text-muted-foreground">
+                <p>
+                  Set VITE_GOOGLE_CLIENT_ID to the Google web client ID so the browser can render the sign-in button. Set GOOGLE_CLIENT_ID to the same value so the backend can reject tokens meant for another app.
+                </p>
+                <p>
+                  Set JWT_SECRET to a long random value. HLBuilder uses that value for the app session token after Google sign-in succeeds.
+                </p>
+                <pre className="overflow-x-auto rounded-lg border bg-muted/45 p-4 text-xs text-foreground">
+{`VITE_GOOGLE_CLIENT_ID=1234567890-example.apps.googleusercontent.com
+GOOGLE_CLIENT_ID=1234567890-example.apps.googleusercontent.com
+JWT_SECRET=replace-with-a-long-random-string`}
+                </pre>
+              </CardContent>
+            </Card>
+
+            <Card className="border-border/70 bg-background/75">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-2xl">
+                  <UserCheck className="size-5 text-emerald-500" aria-hidden="true" />
+                  How users sign in
+                </CardTitle>
+                <CardDescription>
+                  This is the normal user path after Google SSO is configured.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {ssoUsageSteps.map((step, index) => (
+                  <div key={step} className="flex gap-3 rounded-lg border border-border/70 bg-card/70 p-3">
+                    <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
+                      {index + 1}
+                    </span>
+                    <p className="text-sm leading-7 text-muted-foreground">{step}</p>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-2">
+            <Card className="border-border/70 bg-background/75">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-2xl">
+                  <Shield className="size-5 text-blue-500" aria-hidden="true" />
+                  What the backend must check
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4 text-sm leading-7 text-muted-foreground">
+                <p>
+                  Google says a server should verify the ID token signature, confirm the aud value matches the app client ID, confirm the iss value is accounts.google.com or https://accounts.google.com, and reject expired tokens.
+                </p>
+                <p>
+                  Google also says a Workspace domain check should use the hd claim. Do this on the backend. A plain email suffix check is weaker because it does not prove the account belongs to a Google Workspace domain.
+                </p>
+                <a
+                  href="https://developers.google.com/identity/gsi/web/guides/verify-google-id-token"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-primary transition-colors hover:text-primary/80"
+                >
+                  Google ID token verification
+                  <ExternalLink className="size-3.5" aria-hidden="true" />
+                </a>
+              </CardContent>
+            </Card>
+
+            <Card className="border-border/70 bg-background/75">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-2xl">
+                  <Wrench className="size-5 text-orange-500" aria-hidden="true" />
+                  Troubleshooting
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {ssoChecks.map(check => (
+                  <div key={check} className="flex gap-3">
+                    <CheckCircle2 className="mt-1 size-4 shrink-0 text-emerald-500" aria-hidden="true" />
+                    <p className="text-sm leading-7 text-muted-foreground">{check}</p>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card className="border-border/70 bg-background/75">
+            <CardHeader>
+              <CardTitle className="text-2xl">Sources used for the SSO guide</CardTitle>
+              <CardDescription>
+                These source links cover the Google setup, consent screen, button flow, and server token checks used above.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-wrap gap-3">
+              {[
+                ['Google Identity Services setup', 'https://developers.google.com/identity/gsi/web/guides/get-google-api-clientid'],
+                ['OAuth consent screen', 'https://developers.google.com/workspace/guides/configure-oauth-consent'],
+                ['Sign in button behavior', 'https://developers.google.com/identity/gsi/web/guides/display-button'],
+                ['Server token verification', 'https://developers.google.com/identity/gsi/web/guides/verify-google-id-token'],
+              ].map(([label, href]) => (
+                <a
+                  key={href}
+                  href={href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+                >
+                  {label}
+                  <ExternalLink className="size-3.5" aria-hidden="true" />
+                </a>
+              ))}
+            </CardContent>
+          </Card>
         </section>
 
         <section className="space-y-6">

@@ -23,6 +23,7 @@ const TermsOfServicePage = lazy(() => import('./features/legal/pages/terms-of-se
 import { RequireAuth } from './components/auth/require-auth';
 import { Sidebar } from './components/layout/sidebar';
 import { Toaster } from './components/ui/sonner';
+import { CommandPalette } from './components/command-palette';
 
 import { GoogleOAuthProvider } from '@react-oauth/google';
 
@@ -32,7 +33,7 @@ import { useLocation } from 'react-router-dom';
 import { useAuth } from './features/admin/hooks/use-auth';
 import { useTheme } from './components/theme-provider';
 import { useBuilderStore } from './features/builder/store/builder-store';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { themeSettingsFromPreferences } from './lib/theme-registry';
 
 const LoginPage = lazy(() => import('./features/auth/pages/login-page'));
@@ -43,6 +44,19 @@ function AppContent() {
   const { replaceThemeSettings } = useTheme();
   const setEdgePreferences = useBuilderStore(s => s.setEdgePreferences);
   const loadedPrefsFor = useRef<string | null>(null);
+  const [commandOpen, setCommandOpen] = useState(false);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setCommandOpen(open => !open);
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -89,7 +103,10 @@ function AppContent() {
 
   return (
     <div className="flex h-screen bg-background text-foreground overflow-hidden">
-      {!isLandingPage && !isSharedRoute && <Sidebar />}
+      {!isLandingPage && !isSharedRoute && <Sidebar onOpenCommandPalette={() => setCommandOpen(true)} />}
+      {!isLandingPage && !isSharedRoute && (
+        <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} />
+      )}
       <main
         className={`flex-1 min-h-0 relative ${isBuilderRoute || isSharedRoute ? 'overflow-hidden' : 'overflow-auto'}`}
       >
