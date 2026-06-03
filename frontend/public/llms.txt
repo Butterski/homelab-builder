@@ -5,6 +5,10 @@ HLBuilder is an open source self-hosted homelab visualization platform for docum
 Canonical site: https://hlbldr.com/
 Sitemap: https://hlbldr.com/sitemap.xml
 
+## What HLBuilder does
+
+HLBuilder lets you drag-and-drop routers, switches, servers, NAS devices, and SBCs onto a visual canvas, automatically assigns IP addresses based on the saved topology, and generates ready configs.
+
 ## Public app pages
 
 - Homepage and app entry: https://hlbldr.com/
