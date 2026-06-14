@@ -178,7 +178,7 @@ docker compose up -d
 
 ```bash
 # Docker build from local source
-docker compose -f docker-compose.dev.yml up -d --build
+docker compose -f deploy/docker/docker-compose.dev.yml up -d --build
 
 # Backend (requires Go 1.24+)
 cd backend

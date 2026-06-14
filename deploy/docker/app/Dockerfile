@@ -32,8 +32,8 @@ WORKDIR /app
 COPY --from=backend-builder /out/backend /app/backend
 COPY --from=ipam-builder /out/hlbipam /app/hlbipam
 COPY --from=frontend-builder /src/frontend/dist /usr/share/nginx/html
-COPY deploy/single/nginx.conf /etc/nginx/http.d/default.conf
-COPY deploy/single/entrypoint.sh /app/entrypoint.sh
+COPY deploy/docker/app/nginx.conf /etc/nginx/http.d/default.conf
+COPY deploy/docker/app/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh && mkdir -p /run/nginx
 
 ENV SERVER_PORT=8080

@@ -9,7 +9,7 @@ services:
       TZ: ${TZ:-Europe/Berlin}
     volumes:
       - postgres_data:/var/lib/postgresql/data:rw
-      - ./backend/migrations:/docker-entrypoint-initdb.d:ro
+      - ../../backend/migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U homelab -d homelab_builder"]
       interval: 10s
@@ -21,7 +21,7 @@ services:
   backend:
     image: homelab-builder-backend:dev
     build:
-      context: ./backend
+      context: ../../backend
       dockerfile: Dockerfile
     container_name: homelab-builder-backend
     ports:
@@ -50,7 +50,7 @@ services:
   hlbipam:
     image: homelab-builder-ipam:dev
     build:
-      context: ./hlbipam
+      context: ../../hlbipam
       dockerfile: Dockerfile
     container_name: homelab-builder-ipam
     environment:
@@ -61,7 +61,7 @@ services:
   frontend:
     image: homelab-builder-frontend:dev
     build:
-      context: ./frontend
+      context: ../../frontend
       dockerfile: Dockerfile
       args:
         VITE_API_URL: ${VITE_API_URL:-http://localhost:${BACKEND_PORT:-8080}}
