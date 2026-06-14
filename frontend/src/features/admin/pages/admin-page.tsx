@@ -16,6 +16,7 @@ import { useCallback } from "react"
 
 import { useAuth } from "../hooks/use-auth"
 import { Navigate } from "react-router-dom"
+import { apiUrl } from "../../../lib/api-base"
 
 function AnimatedCounter({ value, decimals = 0 }: { value: number; decimals?: number }) {
   const [displayed, setDisplayed] = useState(0)
@@ -381,11 +382,8 @@ function AdminPage() {
   // Memoized BEFORE early returns to avoid rules-of-hooks violations
   const handleDownloadAnonymousTopologies = useCallback(() => {
     const token = localStorage.getItem('auth_token');
-    const defaultApiBase = typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:8080` : 'http://localhost:8080';
-    const rawApiUrl = import.meta.env.VITE_API_URL;
-    const API_BASE = rawApiUrl && rawApiUrl !== 'http://localhost:8080' ? rawApiUrl : defaultApiBase;
     
-    fetch(`${API_BASE}/api/admin/export-anonymized-topologies`, {
+    fetch(apiUrl('/api/admin/export-anonymized-topologies'), {
       headers: {
         'Authorization': `Bearer ${token}`
       }

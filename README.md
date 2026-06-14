@@ -73,19 +73,20 @@ The entire mechanism is driven by a single condition: **whether `GOOGLE_CLIENT_I
 
 ### Quick Start (Auth-Disabled)
 
-Simply start the stack **without** providing any Google or JWT variables:
+Start the stack with the published Docker Hub app image and leave Google/JWT variables empty:
 
 ```bash
 git clone https://github.com/Butterski/homelab-builder.git
 cd homelab-builder
 
-# No .env file needed - just start the containers
+cp .env.hosted.example .env
+docker compose pull
 docker compose up -d
 ```
 
 That's it. Open `http://localhost:3000` and you'll be automatically logged in as **Local Admin**.
 
-The default `docker-compose.yml` references `${GOOGLE_CLIENT_ID}`, `${VITE_GOOGLE_CLIENT_ID}`, and `${JWT_SECRET}` from the environment / `.env` file. When these variables are absent, Docker Compose passes empty strings, which triggers auth-disabled mode on both the backend and frontend.
+The default `docker-compose.yml` pulls `butterski/homelab-builder` from Docker Hub and `postgres:17` from Docker Hub. It only exposes the frontend port; the app container runs Nginx, the backend, and hlbIPAM together, with Postgres kept as a separate persistent database container.
 
 ### Verifying Auth-Disabled Mode
 
@@ -96,20 +97,10 @@ Starting HLBuilder Backend...
 Database connected. Setting up routes...
 ```
 
-There will be **no** panic or error about `JWT_SECRET` because the backend only enforces a strong JWT secret in production mode (`GIN_MODE=release`). In the default Docker Compose config, `GIN_MODE` is set to `release`, so you must either:
+There will be **no** panic or error about `JWT_SECRET` because the default Compose config sets `GIN_MODE=debug` for local self-hosting. The published one-image setup is intended for local auth-disabled hosting; Google OAuth requires rebuilding the frontend with `VITE_GOOGLE_CLIENT_ID`.
 
-1. **Remove or change** `GIN_MODE` from the `backend` service environment (recommended for local self-hosting), or
-2. **Set `JWT_SECRET`** to any random string (e.g., `JWT_SECRET=my-local-secret-12345`).
+<!--
 
-#### Recommended `docker-compose.override.yml` for Self-Hosting
-
-Create a `docker-compose.override.yml` next to the main compose file:
-
-```yaml
-services:
-  backend:
-    environment:
-      GIN_MODE: "debug"      # Disables the JWT_SECRET strength check
       # GOOGLE_CLIENT_ID intentionally left unset → auth disabled
       # JWT_SECRET intentionally left unset → uses built-in dev secret
 ```
@@ -120,12 +111,14 @@ Then run:
 docker compose up -d
 ```
 
+-->
+
 ### Environment Variables Reference (Auth-Related)
 
 | Variable | Where | Required for Auth-Disabled? | Description |
 |---|---|---|---|
 | `GOOGLE_CLIENT_ID` | Backend | **No - leave unset** | When empty, backend sets `AuthDisabled=true` and skips JWT validation on all protected routes. |
-| `VITE_GOOGLE_CLIENT_ID` | Frontend (build arg) | **No - leave unset** | When empty, the frontend skips the Google login flow and auto-authenticates via `/auth/me`. |
+| `VITE_GOOGLE_CLIENT_ID` | Frontend (build arg) | **No - leave unset** | Only needed when rebuilding the frontend image with Google OAuth enabled. The published image defaults to local auth-disabled mode. |
 | `JWT_SECRET` | Backend | **No** (unless `GIN_MODE=release`) | Secret for signing JWTs. In auth-disabled mode JWTs are never issued, so this is unused. If running in release mode, set it to any random string. |
 | `GIN_MODE` | Backend | **No** | Set to `debug` (or omit) to skip the JWT_SECRET strength check. Set to `release` for production with Google OAuth. |
 
@@ -171,21 +164,22 @@ This creates (or logs into) a user with the given email - no Google account need
 ## 🚀 Quick Start
 
 ```bash
-# Clone the repository
 git clone https://github.com/Butterski/homelab-builder.git
 cd homelab-builder
 
-# Start all services via Docker Compose
+cp .env.hosted.example .env
+docker compose pull
 docker compose up -d
 
-# Access the application
-# Frontend: http://localhost:3000
-# Backend:  http://localhost:8080
+# Open http://localhost:3000
 ```
 
 ## 👨‍💻 Local Development
 
 ```bash
+# Docker build from local source
+docker compose -f docker-compose.dev.yml up -d --build
+
 # Backend (requires Go 1.24+)
 cd backend
 cp ../.env.example ../.env

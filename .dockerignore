@@ -1,0 +1,14 @@
+.git
+.github
+.vscode
+.gocache
+.env
+.env.*
+node_modules
+frontend/node_modules
+frontend/dist
+postgres-data
+tmpout
+*.log
+**/*.test
+**/*_test.go

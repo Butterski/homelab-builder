@@ -33,6 +33,12 @@ func Connect(cfg *config.Config) (*gorm.DB, error) {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
 
+	if cfg.DBType == "postgres" {
+		if err := db.Exec(`CREATE EXTENSION IF NOT EXISTS "pgcrypto"`).Error; err != nil {
+			log.Printf("Warning: failed to enable pgcrypto extension: %v", err)
+		}
+	}
+
 	// Auto-migrate schema for development (SQLite or Postgres)
 	if cfg.DBType == "sqlite" || cfg.DBType == "postgres" {
 		log.Printf("Running auto-migration for %s...", cfg.DBType)

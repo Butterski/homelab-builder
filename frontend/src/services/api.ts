@@ -1,11 +1,4 @@
-// Dynamically resolve API base.
-let defaultApiBase = 'http://localhost:8080';
-if (typeof window !== 'undefined') {
-    defaultApiBase = `${window.location.protocol}//${window.location.hostname}:8080`;
-}
-
-const rawApiUrl = import.meta.env.VITE_API_URL;
-const API_BASE = rawApiUrl && rawApiUrl !== 'http://localhost:8080' ? rawApiUrl : defaultApiBase;
+import { apiUrl } from '../lib/api-base';
 
 class ApiRequestError extends Error {
     status: number;
@@ -31,7 +24,7 @@ async function request<T>(
         ...options?.headers,
     };
 
-    const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+    const res = await fetch(apiUrl(path), { ...options, headers });
 
     if (!res.ok) {
         if (res.status === 401 && !config.suppressAuthRedirect) {

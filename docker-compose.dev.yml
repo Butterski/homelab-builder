@@ -1,0 +1,79 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: homelab-builder-db
+    environment:
+      POSTGRES_USER: homelab
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-homelab_password}
+      POSTGRES_DB: homelab_builder
+      TZ: ${TZ:-Europe/Berlin}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data:rw
+      - ./backend/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U homelab -d homelab_builder"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  backend:
+    image: homelab-builder-backend:dev
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: homelab-builder-backend
+    ports:
+      - ${BACKEND_PORT:-8080}:8080
+    environment:
+      SERVER_PORT: "8080"
+      GIN_MODE: ${GIN_MODE:-debug}
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: homelab
+      DB_PASSWORD: ${DB_PASSWORD:-homelab_password}
+      DB_NAME: homelab_builder
+      DB_SSLMODE: ${DB_SSLMODE:-disable}
+      DB_TYPE: postgres
+      JWT_SECRET: ${JWT_SECRET:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      IPAM_URL: http://hlbipam:8081
+      TZ: ${TZ:-Europe/Berlin}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      hlbipam:
+        condition: service_started
+    restart: unless-stopped
+
+  hlbipam:
+    image: homelab-builder-ipam:dev
+    build:
+      context: ./hlbipam
+      dockerfile: Dockerfile
+    container_name: homelab-builder-ipam
+    environment:
+      PORT: "8081"
+      TZ: ${TZ:-Europe/Berlin}
+    restart: unless-stopped
+
+  frontend:
+    image: homelab-builder-frontend:dev
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:${BACKEND_PORT:-8080}}
+        VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
+    container_name: homelab-builder-frontend
+    ports:
+      - ${FRONTEND_PORT:-3000}:80
+    depends_on:
+      - backend
+    environment:
+      TZ: ${TZ:-Europe/Berlin}
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

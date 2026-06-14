@@ -1,14 +1,5 @@
-// Dynamically resolve API base. If not explicitly set or heavily defaulted, assume standard backend port 8080 relative to current host
+import { apiUrl } from './api-base';
 import type { ThemeSettings } from './theme-registry';
-
-let defaultApiBase = 'http://localhost:8080';
-if (typeof window !== 'undefined') {
-    defaultApiBase = `${window.location.protocol}//${window.location.hostname}:8080`;
-}
-
-// In production docker builds, VITE_API_URL defaults to http://localhost:8080. We override it dynamically.
-const rawApiUrl = import.meta.env.VITE_API_URL;
-const API_BASE = rawApiUrl && rawApiUrl !== 'http://localhost:8080' ? rawApiUrl : defaultApiBase;
 
 // Assuming User type is defined elsewhere or needs a placeholder
 
@@ -33,7 +24,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
         ...options?.headers,
     };
 
-    const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+    const res = await fetch(apiUrl(path), { ...options, headers });
 
     if (!res.ok) {
         const errorData = await res.json().catch(() => ({ error: 'Request failed' }));
