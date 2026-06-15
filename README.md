@@ -90,6 +90,32 @@ The default `docker-compose.yml` pulls `butterski/homelab-builder` from Docker H
 
 Important: `DB_HOST=postgres` only resolves inside the Docker Compose network created by this compose file. The compose stack also provides `homelab-builder-db` as an alias for compatibility. If you run the app image by itself with `docker run`, Docker has no database hostname, and startup will fail with `lookup ... no such host`. In that case either use `docker compose up -d`, or put the app and database containers on the same user-defined Docker network and set `DB_HOST` to the database container name or external database hostname.
 
+### Docker Hub Only (No Local Build)
+
+Use this when you want to run HLBuilder from published images only. This still uses Docker Compose because HLBuilder needs two containers: the app image and Postgres.
+
+```bash
+mkdir hlbuilder
+cd hlbuilder
+
+curl -fsSLO https://raw.githubusercontent.com/Butterski/homelab-builder/master/docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/Butterski/homelab-builder/master/.env.hosted.example -o .env
+
+docker compose pull
+docker compose up -d
+```
+
+`docker compose pull` should pull exactly these images:
+
+```text
+butterski/homelab-builder:latest
+postgres:17
+```
+
+Open `http://localhost:3000`.
+
+Do not run only `docker run butterski/homelab-builder:latest` unless you also create a PostgreSQL container on the same Docker network. The app container expects `DB_HOST=postgres`, which is provided by the Compose service name.
+
 ### Verifying Auth-Disabled Mode
 
 You can confirm the mode is active by checking the backend logs on startup:
