@@ -3,14 +3,14 @@ services:
     image: postgres:17
     container_name: homelab-builder-db
     environment:
-      POSTGRES_USER: homelab
+      POSTGRES_USER: ${DB_USER:-homelab}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-homelab_password}
-      POSTGRES_DB: homelab_builder
+      POSTGRES_DB: ${DB_NAME:-homelab_builder}
       TZ: ${TZ:-Europe/Berlin}
     volumes:
       - postgres_data:/var/lib/postgresql/data:rw
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U homelab -d homelab_builder"]
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -27,11 +27,11 @@ services:
       PORT: "8081"
       IPAM_URL: http://127.0.0.1:8081
       GIN_MODE: ${GIN_MODE:-debug}
-      DB_HOST: postgres
-      DB_PORT: "5432"
-      DB_USER: homelab
+      DB_HOST: ${DB_HOST:-postgres}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_USER: ${DB_USER:-homelab}
       DB_PASSWORD: ${DB_PASSWORD:-homelab_password}
-      DB_NAME: homelab_builder
+      DB_NAME: ${DB_NAME:-homelab_builder}
       DB_SSLMODE: ${DB_SSLMODE:-disable}
       DB_TYPE: postgres
       JWT_SECRET: ${JWT_SECRET:-}
