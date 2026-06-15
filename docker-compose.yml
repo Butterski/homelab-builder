@@ -9,6 +9,11 @@ services:
       TZ: ${TZ:-Europe/Berlin}
     volumes:
       - postgres_data:/var/lib/postgresql/data:rw
+    networks:
+      default:
+        aliases:
+          - postgres
+          - homelab-builder-db
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 10s

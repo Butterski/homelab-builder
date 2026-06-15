@@ -88,6 +88,8 @@ That's it. Open `http://localhost:3000` and you'll be automatically logged in as
 
 The default `docker-compose.yml` pulls `butterski/homelab-builder` from Docker Hub and `postgres:17` from Docker Hub. It only exposes the frontend port; the app container runs Nginx, the backend, and hlbIPAM together, with Postgres kept as a separate persistent database container.
 
+Important: `DB_HOST=postgres` only resolves inside the Docker Compose network created by this compose file. The compose stack also provides `homelab-builder-db` as an alias for compatibility. If you run the app image by itself with `docker run`, Docker has no database hostname, and startup will fail with `lookup ... no such host`. In that case either use `docker compose up -d`, or put the app and database containers on the same user-defined Docker network and set `DB_HOST` to the database container name or external database hostname.
+
 ### Verifying Auth-Disabled Mode
 
 You can confirm the mode is active by checking the backend logs on startup:
@@ -97,7 +99,7 @@ Starting HLBuilder Backend...
 Database connected. Setting up routes...
 ```
 
-There will be **no** panic or error about `JWT_SECRET` because the default Compose config sets `GIN_MODE=debug` for local self-hosting. The published one-image setup is intended for local auth-disabled hosting; Google OAuth requires rebuilding the frontend with `VITE_GOOGLE_CLIENT_ID`.
+There will be **no** panic or error about `JWT_SECRET` because the default Compose config sets `GIN_MODE=debug` for local self-hosting. The published one-image setup can run in local auth-disabled mode or hosted Google OAuth mode; set `GOOGLE_CLIENT_ID` and `JWT_SECRET` in `.env` for hosted mode.
 
 <!--
 
