@@ -39,6 +39,13 @@ RUN chmod +x /app/entrypoint.sh && mkdir -p /run/nginx
 ENV SERVER_PORT=8080
 ENV PORT=8081
 ENV IPAM_URL=http://127.0.0.1:8081
+ENV DB_TYPE=postgres
+ENV DB_HOST=postgres
+ENV DB_PORT=5432
+ENV DB_USER=homelab
+ENV DB_PASSWORD=homelab_password
+ENV DB_NAME=homelab_builder
+ENV DB_SSLMODE=disable
 
 EXPOSE 80
 ENTRYPOINT ["/sbin/tini", "--", "/app/entrypoint.sh"]

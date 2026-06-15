@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../../../lib/api";
 import { toast } from "sonner";
 import type { ThemeSettings } from "../../../lib/theme-registry";
+import { getAuthConfig } from "../../auth/lib/auth-config";
 interface User {
     id: string;
     name: string;
@@ -20,10 +21,9 @@ export function useAuth() {
         async function checkAuth() {
             try {
                 const token = localStorage.getItem('auth_token');
-                const rawClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-                const isAuthDisabled = !rawClientId || rawClientId === "your-client-id" || rawClientId === "your_client_id_here";
+                const authConfig = await getAuthConfig();
 
-                if (token || isAuthDisabled) {
+                if (token || authConfig.auth_disabled) {
                     // In local mode without a client ID, backend will automatically return the Local Admin.
                     const user = await api.get<User>('/auth/me');
                     if (!cancelled) {

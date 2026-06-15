@@ -126,6 +126,13 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 		// Auth routes (public & protected user)
 		auth := router.Group("/auth")
 		{
+			auth.GET("/config", func(c *gin.Context) {
+				c.JSON(200, gin.H{
+					"auth_disabled":    cfg.AuthDisabled,
+					"google_client_id": cfg.GoogleClientID,
+				})
+			})
+
 			// Apply rate limiting to login
 			auth.POST("/google", middleware.RateLimitMiddleware(rateLimiter), authHandler.GoogleLogin)
 

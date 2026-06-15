@@ -36,6 +36,7 @@ import { useTheme } from './components/theme-provider';
 import { useBuilderStore } from './features/builder/store/builder-store';
 import { useEffect, useRef, useState } from 'react';
 import { themeSettingsFromPreferences } from './lib/theme-registry';
+import { getAuthConfig, type AuthConfig } from './features/auth/lib/auth-config';
 
 const LoginPage = lazy(() => import('./features/auth/pages/login-page'));
 
@@ -182,9 +183,19 @@ function AppContent() {
 }
 
 function App() {
-  const rawClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
-  const isAuthDisabled =
-    !rawClientId || rawClientId === 'your-client-id' || rawClientId === 'your_client_id_here';
+  const [authConfig, setAuthConfig] = useState<AuthConfig | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getAuthConfig().then(config => {
+      if (!cancelled) {
+        setAuthConfig(config);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const appProviders = (
     <QueryClientProvider client={queryClient}>
@@ -197,11 +208,15 @@ function App() {
     </QueryClientProvider>
   );
 
-  if (isAuthDisabled) {
+  if (!authConfig) {
+    return <LoadingScreen message="Loading HLBuilder..." />;
+  }
+
+  if (authConfig.auth_disabled || !authConfig.google_client_id) {
     return appProviders;
   }
 
-  return <GoogleOAuthProvider clientId={rawClientId}>{appProviders}</GoogleOAuthProvider>;
+  return <GoogleOAuthProvider clientId={authConfig.google_client_id}>{appProviders}</GoogleOAuthProvider>;
 }
 
 export default App;

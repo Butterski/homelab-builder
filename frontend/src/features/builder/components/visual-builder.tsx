@@ -24,12 +24,13 @@ import { RACK_U_HEIGHT_PX, RACK_HEADER_PX, RACK_RAIL_WIDTH, DEFAULT_DEVICE_U } f
 import { NodePropertiesPanel } from './node-properties-panel';
 import { LiveResourceDashboard } from './live-resource-dashboard';
 import { Button } from '../../../components/ui/button';
-import { Wand2, Menu, Save, Folder, Download, LogOut, Route, Image as ImageIcon, Map as MapIcon } from 'lucide-react';
+import { Wand2, Menu, Save, Folder, Download, LogOut, Route, Image as ImageIcon, Map as MapIcon, ClipboardCheck, LayoutGrid } from 'lucide-react';
 import type { HardwareType, HardwareNode } from '../../../types';
 import { buildApi } from '../api/builds';
 import { toPng, toSvg } from 'html-to-image';
 import { nodeHasDynamicPorts, canNodeBeNested, canNodeHostNested, canNodeConnectToAny } from '../../../lib/hardware-config';
 import { getNodePortCount } from '../lib/port-count';
+import { computeTopologyLayout } from '../lib/topology-layout';
 import { useAuth } from '../../admin/hooks/use-auth';
 import {
   DropdownMenu,
@@ -43,6 +44,7 @@ import {
 } from '../../../components/ui/dropdown-menu';
 
 import { CustomEdge } from './custom-edge';
+import { ReadinessReportDialog } from './readiness-report-dialog';
 
 type ZoneBlob = { x: number; y: number; width: number; height: number };
 
@@ -202,6 +204,7 @@ const Flow = React.memo(function Flow() {
 
   // Joyride Tour State
   const [runTour, setRunTour] = useState(false);
+  const [readinessOpen, setReadinessOpen] = useState(false);
   const [tourSteps] = useState<Step[]>([
     {
       target: '.tour-toolbox',
@@ -254,6 +257,7 @@ const Flow = React.memo(function Flow() {
     onEdgesChange,
     onConnect,
     addHardware,
+    updateHardware,
     removeHardware,
     duplicateHardware,
     selectNode,
@@ -268,17 +272,36 @@ const Flow = React.memo(function Flow() {
     projectName,
     edgePreferences,
     setEdgePreferences,
+    validationIssues,
     undo,
     redo,
   } = useBuilderStore();
 
-  const { screenToFlowPosition, getIntersectingNodes } = useReactFlow();
+  const { screenToFlowPosition, getIntersectingNodes, fitView } = useReactFlow();
   const visualPreferences = {
     showNetworkZones: edgePreferences.showNetworkZones ?? true,
     showLanZones: edgePreferences.showLanZones ?? false,
     showNatZones: edgePreferences.showNatZones ?? true,
     zoneOpacity: edgePreferences.zoneOpacity ?? 0.7,
   };
+
+  const polishTopologyLayout = useCallback(() => {
+    const positions = computeTopologyLayout(hardwareNodes, edges);
+    if (positions.length === 0) {
+      toast.error('Add hardware before polishing the layout.');
+      return;
+    }
+
+    positions.forEach(position => {
+      updateHardware(position.id, { x: position.x, y: position.y });
+    });
+
+    window.setTimeout(() => {
+      fitView({ padding: 0.18, duration: 500 });
+    }, 80);
+
+    toast.success('Topology layout polished.');
+  }, [hardwareNodes, edges, updateHardware, fitView]);
 
   const networkZones = useMemo<ReactFlowNode[]>(() => {
     if (!visualPreferences.showNetworkZones) return [];
@@ -1014,6 +1037,15 @@ const Flow = React.memo(function Flow() {
       )}
 
       <HardwareToolbox />
+      <ReadinessReportDialog
+        open={readinessOpen}
+        onOpenChange={setReadinessOpen}
+        hardwareNodes={hardwareNodes}
+        edges={edges}
+        validationIssues={validationIssues}
+        onGenerateConfig={() => navigate('/generate')}
+        onReassignIPs={reassignAllIPs}
+      />
 
       <div className="flex-1 h-full relative" ref={reactFlowWrapper}>
         <ReactFlow
@@ -1089,6 +1121,12 @@ const Flow = React.memo(function Flow() {
                 <DropdownMenuItem onClick={() => navigate('/generate')}>
                   <Download className="mr-2 size-4" /> Generate Config
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setReadinessOpen(true)}>
+                  <ClipboardCheck className="mr-2 size-4" /> Readiness Report
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={polishTopologyLayout}>
+                  <LayoutGrid className="mr-2 size-4" /> Polish Layout
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => downloadImage('png')}>
                   <ImageIcon className="mr-2 size-4" /> Export Diagram (PNG)
@@ -1136,6 +1174,28 @@ const Flow = React.memo(function Flow() {
             >
               <Wand2 className="size-4" />
               <span className="builder-action-label ml-2">Reassign IPs</span>
+            </Button>
+
+            <Button
+              variant="outline"
+              onClick={() => setReadinessOpen(true)}
+              title="Open Readiness Report"
+              size="sm"
+              className="builder-control-button h-10 px-3"
+            >
+              <ClipboardCheck className="size-4" />
+              <span className="builder-action-label ml-2">Readiness</span>
+            </Button>
+
+            <Button
+              variant="outline"
+              onClick={polishTopologyLayout}
+              title="Polish Topology Layout"
+              size="sm"
+              className="builder-control-button h-10 px-3"
+            >
+              <LayoutGrid className="size-4" />
+              <span className="builder-action-label ml-2">Polish</span>
             </Button>
 
             <DropdownMenu>

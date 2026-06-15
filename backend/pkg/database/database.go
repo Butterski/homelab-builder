@@ -22,7 +22,6 @@ func Connect(cfg *config.Config) (*gorm.DB, error) {
 		)
 		dialector = postgres.Open(dsn)
 	} else {
-		// SQLite default
 		dialector = sqlite.Open(cfg.DBFile)
 	}
 
