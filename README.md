@@ -116,6 +116,45 @@ Open `http://localhost:3000`.
 
 Do not run only `docker run butterski/homelab-builder:latest` unless you also create a PostgreSQL container on the same Docker network. The app container expects `DB_HOST=postgres`, which is provided by the Compose service name.
 
+### Proxmox LXC / Docker Local Workspace
+
+Use this if you want HLBuilder running as a private local workspace on a Proxmox Docker LXC. This path pulls published Docker Hub images only; it does not build anything locally.
+
+Use a Debian or Ubuntu LXC with Docker installed. A small instance is enough for testing, for example 2 CPU cores, 2 GB RAM, and 8 GB disk. For longer-term use, give the LXC more disk because Postgres data is stored in the `postgres_data` Docker volume.
+
+Inside the LXC:
+
+```bash
+mkdir -p ~/homelab-builder
+cd ~/homelab-builder
+
+curl -fsSLO https://raw.githubusercontent.com/Butterski/homelab-builder/master/docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/Butterski/homelab-builder/master/.env.hosted.example -o .env
+nano .env
+
+docker compose pull
+docker compose up -d
+```
+
+For local workspace mode, keep Google empty:
+
+```env
+GIN_MODE=debug
+GOOGLE_CLIENT_ID=
+JWT_SECRET=
+```
+
+Set `DB_PASSWORD` to something private if this LXC is not disposable. Leave `DB_HOST=postgres`; that name is created by Docker Compose.
+
+Expected containers:
+
+```text
+homelab-builder-app
+homelab-builder-db
+```
+
+For local access, open `http://LXC_IP:3000` from your browser. The app will use the built-in Local Admin workspace account.
+
 ### Verifying Auth-Disabled Mode
 
 You can confirm the mode is active by checking the backend logs on startup:
