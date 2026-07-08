@@ -31,6 +31,7 @@ import { toPng, toSvg } from 'html-to-image';
 import { nodeHasDynamicPorts, canNodeBeNested, canNodeHostNested, canNodeConnectToAny } from '../../../lib/hardware-config';
 import { getNodePortCount } from '../lib/port-count';
 import { computeTopologyLayout } from '../lib/topology-layout';
+import { isNatDownstreamEdge } from '../lib/network-zone';
 import { useAuth } from '../../admin/hooks/use-auth';
 import {
   DropdownMenu,
@@ -334,12 +335,6 @@ const Flow = React.memo(function Flow() {
         node.details?.network_zone === 'wan' ||
         node.details?.network_zone === 'cloud');
 
-    const isDownstreamFromNat = (otherId: string, direction: unknown) => {
-      if (direction === 'lan') return true;
-      if (direction === 'wan') return false;
-      return !isUpstreamAnchor(hardwareById.get(otherId));
-    };
-
     const getNodeSize = (node: ReactFlowNode) => {
       const style = node.style || {};
       const width = Number(node.measured?.width || node.width || style.width || 230);
@@ -425,14 +420,7 @@ const Flow = React.memo(function Flow() {
 
       (edgeByNode.get(natId) || []).forEach(edge => {
         const otherId = edge.source === natId ? edge.target : edge.source;
-        const other = hardwareById.get(otherId);
-        const autoFirewallUpstream =
-          !edge.data?.direction || edge.data.direction === 'auto'
-            ? (natNode.details?.firewall_enabled || (natNode.type as string) === 'firewall') &&
-              other &&
-              (other.type === 'switch' || other.type === 'router' || other.type === 'access_point')
-            : false;
-        if (!autoFirewallUpstream && isDownstreamFromNat(otherId, edge.data?.direction)) {
+        if (isNatDownstreamEdge(edge, natId, Boolean(isUpstreamAnchor(hardwareById.get(otherId))))) {
           queue.push(otherId);
         }
       });
