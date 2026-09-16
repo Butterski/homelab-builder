@@ -204,7 +204,8 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 			protected.GET("/builds", buildHandler.List)
 			protected.POST("/builds", buildHandler.Create)
 			protected.GET("/builds/:id", buildHandler.Get)
-			protected.PUT("/builds/:id", buildHandler.Update)
+			protected.PATCH("/builds/:id", buildHandler.Rename)
+			protected.PUT("/builds/:id/topology", buildHandler.UpdateTopology)
 			protected.DELETE("/builds/:id", buildHandler.Delete)
 			protected.POST("/builds/:id/duplicate", buildHandler.Duplicate)
 			protected.POST("/builds/:id/share", buildHandler.Share)
@@ -213,6 +214,7 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 			protected.POST("/builds/:id/calculate-network", buildHandler.CalculateNetwork)
 			protected.POST("/builds/:id/validate-network", buildHandler.ValidateNetwork)
 			protected.POST("/builds/:id/generate-config", configHandler.GenerateConfig)
+			protected.GET("/builds/:id/export-bundle", configHandler.DownloadBundle)
 
 			// Public shared build viewer / editor (no auth required)
 			api.GET("/shared/:token", buildHandler.GetShared)

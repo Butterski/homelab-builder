@@ -1,17 +1,17 @@
-version: '3.8'
-
 # Run with:
 #   docker compose -f docker-compose.test.yml up --build --abort-on-container-exit
 # Exit code 0 = all tests passed
 
 services:
   test-postgres:
-    image: postgres:15
+    image: postgres:17
     container_name: homelab-builder-test-db
     environment:
       POSTGRES_USER: homelab
       POSTGRES_PASSWORD: homelab_password
       POSTGRES_DB: postgres
+    tmpfs:
+      - /var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U homelab -d postgres"]
       interval: 5s
@@ -47,6 +47,7 @@ services:
       DB_SSLMODE: disable
       TEST_DB_NAME: homelab_builder_test
       IPAM_URL: http://hlbipam:8081
+      HANDLER_TEST_DB_NAME: homelab_builder_handlers_test
     depends_on:
       test-postgres:
         condition: service_healthy

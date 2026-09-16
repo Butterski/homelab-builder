@@ -15,6 +15,8 @@ import {
   CheckCircle2,
   AppWindow,
   Search,
+  Sparkles,
+  Menu,
 } from 'lucide-react';
 import { Github } from '../icons/github';
 import { Discord } from '../icons/discord';
@@ -25,6 +27,7 @@ import { useBuilderStore } from '../../features/builder/store/builder-store';
 import { GoogleLoginButton } from '../auth/google-login-button';
 import { LayoutTemplate } from 'lucide-react';
 import { Logo } from '../ui/logo';
+import { Sheet, SheetClose, SheetContent, SheetTitle, SheetTrigger } from '../ui/sheet';
 import { useSurvey } from '../../features/survey/api/use-survey';
 import { SurveyModal } from '../../features/survey/components/survey-modal';
 
@@ -32,6 +35,7 @@ const STORAGE_KEY = 'sidebar-collapsed';
 
 const BASE_NAV_ITEMS = [
   { label: 'Projects', href: '/', icon: LayoutDashboard },
+  { label: 'Guided Planner', href: '/planner', icon: Sparkles },
   { label: 'Config Generator', href: '/generate', icon: FileCode },
   { label: 'Hardware Catalog', href: '/hardware', icon: HardDrive },
   { label: 'Service Library', href: '/services', icon: AppWindow },
@@ -40,6 +44,87 @@ const BASE_NAV_ITEMS = [
   { label: 'Setup Guide', href: '/checklist', icon: CheckSquare },
   { label: 'Admin', href: '/admin', icon: Settings },
 ];
+
+export const MobileNavigation = React.memo(function MobileNavigation({
+  onOpenCommandPalette,
+}: {
+  onOpenCommandPalette?: () => void;
+}) {
+  const { user } = useAuth();
+  const currentBuildId = useBuilderStore(state => state.currentBuildId);
+  const items = [
+    BASE_NAV_ITEMS[0],
+    ...(currentBuildId
+      ? [{ label: 'Active Project', href: '/builder/' + currentBuildId, icon: LayoutTemplate }]
+      : []),
+    ...BASE_NAV_ITEMS.slice(1),
+  ].filter(item => item.label !== 'Admin' || user?.is_admin);
+
+  return (
+    <header className="flex h-14 shrink-0 items-center justify-between border-b bg-sidebar px-3 text-sidebar-foreground md:hidden">
+      <Link
+        to="/"
+        className="flex min-h-11 items-center gap-2 rounded-lg px-2 font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+      >
+        <Logo className="size-7" />
+        <span>HLBuilder</span>
+      </Link>
+      <Sheet>
+        <SheetTrigger asChild>
+          <button
+            type="button"
+            className="grid size-11 place-items-center rounded-lg border border-sidebar-border bg-sidebar-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+            aria-label="Open navigation"
+          >
+            <Menu className="size-5" />
+          </button>
+        </SheetTrigger>
+        <SheetContent
+          side="left"
+          className="w-[min(88vw,22rem)] bg-sidebar p-0 text-sidebar-foreground"
+        >
+          <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-5">
+            <Logo className="size-8" />
+            <div>
+              <SheetTitle className="font-semibold">HLBuilder</SheetTitle>
+              <p className="text-xs text-sidebar-foreground/60">Plan, wire, and export</p>
+            </div>
+          </div>
+          <nav className="grid gap-1 p-3" aria-label="Mobile navigation">
+            {items.map(item => (
+              <SheetClose asChild key={item.href}>
+                <NavLink
+                  to={item.href}
+                  className={({ isActive }) =>
+                    cn(
+                      'flex min-h-11 items-center rounded-lg px-3 text-sm font-medium text-sidebar-foreground/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring',
+                      isActive && 'bg-sidebar-accent text-sidebar-accent-foreground',
+                    )
+                  }
+                >
+                  <item.icon className="mr-3 size-4" aria-hidden="true" />
+                  {item.label}
+                </NavLink>
+              </SheetClose>
+            ))}
+            {onOpenCommandPalette && (
+              <SheetClose asChild>
+                <button
+                  type="button"
+                  onClick={onOpenCommandPalette}
+                  className="mt-2 flex min-h-11 items-center rounded-lg border border-sidebar-border px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+                >
+                  <Search className="mr-3 size-4" />
+                  Search & commands
+                </button>
+              </SheetClose>
+            )}
+          </nav>
+        </SheetContent>
+      </Sheet>
+    </header>
+  );
+});
 
 export const Sidebar = React.memo(function Sidebar({
   className,
@@ -126,7 +211,10 @@ export const Sidebar = React.memo(function Sidebar({
                       )
                     }
                   >
-                    <item.icon className={cn('size-4 shrink-0', !collapsed && 'mr-2')} aria-hidden="true" />
+                    <item.icon
+                      className={cn('size-4 shrink-0', !collapsed && 'mr-2')}
+                      aria-hidden="true"
+                    />
                     <span
                       className={cn(
                         'whitespace-nowrap transition-[opacity,width] duration-300',
@@ -211,24 +299,24 @@ export const Sidebar = React.memo(function Sidebar({
         {collapsed && user && (
           <div className="flex justify-center border-t border-sidebar-border p-2 animate-in fade-in duration-200">
             <button
-            type="button"
-            className="rounded-full border-none bg-transparent p-0 transition-shadow hover:ring-2 hover:ring-sidebar-ring/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
-            onClick={() => navigate('/profile')}
-            title={user.name}
-          >
-            <img
-              src={
-                user.avatar_url ||
-                `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.email)}`
-              }
-              className="size-8 rounded-full bg-primary/20"
-              alt={user.name}
-              onError={e => {
-                (e.target as HTMLImageElement).src =
-                  `https://api.dicebear.com/7.x/initials/svg?seed=${user.name}`;
-              }}
-            />
-          </button>
+              type="button"
+              className="rounded-full border-none bg-transparent p-0 transition-shadow hover:ring-2 hover:ring-sidebar-ring/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+              onClick={() => navigate('/profile')}
+              title={user.name}
+            >
+              <img
+                src={
+                  user.avatar_url ||
+                  `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.email)}`
+                }
+                className="size-8 rounded-full bg-primary/20"
+                alt={user.name}
+                onError={e => {
+                  (e.target as HTMLImageElement).src =
+                    `https://api.dicebear.com/7.x/initials/svg?seed=${user.name}`;
+                }}
+              />
+            </button>
           </div>
         )}
 
@@ -380,15 +468,11 @@ export const Sidebar = React.memo(function Sidebar({
             className="rounded-md p-2 text-sidebar-foreground/62 transition-colors hover:cursor-pointer hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sidebar-ring"
             title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
-            {collapsed ? (
-              <ChevronsRight className="size-4" />
-            ) : (
-              <ChevronsLeft className="size-4" />
-            )}
+            {collapsed ? <ChevronsRight className="size-4" /> : <ChevronsLeft className="size-4" />}
           </button>
         </div>
       </aside>
       {showSurvey && <SurveyModal onClose={() => setShowSurvey(false)} />}
     </>
   );
-})
+});

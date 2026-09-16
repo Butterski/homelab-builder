@@ -18,16 +18,28 @@ import type {
   HardwareType,
   HardwareComponent,
   HardwareNodeValidationIssue,
+  VirtualNetwork,
 } from '../../../types';
+import { initialVirtualNetwork, removeVirtualEndpoints } from '../lib/virtual-network';
 import { buildApi, type Build } from '../api/builds';
 import { api } from '../../../services/api';
-import { RACK_U_HEIGHT_PX, RACK_WIDTH_PX, RACK_HEADER_PX, RACK_FOOTER_PX } from '../components/rack-node-constants';
+import {
+  RACK_U_HEIGHT_PX,
+  RACK_WIDTH_PX,
+  RACK_HEADER_PX,
+  RACK_FOOTER_PX,
+} from '../components/rack-node-constants';
+
+let topologyMutationQueue: Promise<void> = Promise.resolve();
 
 // Removed hardcoded NON_NETWORK_TYPES and using isNetworkNode instead.
 
 type Snapshot = { nodes: Node[]; edges: Edge[]; hardwareNodes: HardwareNode[] };
 
 interface BuilderState {
+  virtualHostId: string | null;
+  openVirtualNetwork: (hostId: string | null) => void;
+  updateVirtualNetwork: (hostId: string, network: VirtualNetwork) => void;
   // Data Logic
   availableServices: Service[];
   fetchServices: () => Promise<void>;
@@ -96,6 +108,7 @@ interface BuilderState {
 
   // ── API Persistence ────────────────────────────────────────────────
   currentBuildId: string | null;
+  currentRevision: number;
   setCurrentBuildId: (id: string | null) => void;
   clearCurrentBuild: () => void;
 
@@ -121,6 +134,27 @@ interface BuilderState {
 export const useBuilderStore = create<BuilderState>()(
   persist(
     (set, get) => ({
+      virtualHostId: null,
+      openVirtualNetwork: hostId => {
+        const host = get().hardwareNodes.find(node => node.id === hostId);
+        if (host && !host.details?.virtual_network) {
+          get().updateVirtualNetwork(host.id, initialVirtualNetwork(host));
+        }
+        set({ virtualHostId: host?.id ?? null, selectedNodeId: null });
+      },
+      updateVirtualNetwork: (hostId, network) => {
+        const state = get();
+        const host = state.hardwareNodes.find(node => node.id === hostId);
+        if (!host) return;
+        set({
+          historyPast: [
+            ...state.historyPast,
+            { nodes: state.nodes, edges: state.edges, hardwareNodes: state.hardwareNodes },
+          ].slice(-50),
+          historyFuture: [],
+        });
+        get().updateHardware(hostId, { details: { ...host.details, virtual_network: network } });
+      },
       hardwareNodes: [],
       nodes: [],
       edges: [],
@@ -158,6 +192,7 @@ export const useBuilderStore = create<BuilderState>()(
       projectName: 'My Homelab',
       projectThumbnail: '',
       currentBuildId: null,
+      currentRevision: 0,
 
       onNodesChange: changes => {
         const dragEnds = changes.filter(c => c.type === 'position' && !(c as any).dragging);
@@ -215,17 +250,20 @@ export const useBuilderStore = create<BuilderState>()(
           sourceHardware?.type === 'access_point' || targetHardware?.type === 'access_point';
 
         // Default new edges to custom type
-        const newEdges = addEdge({
-          ...connection,
-          type: 'custom',
-          data: {
-            connection_type: isAccessPointLink ? 'wireless' : 'ethernet',
-            speed: '1 GbE',
-            subnet: '',
-            wireless_standard: isAccessPointLink ? 'Wi-Fi 6' : '',
-            direction: 'auto',
+        const newEdges = addEdge(
+          {
+            ...connection,
+            type: 'custom',
+            data: {
+              connection_type: isAccessPointLink ? 'wireless' : 'ethernet',
+              speed: '1 GbE',
+              subnet: '',
+              wireless_standard: isAccessPointLink ? 'Wi-Fi 6' : '',
+              direction: 'auto',
+            },
           },
-        }, state.edges);
+          state.edges,
+        );
         set({
           historyPast: [...state.historyPast, snap].slice(-50),
           historyFuture: [],
@@ -234,7 +272,11 @@ export const useBuilderStore = create<BuilderState>()(
         });
 
         // Trigger graph-aware IP recalculation whenever a new edge is drawn
-        setTimeout(() => get().reassignAllIPs(), 0);
+        setTimeout(() => {
+          void get()
+            .reassignAllIPs()
+            .catch(() => undefined);
+        }, 0);
       },
 
       selectNode: nodeId => set({ selectedNodeId: nodeId }),
@@ -316,7 +358,10 @@ export const useBuilderStore = create<BuilderState>()(
           hardwareNodes: state.hardwareNodes.map(n => (n.id === nodeId ? { ...n, ...updates } : n)),
           nodes: state.nodes.map(n => {
             if (n.id !== nodeId) return n;
-            const newN = { ...n, data: { ...n.data, ...updates, label: updates.name ?? n.data.label } };
+            const newN = {
+              ...n,
+              data: { ...n.data, ...updates, label: updates.name ?? n.data.label },
+            };
             if (updates.x !== undefined || updates.y !== undefined) {
               newN.position = { x: updates.x ?? n.position.x, y: updates.y ?? n.position.y };
             }
@@ -348,6 +393,7 @@ export const useBuilderStore = create<BuilderState>()(
           x: orig.x + 40,
           y: orig.y + 40,
           vms: [],
+          details: { ...orig.details, virtual_network: undefined },
           parent_id: orig.parent_id,
         };
 
@@ -356,9 +402,7 @@ export const useBuilderStore = create<BuilderState>()(
           type: 'hardware',
           position: { x: dup.x, y: dup.y },
           data: { label: dup.name, ...dup },
-          ...(dup.parent_id
-            ? { parentId: dup.parent_id, extent: 'parent' as const }
-            : {}),
+          ...(dup.parent_id ? { parentId: dup.parent_id, extent: 'parent' as const } : {}),
         };
         const snap: Snapshot = {
           nodes: state.nodes,
@@ -511,7 +555,11 @@ export const useBuilderStore = create<BuilderState>()(
         });
 
         // Automatically assign IP when VM is added
-        setTimeout(() => get().reassignAllIPs(), 0);
+        setTimeout(() => {
+          void get()
+            .reassignAllIPs()
+            .catch(() => undefined);
+        }, 0);
       },
 
       removeVM: (nodeId, vmId) => {
@@ -522,7 +570,23 @@ export const useBuilderStore = create<BuilderState>()(
             hardwareNodes: state.hardwareNodes,
           };
           const updated = state.hardwareNodes.map(n =>
-            n.id === nodeId ? { ...n, vms: (n.vms || []).filter(v => v.id !== vmId) } : n,
+            n.id === nodeId
+              ? {
+                  ...n,
+                  vms: (n.vms || []).filter(v => v.id !== vmId),
+                  details: {
+                    ...n.details,
+                    ...(n.details?.virtual_network
+                      ? {
+                          virtual_network: removeVirtualEndpoints(
+                            n.details.virtual_network,
+                            new Set([vmId]),
+                          ),
+                        }
+                      : {}),
+                  },
+                }
+              : n,
           );
           return {
             historyPast: [...state.historyPast, snap].slice(-50),
@@ -530,14 +594,25 @@ export const useBuilderStore = create<BuilderState>()(
             hardwareNodes: updated,
             nodes: state.nodes.map(n =>
               n.id === nodeId
-                ? { ...n, data: { ...n.data, vms: updated.find(h => h.id === nodeId)?.vms } }
+                ? {
+                    ...n,
+                    data: {
+                      ...n.data,
+                      vms: updated.find(h => h.id === nodeId)?.vms,
+                      details: updated.find(h => h.id === nodeId)?.details,
+                    },
+                  }
                 : n,
             ),
           };
         });
 
         // Automatically recalculate IPs when VM is removed
-        setTimeout(() => get().reassignAllIPs(), 0);
+        setTimeout(() => {
+          void get()
+            .reassignAllIPs()
+            .catch(() => undefined);
+        }, 0);
       },
 
       updateVM: (nodeId, vmId, updates) => {
@@ -548,6 +623,11 @@ export const useBuilderStore = create<BuilderState>()(
               : n,
           );
           return {
+            historyPast: [
+              ...state.historyPast,
+              { nodes: state.nodes, edges: state.edges, hardwareNodes: state.hardwareNodes },
+            ].slice(-50),
+            historyFuture: [],
             hardwareNodes: updated,
             nodes: state.nodes.map(n =>
               n.id === nodeId
@@ -560,7 +640,9 @@ export const useBuilderStore = create<BuilderState>()(
 
       autoAssignIP: _nodeId => {
         // Deprecated. Backend only.
-        get().reassignAllIPs();
+        void get()
+          .reassignAllIPs()
+          .catch(() => undefined);
         return null;
       },
 
@@ -576,6 +658,11 @@ export const useBuilderStore = create<BuilderState>()(
         };
         set({
           historyPast: past,
+          virtualHostId: snap.hardwareNodes.some(
+            node => node.id === state.virtualHostId && node.details?.virtual_network,
+          )
+            ? state.virtualHostId
+            : null,
           historyFuture: [current, ...state.historyFuture].slice(0, 50),
           nodes: snap.nodes,
           edges: snap.edges,
@@ -595,6 +682,11 @@ export const useBuilderStore = create<BuilderState>()(
         };
         set({
           historyPast: [...state.historyPast, current].slice(-50),
+          virtualHostId: snap.hardwareNodes.some(
+            node => node.id === state.virtualHostId && node.details?.virtual_network,
+          )
+            ? state.virtualHostId
+            : null,
           historyFuture: future,
           nodes: snap.nodes,
           edges: snap.edges,
@@ -602,108 +694,119 @@ export const useBuilderStore = create<BuilderState>()(
         });
       },
 
-      reassignAllIPs: async () => {
-        const { currentBuildId, projectName, getBuildData } = get();
-        if (!currentBuildId) {
-          console.error('No build ID, cannot calculate network');
-          return;
-        }
-        if (!currentBuildId) {
-          console.error('No build ID, cannot calculate network');
-          return;
-        }
-
-        try {
-          // Step 1: Save current local state to the backend FIRST.
-          const data = getBuildData();
-          await buildApi.update(currentBuildId, {
-            name: projectName || 'Untitled Project',
-            thumbnail: '',
-            ...data,
-          });
-          // Step 2: Ask the backend to calculate and assign IPs.
-          await buildApi.calculateNetwork(currentBuildId);
-
-          // Step 3: Reload the build so the UI shows the newly assigned IPs.
-          // Because we saved in step 1, build.data now contains ALL current nodes
-          // (including ones added since the last auto-save). We overlay IPs from
-          // the relational nodes table (updated by calculateNetwork) on top of the
-          // blob, so nothing is lost and IPs are always fresh.
-          const build = await buildApi.get(currentBuildId);
-
-          // Build a lookup: "id" → { nodeIp, vmIps }
-          type VmIpMap = Map<string, string>;
-          interface NodeIpEntry {
-            nodeIp: string;
-            vmMap: VmIpMap;
-            details: Record<string, unknown>;
+      reassignAllIPs: () => {
+        const mutation = async () => {
+          const { currentBuildId, currentRevision, projectName, getBuildData } = get();
+          if (!currentBuildId) {
+            console.error('No build ID, cannot calculate network');
+            throw new Error('No build is open');
           }
-          const parseDetails = (details: unknown): Record<string, unknown> => {
-            if (!details) return {};
-            if (typeof details === 'string') {
-              try {
-                const parsed = JSON.parse(details);
-                return parsed && typeof parsed === 'object' ? parsed : {};
-              } catch {
-                return {};
-              }
-            }
-            return typeof details === 'object' ? details as Record<string, unknown> : {};
-          };
-          const ipById = new Map<string, NodeIpEntry>();
-          ((build as any).nodes ?? []).forEach((n: any) => {
-            const vmIps: VmIpMap = new Map();
-            (n.virtual_machines ?? []).forEach((vm: any) => {
-              if (vm.ip) vmIps.set(vm.id, vm.ip);
+
+          try {
+            // The backend saves this revision and calculates its network in one transaction.
+            const data = getBuildData();
+            const response = await buildApi.updateTopology(currentBuildId, {
+              name: projectName || 'Untitled Project',
+              thumbnail: '',
+              revision: currentRevision,
+              ...data,
             });
-            ipById.set(n.id, { nodeIp: n.ip, vmMap: vmIps, details: parseDetails(n.details) });
-          });
 
-          // Patch local state
-          const hardwareNodesWithIPs = get().hardwareNodes.map(hn => {
-            const entry = ipById.get(hn.id);
-            if (!entry) return hn;
-            return {
-              ...hn,
-              ip: entry.nodeIp,
-              details: {
-                ...(hn.details ?? {}),
-                ...entry.details,
-              },
-              vms: hn.vms?.map(vm => ({ ...vm, ip: entry.vmMap.get(vm.id) || vm.ip })),
+            if (get().currentBuildId !== currentBuildId) return;
+            const build = response.build;
+
+            // Build a lookup: "id" → { nodeIp, vmIps }
+            type VmIpMap = Map<string, string>;
+            interface NodeIpEntry {
+              nodeIp: string;
+              vmMap: VmIpMap;
+              details: Record<string, unknown>;
+            }
+            const parseDetails = (details: unknown): Record<string, unknown> => {
+              if (!details) return {};
+              if (typeof details === 'string') {
+                try {
+                  const parsed = JSON.parse(details);
+                  return parsed && typeof parsed === 'object' ? parsed : {};
+                } catch {
+                  return {};
+                }
+              }
+              return typeof details === 'object' ? (details as Record<string, unknown>) : {};
             };
-          });
+            const ipById = new Map<string, NodeIpEntry>();
+            ((build as any).nodes ?? []).forEach((n: any) => {
+              const vmIps: VmIpMap = new Map();
+              (n.virtual_machines ?? []).forEach((vm: any) => {
+                vmIps.set(vm.id, vm.ip || '');
+              });
+              const details = parseDetails(n.details);
+              delete details.virtual_network;
+              ipById.set(n.id, { nodeIp: n.ip, vmMap: vmIps, details });
+            });
 
-          const reactFlowNodesWithIPs = get().nodes.map(rfn => {
-            const entry = ipById.get(rfn.id);
-            if (!entry) return rfn;
-            return {
-              ...rfn,
-              data: {
-                ...rfn.data,
+            // Patch local state
+            const hardwareNodesWithIPs = get().hardwareNodes.map(hn => {
+              const entry = ipById.get(hn.id);
+              if (!entry) return hn;
+              return {
+                ...hn,
                 ip: entry.nodeIp,
                 details: {
-                  ...((rfn.data?.details as Record<string, unknown> | undefined) ?? {}),
+                  ...(hn.details ?? {}),
                   ...entry.details,
                 },
-                vms: (Array.isArray(rfn.data?.vms) ? rfn.data.vms : []).map((vm: any) => ({
-                  ...vm,
-                  ip: entry.vmMap.get(vm.id) || vm.ip,
+                vms: hn.vms?.map(vm => ({ ...vm, ip: entry.vmMap.get(vm.id) ?? vm.ip })),
+              };
+            });
+
+            const reactFlowNodesWithIPs = get().nodes.map(rfn => {
+              const entry = ipById.get(rfn.id);
+              if (!entry) return rfn;
+              return {
+                ...rfn,
+                data: {
+                  ...rfn.data,
+                  ip: entry.nodeIp,
+                  details: {
+                    ...((rfn.data?.details as Record<string, unknown> | undefined) ?? {}),
+                    ...entry.details,
+                  },
+                  vms: (Array.isArray(rfn.data?.vms) ? rfn.data.vms : []).map((vm: any) => ({
+                    ...vm,
+                    ip: entry.vmMap.get(vm.id) ?? vm.ip,
+                  })),
+                },
+              };
+            });
+
+            set({
+              hardwareNodes: hardwareNodesWithIPs as HardwareNode[],
+              nodes: reactFlowNodesWithIPs as Node[],
+              currentRevision: build.revision,
+            });
+
+            if (response.validation) {
+              const issues: HardwareNodeValidationIssue[] = [
+                ...(response.validation.errors || []).map(issue => ({
+                  ...issue,
+                  type: 'error' as const,
                 })),
-              },
-            };
-          });
-
-          set({
-            hardwareNodes: hardwareNodesWithIPs as HardwareNode[],
-            nodes: reactFlowNodesWithIPs as Node[],
-          });
-
-          // Step 4: Validate the network automatically after assignment
-          await get().validateNetwork();
-        } catch (e) {
-          console.error('Failed to reassign IPs', e);
-        }
+                ...(response.validation.warnings || []).map(issue => ({
+                  ...issue,
+                  type: 'warning' as const,
+                })),
+              ];
+              set({ validationIssues: issues });
+            }
+          } catch (e) {
+            console.error('Failed to reassign IPs', e);
+            throw e;
+          }
+        };
+        const queued = topologyMutationQueue.then(mutation, mutation);
+        topologyMutationQueue = queued.catch(() => undefined);
+        return queued;
       },
 
       validateNetwork: async () => {
@@ -746,11 +849,15 @@ export const useBuilderStore = create<BuilderState>()(
       setCurrentBuildId: id => set({ currentBuildId: id }),
       clearCurrentBuild: () =>
         set({
+          virtualHostId: null,
           currentBuildId: null,
+          currentRevision: 0,
           projectName: 'Untitled Project',
           nodes: [],
           edges: [],
           hardwareNodes: [],
+          historyPast: [],
+          historyFuture: [],
         }),
       setProjectName: name => set({ projectName: name }),
 
@@ -763,6 +870,7 @@ export const useBuilderStore = create<BuilderState>()(
           type: n.type as HardwareType,
           name: n.name,
           ip: n.ip,
+          mac_address: n.mac_address,
           x: n.x || 0,
           y: n.y || 0,
           vms: n.virtual_machines || [],
@@ -793,12 +901,8 @@ export const useBuilderStore = create<BuilderState>()(
             type: isRack ? 'rack' : 'hardware',
             position: { x: n.x, y: n.y },
             data: { ...(hw || {}), label: n.name },
-            ...(isRack
-              ? { style: { width: RACK_WIDTH_PX, height: totalHeight } }
-              : {}),
-            ...(n.parent_id
-              ? { parentId: n.parent_id, extent: 'parent' as const }
-              : {}),
+            ...(isRack ? { style: { width: RACK_WIDTH_PX, height: totalHeight } } : {}),
+            ...(n.parent_id ? { parentId: n.parent_id, extent: 'parent' as const } : {}),
           };
         });
 
@@ -821,12 +925,16 @@ export const useBuilderStore = create<BuilderState>()(
 
         set({
           currentBuildId: id,
+          virtualHostId: null,
+          currentRevision: build.revision,
           projectName: name,
           hardwareNodes,
           nodes: rfNodes,
           edges: rfEdges,
           boughtItems: settings.boughtItems || [],
           showBought: settings.showBought || false,
+          historyPast: [],
+          historyFuture: [],
         });
       },
 
@@ -844,6 +952,7 @@ export const useBuilderStore = create<BuilderState>()(
             x: rfn.position.x,
             y: rfn.position.y,
             ip: rfn.data?.ip || hw.ip || '',
+            mac_address: rfn.data?.mac_address || hw.mac_address || '',
             details: rfn.data?.details || hw.details || {},
             vms: rfn.data?.vms || hw.vms || [],
             internal_components: rfn.data?.internal_components || hw.internal_components || [],

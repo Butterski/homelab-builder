@@ -40,7 +40,9 @@ func connectHandlersTestDB() (*gorm.DB, error) {
 	port := handlersEnvOr("DB_PORT", "5432")
 	user := handlersEnvOr("DB_USER", "homelab")
 	pass := handlersEnvOr("DB_PASSWORD", "homelab_password")
-	testDBName := handlersEnvOr("TEST_DB_NAME", "homelab_builder_test")
+	// Handler and service packages run in parallel under `go test ./...`.
+	// Keep their migrations isolated so PostgreSQL catalog writes cannot race.
+	testDBName := handlersEnvOr("HANDLER_TEST_DB_NAME", "homelab_builder_handlers_test")
 	sslMode := handlersEnvOr("DB_SSLMODE", "disable")
 
 	adminDSN := fmt.Sprintf(
@@ -67,7 +69,7 @@ func connectHandlersTestDB() (*gorm.DB, error) {
 }
 
 func migrateHandlersTestDB(db *gorm.DB) error {
-	db.Exec(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`)
+	db.Exec(`CREATE EXTENSION IF NOT EXISTS "pgcrypto"`)
 	return db.AutoMigrate(
 		&models.User{},
 		&models.Service{},

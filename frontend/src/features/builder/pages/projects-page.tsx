@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import {
   Plus,
   Folder,
@@ -11,13 +12,13 @@ import {
   Search,
   Download,
   Upload,
-  Zap,
   Share2,
   Copy,
   Check,
   Globe,
   Lock,
   Pencil,
+  Sparkles,
 } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { Card } from '../../../components/ui/card';
@@ -40,7 +41,6 @@ import { Input } from '../../../components/ui/input';
 import { Label } from '../../../components/ui/label';
 import type { Build } from '../api/builds';
 import { formatDistanceToNow } from 'date-fns';
-import { FastStartWizard } from '../components/fast-start-wizard';
 import { useProjectsPage } from '../hooks/use-projects-page';
 
 // ─── ProjectsPage ─────────────────────────────────────────────────────────────
@@ -58,7 +58,6 @@ function ProjectsPage() {
     handleImportClick,
     handleFileChange,
     confirmCreate,
-    handleFastStartGenerate,
     handleExport,
     handleOpen,
     handleDelete,
@@ -102,12 +101,11 @@ function ProjectsPage() {
           <Button variant="outline" onClick={handleImportClick} className="flex-1 sm:flex-none">
             <Upload className="mr-2 size-4" /> Import
           </Button>
-          <Button
-            variant="outline"
-            className="flex-1 border-amber-200 text-amber-600 hover:bg-amber-50 hover:text-amber-700 sm:flex-none dark:border-amber-800/30 dark:hover:bg-amber-900/20 dark:hover:text-amber-400"
-            onClick={() => dispatchModal({ type: 'OPEN_FAST_START' })}
-          >
-            <Zap className="mr-2 size-4" /> Fast Start
+          <Button asChild className="flex-1 sm:flex-none">
+            <Link to="/planner">
+              <Sparkles className="mr-2 size-4" />
+              Guided Planner
+            </Link>
           </Button>
           <Button onClick={handleCreateNew} className="flex-1 sm:flex-none">
             <Plus className="mr-2 size-4" /> New Project
@@ -172,12 +170,6 @@ function ProjectsPage() {
         onCopyLink={handleCopyShareLink}
       />
 
-      <FastStartWizard
-        isOpen={modal.fastStart.open}
-        onClose={() => dispatchModal({ type: 'CLOSE_FAST_START' })}
-        onGenerate={handleFastStartGenerate}
-        isGenerating={modal.fastStart.generating}
-      />
     </div>
   );
 }
@@ -194,7 +186,11 @@ function ProjectModals({
   onCloseDelete,
   onCloseRename,
 }: {
-  modal: { create: { open: boolean; name: string }; delete: { open: boolean }; rename: { open: boolean; value: string } };
+  modal: {
+    create: { open: boolean; name: string };
+    delete: { open: boolean };
+    rename: { open: boolean; value: string };
+  };
   onConfirmCreate: () => void;
   onConfirmDelete: () => void;
   onConfirmRename: () => void;
@@ -210,21 +206,29 @@ function ProjectModals({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Create New Project</DialogTitle>
-            <DialogDescription>Give your homelab project a name to get started. You can change this later.</DialogDescription>
+            <DialogDescription>
+              Give your homelab project a name to get started. You can change this later.
+            </DialogDescription>
           </DialogHeader>
           <div className="py-4">
-            <Label htmlFor="project-name" className="mb-2 block">Project Name</Label>
+            <Label htmlFor="project-name" className="mb-2 block">
+              Project Name
+            </Label>
             <Input
               id="project-name"
               value={modal.create.name}
               onChange={e => onSetCreateName(e.target.value)}
               placeholder="e.g. Dream Lab 2026"
               autoFocus
-              onKeyDown={e => { if (e.key === 'Enter') onConfirmCreate(); }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') onConfirmCreate();
+              }}
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={onCloseCreate}>Cancel</Button>
+            <Button variant="outline" onClick={onCloseCreate}>
+              Cancel
+            </Button>
             <Button onClick={onConfirmCreate}>Create Project</Button>
           </DialogFooter>
         </DialogContent>
@@ -237,8 +241,12 @@ function ProjectModals({
             <DialogDescription>This action cannot be undone.</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={onCloseDelete}>Cancel</Button>
-            <Button variant="destructive" onClick={onConfirmDelete}>Delete</Button>
+            <Button variant="outline" onClick={onCloseDelete}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={onConfirmDelete}>
+              Delete
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -249,17 +257,23 @@ function ProjectModals({
             <DialogTitle>Rename Project</DialogTitle>
           </DialogHeader>
           <div className="py-4">
-            <Label htmlFor="rename-project" className="mb-2 block">New Project Name</Label>
+            <Label htmlFor="rename-project" className="mb-2 block">
+              New Project Name
+            </Label>
             <Input
               id="rename-project"
               value={modal.rename.value}
               onChange={e => onSetRenameValue(e.target.value)}
               autoFocus
-              onKeyDown={e => { if (e.key === 'Enter') onConfirmRename(); }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') onConfirmRename();
+              }}
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={onCloseRename}>Cancel</Button>
+            <Button variant="outline" onClick={onCloseRename}>
+              Cancel
+            </Button>
             <Button onClick={onConfirmRename}>Save</Button>
           </DialogFooter>
         </DialogContent>
@@ -269,7 +283,15 @@ function ProjectModals({
 }
 
 // ─── ShareModal ───────────────────────────────────────────────────────────────
-function ShareModal({ build, open, copied, onClose, onToggleShare, onToggleEditable, onCopyLink }: {
+function ShareModal({
+  build,
+  open,
+  copied,
+  onClose,
+  onToggleShare,
+  onToggleEditable,
+  onCopyLink,
+}: {
   build: Build | null;
   open: boolean;
   copied: boolean;
@@ -283,7 +305,9 @@ function ShareModal({ build, open, copied, onClose, onToggleShare, onToggleEdita
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Share Layout</DialogTitle>
-          <DialogDescription>Control who can view or edit this layout via a link.</DialogDescription>
+          <DialogDescription>
+            Control who can view or edit this layout via a link.
+          </DialogDescription>
         </DialogHeader>
         <div className="py-4 space-y-4">
           <div className="flex items-center justify-between p-3 rounded-lg border">
@@ -297,7 +321,11 @@ function ShareModal({ build, open, copied, onClose, onToggleShare, onToggleEdita
                 {build?.is_shared ? 'Public — anyone with the link' : 'Private — only you'}
               </span>
             </div>
-            <Button variant={build?.is_shared ? 'outline' : 'default'} size="sm" onClick={onToggleShare}>
+            <Button
+              variant={build?.is_shared ? 'outline' : 'default'}
+              size="sm"
+              onClick={onToggleShare}
+            >
               {build?.is_shared ? 'Disable sharing' : 'Enable sharing'}
             </Button>
           </div>
@@ -305,15 +333,25 @@ function ShareModal({ build, open, copied, onClose, onToggleShare, onToggleEdita
           {build?.is_shared && (
             <div className="flex items-center justify-between p-3 rounded-lg border">
               <div className="flex items-center gap-2">
-                <Pencil className={`size-4 ${build.shared_editable ? 'text-blue-500' : 'text-muted-foreground'}`} />
+                <Pencil
+                  className={`size-4 ${build.shared_editable ? 'text-blue-500' : 'text-muted-foreground'}`}
+                />
                 <div>
-                  <span className="text-sm font-medium">{build.shared_editable ? 'Editing allowed' : 'View only'}</span>
+                  <span className="text-sm font-medium">
+                    {build.shared_editable ? 'Editing allowed' : 'View only'}
+                  </span>
                   <p className="text-xs text-muted-foreground">
-                    {build.shared_editable ? 'Anyone with the link can move nodes and reconnect cables' : 'Viewers cannot make changes'}
+                    {build.shared_editable
+                      ? 'Anyone with the link can move nodes and reconnect cables'
+                      : 'Viewers cannot make changes'}
                   </p>
                 </div>
               </div>
-              <Button variant={build.shared_editable ? 'outline' : 'secondary'} size="sm" onClick={onToggleEditable}>
+              <Button
+                variant={build.shared_editable ? 'outline' : 'secondary'}
+                size="sm"
+                onClick={onToggleEditable}
+              >
                 {build.shared_editable ? 'Make read-only' : 'Allow editing'}
               </Button>
             </div>
@@ -323,16 +361,31 @@ function ShareModal({ build, open, copied, onClose, onToggleShare, onToggleEdita
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">Share link</Label>
               <div className="flex gap-2">
-                <Input readOnly value={`${window.location.origin}/shared/${build.share_token}`} className="text-xs font-mono" />
-                <Button size="icon" variant="outline" onClick={onCopyLink} aria-label="Copy Share Link">
-                  {copied ? <Check className="size-4 text-green-500" /> : <Copy className="size-4" />}
+                <Input
+                  readOnly
+                  value={`${window.location.origin}/shared/${build.share_token}`}
+                  className="text-xs font-mono"
+                />
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onClick={onCopyLink}
+                  aria-label="Copy Share Link"
+                >
+                  {copied ? (
+                    <Check className="size-4 text-green-500" />
+                  ) : (
+                    <Copy className="size-4" />
+                  )}
                 </Button>
               </div>
             </div>
           )}
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Close</Button>
+          <Button variant="outline" onClick={onClose}>
+            Close
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -373,15 +426,26 @@ const BuildCard = React.memo(function BuildCard({
           </div>
         )}
 
-          <div className="absolute right-2 top-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+        <div className="absolute right-2 top-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="secondary" size="icon" className="size-8" onClick={e => e.stopPropagation()} aria-label={`Open Actions For ${build.name}`}>
+              <Button
+                variant="secondary"
+                size="icon"
+                className="size-8"
+                onClick={e => e.stopPropagation()}
+                aria-label={`Open Actions For ${build.name}`}
+              >
                 <MoreVertical className="size-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={e => { e.stopPropagation(); onOpen(build); }}>
+              <DropdownMenuItem
+                onClick={e => {
+                  e.stopPropagation();
+                  onOpen(build);
+                }}
+              >
                 <Edit2 className="mr-2 size-4" /> Edit
               </DropdownMenuItem>
               <DropdownMenuItem onClick={e => onRenameClick(e, build)}>
@@ -396,7 +460,10 @@ const BuildCard = React.memo(function BuildCard({
               <DropdownMenuItem onClick={e => onShareClick(e, build)}>
                 <Share2 className="mr-2 size-4" /> Share
               </DropdownMenuItem>
-              <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={e => onDelete(e, build.id)}>
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onClick={e => onDelete(e, build.id)}
+              >
                 <Trash2 className="mr-2 size-4" /> Delete
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -406,8 +473,12 @@ const BuildCard = React.memo(function BuildCard({
 
       <div className="flex flex-1 flex-col p-4">
         <div className="mb-2 flex items-start justify-between">
-          <h3 className="font-semibold truncate pr-2" title={build.name}>{build.name}</h3>
-          <Badge variant="secondary" className="text-[10px] shrink-0">v1.0</Badge>
+          <h3 className="font-semibold truncate pr-2" title={build.name}>
+            {build.name}
+          </h3>
+          <Badge variant="secondary" className="text-[10px] shrink-0">
+            v1.0
+          </Badge>
         </div>
 
         <div className="mt-auto space-y-3">
@@ -423,7 +494,14 @@ const BuildCard = React.memo(function BuildCard({
           </div>
 
           <div className="flex items-center gap-2 border-t pt-3">
-            <Button size="sm" className="w-full" onClick={e => { e.stopPropagation(); onOpen(build); }}>
+            <Button
+              size="sm"
+              className="w-full"
+              onClick={e => {
+                e.stopPropagation();
+                onOpen(build);
+              }}
+            >
               <Play className="mr-2 size-3.5" /> Open Editor
             </Button>
           </div>

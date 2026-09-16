@@ -24,7 +24,6 @@ func NewSubnetAllocator(subnetStr string, gatewayIP string, zones map[string]Zon
 	}
 
 	gwUint := utils.IPToUint32(net.ParseIP(gatewayIP))
-
 	sa := &SubnetAllocator{
 		Network:  network,
 		Capacity: capacity,
@@ -38,12 +37,12 @@ func NewSubnetAllocator(subnetStr string, gatewayIP string, zones map[string]Zon
 	if capacity > 0 {
 		sa.Used[network+capacity] = true
 	}
-	if gwUint > 0 {
+	if sa.IsUsable(gwUint) {
 		sa.Used[gwUint] = true
 	}
 
-	if reqDHCPEnabled {
-		var startOffset uint32 = 50
+	if reqDHCPEnabled && capacity > 1 {
+		startOffset := uint32(50)
 		if capacity < 100 {
 			startOffset = capacity / 4
 		}
@@ -51,38 +50,56 @@ func NewSubnetAllocator(subnetStr string, gatewayIP string, zones map[string]Zon
 		if poolSize < 10 {
 			poolSize = capacity / 2
 		}
-		
+
 		sa.DHCPStart = network + startOffset
 		sa.DHCPEnd = sa.DHCPStart + poolSize
-		
-		for i := sa.DHCPStart; i <= sa.DHCPEnd; i++ {
-			sa.Used[i] = true
+		lastUsable := network + capacity - 1
+		if sa.DHCPStart > lastUsable {
+			sa.DHCPStart = 0
+			sa.DHCPEnd = 0
+		} else if sa.DHCPEnd > lastUsable {
+			sa.DHCPEnd = lastUsable
 		}
-	} else {
-		sa.DHCPStart = 0
-		sa.DHCPEnd = 0
 	}
 
 	return sa
 }
 
 func (sa *SubnetAllocator) Reserve(ipUint uint32) bool {
-	if ipUint < sa.Network || ipUint >= sa.Network+sa.Capacity || sa.Used[ipUint] {
+	if !sa.IsAvailable(ipUint) {
 		return false
 	}
 	sa.Used[ipUint] = true
 	return true
 }
 
+func (sa *SubnetAllocator) IsUsable(ipUint uint32) bool {
+	if sa.Capacity <= 1 {
+		return false
+	}
+	return ipUint > sa.Network && ipUint < sa.Network+sa.Capacity
+}
+
+func (sa *SubnetAllocator) IsDHCPReserved(ipUint uint32) bool {
+	return sa.DHCPStart != 0 && ipUint >= sa.DHCPStart && ipUint <= sa.DHCPEnd
+}
+
+func (sa *SubnetAllocator) IsAvailable(ipUint uint32) bool {
+	return sa.IsUsable(ipUint) && !sa.IsDHCPReserved(ipUint) && !sa.Used[ipUint]
+}
+
 func (sa *SubnetAllocator) AllocateSlot(baseOffset int) uint32 {
+	if baseOffset < 1 || sa.Capacity <= 1 || uint32(baseOffset) >= sa.Capacity {
+		baseOffset = 1
+	}
 	startIP := sa.Network + uint32(baseOffset)
 	for ip := startIP; ip < sa.Network+sa.Capacity; ip++ {
-		if !sa.Used[ip] {
+		if sa.IsAvailable(ip) {
 			return ip
 		}
 	}
 	for ip := sa.Network + 1; ip < startIP; ip++ {
-		if !sa.Used[ip] {
+		if sa.IsAvailable(ip) {
 			return ip
 		}
 	}

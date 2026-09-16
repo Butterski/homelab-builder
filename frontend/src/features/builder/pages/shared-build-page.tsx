@@ -22,7 +22,12 @@ import { SeoMeta } from '../../../components/seo/seo-meta';
 import { HardwareNode } from '../components/hardware-node';
 import { RackNode } from '../components/rack-node';
 import { CustomEdge } from '../components/custom-edge';
-import { RACK_U_HEIGHT_PX, RACK_WIDTH_PX, RACK_HEADER_PX, RACK_FOOTER_PX } from '../components/rack-node-constants';
+import {
+  RACK_U_HEIGHT_PX,
+  RACK_WIDTH_PX,
+  RACK_HEADER_PX,
+  RACK_FOOTER_PX,
+} from '../components/rack-node-constants';
 import type { HardwareNode as HardwareNodeType, HardwareType } from '../../../types';
 
 const nodeTypes = { hardware: HardwareNode, rack: RackNode };
@@ -35,7 +40,7 @@ function buildReactFlowNodes(build: Build): Node[] {
 
   return rawNodes.map((n: any) => {
     const isRack = n.type === 'rack';
-    const details = typeof n.details === 'string' ? JSON.parse(n.details) : (n.details || {});
+    const details = typeof n.details === 'string' ? JSON.parse(n.details) : n.details || {};
     const rackSize = details.rack_size || 24;
     const totalHeight = RACK_HEADER_PX + rackSize * RACK_U_HEIGHT_PX + RACK_FOOTER_PX;
 
@@ -146,6 +151,7 @@ export default function SharedBuildPage() {
       }));
 
       const updated = await buildApi.updateShared(token, {
+        revision: build.revision,
         name: build.name,
         thumbnail: build.thumbnail || '',
         nodes: nodeDTOs,

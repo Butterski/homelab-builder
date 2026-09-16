@@ -9,15 +9,18 @@ import (
 	"github.com/Butterski/homelab-builder/backend/internal/models"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var ErrBuildNotFound = errors.New("build not found")
+var ErrBuildRevisionConflict = errors.New("build revision conflict")
 
 type BuildService struct {
 	db *gorm.DB
 }
 
 var ErrInvalidEdgeReferences = errors.New("invalid edge references")
+var ErrInvalidTopology = errors.New("invalid topology")
 
 func NewBuildService(db *gorm.DB) *BuildService {
 	return &BuildService{db: db}
@@ -48,37 +51,91 @@ func (s *BuildService) Create(userID uuid.UUID, input SyncGraphInput) (*models.B
 }
 
 func (s *BuildService) Update(buildID uuid.UUID, userID uuid.UUID, input SyncGraphInput) (*models.Build, error) {
-	var build models.Build
-	if err := s.db.First(&build, "id = ?", buildID).Error; err != nil {
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		return s.updateGraphTx(tx, buildID, userID, input, nil)
+	})
+	if err != nil {
 		return nil, err
 	}
+	return s.GetByID(buildID)
+}
 
+// Rename updates only build metadata and never rewrites topology rows.
+func (s *BuildService) Rename(buildID, userID uuid.UUID, name string, revision uint64) (*models.Build, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil, fmt.Errorf("build name is required")
+	}
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		var build models.Build
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&build, "id = ?", buildID).Error; err != nil {
+			return err
+		}
+		if build.UserID != userID {
+			return errors.New("unauthorized")
+		}
+		if revision != build.Revision {
+			return fmt.Errorf("%w: expected %d, received %d", ErrBuildRevisionConflict, build.Revision, revision)
+		}
+		build.Name = name
+		build.Revision++
+		return tx.Save(&build).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.GetByID(buildID)
+}
+
+// UpdateAndCalculate commits the submitted graph and its calculated addresses as
+// one revision. The row lock serializes concurrent writers for the same build.
+func (s *BuildService) UpdateAndCalculate(buildID, userID uuid.UUID, input SyncGraphInput, ipService *IPService) (*models.Build, error) {
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		return s.updateGraphTx(tx, buildID, userID, input, func() error {
+			return ipService.CalculateNetworkInTransaction(tx, buildID)
+		})
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.GetByID(buildID)
+}
+
+func (s *BuildService) updateGraphTx(tx *gorm.DB, buildID, userID uuid.UUID, input SyncGraphInput, afterSync func() error) error {
+	var build models.Build
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&build, "id = ?", buildID).Error; err != nil {
+		return err
+	}
 	if build.UserID != userID {
-		return nil, errors.New("unauthorized")
+		return errors.New("unauthorized")
+	}
+	if input.Revision != build.Revision {
+		return fmt.Errorf("%w: expected %d, received %d", ErrBuildRevisionConflict, build.Revision, input.Revision)
 	}
 
 	settingsJSON, _ := json.Marshal(input.Settings)
 	build.Name = input.Name
 	build.Settings = settingsJSON
+	build.Revision++
 	if input.Thumbnail != "" {
 		build.Thumbnail = input.Thumbnail
 	}
-
-	err := s.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Save(&build).Error; err != nil {
-			return err
-		}
-		return s.syncGraph(tx, build.ID, input)
-	})
-
-	if err != nil {
-		return nil, err
+	if err := tx.Save(&build).Error; err != nil {
+		return err
 	}
-
-	return s.GetByID(buildID)
+	if err := s.syncGraph(tx, build.ID, input); err != nil {
+		return err
+	}
+	if afterSync != nil {
+		return afterSync()
+	}
+	return nil
 }
 
 func (s *BuildService) syncGraph(tx *gorm.DB, buildID uuid.UUID, input SyncGraphInput) error {
+	if err := validateVirtualNetworks(input.Nodes); err != nil {
+		return err
+	}
 	if err := validateEdgeEndpoints(input.Nodes, input.Edges); err != nil {
 		return err
 	}
@@ -101,17 +158,17 @@ func (s *BuildService) syncGraph(tx *gorm.DB, buildID uuid.UUID, input SyncGraph
 	}
 
 	idMap := make(map[string]uuid.UUID)
+	for _, n := range input.Nodes {
+		if parsed, err := uuid.Parse(n.ID); err == nil {
+			idMap[n.ID] = parsed
+		} else {
+			idMap[n.ID] = uuid.New()
+		}
+	}
 
 	// 2. Insert Nodes
 	for _, n := range input.Nodes {
-		var uid uuid.UUID
-		if parsed, err := uuid.Parse(n.ID); err == nil {
-			uid = parsed
-		} else {
-			uid = uuid.New()
-		}
-		idMap[n.ID] = uid
-
+		uid := idMap[n.ID]
 		if n.Details == nil {
 			n.Details = make(map[string]any)
 		}
@@ -124,19 +181,20 @@ func (s *BuildService) syncGraph(tx *gorm.DB, buildID uuid.UUID, input SyncGraph
 		detailsJSON, _ := json.Marshal(n.Details)
 
 		node := models.Node{
-			ID:        uid,
-			BuildID:   buildID,
-			Type:      n.Type,
-			Name:      n.Name,
-			X:         n.X,
-			Y:         n.Y,
-			PowerDraw: n.PowerDraw,
-			IP:        n.IP,
-			Details:   detailsJSON,
+			ID:         uid,
+			BuildID:    buildID,
+			Type:       n.Type,
+			Name:       n.Name,
+			X:          n.X,
+			Y:          n.Y,
+			PowerDraw:  n.PowerDraw,
+			IP:         n.IP,
+			MacAddress: n.MacAddress,
+			Details:    detailsJSON,
 		}
 		if n.ParentID != nil && *n.ParentID != "" {
-			if parsed, err := uuid.Parse(*n.ParentID); err == nil {
-				node.ParentID = &parsed
+			if parentID, ok := idMap[*n.ParentID]; ok {
+				node.ParentID = &parentID
 			}
 		}
 
@@ -150,17 +208,20 @@ func (s *BuildService) syncGraph(tx *gorm.DB, buildID uuid.UUID, input SyncGraph
 			if parsed, err := uuid.Parse(vm.ID); err == nil {
 				vmUID = parsed
 			}
+			vmDetails, _ := json.Marshal(vm.Details)
 
 			vModel := models.VirtualMachine{
-				ID:       vmUID,
-				NodeID:   uid,
-				Name:     vm.Name,
-				Type:     vm.Type,
-				IP:       vm.IP,
-				OS:       vm.OS,
-				CPUCores: vm.CPUCores,
-				RAMMB:    vm.RAMMB,
-				Status:   vm.Status,
+				ID:         vmUID,
+				NodeID:     uid,
+				Name:       vm.Name,
+				Type:       vm.Type,
+				IP:         vm.IP,
+				MacAddress: vm.MacAddress,
+				OS:         vm.OS,
+				CPUCores:   vm.CPUCores,
+				RAMMB:      vm.RAMMB,
+				Status:     vm.Status,
+				Details:    vmDetails,
 			}
 			if err := tx.Create(&vModel).Error; err != nil {
 				return err
@@ -232,45 +293,155 @@ func (s *BuildService) syncGraph(tx *gorm.DB, buildID uuid.UUID, input SyncGraph
 }
 
 func validateEdgeEndpoints(nodes []NodeDTO, edges []EdgeDTO) error {
-	nodeIDs := make(map[string]struct{}, len(nodes))
+	nodesByID := make(map[string]NodeDTO, len(nodes))
+	issues := make([]string, 0)
+	knownNodeTypes := map[string]bool{
+		"router": true, "switch": true, "access_point": true, "modem": true, "firewall": true,
+		"server": true, "server_v2": true, "vps": true, "pc": true, "minipc": true,
+		"sbc": true, "nas": true, "iot": true, "ups": true, "pdu": true, "rack": true,
+		"disk": true, "gpu": true, "hba": true, "pcie": true,
+	}
+	vmHostTypes := map[string]bool{"server": true, "server_v2": true, "vps": true, "pc": true, "minipc": true, "sbc": true, "nas": true, "iot": true}
+	vmIDs := make(map[string]struct{})
 	for _, node := range nodes {
-		nodeIDs[node.ID] = struct{}{}
+		if strings.TrimSpace(node.ID) == "" {
+			issues = append(issues, "node has an empty id")
+			continue
+		}
+		if _, exists := nodesByID[node.ID]; exists {
+			issues = append(issues, fmt.Sprintf("duplicate node id %q", node.ID))
+			continue
+		}
+		if !knownNodeTypes[node.Type] {
+			issues = append(issues, fmt.Sprintf("node %s has unsupported type %q", node.ID, node.Type))
+		}
+		if len(node.VMs) > 0 && !vmHostTypes[node.Type] {
+			issues = append(issues, fmt.Sprintf("%s nodes cannot host virtual machines or services", node.Type))
+		}
+		for _, vm := range node.VMs {
+			if strings.TrimSpace(vm.ID) == "" {
+				issues = append(issues, fmt.Sprintf("service on %s has an empty id", node.ID))
+				continue
+			}
+			if _, exists := vmIDs[vm.ID]; exists {
+				issues = append(issues, fmt.Sprintf("duplicate virtual machine id %q", vm.ID))
+			} else {
+				vmIDs[vm.ID] = struct{}{}
+			}
+		}
+		nodesByID[node.ID] = node
 	}
 
-	invalidRefs := make([]string, 0)
+	for _, node := range nodes {
+		if node.ParentID == nil || *node.ParentID == "" {
+			continue
+		}
+		if *node.ParentID == node.ID {
+			issues = append(issues, fmt.Sprintf("%s cannot contain itself", node.ID))
+			continue
+		}
+		parent, exists := nodesByID[*node.ParentID]
+		if !exists {
+			issues = append(issues, fmt.Sprintf("%s references missing parent %s", node.ID, *node.ParentID))
+			continue
+		}
+		if parent.Type != "rack" {
+			issues = append(issues, fmt.Sprintf("%s can only be placed inside a rack", node.ID))
+		}
+		if node.Type == "rack" {
+			issues = append(issues, fmt.Sprintf("rack %s cannot be nested", node.ID))
+		}
+	}
+
+	allowedEdgeTypes := map[string]bool{"": true, "ethernet": true, "wireless": true, "vpn": true}
+	connectsFreely := map[string]bool{
+		"router": true, "switch": true, "modem": true, "firewall": true,
+		"server_v2": true, "vps": true, "iot": true, "ups": true,
+	}
+	nestedOnly := map[string]bool{"disk": true, "gpu": true, "hba": true, "pcie": true, "pdu": true, "rack": true}
+	seenPairs := make(map[string]struct{}, len(edges))
+	usedPorts := make(map[string]struct{})
+	missingRefs := make([]string, 0)
+
 	for _, edge := range edges {
-		_, hasSource := nodeIDs[edge.Source]
-		_, hasTarget := nodeIDs[edge.Target]
-		if hasSource && hasTarget {
+		source, hasSource := nodesByID[edge.Source]
+		target, hasTarget := nodesByID[edge.Target]
+		if !hasSource || !hasTarget {
+			missing := "source"
+			if hasSource {
+				missing = "target"
+			} else if !hasTarget {
+				missing = "source and target"
+			}
+			missingRefs = append(missingRefs, fmt.Sprintf("%s->%s (missing %s)", edge.Source, edge.Target, missing))
 			continue
 		}
-
-		if !hasSource && !hasTarget {
-			invalidRefs = append(invalidRefs, fmt.Sprintf("%s->%s (missing source and target)", edge.Source, edge.Target))
+		if edge.Source == edge.Target {
+			issues = append(issues, fmt.Sprintf("self connection on %s", edge.Source))
 			continue
 		}
-		if !hasSource {
-			invalidRefs = append(invalidRefs, fmt.Sprintf("%s->%s (missing source)", edge.Source, edge.Target))
-			continue
+		if !allowedEdgeTypes[edge.Type] {
+			issues = append(issues, fmt.Sprintf("%s->%s uses unsupported connection type %q", edge.Source, edge.Target, edge.Type))
 		}
-		invalidRefs = append(invalidRefs, fmt.Sprintf("%s->%s (missing target)", edge.Source, edge.Target))
+
+		left, right := edge.Source, edge.Target
+		if right < left {
+			left, right = right, left
+		}
+		pair := left + "\x00" + right
+		if _, duplicate := seenPairs[pair]; duplicate {
+			issues = append(issues, fmt.Sprintf("duplicate connection between %s and %s", left, right))
+		} else {
+			seenPairs[pair] = struct{}{}
+		}
+
+		isPower := source.Type == "ups" || target.Type == "ups"
+		isLogical := edge.Type == "vpn"
+		if !isPower && (nestedOnly[source.Type] || nestedOnly[target.Type]) {
+			issues = append(issues, fmt.Sprintf("%s->%s connects a nested-only component", edge.Source, edge.Target))
+		}
+		if !isPower && !connectsFreely[source.Type] && !connectsFreely[target.Type] {
+			issues = append(issues, fmt.Sprintf("%s and %s must connect through a router, switch, firewall, modem, or gateway", edge.Source, edge.Target))
+		}
+		if edge.Type == "wireless" && source.Type != "access_point" && target.Type != "access_point" && source.Type != "iot" && target.Type != "iot" {
+			issues = append(issues, fmt.Sprintf("wireless connection %s->%s requires an access point or IoT endpoint", edge.Source, edge.Target))
+		}
+
+		if !isPower && !isLogical {
+			for _, endpoint := range []struct{ nodeID, handle string }{{edge.Source, edge.SourceHandle}, {edge.Target, edge.TargetHandle}} {
+				if endpoint.handle == "" {
+					continue
+				}
+				port := endpoint.nodeID + "\x00" + endpoint.handle
+				if _, used := usedPorts[port]; used {
+					issues = append(issues, fmt.Sprintf("port %s on %s is used more than once", endpoint.handle, endpoint.nodeID))
+				} else {
+					usedPorts[port] = struct{}{}
+				}
+			}
+		}
 	}
 
-	if len(invalidRefs) == 0 {
-		return nil
+	if len(missingRefs) > 0 {
+		return fmt.Errorf("%w: %s", ErrInvalidEdgeReferences, summarizeTopologyIssues(missingRefs))
 	}
-
-	maxExamples := 5
-	if len(invalidRefs) < maxExamples {
-		maxExamples = len(invalidRefs)
+	if len(issues) > 0 {
+		return fmt.Errorf("%w: %s", ErrInvalidTopology, summarizeTopologyIssues(issues))
 	}
+	return nil
+}
 
-	examples := strings.Join(invalidRefs[:maxExamples], "; ")
-	if len(invalidRefs) > maxExamples {
-		examples += fmt.Sprintf("; ... +%d more", len(invalidRefs)-maxExamples)
+func summarizeTopologyIssues(issues []string) string {
+	const maxExamples = 5
+	shown := issues
+	if len(shown) > maxExamples {
+		shown = shown[:maxExamples]
 	}
-
-	return fmt.Errorf("%w: %d edge(s) reference missing node(s): %s", ErrInvalidEdgeReferences, len(invalidRefs), examples)
+	summary := strings.Join(shown, "; ")
+	if len(issues) > len(shown) {
+		summary += fmt.Sprintf("; ... +%d more", len(issues)-len(shown))
+	}
+	return summary
 }
 
 func (s *BuildService) GetByID(buildID uuid.UUID) (*models.Build, error) {
@@ -301,6 +472,7 @@ type SyncGraphInput struct {
 	Name      string         `json:"name" binding:"required"`
 	Thumbnail string         `json:"thumbnail"`
 	Settings  map[string]any `json:"settings"`
+	Revision  uint64         `json:"revision"`
 	Nodes     []NodeDTO      `json:"nodes"`
 	Edges     []EdgeDTO      `json:"edges"`
 	Services  []ServiceDTO   `json:"services"`
@@ -314,6 +486,7 @@ type NodeDTO struct {
 	Y                  float64        `json:"y"`
 	PowerDraw          float64        `json:"power_draw"`
 	IP                 string         `json:"ip"`
+	MacAddress         string         `json:"mac_address"`
 	SubnetMask         string         `json:"subnet_mask,omitempty"`
 	Gateway            string         `json:"gateway,omitempty"`
 	Details            map[string]any `json:"details"`
@@ -331,14 +504,16 @@ type ComponentDTO struct {
 }
 
 type VMDTO struct {
-	ID       string  `json:"id"`
-	Name     string  `json:"name"`
-	Type     string  `json:"type"`
-	IP       string  `json:"ip"`
-	OS       string  `json:"os"`
-	CPUCores float64 `json:"cpu_cores"`
-	RAMMB    int     `json:"ram_mb"`
-	Status   string  `json:"status"`
+	ID         string         `json:"id"`
+	Name       string         `json:"name"`
+	Type       string         `json:"type"`
+	IP         string         `json:"ip"`
+	MacAddress string         `json:"mac_address"`
+	OS         string         `json:"os"`
+	CPUCores   float64        `json:"cpu_cores"`
+	RAMMB      int            `json:"ram_mb"`
+	Status     string         `json:"status"`
+	Details    map[string]any `json:"details"`
 }
 
 type ServiceDTO struct {
@@ -421,30 +596,40 @@ func (s *BuildService) SetShareEditable(buildID uuid.UUID, userID uuid.UUID, edi
 	return s.GetByID(buildID)
 }
 
-// UpdateByShareToken allows editing a build via its share token (only when SharedEditable is true).
-func (s *BuildService) UpdateByShareToken(token string, input SyncGraphInput) (*models.Build, error) {
-	var build models.Build
-	if err := s.db.Where("share_token = ? AND is_shared = true AND shared_editable = true", token).First(&build).Error; err != nil {
-		return nil, ErrBuildNotFound
-	}
-
-	settingsJSON, _ := json.Marshal(input.Settings)
-	build.Name = input.Name
-	build.Settings = settingsJSON
-	if input.Thumbnail != "" {
-		build.Thumbnail = input.Thumbnail
-	}
-
+// UpdateByShareToken atomically saves and calculates a shared editable topology.
+func (s *BuildService) UpdateByShareToken(token string, input SyncGraphInput, ipService *IPService) (*models.Build, error) {
+	var buildID uuid.UUID
 	err := s.db.Transaction(func(tx *gorm.DB) error {
+		var build models.Build
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("share_token = ? AND is_shared = true AND shared_editable = true", token).First(&build).Error; err != nil {
+			return ErrBuildNotFound
+		}
+		if input.Revision != build.Revision {
+			return fmt.Errorf("%w: expected %d, received %d", ErrBuildRevisionConflict, build.Revision, input.Revision)
+		}
+		settingsJSON, _ := json.Marshal(input.Settings)
+		build.Name = input.Name
+		build.Settings = settingsJSON
+		build.Revision++
+		if input.Thumbnail != "" {
+			build.Thumbnail = input.Thumbnail
+		}
 		if err := tx.Save(&build).Error; err != nil {
 			return err
 		}
-		return s.syncGraph(tx, build.ID, input)
+		if err := s.syncGraph(tx, build.ID, input); err != nil {
+			return err
+		}
+		if err := ipService.CalculateNetworkInTransaction(tx, build.ID); err != nil {
+			return err
+		}
+		buildID = build.ID
+		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	return s.GetByID(build.ID)
+	return s.GetByID(buildID)
 }
 
 // GetByShareToken fetches a publicly shared build by its token.
@@ -476,7 +661,6 @@ func (s *BuildService) Delete(buildID uuid.UUID, userID uuid.UUID) error {
 }
 
 func (s *BuildService) Duplicate(buildID uuid.UUID, userID uuid.UUID) (*models.Build, error) {
-	// First fetch the full build that we want to copy
 	build, err := s.GetByID(buildID)
 	if err != nil {
 		return nil, err
@@ -525,13 +709,23 @@ func (s *BuildService) Duplicate(buildID uuid.UUID, userID uuid.UUID) (*models.B
 			}
 
 			// 1.1 Clone VMs
+			vmIDs := make(map[string]string)
 			for _, vm := range node.VirtualMachines {
 				newVM := vm // struct copy
 				newVM.ID = uuid.New()
+				vmIDs[vm.ID.String()] = newVM.ID.String()
 				newVM.NodeID = newUID
 				if err := tx.Create(&newVM).Error; err != nil {
 					return err
 				}
+			}
+
+			details, err := remapVirtualNetwork(newNode.Details, vmIDs)
+			if err != nil {
+				return err
+			}
+			if err := tx.Model(&newNode).Update("details", details).Error; err != nil {
+				return err
 			}
 
 			// 1.2 Clone Internal Components

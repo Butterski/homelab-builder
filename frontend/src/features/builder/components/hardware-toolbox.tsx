@@ -1,4 +1,5 @@
 import React, { useRef, useState } from 'react';
+import { toast } from 'sonner';
 import {
   HardDrive,
   Router,
@@ -28,6 +29,7 @@ import {
 } from 'lucide-react';
 import type { HardwareType } from '../../../types';
 import { Card } from '../../../components/ui/card';
+import { canNodeHostVMs } from '../../../lib/hardware-config';
 import { useUserSelections } from '../../catalog/api/use-services';
 import { useHardwareFavorites } from '../../catalog/api/use-hardware';
 import { useHardwareBlueprints } from '../../catalog/api/use-hardware-blueprints';
@@ -164,7 +166,16 @@ const PRESETS: {
         sub: '2× E5-2670 · 128GB · ~$300',
         data: {
           name: 'Dell R720',
-          details: { model: 'PowerEdge R720 (2× Xeon E5-2670)', cpu: 16, ram: 128, ports: 4, server_profile: 'hypervisor', hypervisor_enabled: true, app_host_enabled: true, price_est: 300 },
+          details: {
+            model: 'PowerEdge R720 (2× Xeon E5-2670)',
+            cpu: 16,
+            ram: 128,
+            ports: 4,
+            server_profile: 'hypervisor',
+            hypervisor_enabled: true,
+            app_host_enabled: true,
+            price_est: 300,
+          },
         },
       },
       {
@@ -193,7 +204,16 @@ const PRESETS: {
         sub: 'E3-1245v3 · 32GB · ~$200',
         data: {
           name: 'Supermicro X10SL7',
-          details: { model: 'X10SL7-F (Xeon E3-1245v3)', cpu: 4, ram: 32, ports: 2, server_profile: 'storage', storage_enabled: true, app_host_enabled: true, price_est: 200 },
+          details: {
+            model: 'X10SL7-F (Xeon E3-1245v3)',
+            cpu: 4,
+            ram: 32,
+            ports: 2,
+            server_profile: 'storage',
+            storage_enabled: true,
+            app_host_enabled: true,
+            price_est: 200,
+          },
         },
       },
     ],
@@ -486,7 +506,8 @@ const PRESETS: {
 ];
 
 export const HardwareToolbox = React.memo(function HardwareToolbox() {
-  const { availableServices, fetchServices } = useBuilderStore();
+  const { availableServices, fetchServices, addHardware, addVM, selectedNodeId, hardwareNodes } =
+    useBuilderStore();
   const { data: selectionsData } = useUserSelections();
   const { data: favoritesData } = useHardwareFavorites();
   const { data: blueprintsData } = useHardwareBlueprints();
@@ -496,13 +517,36 @@ export const HardwareToolbox = React.memo(function HardwareToolbox() {
   }, [fetchServices]);
 
   // Memoize VALID_HARDWARE_TYPES outside component to avoid recreating on each render
-  const VALID_HARDWARE_TYPES = React.useMemo(() => new Set<string>([
-    'router', 'switch', 'nas', 'server', 'server_v2', 'firewall', 'vps', 'pc', 'access_point',
-    'disk', 'gpu', 'hba', 'pcie', 'ups', 'pdu', 'sbc', 'minipc',
-    'iot', 'modem', 'rack'
-  ]), []);
+  const VALID_HARDWARE_TYPES = React.useMemo(
+    () =>
+      new Set<string>([
+        'router',
+        'switch',
+        'nas',
+        'server',
+        'server_v2',
+        'firewall',
+        'vps',
+        'pc',
+        'access_point',
+        'disk',
+        'gpu',
+        'hba',
+        'pcie',
+        'ups',
+        'pdu',
+        'sbc',
+        'minipc',
+        'iot',
+        'modem',
+        'rack',
+      ]),
+    [],
+  );
 
-  const [activeTab, setActiveTab] = useState<'components' | 'presets' | 'services' | 'power'>('components');
+  const [activeTab, setActiveTab] = useState<'components' | 'presets' | 'services' | 'power'>(
+    'components',
+  );
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
     new Set(['My Blueprints', 'My Favorites', 'Single Board Computers', 'Mini PCs']),
   );
@@ -565,7 +609,7 @@ export const HardwareToolbox = React.memo(function HardwareToolbox() {
       if (rack_size) details.rack_size = rack_size;
 
       const name = `${comp.brand} ${comp.model}`;
-      
+
       let icon: React.ElementType = Package;
       if (type === 'router') icon = Router;
       else if (type === 'switch') icon = CircuitBoard;
@@ -652,6 +696,44 @@ export const HardwareToolbox = React.memo(function HardwareToolbox() {
     event.dataTransfer.effectAllowed = 'move';
   };
 
+  const addToolToCanvas = (nodeType: HardwareType, rawData: object = {}) => {
+    const data = rawData as Record<string, any>;
+    const index = hardwareNodes.length;
+    addHardware({
+      id: crypto.randomUUID(),
+      type: nodeType,
+      name: data.name || 'New ' + nodeType.replace('_', ' '),
+      x: 180 + (index % 4) * 250,
+      y: 160 + Math.floor(index / 4) * 190,
+      details: data.details || {},
+      internal_components: data.internal_components || [],
+      vms: data.vms || [],
+      power_draw: data.power_draw,
+    });
+    toast.success('Added ' + (data.name || nodeType.replace('_', ' ')) + ' to the canvas.');
+  };
+
+  const addServiceToSelectedHost = (service: (typeof availableServices)[number]) => {
+    const host = hardwareNodes.find(node => node.id === selectedNodeId);
+    if (!host || !canNodeHostVMs(host.type)) {
+      toast.error('Select a compute node on the canvas before adding a service.');
+      return;
+    }
+    addVM(host.id, {
+      id: crypto.randomUUID(),
+      name: service.name,
+      type: 'container',
+      status: 'running',
+      cpu_cores: service.requirements?.min_cpu_cores,
+      ram_mb: service.requirements?.min_ram_mb,
+      details: {
+        catalog_service_id: service.id,
+        catalog_service_name: service.name,
+      },
+    });
+    toast.success('Added ' + service.name + ' to ' + host.name + '.');
+  };
+
   const toggleCategory = (cat: string) => {
     setExpandedCategories(prev => {
       const next = new Set(prev);
@@ -707,323 +789,159 @@ export const HardwareToolbox = React.memo(function HardwareToolbox() {
 
   return (
     <>
-    <HardwareBlueprintCreator open={creatorOpen} onClose={() => setCreatorOpen(false)} />
-    <Card
-      className="builder-floating-panel absolute z-50 flex flex-col overflow-hidden"
-      style={{
-        left: position.x,
-        top: position.y,
-        width: isMinimized ? 'auto' : '19rem',
-        maxHeight: isMinimized ? 'auto' : 'calc(100vh - 8rem)',
-        cursor: isDragging ? 'grabbing' : 'auto',
-      }}
-    >
-      {/* Header / Drag Handle */}
-      <div
-        className="flex cursor-grab select-none items-center justify-between border-b bg-muted/35 px-4 py-3 active:cursor-grabbing"
-        onMouseDown={handleMouseDown}
-        role="presentation"
+      <HardwareBlueprintCreator open={creatorOpen} onClose={() => setCreatorOpen(false)} />
+      <Card
+        className="builder-floating-panel absolute z-50 flex flex-col overflow-hidden max-md:!left-4 max-md:!top-4"
+        style={{
+          left: position.x,
+          top: position.y,
+          width: isMinimized ? 'auto' : 'min(19rem, calc(100vw - 2rem))',
+          maxHeight: isMinimized ? 'auto' : 'calc(100vh - 8rem)',
+          cursor: isDragging ? 'grabbing' : 'auto',
+        }}
       >
-        <div className="flex items-center gap-2">
-          <span className="font-bold text-xs uppercase tracking-wider text-foreground">
-            Library
-          </span>
-        </div>
-        <button
-          type="button"
-          onClick={() => setIsMinimized(!isMinimized)}
-          className="size-4 flex items-center justify-center rounded hover:bg-background/50 text-muted-foreground"
-          title={isMinimized ? 'Expand' : 'Minimize'}
-          aria-label={isMinimized ? 'Expand library panel' : 'Minimize library panel'}
+        {/* Header / Drag Handle */}
+        <div
+          className="flex cursor-grab select-none items-center justify-between border-b bg-muted/35 px-4 py-3 active:cursor-grabbing"
+          onMouseDown={handleMouseDown}
+          role="presentation"
         >
-          {isMinimized ? (
-            <ChevronDown className="size-3 hover:cursor-pointer" />
-          ) : (
-            <ChevronDown className="size-3 hover:cursor-pointer rotate-180" />
-          )}
-        </button>
-      </div>
-
-      {!isMinimized && (
-        <>
-          {/* Tab bar */}
-          <div className="grid grid-cols-4 border-b shrink-0 bg-card px-2 pt-2 gap-1">
-            {(
-              [
-                { id: 'components', label: 'Types', icon: LayoutGrid },
-                { id: 'presets', label: 'Presets', icon: Package },
-                { id: 'services', label: 'Services', icon: AppWindow },
-                { id: 'power', label: 'Power', icon: Zap },
-              ] as const
-            ).map(tab => {
-              const Icon = tab.icon;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex flex-col items-center gap-1 rounded-t-md px-2 py-2 text-[10px] font-semibold uppercase tracking-wide transition-colors ${tab.id === 'services' ? 'tour-toolbox-services' : ''} ${
-                    activeTab === tab.id
-                      ? 'bg-primary/10 text-primary shadow-[inset_0_-2px_0_var(--primary)]'
-                      : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
-                  }`}
-                >
-                  <Icon className="size-3.5" />
-                  {tab.label}
-                </button>
-              );
-            })}
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-xs uppercase tracking-wider text-foreground">
+              Library
+            </span>
           </div>
-
-          <div className="tour-toolbox overflow-y-auto flex-1 p-4">
-            {/* ── Components tab ── */}
-            {activeTab === 'components' && (
-              <div className="space-y-3">
-                <p className="text-[11px] text-muted-foreground">
-                  Drag any component onto the canvas
-                </p>
-                <div className="grid grid-cols-3 gap-2">
-                  {HARDWARE_TOOLS.map(tool => {
-                    const Icon = tool.icon;
-                    return (
-                      <div
-                        key={tool.type}
-                        className="builder-tool-tile flex min-h-14 cursor-grab flex-col items-center justify-center p-2.5 active:cursor-grabbing"
-                        onDragStart={e => onDragStart(e, tool.type)}
-                        draggable
-                      >
-                        <Icon className={`size-4 mb-1.5 ${tool.color}`} />
-                        <span className="text-[9px] font-medium text-center leading-tight">
-                          {tool.label}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+          <button
+            type="button"
+            onClick={() => setIsMinimized(!isMinimized)}
+            className="size-4 flex items-center justify-center rounded hover:bg-background/50 text-muted-foreground"
+            title={isMinimized ? 'Expand' : 'Minimize'}
+            aria-label={isMinimized ? 'Expand library panel' : 'Minimize library panel'}
+          >
+            {isMinimized ? (
+              <ChevronDown className="size-3 hover:cursor-pointer" />
+            ) : (
+              <ChevronDown className="size-3 hover:cursor-pointer rotate-180" />
             )}
+          </button>
+        </div>
 
-            {/* ── Presets tab ── */}
-            {activeTab === 'presets' && (
-              <div className="space-y-1">
-                <button
-                  type="button"
-                  className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-md border border-primary/30 bg-primary/10 px-2.5 py-2 text-[10px] font-bold uppercase tracking-wide text-primary hover:bg-primary/15"
-                  onClick={() => setCreatorOpen(true)}
-                >
-                  <Plus className="size-3.5" />
-                  New Blueprint
-                </button>
-                {dynamicPresets.map(cat => {
-                  const isOpen = expandedCategories.has(cat.category);
-                  return (
-                    <div key={cat.category} className="app-surface overflow-hidden rounded-lg">
-                      <button
-                        type="button"
-                        className="flex w-full items-center justify-between bg-muted/35 px-2.5 py-2 text-[10px] font-bold uppercase tracking-wide transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                        onClick={() => toggleCategory(cat.category)}
-                      >
-                        {cat.category}
-                        <ChevronDown
-                          className={`size-3 transition-transform duration-200 hover:cursor-pointer ${isOpen ? 'rotate-180' : ''}`}
-                        />
-                      </button>
-                      <div
-                        className="grid transition-[grid-template-rows] duration-300 ease-in-out"
-                        style={{ gridTemplateRows: isOpen ? '1fr' : '0fr' }}
-                      >
-                        <div className="overflow-hidden">
-                          <div className="divide-y">
-                            {cat.items.map(preset => {
-                              const Icon = preset.icon;
-                              return (
-                                <div
-                                  key={preset.label}
-                                  className="flex cursor-grab items-center gap-2 px-2.5 py-2 transition-colors hover:bg-primary/5 active:cursor-grabbing"
-                                  onDragStart={e => onDragStart(e, preset.type, preset.data)}
-                                  draggable
-                                >
-                                  <Icon className="size-3.5 text-primary shrink-0" />
-                                  <div className="min-w-0">
-                                    <p className="text-[10px] font-semibold truncate">
-                                      {preset.label}
-                                    </p>
-                                    <p className="text-[9px] text-muted-foreground truncate">
-                                      {preset.sub}
-                                    </p>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+        {!isMinimized && (
+          <>
+            {/* Tab bar */}
+            <div className="grid grid-cols-4 border-b shrink-0 bg-card px-2 pt-2 gap-1">
+              {(
+                [
+                  { id: 'components', label: 'Types', icon: LayoutGrid },
+                  { id: 'presets', label: 'Presets', icon: Package },
+                  { id: 'services', label: 'Services', icon: AppWindow },
+                  { id: 'power', label: 'Power', icon: Zap },
+                ] as const
+              ).map(tab => {
+                const Icon = tab.icon;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`flex flex-col items-center gap-1 rounded-t-md px-2 py-2 text-[10px] font-semibold uppercase tracking-wide transition-colors ${tab.id === 'services' ? 'tour-toolbox-services' : ''} ${
+                      activeTab === tab.id
+                        ? 'bg-primary/10 text-primary shadow-[inset_0_-2px_0_var(--primary)]'
+                        : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                    }`}
+                  >
+                    <Icon className="size-3.5" />
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
 
-            {/* ── Services tab ── */}
-            {activeTab === 'services' && (
-              <div className="space-y-2">
-                <p className="text-[10px] text-muted-foreground mb-2">
-                  Drag a service to assign to a server/PC node
-                </p>
-
-                <div className="relative mb-3">
-                  <Search className="absolute left-2 top-1.5 size-3.5 text-muted-foreground" />
-                  <input
-                    type="text"
-                    placeholder="Search services..."
-                    value={searchQuery}
-                    onChange={e => {
-                      setSearchQuery(e.target.value);
-                      // auto-expand all categories when searching
-                      if (e.target.value.length > 0) {
-                        setCollapsedServiceCats(new Set());
-                      }
-                    }}
-                    className="pl-7 pr-3 py-1 text-xs w-full bg-background border rounded-md focus:outline-none focus:border-primary/50 transition-colors"
-                  />
+            <div className="tour-toolbox overflow-y-auto flex-1 p-4">
+              {/* ── Components tab ── */}
+              {activeTab === 'components' && (
+                <div className="space-y-3">
+                  <p className="text-[11px] text-muted-foreground">
+                    Drag any component onto the canvas
+                  </p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {HARDWARE_TOOLS.map(tool => {
+                      const Icon = tool.icon;
+                      return (
+                        <button
+                          type="button"
+                          key={tool.type}
+                          className="builder-tool-tile flex min-h-14 cursor-grab flex-col items-center justify-center p-2.5 active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                          onClick={() => addToolToCanvas(tool.type)}
+                          aria-label={'Add ' + tool.label + ' to canvas'}
+                          onDragStart={e => onDragStart(e, tool.type)}
+                          draggable
+                        >
+                          <Icon className={`size-4 mb-1.5 ${tool.color}`} />
+                          <span className="text-[9px] font-medium text-center leading-tight">
+                            {tool.label}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
+              )}
 
+              {/* ── Presets tab ── */}
+              {activeTab === 'presets' && (
                 <div className="space-y-1">
-                  {sortedServiceCategories.length === 0 && (
-                    <div className="text-center py-6 space-y-2">
-                      <p className="text-xs text-muted-foreground">No services found…</p>
-                    </div>
-                  )}
-
-                  {sortedServiceCategories.map(([catName, svcs]) => {
-                    // Auto-expand if searchQuery is active, else check if NOT in collapsed set
-                    const isEffectivelyOpen =
-                      searchQuery !== '' ? true : !collapsedServiceCats.has(catName);
-
+                  <button
+                    type="button"
+                    className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-md border border-primary/30 bg-primary/10 px-2.5 py-2 text-[10px] font-bold uppercase tracking-wide text-primary hover:bg-primary/15"
+                    onClick={() => setCreatorOpen(true)}
+                  >
+                    <Plus className="size-3.5" />
+                    New Blueprint
+                  </button>
+                  {dynamicPresets.map(cat => {
+                    const isOpen = expandedCategories.has(cat.category);
                     return (
-                      <div key={catName} className="app-surface overflow-hidden rounded-lg">
+                      <div key={cat.category} className="app-surface overflow-hidden rounded-lg">
                         <button
                           type="button"
                           className="flex w-full items-center justify-between bg-muted/35 px-2.5 py-2 text-[10px] font-bold uppercase tracking-wide transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                          onClick={() => toggleServiceCat(catName)}
+                          onClick={() => toggleCategory(cat.category)}
                         >
-                          <span className="flex items-center gap-1.5 focus:outline-none">
-                            {catName === 'Favorites' && (
-                              <Heart className="size-3 fill-red-500 text-red-500" />
-                            )}
-                            {catName}
-                          </span>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[9px] text-muted-foreground px-1.5 py-0.5 bg-background rounded-full">
-                              {svcs.length}
-                            </span>
-                            <ChevronDown
-                              className={`size-3 transition-transform duration-200 hover:cursor-pointer ${isEffectivelyOpen ? 'rotate-180' : ''}`}
-                            />
-                          </div>
+                          {cat.category}
+                          <ChevronDown
+                            className={`size-3 transition-transform duration-200 hover:cursor-pointer ${isOpen ? 'rotate-180' : ''}`}
+                          />
                         </button>
-
                         <div
                           className="grid transition-[grid-template-rows] duration-300 ease-in-out"
-                          style={{ gridTemplateRows: isEffectivelyOpen ? '1fr' : '0fr' }}
+                          style={{ gridTemplateRows: isOpen ? '1fr' : '0fr' }}
                         >
                           <div className="overflow-hidden">
-                            <div className="divide-y divide-border/50">
-                              {svcs.map(svc => (
-                                <div
-                                  key={svc.id}
-                                  className="group flex cursor-grab items-center justify-between gap-2 bg-card px-2.5 py-2 transition-colors hover:bg-primary/5 active:cursor-grabbing"
-                                  onDragStart={e => {
-                                    e.dataTransfer.setData('application/reactflow', 'server_v2');
-                                    e.dataTransfer.setData('service-drag', 'true');
-                                    e.dataTransfer.setData(
-                                      'application/reactflow-data',
-                                      JSON.stringify({
-                                        type: 'server_v2',
-                                        name: svc.name,
-                                        details: {
-                                          model: svc.name,
-                                          cpu: svc.requirements
-                                            ? svc.requirements.min_cpu_cores
-                                            : undefined,
-                                          ram: svc.requirements
-                                            ? svc.requirements.min_ram_mb
-                                            : undefined,
-                                        },
-                                        serviceId: svc.id,
-                                      }),
-                                    );
-                                    e.dataTransfer.effectAllowed = 'move';
-                                  }}
-                                  draggable
-                                >
-                                  <div className="flex items-center gap-2 min-w-0">
-                                    <div className="size-6 rounded bg-primary/10 flex items-center justify-center shrink-0">
-                                      {svc.icon ? (
-                                        <Zap className="size-3 text-primary" />
-                                      ) : (
-                                        <Zap className="size-3 text-primary" />
-                                      )}
-                                    </div>
-                                    <div className="min-w-0 flex flex-col">
-                                      <p className="text-[10px] font-semibold truncate leading-tight group-hover:text-primary transition-colors">
-                                        {svc.name}
-                                      </p>
-                                      {svc.requirements && (
-                                        <p className="text-[9px] text-muted-foreground truncate leading-tight mt-0.5">
-                                          {svc.requirements.min_cpu_cores}vCPU ·{' '}
-                                          {svc.requirements.min_ram_mb >= 1024
-                                            ? `${(svc.requirements.min_ram_mb / 1024).toFixed(1)}GB`
-                                            : `${svc.requirements.min_ram_mb}MB`}{' '}
-                                          RAM
-                                        </p>
-                                      )}
-                                    </div>
-                                  </div>
-
-                                  {/* Metadata Link Buttons */}
-                                  <div
-                                    className="flex items-center gap-1 opacity-10 group-hover:opacity-100 transition-opacity"
-                                    onMouseDown={e => {
-                                      e.stopPropagation();
-                                    }}
+                            <div className="divide-y">
+                              {cat.items.map(preset => {
+                                const Icon = preset.icon;
+                                return (
+                                  <button
+                                    type="button"
+                                    key={preset.label}
+                                    className="flex min-h-11 w-full cursor-grab items-center gap-2 px-2.5 py-2 text-left transition-colors hover:bg-primary/5 active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+                                    onClick={() => addToolToCanvas(preset.type, preset.data)}
+                                    onDragStart={e => onDragStart(e, preset.type, preset.data)}
+                                    draggable
                                   >
-                                    {svc.docs_url && (
-                                      <a
-                                        href={svc.docs_url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="p-1 hover:bg-muted rounded"
-                                        title="Documentation"
-                                      >
-                                        <Book className="size-3 text-emerald-500" />
-                                      </a>
-                                    )}
-                                    {svc.github_url && (
-                                      <a
-                                        href={svc.github_url}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="p-1 hover:bg-muted rounded"
-                                        title="GitHub Source"
-                                      >
-                                        <Github className="size-3 text-muted-foreground" />
-                                      </a>
-                                    )}
-                                    {svc.official_website && !svc.github_url && !svc.docs_url && (
-                                      <a
-                                        href={svc.official_website}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="p-1 hover:bg-muted rounded"
-                                        title="Official Website"
-                                      >
-                                        <ExternalLink className="size-3 text-blue-500" />
-                                      </a>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
+                                    <Icon className="size-3.5 text-primary shrink-0" />
+                                    <div className="min-w-0">
+                                      <p className="text-[10px] font-semibold truncate">
+                                        {preset.label}
+                                      </p>
+                                      <p className="text-[9px] text-muted-foreground truncate">
+                                        {preset.sub}
+                                      </p>
+                                    </div>
+                                  </button>
+                                );
+                              })}
                             </div>
                           </div>
                         </div>
@@ -1031,23 +949,200 @@ export const HardwareToolbox = React.memo(function HardwareToolbox() {
                     );
                   })}
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* ── Power tab ── */}
-            {activeTab === 'power' && (
-              <PowerUsagePanel />
-            )}
-          </div>
+              {/* ── Services tab ── */}
+              {activeTab === 'services' && (
+                <div className="space-y-2">
+                  <p className="text-[10px] text-muted-foreground mb-2">
+                    Drag a service, or select a compute node and use its add button
+                  </p>
 
-          <div className="shrink-0 border-t bg-muted/20 px-4 py-2.5">
-            <p className="text-[10px] text-muted-foreground text-center">
-              Drag to canvas · Connect to router for auto-IP
-            </p>
-          </div>
-        </>
-      )}
-    </Card>
+                  <div className="relative mb-3">
+                    <Search className="absolute left-2 top-1.5 size-3.5 text-muted-foreground" />
+                    <input
+                      type="text"
+                      placeholder="Search services..."
+                      value={searchQuery}
+                      onChange={e => {
+                        setSearchQuery(e.target.value);
+                        // auto-expand all categories when searching
+                        if (e.target.value.length > 0) {
+                          setCollapsedServiceCats(new Set());
+                        }
+                      }}
+                      className="pl-7 pr-3 py-1 text-xs w-full bg-background border rounded-md focus:outline-none focus:border-primary/50 transition-colors"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    {sortedServiceCategories.length === 0 && (
+                      <div className="text-center py-6 space-y-2">
+                        <p className="text-xs text-muted-foreground">No services found…</p>
+                      </div>
+                    )}
+
+                    {sortedServiceCategories.map(([catName, svcs]) => {
+                      // Auto-expand if searchQuery is active, else check if NOT in collapsed set
+                      const isEffectivelyOpen =
+                        searchQuery !== '' ? true : !collapsedServiceCats.has(catName);
+
+                      return (
+                        <div key={catName} className="app-surface overflow-hidden rounded-lg">
+                          <button
+                            type="button"
+                            className="flex w-full items-center justify-between bg-muted/35 px-2.5 py-2 text-[10px] font-bold uppercase tracking-wide transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                            onClick={() => toggleServiceCat(catName)}
+                          >
+                            <span className="flex items-center gap-1.5 focus:outline-none">
+                              {catName === 'Favorites' && (
+                                <Heart className="size-3 fill-red-500 text-red-500" />
+                              )}
+                              {catName}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[9px] text-muted-foreground px-1.5 py-0.5 bg-background rounded-full">
+                                {svcs.length}
+                              </span>
+                              <ChevronDown
+                                className={`size-3 transition-transform duration-200 hover:cursor-pointer ${isEffectivelyOpen ? 'rotate-180' : ''}`}
+                              />
+                            </div>
+                          </button>
+
+                          <div
+                            className="grid transition-[grid-template-rows] duration-300 ease-in-out"
+                            style={{ gridTemplateRows: isEffectivelyOpen ? '1fr' : '0fr' }}
+                          >
+                            <div className="overflow-hidden">
+                              <div className="divide-y divide-border/50">
+                                {svcs.map(svc => (
+                                  <div
+                                    key={svc.id}
+                                    className="group flex cursor-grab items-center justify-between gap-2 bg-card px-2.5 py-2 transition-colors hover:bg-primary/5 active:cursor-grabbing"
+                                    onDragStart={e => {
+                                      e.dataTransfer.setData('application/reactflow', 'server_v2');
+                                      e.dataTransfer.setData('service-drag', 'true');
+                                      e.dataTransfer.setData(
+                                        'application/reactflow-data',
+                                        JSON.stringify({
+                                          type: 'server_v2',
+                                          name: svc.name,
+                                          details: {
+                                            model: svc.name,
+                                            cpu: svc.requirements
+                                              ? svc.requirements.min_cpu_cores
+                                              : undefined,
+                                            ram: svc.requirements
+                                              ? svc.requirements.min_ram_mb
+                                              : undefined,
+                                          },
+                                          serviceId: svc.id,
+                                        }),
+                                      );
+                                      e.dataTransfer.effectAllowed = 'move';
+                                    }}
+                                    draggable
+                                  >
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <div className="size-6 rounded bg-primary/10 flex items-center justify-center shrink-0">
+                                        {svc.icon ? (
+                                          <Zap className="size-3 text-primary" />
+                                        ) : (
+                                          <Zap className="size-3 text-primary" />
+                                        )}
+                                      </div>
+                                      <div className="min-w-0 flex flex-col">
+                                        <p className="text-[10px] font-semibold truncate leading-tight group-hover:text-primary transition-colors">
+                                          {svc.name}
+                                        </p>
+                                        {svc.requirements && (
+                                          <p className="text-[9px] text-muted-foreground truncate leading-tight mt-0.5">
+                                            {svc.requirements.min_cpu_cores}vCPU ·{' '}
+                                            {svc.requirements.min_ram_mb >= 1024
+                                              ? `${(svc.requirements.min_ram_mb / 1024).toFixed(1)}GB`
+                                              : `${svc.requirements.min_ram_mb}MB`}{' '}
+                                            RAM
+                                          </p>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {/* Metadata Link Buttons */}
+                                    <div
+                                      className="flex items-center gap-1 opacity-70 transition-opacity group-hover:opacity-100"
+                                      onMouseDown={e => {
+                                        e.stopPropagation();
+                                      }}
+                                    >
+                                      <button
+                                        type="button"
+                                        className="flex size-7 items-center justify-center rounded hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                                        aria-label={`Add ${svc.name} to selected compute node`}
+                                        title="Add to selected compute node"
+                                        onClick={() => addServiceToSelectedHost(svc)}
+                                      >
+                                        <Plus className="size-3.5 text-primary" />
+                                      </button>
+
+                                      {svc.docs_url && (
+                                        <a
+                                          href={svc.docs_url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="p-1 hover:bg-muted rounded"
+                                          title="Documentation"
+                                        >
+                                          <Book className="size-3 text-emerald-500" />
+                                        </a>
+                                      )}
+                                      {svc.github_url && (
+                                        <a
+                                          href={svc.github_url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="p-1 hover:bg-muted rounded"
+                                          title="GitHub Source"
+                                        >
+                                          <Github className="size-3 text-muted-foreground" />
+                                        </a>
+                                      )}
+                                      {svc.official_website && !svc.github_url && !svc.docs_url && (
+                                        <a
+                                          href={svc.official_website}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="p-1 hover:bg-muted rounded"
+                                          title="Official Website"
+                                        >
+                                          <ExternalLink className="size-3 text-blue-500" />
+                                        </a>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* ── Power tab ── */}
+              {activeTab === 'power' && <PowerUsagePanel />}
+            </div>
+
+            <div className="shrink-0 border-t bg-muted/20 px-4 py-2.5">
+              <p className="text-[10px] text-muted-foreground text-center">
+                Drag to canvas · Connect to router for auto-IP
+              </p>
+            </div>
+          </>
+        )}
+      </Card>
     </>
   );
 });

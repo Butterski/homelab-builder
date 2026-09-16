@@ -29,12 +29,18 @@ import type {
   HardwareSpec,
   HardwareNodeValidationIssue,
 } from '../../../types';
-import { isComputeNode, nodeHasDynamicPorts, isNetworkNode } from '../../../lib/hardware-config';
+import {
+  isComputeNode,
+  nodeHasDynamicPorts,
+  isNetworkNode,
+  canNodeHostVMs,
+} from '../../../lib/hardware-config';
 import { useBuilderStore } from '../store/builder-store';
 import { getVmResourceUsage } from '../lib/resource-usage';
 import { getNodePortCount } from '../lib/port-count';
 
 type HardwareNodeData = {
+  onOpenVirtualNetwork?: () => void;
   label: string;
   type: HardwareType;
   ip?: string;
@@ -322,7 +328,15 @@ function ComponentChip({ component }: { component: HardwareComponent }) {
 
 // ─── Main node card ────────────────────────────────────────────────────────────
 const CONTAINER_STEP = 10; // mirrors ROLE_ZONE step for compute types
-const POOL_HINT_NODE_TYPES: HardwareType[] = ['server', 'server_v2', 'vps', 'pc', 'minipc', 'sbc', 'nas'];
+const POOL_HINT_NODE_TYPES: HardwareType[] = [
+  'server',
+  'server_v2',
+  'vps',
+  'pc',
+  'minipc',
+  'sbc',
+  'nas',
+];
 
 export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
   const nodeData = data as unknown as HardwareNodeData;
@@ -357,8 +371,8 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
   // React flow handles dynamically
   const updateNodeInternals = useUpdateNodeInternals();
   const numPorts = nodeHasDynamicPorts(nodeData.type)
-      ? Math.max(1, getNodePortCount(nodeData.type, nodeData.details?.ports))
-      : 1;
+    ? Math.max(1, getNodePortCount(nodeData.type, nodeData.details?.ports))
+    : 1;
 
   // Resource calculations
   const { cpu: usedCpu, ramMb: usedRam } = getVmResourceUsage(vms);
@@ -449,6 +463,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
   // Calculate dynamic width for high-port-count switches/routers/etc
   const dynamicMinWidth = nodeHasDynamicPorts(nodeData.type) ? numPorts * 16 : 0;
   const shouldShowBody =
+    canNodeHostVMs(nodeData.type) ||
     nodeData.details?.model ||
     !isNetworkNode(nodeData.type) ||
     hasComponents ||
@@ -495,10 +510,12 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
           firewallEnabled ? 'hardware-node-firewall' : '',
           nodeData.type === 'vps' ? 'hardware-node-cloud' : '',
         )}
-        style={{
-          '--node-accent': cfg.color,
-          ...(dynamicMinWidth > 192 ? { minWidth: `${dynamicMinWidth}px` } : {}),
-        } as React.CSSProperties}
+        style={
+          {
+            '--node-accent': cfg.color,
+            ...(dynamicMinWidth > 192 ? { minWidth: `${dynamicMinWidth}px` } : {}),
+          } as React.CSSProperties
+        }
       >
         <div className="node-accent-rail" />
 
@@ -514,7 +531,10 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
             <Icon className={cn('size-4 shrink-0', cfg.iconColor)} />
           </div>
           <div className="min-w-0 flex-1">
-            <span className="font-semibold text-sm truncate block leading-tight" title={displayLabel}>
+            <span
+              className="font-semibold text-sm truncate block leading-tight"
+              title={displayLabel}
+            >
               {displayLabel}
             </span>
             <div className="flex items-center gap-1.5 pt-0.5">
@@ -546,7 +566,12 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
                 pingColor,
               )}
             />
-            <span className={cn('relative inline-flex rounded-full size-2.5 node-status-led', lightColor)} />
+            <span
+              className={cn(
+                'relative inline-flex rounded-full size-2.5 node-status-led',
+                lightColor,
+              )}
+            />
           </span>
         </div>
 
@@ -564,7 +589,9 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
               <div className="node-telemetry-grid">
                 {isNetworkNode(nodeData.type) && (
                   <div className="node-telemetry-cell">
-                    <span className="node-telemetry-label">{isDualHomedGateway ? 'WAN:' : 'IP:'}</span>
+                    <span className="node-telemetry-label">
+                      {isDualHomedGateway ? 'WAN:' : 'IP:'}
+                    </span>
                     <span
                       className={cn(
                         'node-telemetry-value font-mono',
@@ -623,7 +650,8 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
                       <Cloud className="size-2.5" /> Cloud:
                     </span>
                     <span className="node-telemetry-value font-mono text-sky-300 truncate">
-                      {details.public_ip || `${details.provider ?? 'cloud'} ${details.region ?? ''}`.trim()}
+                      {details.public_ip ||
+                        `${details.provider ?? 'cloud'} ${details.region ?? ''}`.trim()}
                     </span>
                   </div>
                 )}
@@ -645,32 +673,21 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
             {hasSpecs && (
               <div className="node-spec-grid">
                 {details.cpu && (
-                  <span
-                    className="node-spec-chip"
-                    title={`${details.cpu} Cores`}
-                  >
+                  <span className="node-spec-chip" title={`${details.cpu} Cores`}>
                     <Cpu className="size-2.5" />
                     {details.cpu} Core{Number(details.cpu) !== 1 ? 's' : ''}
                   </span>
                 )}
                 {details.ram && (
-                  <span
-                    className="node-spec-chip"
-                    title={`${details.ram} GB RAM`}
-                  >
+                  <span className="node-spec-chip" title={`${details.ram} GB RAM`}>
                     <Layers className="size-2.5" />
-                    {formatCapacity(details.ram)}{' '}
-                    {nodeData.type === 'gpu' ? 'VRAM' : 'RAM'}
+                    {formatCapacity(details.ram)} {nodeData.type === 'gpu' ? 'VRAM' : 'RAM'}
                   </span>
                 )}
                 {details.storage && (
-                  <span
-                    className="node-spec-chip"
-                    title={`${details.storage} GB Storage`}
-                  >
+                  <span className="node-spec-chip" title={`${details.storage} GB Storage`}>
                     <HardDrive className="size-2.5" />
-                    {formatCapacity(details.storage)}{' '}
-                    Disk
+                    {formatCapacity(details.storage)} Disk
                   </span>
                 )}
                 {details.ports && (
@@ -722,9 +739,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
 
             {hasComponents && (
               <div className="node-section space-y-1.5 pt-2 border-t border-border/70">
-                <p className="node-section-title">
-                  Components
-                </p>
+                <p className="node-section-title">Components</p>
                 <div className="space-y-1">
                   {components.map(comp => (
                     <ComponentChip key={comp.id} component={comp} />
@@ -733,6 +748,21 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
               </div>
             )}
 
+            {canNodeHostVMs(nodeData.type) && nodeData.onOpenVirtualNetwork && (
+              <button
+                type="button"
+                className="nodrag nopan flex w-full items-center gap-2 rounded-md border border-border px-2 py-2 text-xs hover:bg-muted focus-visible:ring-2 focus-visible:ring-primary"
+                aria-label={`Open virtual network for ${nodeData.label}`}
+                onClick={event => {
+                  event.stopPropagation();
+                  nodeData.onOpenVirtualNetwork?.();
+                }}
+              >
+                <Network className="h-4 w-4" />
+                <span>Virtual network</span>
+                <span className="ml-auto text-muted-foreground">{vms.length} VMs</span>
+              </button>
+            )}
             {/* VMs / Containers */}
             {hasVMs && (
               <div className="node-section space-y-1.5 pt-2 border-t border-border/70">

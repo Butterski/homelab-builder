@@ -73,8 +73,8 @@ func connectTestDB() (*gorm.DB, error) {
 // migrateTestDB runs AutoMigrate for all relevant models against PostgreSQL.
 // GORM only adds missing tables/columns, so this is safe to call repeatedly.
 func migrateTestDB(db *gorm.DB) error {
-	// Enable the uuid-ossp extension required for uuid_generate_v4().
-	db.Exec(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`)
+	// Enable the extension required by the models' gen_random_uuid() defaults.
+	db.Exec(`CREATE EXTENSION IF NOT EXISTS "pgcrypto"`)
 	return db.AutoMigrate(
 		&models.User{},
 		&models.Service{},

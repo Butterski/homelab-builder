@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM golang:1.24-alpine AS builder
+FROM golang:1.24.5-alpine3.22 AS builder
 
 WORKDIR /app
 COPY go.mod ./
@@ -7,7 +7,7 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /hlbipam ./cmd/server
 
-FROM alpine:3.19
+FROM alpine:3.22
 RUN apk add --no-cache ca-certificates && \
     adduser -D -g '' appuser
 

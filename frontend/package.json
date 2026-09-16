@@ -32,10 +32,10 @@
     "react-dom": "^19.2.0",
     "react-hook-form": "^7.71.1",
     "react-joyride": "^2.9.3",
-    "react-router-dom": "^7.13.0",
+    "react-router-dom": "^7.18.2",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.4.1",
-    "uuid": "^13.0.0",
+    "uuid": "^14.0.1",
     "zod": "^4.3.6",
     "zustand": "^5.0.11"
   },

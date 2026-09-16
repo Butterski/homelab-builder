@@ -20,15 +20,38 @@ import { useBuilderStore } from '../store/builder-store';
 import { HardwareToolbox } from './hardware-toolbox';
 import { HardwareNode as HardwareNodeComponent } from './hardware-node';
 import { RackNode } from './rack-node';
-import { RACK_U_HEIGHT_PX, RACK_HEADER_PX, RACK_RAIL_WIDTH, DEFAULT_DEVICE_U } from './rack-node-constants';
+import {
+  RACK_U_HEIGHT_PX,
+  RACK_HEADER_PX,
+  RACK_RAIL_WIDTH,
+  DEFAULT_DEVICE_U,
+} from './rack-node-constants';
 import { NodePropertiesPanel } from './node-properties-panel';
 import { LiveResourceDashboard } from './live-resource-dashboard';
 import { Button } from '../../../components/ui/button';
-import { Wand2, Menu, Save, Folder, Download, LogOut, Route, Image as ImageIcon, Map as MapIcon, ClipboardCheck, LayoutGrid } from 'lucide-react';
+import {
+  Wand2,
+  Menu,
+  Save,
+  Folder,
+  Download,
+  LogOut,
+  Route,
+  Image as ImageIcon,
+  Map as MapIcon,
+  ClipboardCheck,
+  LayoutGrid,
+} from 'lucide-react';
 import type { HardwareType, HardwareNode } from '../../../types';
 import { buildApi } from '../api/builds';
 import { toPng, toSvg } from 'html-to-image';
-import { nodeHasDynamicPorts, canNodeBeNested, canNodeHostNested, canNodeConnectToAny } from '../../../lib/hardware-config';
+import {
+  nodeHasDynamicPorts,
+  canNodeBeNested,
+  canNodeHostNested,
+  canNodeHostVMs,
+  canNodeConnectToAny,
+} from '../../../lib/hardware-config';
 import { getNodePortCount } from '../lib/port-count';
 import { computeTopologyLayout } from '../lib/topology-layout';
 import { isNatDownstreamEdge } from '../lib/network-zone';
@@ -46,6 +69,7 @@ import {
 
 import { CustomEdge } from './custom-edge';
 import { ReadinessReportDialog } from './readiness-report-dialog';
+import { VirtualNetworkEditor } from './virtual-network-editor';
 
 type ZoneBlob = { x: number; y: number; width: number; height: number };
 
@@ -76,14 +100,20 @@ function NetworkZoneNode({ data }: any) {
   return (
     <div
       className={`network-zone-node network-zone-${data.kind}`}
-      style={{
-        width: data.width,
-        height: data.height,
-        '--network-zone-accent': data.accent,
-        '--network-zone-opacity': data.opacity,
-      } as React.CSSProperties}
+      style={
+        {
+          width: data.width,
+          height: data.height,
+          '--network-zone-accent': data.accent,
+          '--network-zone-opacity': data.opacity,
+        } as React.CSSProperties
+      }
     >
-      <svg className="network-zone-svg" viewBox={`0 0 ${data.width} ${data.height}`} preserveAspectRatio="none">
+      <svg
+        className="network-zone-svg"
+        viewBox={`0 0 ${data.width} ${data.height}`}
+        preserveAspectRatio="none"
+      >
         <defs>
           <filter id={filterId} x="-20%" y="-20%" width="140%" height="140%">
             <feGaussianBlur in="SourceGraphic" stdDeviation="18" result="blur" />
@@ -143,7 +173,10 @@ const shortcuts: Shortcut[] = [
 
 function ShortcutHints() {
   return (
-    <div id="shortcut-hints" className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10 flex items-center gap-3 px-3 py-1.5 rounded-full bg-card border border-border text-[10px] text-muted-foreground pointer-events-none select-none">
+    <div
+      id="shortcut-hints"
+      className="pointer-events-none absolute bottom-2 left-1/2 z-10 hidden -translate-x-1/2 select-none items-center gap-3 rounded-full border border-border bg-card px-3 py-1.5 text-[10px] text-muted-foreground sm:flex"
+    >
       {shortcuts.map((sh: Shortcut, iter: number) =>
         iter === shortcuts.length - 1 ? (
           <span key={sh.combination} className="flex flex-col items-center">
@@ -163,6 +196,7 @@ function ShortcutHints() {
 }
 
 const Flow = React.memo(function Flow() {
+  const virtualHostId = useBuilderStore(state => state.virtualHostId);
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
@@ -171,7 +205,7 @@ const Flow = React.memo(function Flow() {
   const downloadImage = (format: 'png' | 'svg') => {
     if (!reactFlowWrapper.current) return;
     const elem = reactFlowWrapper.current;
-    
+
     // Quick notification
     toast.info(`Exporting ${format.toUpperCase()}...`);
 
@@ -180,27 +214,30 @@ const Flow = React.memo(function Flow() {
       backgroundColor: 'transparent',
       filter: (node: HTMLElement) => {
         // Hide panels, controls, shortcuts, and dashboard
-        if (node.classList && (
-          node.classList.contains('react-flow__panel') || 
-          node.classList.contains('react-flow__controls') ||
-          node.classList.contains('react-flow__attribution') ||
-          node.id === 'shortcut-hints' ||
-          node.getAttribute('data-hide-export') === 'true'
-        )) {
+        if (
+          node.classList &&
+          (node.classList.contains('react-flow__panel') ||
+            node.classList.contains('react-flow__controls') ||
+            node.classList.contains('react-flow__attribution') ||
+            node.id === 'shortcut-hints' ||
+            node.getAttribute('data-hide-export') === 'true')
+        ) {
           return false;
         }
         return true;
-      }
-    }).then((dataUrl) => {
-      const a = document.createElement('a');
-      a.href = dataUrl;
-      a.download = `homelab-${projectName || 'export'}.${format}`;
-      a.click();
-      toast.success(`Export successful.`);
-    }).catch(err => {
-      console.error('Failed to export image', err);
-      toast.error('Failed to export image.');
-    });
+      },
+    })
+      .then(dataUrl => {
+        const a = document.createElement('a');
+        a.href = dataUrl;
+        a.download = `homelab-${projectName || 'export'}.${format}`;
+        a.click();
+        toast.success(`Export successful.`);
+      })
+      .catch(err => {
+        console.error('Failed to export image', err);
+        toast.error('Failed to export image.');
+      });
   };
 
   // Joyride Tour State
@@ -267,7 +304,6 @@ const Flow = React.memo(function Flow() {
     addVM,
     reassignAllIPs,
     loadBuild,
-    getBuildData,
     currentBuildId,
     hardwareNodes,
     projectName,
@@ -323,7 +359,9 @@ const Flow = React.memo(function Flow() {
       (node.details?.nat_enabled ||
         node.details?.firewall_enabled ||
         (node.type as string) === 'firewall' ||
-        (((node.type as string) === 'server_v2' || (node.type as string) === 'vps' || (node.type as string) === 'firewall') &&
+        (((node.type as string) === 'server_v2' ||
+          (node.type as string) === 'vps' ||
+          (node.type as string) === 'firewall') &&
           !!node.details?.dhcp_enabled &&
           !!node.details?.routing_enabled));
 
@@ -420,7 +458,9 @@ const Flow = React.memo(function Flow() {
 
       (edgeByNode.get(natId) || []).forEach(edge => {
         const otherId = edge.source === natId ? edge.target : edge.source;
-        if (isNatDownstreamEdge(edge, natId, Boolean(isUpstreamAnchor(hardwareById.get(otherId))))) {
+        if (
+          isNatDownstreamEdge(edge, natId, Boolean(isUpstreamAnchor(hardwareById.get(otherId))))
+        ) {
           queue.push(otherId);
         }
       });
@@ -450,7 +490,8 @@ const Flow = React.memo(function Flow() {
       if (childNodes.length === 0 && !providerNode) return;
       visited.forEach(id => natChildIds.add(id));
 
-      const kind = natNode.details?.firewall_enabled || natNode.type === 'firewall' ? 'firewall' : 'nat';
+      const kind =
+        natNode.details?.firewall_enabled || natNode.type === 'firewall' ? 'firewall' : 'nat';
       const zone = buildZone(
         `network-zone-nat-${natId}`,
         kind,
@@ -463,7 +504,9 @@ const Flow = React.memo(function Flow() {
       if (zone) zoneNodes.push(zone);
     });
 
-    const routers = visualPreferences.showLanZones ? hardwareNodes.filter(node => node.type === 'router') : [];
+    const routers = visualPreferences.showLanZones
+      ? hardwareNodes.filter(node => node.type === 'router')
+      : [];
     routers.forEach(router => {
       const routerId = router.id;
       const visited = new Set<string>();
@@ -502,12 +545,24 @@ const Flow = React.memo(function Flow() {
     });
 
     return zoneNodes;
-  }, [nodes, edges, hardwareNodes, visualPreferences.showNetworkZones, visualPreferences.showLanZones, visualPreferences.showNatZones, visualPreferences.zoneOpacity]);
+  }, [
+    nodes,
+    edges,
+    hardwareNodes,
+    visualPreferences.showNetworkZones,
+    visualPreferences.showLanZones,
+    visualPreferences.showNatZones,
+    visualPreferences.zoneOpacity,
+  ]);
 
   const flowNodes = useMemo<ReactFlowNode[]>(
     () =>
       nodes.map(node => ({
         ...node,
+        data: {
+          ...node.data,
+          onOpenVirtualNetwork: () => useBuilderStore.getState().openVirtualNetwork(node.id),
+        },
         zIndex: node.type === 'rack' ? 10 : 20,
       })),
     [nodes],
@@ -543,26 +598,22 @@ const Flow = React.memo(function Flow() {
     if (!id) return;
     setSaveStatus('saving');
     try {
-      const data = getBuildData();
-      await buildApi.update(id, {
-        name: projectName || 'Untitled Project', // Use store name
-        thumbnail: '',
-        ...data,
-      });
+      await reassignAllIPs();
       setSaveStatus('saved');
       lastSaveTime.current = Date.now();
     } catch (err) {
       console.error('Failed to save', err);
       setSaveStatus('error');
-      toast.error('Failed to auto-save');
+      throw err;
     }
-  }, [id, getBuildData, projectName]);
+  }, [id, reassignAllIPs]);
 
   // Wrap saveProjectFn with useEffectEvent so it can be called from setTimeout
   // without being a dependency, preventing unnecessary effect re-subscriptions
   const saveProject = useEffectEvent(saveProjectFn);
 
   // Auto-save trigger
+  const topologyFingerprint = JSON.stringify(useBuilderStore.getState().getBuildData());
   useEffect(() => {
     if (isFirstRender.current) {
       isFirstRender.current = false;
@@ -571,20 +622,22 @@ const Flow = React.memo(function Flow() {
 
     // Debounce save
     const timer = setTimeout(() => {
-      saveProject();
+      void saveProject().catch(() => {
+        toast.error('Auto-save failed. Your local changes are still on this device.');
+      });
     }, 2000); // 2 seconds debounce
 
     return () => clearTimeout(timer);
-  }, [nodes, edges, hardwareNodes]); // Any change triggers debounce
+  }, [topologyFingerprint]);
 
   // Manual save wrapper (immediate)
-  const handleManualSave = () => {
+  const handleManualSave = useCallback(() => {
     toast.promise(saveProjectFn(), {
       loading: 'Saving…',
       success: 'Project saved',
       error: 'Failed to save',
     });
-  };
+  }, [saveProjectFn]);
 
   const { getEdges, deleteElements } = useReactFlow();
   const updateNodeInternals = useUpdateNodeInternals();
@@ -658,6 +711,7 @@ const Flow = React.memo(function Flow() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (useBuilderStore.getState().virtualHostId) return;
       const tag = (e.target as HTMLElement).tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
 
@@ -772,9 +826,7 @@ const Flow = React.memo(function Flow() {
 
       const isServiceDrag = event.dataTransfer.getData('service-drag') === 'true';
 
-      const rackTarget = intersecting.find(
-        (n: any) => n.type === 'rack',
-      );
+      const rackTarget = intersecting.find((n: any) => n.type === 'rack');
 
       if (rackTarget && data.type !== 'rack' && !isServiceDrag) {
         // Calculate the U-slot position based on drop position within the rack
@@ -783,7 +835,7 @@ const Flow = React.memo(function Flow() {
         const deviceU = data.details?.rack_units || DEFAULT_DEVICE_U[data.type] || 1;
 
         const newNode: HardwareNode = {
-          id: `node-${Date.now()}`,
+          id: crypto.randomUUID(),
           type: data.type as HardwareType,
           name: data.name || `New ${data.type}`,
           // Position relative to rack, snapped to U-slot grid
@@ -807,14 +859,28 @@ const Flow = React.memo(function Flow() {
 
       if (isServiceDrag) {
         if (targetNode && targetNode.type === 'hardware') {
+          const targetHardware = useBuilderStore
+            .getState()
+            .hardwareNodes.find(node => node.id === targetNode.id);
+          if (!targetHardware || !canNodeHostVMs(targetHardware.type)) {
+            toast.error(
+              'Services can only be placed on compute nodes such as servers, NAS devices, PCs, or SBCs.',
+            );
+            return;
+          }
+
           const cpuVal = data.details?.cpu ? Number(data.details.cpu) : undefined;
           const ramVal = data.details?.ram ? Number(data.details.ram) : undefined;
 
           addVM(targetNode.id, {
-            id: `vm-${Date.now()}`,
+            id: crypto.randomUUID(),
             name: data.name,
             type: 'container',
             status: 'running',
+            details: {
+              catalog_service_id: data.serviceId,
+              catalog_service_name: data.name,
+            },
             cpu_cores: cpuVal || undefined,
             ram_mb: ramVal || undefined,
           });
@@ -830,7 +896,7 @@ const Flow = React.memo(function Flow() {
 
         if (canHost && canNodeBeNested(data.type)) {
           addInternalComponent(targetNode.id, {
-            id: `comp-${Date.now()}`,
+            id: crypto.randomUUID(),
             type: data.type,
             name: data.name || `New ${data.type}`,
             details: data.details || {},
@@ -845,7 +911,7 @@ const Flow = React.memo(function Flow() {
       }
 
       const newNode: HardwareNode = {
-        id: `node-${Date.now()}`,
+        id: crypto.randomUUID(),
         type: data.type as HardwareType,
         name: data.name || `New ${data.type}`,
         x: position.x,
@@ -876,50 +942,50 @@ const Flow = React.memo(function Flow() {
 
         // Calculate relative Y
         const isCurrentlyInRack = node.parentId === rackTarget.id;
-        
+
         // Node position in React Flow is relative IF it has parentId, or absolute if not
         let newRelX = RACK_RAIL_WIDTH;
         let newRelY = node.position.y;
-        
+
         if (!isCurrentlyInRack) {
           // It was dropped from outside! node.position is absolute canvas.
           newRelY = node.position.y - rackTarget.position.y - RACK_HEADER_PX;
         }
 
         const uSlot = Math.max(0, Math.round(newRelY / RACK_U_HEIGHT_PX));
-        
+
         storeState.updateHardware(node.id, {
           parent_id: rackTarget.id,
           x: newRelX,
           y: RACK_HEADER_PX + uSlot * RACK_U_HEIGHT_PX,
           details: {
-             ...(hardwareNode.details || {}),
-             rack_position: uSlot,
-          }
+            ...(hardwareNode.details || {}),
+            rack_position: uSlot,
+          },
         });
       } else if (node.parentId) {
-         // Dropped outside a rack but had a parent! It should be detached!
-         // Calculate absolute position to drop it on canvas
-         const oldParent = storeState.nodes.find(n => n.id === node.parentId);
-         const absX = oldParent ? oldParent.position.x + node.position.x : node.position.x;
-         const absY = oldParent ? oldParent.position.y + node.position.y : node.position.y;
-         
-         const hardwareNode = storeState.hardwareNodes.find(n => n.id === node.id);
-         if (!hardwareNode) return;
+        // Dropped outside a rack but had a parent! It should be detached!
+        // Calculate absolute position to drop it on canvas
+        const oldParent = storeState.nodes.find(n => n.id === node.parentId);
+        const absX = oldParent ? oldParent.position.x + node.position.x : node.position.x;
+        const absY = oldParent ? oldParent.position.y + node.position.y : node.position.y;
 
-         // We use undefined to delete the rack_position from details, but TypeScript requires a structural match
-         const newDetails = { ...hardwareNode.details };
-         delete newDetails.rack_position;
+        const hardwareNode = storeState.hardwareNodes.find(n => n.id === node.id);
+        if (!hardwareNode) return;
 
-         storeState.updateHardware(node.id, {
-           parent_id: undefined,
-           x: absX,
-           y: absY,
-           details: newDetails
-         });
+        // We use undefined to delete the rack_position from details, but TypeScript requires a structural match
+        const newDetails = { ...hardwareNode.details };
+        delete newDetails.rack_position;
+
+        storeState.updateHardware(node.id, {
+          parent_id: undefined,
+          x: absX,
+          y: absY,
+          details: newDetails,
+        });
       }
     },
-    [getIntersectingNodes]
+    [getIntersectingNodes],
   );
 
   const isValidConnection = useCallback(
@@ -993,7 +1059,9 @@ const Flow = React.memo(function Flow() {
       const targetCanConnectToAny = canNodeConnectToAny(targetNode.type as HardwareType);
 
       if (!sourceCanConnectToAny && !targetCanConnectToAny) {
-        toast.error('Devices generally must connect through a network hub (Switch, Router, Modem, etc).');
+        toast.error(
+          'Devices generally must connect through a network hub (Switch, Router, Modem, etc).',
+        );
         return false;
       }
 
@@ -1006,307 +1074,338 @@ const Flow = React.memo(function Flow() {
 
   return (
     <div className="builder-workbench flex h-full overflow-hidden relative">
-      {runTour && (
-        <Joyride
-          steps={tourSteps}
-          run
-          callback={handleJoyrideCallback}
-          locale={{ last: 'Close' }}
-          continuous
-          showProgress
-          showSkipButton
-          styles={{
-            options: {
-              primaryColor: 'var(--primary)',
-              zIndex: 10000,
-            },
-          }}
-        />
-      )}
+      {virtualHostId && <VirtualNetworkEditor hostId={virtualHostId} />}
+      <div
+        className="flex h-full w-full"
+        inert={!!virtualHostId}
+        style={{ visibility: virtualHostId ? 'hidden' : undefined }}
+      >
+        {runTour && (
+          <Joyride
+            steps={tourSteps}
+            run
+            callback={handleJoyrideCallback}
+            locale={{ last: 'Close' }}
+            continuous
+            showProgress
+            showSkipButton
+            styles={{
+              options: {
+                primaryColor: 'var(--primary)',
+                zIndex: 10000,
+              },
+            }}
+          />
+        )}
 
-      <HardwareToolbox />
-      <ReadinessReportDialog
-        open={readinessOpen}
-        onOpenChange={setReadinessOpen}
-        hardwareNodes={hardwareNodes}
-        edges={edges}
-        validationIssues={validationIssues}
-        onGenerateConfig={() => navigate('/generate')}
-        onReassignIPs={reassignAllIPs}
-      />
-
-      <div className="flex-1 h-full relative" ref={reactFlowWrapper}>
-        <ReactFlow
-          nodes={flowNodes}
+        <HardwareToolbox />
+        <ReadinessReportDialog
+          open={readinessOpen}
+          onOpenChange={setReadinessOpen}
+          hardwareNodes={hardwareNodes}
           edges={edges}
-          onNodesChange={changes =>
-            onNodesChange(
-              changes.filter(change => !('id' in change) || !String(change.id).startsWith('network-zone-')),
-            )
-          }
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          isValidConnection={isValidConnection}
-          nodeTypes={nodeTypes}
-          edgeTypes={edgeTypes}
-          onDragOver={onDragOver}
-          onDrop={onDrop}
-          onNodeDragStop={onNodeDragStop}
-          onNodeClick={(_, node) => {
-            if (node.type === 'hardware' || node.type === 'rack') selectNode(node.id);
-          }}
-          onPaneClick={() => selectNode(null)}
-          connectionMode={ConnectionMode.Loose}
-          fitView
-          attributionPosition="bottom-right"
-          className="builder-flow-canvas"
-          defaultEdgeOptions={{
-            type: 'custom',
-            animated: true,
-            style: { stroke: '#3F3F46', strokeWidth: 2 },
-          }}
-          snapToGrid={true}
-          snapGrid={[20, 20]}
-        >
-          <Background gap={20} size={1} color="#A1A1AA" style={{ opacity: 0.25 }} />
-          <ViewportPortal>
-            <div className="network-zone-viewport-layer">
-              {networkZones.map(zone => (
-                <div
-                  key={zone.id}
-                  className="network-zone-portal-item"
-                  style={{
-                    transform: `translate(${zone.position.x}px, ${zone.position.y}px)`,
-                    width: zone.data?.width as number,
-                    height: zone.data?.height as number,
-                  }}
-                >
-                  <NetworkZoneNode data={zone.data} />
-                </div>
-              ))}
-            </div>
-          </ViewportPortal>
-          <Controls />
+          validationIssues={validationIssues}
+          onGenerateConfig={() => navigate('/generate')}
+          onReassignIPs={reassignAllIPs}
+        />
 
-          <Panel position="top-left" className="builder-top-panel flex flex-wrap gap-2 items-start">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" className="builder-control-button size-10 shrink-0" aria-label="Open Project Menu">
-                  <Menu className="size-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-56">
-                <DropdownMenuLabel>Project Menu</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleManualSave}>
-                  <Save className="mr-2 size-4" /> Save Project{' '}
-                  <span className="ml-auto text-xs text-muted-foreground opacity-60">Ctrl+S</span>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => navigate('/')}>
-                  <Folder className="mr-2 size-4" /> My Projects
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => navigate('/generate')}>
-                  <Download className="mr-2 size-4" /> Generate Config
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setReadinessOpen(true)}>
-                  <ClipboardCheck className="mr-2 size-4" /> Readiness Report
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={polishTopologyLayout}>
-                  <LayoutGrid className="mr-2 size-4" /> Polish Layout
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => downloadImage('png')}>
-                  <ImageIcon className="mr-2 size-4" /> Export Diagram (PNG)
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => downloadImage('svg')}>
-                  <ImageIcon className="mr-2 size-4" /> Export Diagram (SVG)
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => navigate('/services')}>
-                  <Wand2 className="mr-2 size-4" /> Component Catalog
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setRunTour(true)}>
-                  <MapIcon className="mr-2 size-4" /> Start Guided Tour
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={logout} className="text-red-500 focus:text-red-500">
-                  <LogOut className="mr-2 size-4" /> Sign Out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+        <div className="flex-1 h-full relative" ref={reactFlowWrapper}>
+          <ReactFlow
+            nodes={flowNodes}
+            edges={edges}
+            onNodesChange={changes =>
+              onNodesChange(
+                changes.filter(
+                  change => !('id' in change) || !String(change.id).startsWith('network-zone-'),
+                ),
+              )
+            }
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            isValidConnection={isValidConnection}
+            nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
+            onDragOver={onDragOver}
+            onDrop={onDrop}
+            onNodeDragStop={onNodeDragStop}
+            onNodeClick={(_, node) => {
+              if (node.type === 'hardware' || node.type === 'rack') selectNode(node.id);
+            }}
+            onPaneClick={() => selectNode(null)}
+            connectionMode={ConnectionMode.Loose}
+            fitView
+            attributionPosition="bottom-right"
+            className="builder-flow-canvas"
+            defaultEdgeOptions={{
+              type: 'custom',
+              animated: true,
+              style: { stroke: '#3F3F46', strokeWidth: 2 },
+            }}
+            snapToGrid={true}
+            snapGrid={[20, 20]}
+          >
+            <Background gap={20} size={1} color="#A1A1AA" style={{ opacity: 0.25 }} />
+            <ViewportPortal>
+              <div className="network-zone-viewport-layer">
+                {networkZones.map(zone => (
+                  <div
+                    key={zone.id}
+                    className="network-zone-portal-item"
+                    style={{
+                      transform: `translate(${zone.position.x}px, ${zone.position.y}px)`,
+                      width: zone.data?.width as number,
+                      height: zone.data?.height as number,
+                    }}
+                  >
+                    <NetworkZoneNode data={zone.data} />
+                  </div>
+                ))}
+              </div>
+            </ViewportPortal>
+            <Controls />
 
-            <div className="builder-project-title builder-glass-panel flex h-12 min-w-0 flex-col justify-center px-3 py-2">
-              <h2 className="text-sm font-semibold leading-none truncate max-w-52">
-                {projectName || 'HLBuilder'}
-              </h2>
-              <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                {saveStatus === 'saving' && (
-                  <span className="text-amber-500 flex items-center gap-1">
-                    <span className="animate-spin">⟳</span> Saving…
-                  </span>
-                )}
-                {saveStatus === 'saved' && (
-                  <span className="text-green-500 flex items-center gap-1">Cloud Saved</span>
-                )}
-                {saveStatus === 'error' && <span className="text-red-500">Save Failed</span>}
-              </span>
-            </div>
-
-            <Button
-              variant="secondary"
-              onClick={() => reassignAllIPs()}
-              title="Fix IP Conflicts"
-              size="sm"
-              className="builder-control-button h-10 px-3"
+            <Panel
+              position="top-left"
+              className="builder-top-panel flex max-w-[calc(100vw-2rem)] flex-wrap items-start gap-2"
             >
-              <Wand2 className="size-4" />
-              <span className="builder-action-label ml-2">Reassign IPs</span>
-            </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="builder-control-button size-10 shrink-0"
+                    aria-label="Open Project Menu"
+                  >
+                    <Menu className="size-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-56">
+                  <DropdownMenuLabel>Project Menu</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleManualSave}>
+                    <Save className="mr-2 size-4" /> Save Project{' '}
+                    <span className="ml-auto text-xs text-muted-foreground opacity-60">Ctrl+S</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => navigate('/')}>
+                    <Folder className="mr-2 size-4" /> My Projects
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate('/generate')}>
+                    <Download className="mr-2 size-4" /> Generate Config
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setReadinessOpen(true)}>
+                    <ClipboardCheck className="mr-2 size-4" /> Readiness Report
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={polishTopologyLayout}>
+                    <LayoutGrid className="mr-2 size-4" /> Polish Layout
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => downloadImage('png')}>
+                    <ImageIcon className="mr-2 size-4" /> Export Diagram (PNG)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => downloadImage('svg')}>
+                    <ImageIcon className="mr-2 size-4" /> Export Diagram (SVG)
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => navigate('/services')}>
+                    <Wand2 className="mr-2 size-4" /> Component Catalog
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setRunTour(true)}>
+                    <MapIcon className="mr-2 size-4" /> Start Guided Tour
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={logout} className="text-red-500 focus:text-red-500">
+                    <LogOut className="mr-2 size-4" /> Sign Out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
 
-            <Button
-              variant="outline"
-              onClick={() => setReadinessOpen(true)}
-              title="Open Readiness Report"
-              size="sm"
-              className="builder-control-button h-10 px-3"
-            >
-              <ClipboardCheck className="size-4" />
-              <span className="builder-action-label ml-2">Readiness</span>
-            </Button>
+              <div className="builder-project-title builder-glass-panel flex h-12 min-w-0 flex-col justify-center px-3 py-2">
+                <h2 className="text-sm font-semibold leading-none truncate max-w-52">
+                  {projectName || 'HLBuilder'}
+                </h2>
+                <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                  {saveStatus === 'saving' && (
+                    <span className="text-amber-500 flex items-center gap-1">
+                      <span className="animate-spin">⟳</span> Saving…
+                    </span>
+                  )}
+                  {saveStatus === 'saved' && (
+                    <span className="text-green-500 flex items-center gap-1">Cloud Saved</span>
+                  )}
+                  {saveStatus === 'error' && <span className="text-red-500">Save Failed</span>}
+                </span>
+              </div>
 
-            <Button
-              variant="outline"
-              onClick={polishTopologyLayout}
-              title="Polish Topology Layout"
-              size="sm"
-              className="builder-control-button h-10 px-3"
-            >
-              <LayoutGrid className="size-4" />
-              <span className="builder-action-label ml-2">Polish</span>
-            </Button>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  void reassignAllIPs().catch(() => undefined);
+                }}
+                title="Fix IP Conflicts"
+                size="sm"
+                className="builder-control-button h-10 px-3"
+              >
+                <Wand2 className="size-4" />
+                <span className="builder-action-label ml-2">Reassign IPs</span>
+              </Button>
 
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="builder-control-button h-10 px-3">
-                  <Route className="size-4 shrink-0" />
-                  <span className="builder-action-label ml-2">Visual Settings</span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-64">
-                <DropdownMenuLabel className="text-xs text-muted-foreground uppercase">
-                  Network Zones
-                </DropdownMenuLabel>
-                {[
-                  ['showNetworkZones', 'Show zone overlays'],
-                  ['showNatZones', 'NAT / Firewall zones'],
-                  ['showLanZones', 'Primary LAN outline'],
-                ].map(([key, label]) => (
+              <Button
+                variant="outline"
+                onClick={() => setReadinessOpen(true)}
+                title="Open Readiness Report"
+                size="sm"
+                className="builder-control-button h-10 px-3"
+              >
+                <ClipboardCheck className="size-4" />
+                <span className="builder-action-label ml-2">Readiness</span>
+              </Button>
+
+              <Button
+                variant="outline"
+                onClick={polishTopologyLayout}
+                title="Polish Topology Layout"
+                size="sm"
+                className="builder-control-button h-10 px-3"
+              >
+                <LayoutGrid className="size-4" />
+                <span className="builder-action-label ml-2">Polish</span>
+              </Button>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="builder-control-button h-10 px-3">
+                    <Route className="size-4 shrink-0" />
+                    <span className="builder-action-label ml-2">Visual Settings</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-64">
+                  <DropdownMenuLabel className="text-xs text-muted-foreground uppercase">
+                    Network Zones
+                  </DropdownMenuLabel>
+                  {[
+                    ['showNetworkZones', 'Show zone overlays'],
+                    ['showNatZones', 'NAT / Firewall zones'],
+                    ['showLanZones', 'Primary LAN outline'],
+                  ].map(([key, label]) => (
+                    <DropdownMenuItem
+                      key={key}
+                      onClick={e => {
+                        e.preventDefault();
+                        handlePrefChange(
+                          key,
+                          !visualPreferences[key as keyof typeof visualPreferences] as any,
+                        );
+                      }}
+                      className="flex items-center justify-between cursor-pointer"
+                    >
+                      <span>{label}</span>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(visualPreferences[key as keyof typeof visualPreferences])}
+                        readOnly
+                        className="pointer-events-none"
+                      />
+                    </DropdownMenuItem>
+                  ))}
+                  <div className="px-2 py-2 space-y-1">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>Zone opacity</span>
+                      <span>{Math.round(visualPreferences.zoneOpacity * 100)}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0.2"
+                      max="1"
+                      step="0.05"
+                      value={visualPreferences.zoneOpacity}
+                      onChange={e => handlePrefChange('zoneOpacity', Number(e.target.value))}
+                      className="w-full accent-primary"
+                    />
+                  </div>
+
+                  <DropdownMenuSeparator />
+
+                  <DropdownMenuLabel className="text-xs text-muted-foreground uppercase">
+                    Pathing AI
+                  </DropdownMenuLabel>
+                  <DropdownMenuRadioGroup
+                    value={edgePreferences.routingEngine}
+                    onValueChange={(v: string) => handlePrefChange('routingEngine', v)}
+                  >
+                    <DropdownMenuRadioItem value="smart">
+                      Smart (Avoids Nodes)
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="direct">Direct (Flyover)</DropdownMenuRadioItem>
+                  </DropdownMenuRadioGroup>
+
+                  <DropdownMenuSeparator />
+
+                  <DropdownMenuLabel className="text-xs text-muted-foreground uppercase">
+                    Connection Pins
+                  </DropdownMenuLabel>
+                  <DropdownMenuRadioGroup
+                    value={edgePreferences.connectionStyle}
+                    onValueChange={(v: string) => handlePrefChange('connectionStyle', v)}
+                  >
+                    <DropdownMenuRadioItem value="floating">
+                      Floating (Chassis)
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="strict">Strict (RJ45 Port)</DropdownMenuRadioItem>
+                  </DropdownMenuRadioGroup>
+
+                  <DropdownMenuSeparator />
+
+                  <DropdownMenuLabel className="text-xs text-muted-foreground uppercase">
+                    Line Style
+                  </DropdownMenuLabel>
+                  <DropdownMenuRadioGroup
+                    value={edgePreferences.lineStyle}
+                    onValueChange={(v: string) => handlePrefChange('lineStyle', v)}
+                  >
+                    <DropdownMenuRadioItem value="bezier">Bezier (Curve)</DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="step">Step (Orthogonal)</DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="straight">
+                      Straight (Linear)
+                    </DropdownMenuRadioItem>
+                  </DropdownMenuRadioGroup>
+
+                  <DropdownMenuSeparator />
+
                   <DropdownMenuItem
-                    key={key}
-                    onClick={(e) => {
+                    onClick={e => {
                       e.preventDefault();
-                      handlePrefChange(key, !visualPreferences[key as keyof typeof visualPreferences] as any);
+                      handlePrefChange(
+                        'ignoreNetworkLoops',
+                        !edgePreferences.ignoreNetworkLoops as any,
+                      );
                     }}
                     className="flex items-center justify-between cursor-pointer"
                   >
-                    <span>{label}</span>
+                    <span>Ignore Network Loops</span>
                     <input
                       type="checkbox"
-                      checked={Boolean(visualPreferences[key as keyof typeof visualPreferences])}
+                      checked={edgePreferences.ignoreNetworkLoops}
                       readOnly
                       className="pointer-events-none"
                     />
                   </DropdownMenuItem>
-                ))}
-                <div className="px-2 py-2 space-y-1">
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>Zone opacity</span>
-                    <span>{Math.round(visualPreferences.zoneOpacity * 100)}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0.2"
-                    max="1"
-                    step="0.05"
-                    value={visualPreferences.zoneOpacity}
-                    onChange={e => handlePrefChange('zoneOpacity', Number(e.target.value))}
-                    className="w-full accent-primary"
-                  />
-                </div>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </Panel>
 
-                <DropdownMenuSeparator />
+            <Panel position="top-right" className="tour-properties">
+              {selectedNodeId && <NodePropertiesPanel />}
+            </Panel>
 
-                <DropdownMenuLabel className="text-xs text-muted-foreground uppercase">
-                  Pathing AI
-                </DropdownMenuLabel>
-                <DropdownMenuRadioGroup
-                  value={edgePreferences.routingEngine}
-                  onValueChange={(v: string) => handlePrefChange('routingEngine', v)}
-                >
-                  <DropdownMenuRadioItem value="smart">Smart (Avoids Nodes)</DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="direct">Direct (Flyover)</DropdownMenuRadioItem>
-                </DropdownMenuRadioGroup>
-
-                <DropdownMenuSeparator />
-
-                <DropdownMenuLabel className="text-xs text-muted-foreground uppercase">
-                  Connection Pins
-                </DropdownMenuLabel>
-                <DropdownMenuRadioGroup
-                  value={edgePreferences.connectionStyle}
-                  onValueChange={(v: string) => handlePrefChange('connectionStyle', v)}
-                >
-                  <DropdownMenuRadioItem value="floating">Floating (Chassis)</DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="strict">Strict (RJ45 Port)</DropdownMenuRadioItem>
-                </DropdownMenuRadioGroup>
-
-                <DropdownMenuSeparator />
-
-                <DropdownMenuLabel className="text-xs text-muted-foreground uppercase">
-                  Line Style
-                </DropdownMenuLabel>
-                <DropdownMenuRadioGroup
-                  value={edgePreferences.lineStyle}
-                  onValueChange={(v: string) => handlePrefChange('lineStyle', v)}
-                >
-                  <DropdownMenuRadioItem value="bezier">Bezier (Curve)</DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="step">Step (Orthogonal)</DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="straight">Straight (Linear)</DropdownMenuRadioItem>
-                </DropdownMenuRadioGroup>
-
-                <DropdownMenuSeparator />
-
-                <DropdownMenuItem
-                  onClick={(e) => {
-                    e.preventDefault();
-                    handlePrefChange('ignoreNetworkLoops', !edgePreferences.ignoreNetworkLoops as any);
-                  }}
-                  className="flex items-center justify-between cursor-pointer"
-                >
-                  <span>Ignore Network Loops</span>
-                  <input
-                    type="checkbox"
-                    checked={edgePreferences.ignoreNetworkLoops}
-                    readOnly
-                    className="pointer-events-none"
-                  />
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </Panel>
-
-          <Panel position="top-right" className="tour-properties">
-            {selectedNodeId && <NodePropertiesPanel />}
-          </Panel>
-
-          <ShortcutHints />
-          <LiveResourceDashboard />
-        </ReactFlow>
+            <ShortcutHints />
+            <LiveResourceDashboard />
+          </ReactFlow>
+        </div>
       </div>
     </div>
   );
-})
+});
 
 export default function VisualBuilderPage() {
   const { id } = useParams<{ id: string }>();

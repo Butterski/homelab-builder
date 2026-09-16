@@ -2,6 +2,9 @@ package services
 
 import (
 	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -45,13 +48,14 @@ func TestBuildService_Update(t *testing.T) {
 	user := models.User{Email: uuid.NewString() + "@t.com"}
 	tx.Create(&user)
 
-	build, _ := svc.Create(user.ID, SyncGraphInput{Name: "B1", Nodes: []NodeDTO{{ID: "n1", Name: "A", Details: map[string]any{"model": "R1"}}}})
+	build, _ := svc.Create(user.ID, SyncGraphInput{Name: "B1", Nodes: []NodeDTO{{ID: "n1", Type: "server", Name: "A", Details: map[string]any{"model": "R1"}}}})
 
 	_, err := svc.Update(build.ID, user.ID, SyncGraphInput{
-		Name: "Updated",
+		Name:     "Updated",
+		Revision: build.Revision,
 		Nodes: []NodeDTO{
-			{ID: build.Nodes[0].ID.String(), Name: "A-Updated", Details: map[string]any{"model": "R2"}}, // Keep ID
-			{ID: "n2", Name: "B"}, // New
+			{ID: build.Nodes[0].ID.String(), Type: "server", Name: "A-Updated", Details: map[string]any{"model": "R2"}}, // Keep ID
+			{ID: "n2", Type: "server", Name: "B"}, // New
 		},
 	})
 	if err != nil {
@@ -88,6 +92,7 @@ func TestBuildService_Duplicate(t *testing.T) {
 		Name: "Original",
 		Nodes: []NodeDTO{{
 			ID:   "n1",
+			Type: "server",
 			Name: "R1",
 			VMs:  []VMDTO{{ID: "v1", Name: "VM1"}},
 		}},
@@ -148,7 +153,8 @@ func TestBuildService_Update_InvalidEdgeReferenceRollsBack(t *testing.T) {
 	}
 
 	_, err = svc.Update(initial.ID, user.ID, SyncGraphInput{
-		Name: "Should Fail",
+		Name:     "Should Fail",
+		Revision: initial.Revision,
 		Nodes: []NodeDTO{
 			{ID: "router-1", Type: "router", Name: "Router Updated"},
 		},
@@ -266,7 +272,8 @@ func TestBuildService_Update_PowerDraw(t *testing.T) {
 
 	// Update Build with new node and new power
 	updatedBuild, err := svc.Update(build.ID, user.ID, SyncGraphInput{
-		Name: "Power Update Build",
+		Name:     "Power Update Build",
+		Revision: build.Revision,
 		Nodes: []NodeDTO{
 			{ID: "n1", Type: "server", Name: "Server Updated", PowerDraw: 150.0},
 			{ID: "n2", Type: "switch", Name: "Switch New", PowerDraw: 40.0},
@@ -319,8 +326,9 @@ func TestBuildService_MultipleEmptyShareTokens(t *testing.T) {
 
 	// Update build 1 - this triggers tx.Save which previously crashed on empty string ShareToken index violation
 	_, err = svc.Update(build1.ID, user1.ID, SyncGraphInput{
-		Name:  "Project One Updated",
-		Nodes: []NodeDTO{{ID: build1.Nodes[0].ID.String(), Type: "server", Name: "Server 1"}},
+		Name:     "Project One Updated",
+		Revision: build1.Revision,
+		Nodes:    []NodeDTO{{ID: build1.Nodes[0].ID.String(), Type: "server", Name: "Server 1"}},
 	})
 	if err != nil {
 		t.Fatalf("Update build1 failed: %v", err)
@@ -328,8 +336,9 @@ func TestBuildService_MultipleEmptyShareTokens(t *testing.T) {
 
 	// Update build 2 - ensure it updates without errors too
 	_, err = svc.Update(build2.ID, user2.ID, SyncGraphInput{
-		Name:  "Project Two Updated",
-		Nodes: []NodeDTO{{ID: build2.Nodes[0].ID.String(), Type: "server", Name: "Server 2"}},
+		Name:     "Project Two Updated",
+		Revision: build2.Revision,
+		Nodes:    []NodeDTO{{ID: build2.Nodes[0].ID.String(), Type: "server", Name: "Server 2"}},
 	})
 	if err != nil {
 		t.Fatalf("Update build2 failed: %v", err)
@@ -401,5 +410,105 @@ func TestBuildService_RackNodeSaving(t *testing.T) {
 
 	if serverNode.ParentID == nil || *serverNode.ParentID != rackNode.ID {
 		t.Errorf("server parent ID expected %s, got %v", rackNode.ID, serverNode.ParentID)
+	}
+}
+
+func TestValidateTopologyRules(t *testing.T) {
+	router := NodeDTO{ID: "router", Type: "router"}
+	switchOne := NodeDTO{ID: "switch-1", Type: "switch"}
+	switchTwo := NodeDTO{ID: "switch-2", Type: "switch"}
+	server := NodeDTO{ID: "server", Type: "server"}
+	nas := NodeDTO{ID: "nas", Type: "nas"}
+
+	tests := []struct {
+		name  string
+		nodes []NodeDTO
+		edges []EdgeDTO
+	}{
+		{"self connection", []NodeDTO{router}, []EdgeDTO{{Source: "router", Target: "router"}}},
+		{"duplicate pair", []NodeDTO{router, switchOne}, []EdgeDTO{{Source: "router", Target: "switch-1"}, {Source: "switch-1", Target: "router"}}},
+		{"reused port", []NodeDTO{router, switchOne, switchTwo}, []EdgeDTO{{Source: "router", SourceHandle: "eth1", Target: "switch-1"}, {Source: "router", SourceHandle: "eth1", Target: "switch-2"}}},
+		{"direct endpoint link", []NodeDTO{server, nas}, []EdgeDTO{{Source: "server", Target: "nas"}}},
+		{"wireless without radio endpoint", []NodeDTO{router, switchOne}, []EdgeDTO{{Source: "router", Target: "switch-1", Type: "wireless"}}},
+		{"unsupported node type", []NodeDTO{{ID: "unknown", Type: "banana"}}, nil},
+		{"service on non-compute node", []NodeDTO{{ID: "switch", Type: "switch", VMs: []VMDTO{{ID: "service"}}}}, nil},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if err := validateEdgeEndpoints(test.nodes, test.edges); !errors.Is(err, ErrInvalidTopology) {
+				t.Fatalf("expected ErrInvalidTopology, got %v", err)
+			}
+		})
+	}
+
+	validEdges := []EdgeDTO{
+		{Source: "router", SourceHandle: "eth1", Target: "switch-1", TargetHandle: "eth0"},
+		{Source: "switch-1", SourceHandle: "eth1", Target: "server", TargetHandle: "eth0"},
+	}
+	if err := validateEdgeEndpoints([]NodeDTO{router, switchOne, server}, validEdges); err != nil {
+		t.Fatalf("expected valid topology, got %v", err)
+	}
+}
+
+func TestBuildService_RenamePreservesTopologyAndRejectsStaleRevision(t *testing.T) {
+	tx := testTx(t)
+	svc := NewBuildService(tx)
+	user := models.User{Email: uuid.NewString() + "@t.com", GoogleID: uuid.NewString()}
+	if err := tx.Create(&user).Error; err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	build, err := svc.Create(user.ID, SyncGraphInput{
+		Name:  "Before",
+		Nodes: []NodeDTO{{ID: "router", Type: "router", Name: "Router"}},
+	})
+	if err != nil {
+		t.Fatalf("create build: %v", err)
+	}
+
+	renamed, err := svc.Rename(build.ID, user.ID, "After", build.Revision)
+	if err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+	if renamed.Name != "After" || len(renamed.Nodes) != 1 || renamed.Revision != build.Revision+1 {
+		t.Fatalf("rename changed unexpected state: name=%q nodes=%d revision=%d", renamed.Name, len(renamed.Nodes), renamed.Revision)
+	}
+	if _, err := svc.Rename(build.ID, user.ID, "Stale", build.Revision); !errors.Is(err, ErrBuildRevisionConflict) {
+		t.Fatalf("expected revision conflict, got %v", err)
+	}
+}
+
+func TestBuildService_UpdateAndCalculateRollsBackWhenIPAMFails(t *testing.T) {
+	tx := testTx(t)
+	buildSvc := NewBuildService(tx)
+	user := models.User{Email: uuid.NewString() + "@atomic.test", GoogleID: uuid.NewString()}
+	if err := tx.Create(&user).Error; err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	build, err := buildSvc.Create(user.ID, SyncGraphInput{Name: "Before"})
+	if err != nil {
+		t.Fatalf("create build: %v", err)
+	}
+
+	ipam := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "allocation unavailable", http.StatusServiceUnavailable)
+	}))
+	defer ipam.Close()
+	ipService := &IPService{db: tx, client: ipam.Client(), ipamURL: ipam.URL}
+
+	_, err = buildSvc.UpdateAndCalculate(build.ID, user.ID, SyncGraphInput{
+		Name:     "Should Roll Back",
+		Revision: build.Revision,
+		Nodes:    []NodeDTO{{ID: "router", Type: "router", Name: "Router"}},
+	}, ipService)
+	if err == nil {
+		t.Fatal("expected IPAM failure")
+	}
+
+	reloaded, err := buildSvc.GetByID(build.ID)
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if reloaded.Name != "Before" || reloaded.Revision != build.Revision || len(reloaded.Nodes) != 0 {
+		t.Fatalf("failed topology update was partially committed: name=%q revision=%d nodes=%d", reloaded.Name, reloaded.Revision, len(reloaded.Nodes))
 	}
 }

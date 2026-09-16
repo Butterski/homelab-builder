@@ -363,13 +363,7 @@ func (s *IPService) CalculateNetwork(buildID uuid.UUID) error {
 		for _, n := range nodes {
 			nid := n.ID.String()
 			details := detailsByID[nid]
-			vms := make([]ipamVM, 0, len(n.VirtualMachines))
-			for _, vm := range n.VirtualMachines {
-				vms = append(vms, ipamVM{
-					ID:         vm.ID.String(),
-					ExistingIP: vm.IP,
-				})
-			}
+			vms := virtualIPAMGuests(n)
 
 			existingIP := ""
 
@@ -511,8 +505,16 @@ func (s *IPService) CalculateNetwork(buildID uuid.UUID) error {
 			}
 			for j := range nodes[i].VirtualMachines {
 				vmid := nodes[i].VirtualMachines[j].ID.String()
-				if ip, ok := vmIPByID[vmid]; ok {
-					nodes[i].VirtualMachines[j].IP = ip
+				nodes[i].VirtualMachines[j].IP = vmIPByID[vmid]
+			}
+			network, _ := readVirtualNetwork(nodes[i].Details)
+			if network != nil {
+				reached := virtualReachable(network)
+				for _, vm := range nodes[i].VirtualMachines {
+					requested := requestedVMIP(vm)
+					if reached[vm.ID.String()] && nodes[i].IP != "" && requested != "" && vm.IP != requested {
+						return fmt.Errorf("%w: requested IP %s for %s is unavailable or outside the host subnet", ErrInvalidTopology, requested, vm.Name)
+					}
 				}
 			}
 
@@ -528,6 +530,15 @@ func (s *IPService) CalculateNetwork(buildID uuid.UUID) error {
 
 		return nil
 	})
+}
+
+// CalculateNetworkInTransaction participates in an existing topology mutation.
+// GORM implements the nested Transaction call as a savepoint, so any IPAM or
+// persistence failure rolls the entire graph revision back.
+func (s *IPService) CalculateNetworkInTransaction(tx *gorm.DB, buildID uuid.UUID) error {
+	scoped := *s
+	scoped.db = tx
+	return scoped.CalculateNetwork(buildID)
 }
 
 // callIPAM sends a topology to the hlbIPAM /allocate endpoint and returns the result.
@@ -726,13 +737,7 @@ func (s *IPService) ValidateNetwork(buildID uuid.UUID) (json.RawMessage, error) 
 			})
 		}
 
-		vms := make([]ipamVM, 0, len(n.VirtualMachines))
-		for _, vm := range n.VirtualMachines {
-			vms = append(vms, ipamVM{
-				ID:         vm.ID.String(),
-				ExistingIP: vm.IP,
-			})
-		}
+		vms := virtualIPAMGuests(n)
 
 		existingIP := ""
 		if nonNetworkTypes[n.Type] {

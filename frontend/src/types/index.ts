@@ -146,6 +146,7 @@ export type HardwareType =
   | 'rack';
 
 export interface HardwareSpec {
+  virtual_network?: VirtualNetwork;
   model?: string;
   cpu?: string | number;
   cpu_cores?: number;
@@ -159,8 +160,8 @@ export interface HardwareSpec {
   blueprint_visibility?: string;
   dhcp_enabled?: boolean;
   dhcp_locked?: boolean;
-  rack_size?: number;     // Total U capacity of a rack (e.g. 24, 42)
-  rack_units?: number;    // How many U this device occupies (e.g. 1, 2, 4)
+  rack_size?: number; // Total U capacity of a rack (e.g. 24, 42)
+  rack_units?: number; // How many U this device occupies (e.g. 1, 2, 4)
   rack_position?: number; // U-slot position within the rack (0-indexed from top)
   server_profile?: string;
   hypervisor_enabled?: boolean;
@@ -187,12 +188,19 @@ export interface HardwareSpec {
 
 export type VMType = 'vm' | 'container' | 'lxc';
 
+export interface VirtualNetwork {
+  switches: Array<{ id: string; name: string; x: number; y: number }>;
+  positions: Record<string, { x: number; y: number }>;
+  edges: Array<{ id: string; source: string; target: string }>;
+}
+
 export interface VirtualMachine {
   id: string;
   name: string;
   type: VMType;
   ip?: string;
   mac_address?: string;
+  details?: Record<string, unknown>;
   os?: string; // e.g. "Ubuntu 22.04", "Alpine Linux"
   cpu_cores?: number;
   ram_mb?: number;

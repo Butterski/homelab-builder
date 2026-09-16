@@ -3,6 +3,7 @@ package core
 import (
 	"fmt"
 	"net"
+	"sort"
 	"strings"
 
 	"github.com/Butterski/hlbipam/internal/models"
@@ -25,288 +26,367 @@ func mergeZones(custom map[string]models.ZoneOverride) map[string]ZoneConfig {
 	return zones
 }
 
+type allocationDomain struct {
+	key         string
+	routerIDs   []string
+	nodeIndexes []int
+	allocator   *SubnetAllocator
+	owners      map[uint32]string
+}
+
 func Allocate(req models.AllocateRequest) models.AllocateResponse {
 	resp := models.AllocateResponse{
 		Conflicts: make([]models.Issue, 0),
 		Warnings:  make([]models.Issue, 0),
+		Nodes:     make([]models.NodeResult, len(req.Nodes)),
+		Routers:   make([]models.RouterResult, len(req.Routers)),
 	}
-
-	zones := mergeZones(req.CustomZones)
-	totalNodes := len(req.Nodes)
-
-	type nodeEntry struct {
-		dto *models.NodeDTO
-		idx int
-	}
-	nodeIndex := make(map[string]nodeEntry, totalNodes)
 	for i := range req.Nodes {
-		nodeIndex[req.Nodes[i].ID] = nodeEntry{dto: &req.Nodes[i], idx: i}
-	}
-
-	adj := make(map[string][]string, totalNodes)
-	isRouter := make(map[string]bool, len(req.Routers))
-	for i := range req.Routers {
-		isRouter[req.Routers[i].ID] = true
-	}
-
-	for i := range req.Nodes {
-		n := &req.Nodes[i]
-		adj[n.ID] = n.Connections
-		for _, neighbor := range n.Connections {
-			if isRouter[neighbor] {
-				adj[neighbor] = append(adj[neighbor], n.ID)
-			}
-		}
-	}
-
-	for i := range req.Routers {
-		r := &req.Routers[i]
-		if r.GatewayIP == "" {
-			r.GatewayIP = fmt.Sprintf("192.168.%d.1", i+1)
-		}
-		if r.Subnet == "" {
-			r.Subnet = fmt.Sprintf("%s/24", r.GatewayIP)
-		}
-	}
-
-	type preReserve struct {
-		ipUint uint32
-	}
-	var preReserves []preReserve
-	for i := range req.Nodes {
-		n := &req.Nodes[i]
-		if n.ExistingIP != "" && utils.IsValidIPv4(n.ExistingIP) {
-			preReserves = append(preReserves, preReserve{ipUint: utils.IPToUint32(net.ParseIP(n.ExistingIP))})
-		}
-		for j := range n.VMs {
-			vm := &n.VMs[j]
-			if vm.ExistingIP != "" && utils.IsValidIPv4(vm.ExistingIP) {
-				preReserves = append(preReserves, preReserve{ipUint: utils.IPToUint32(net.ParseIP(vm.ExistingIP))})
-			}
-		}
-	}
-
-	visited := make(map[string]bool, totalNodes+len(req.Routers))
-
-	natOwnerID := func(routerID string) string {
-		return strings.TrimSuffix(routerID, ":lan")
-	}
-	isSyntheticNATRouter := func(routerID string) bool {
-		return strings.HasSuffix(routerID, ":lan")
-	}
-
-	results := make([]models.NodeResult, totalNodes)
-	for i := range req.Nodes {
-		results[i] = models.NodeResult{
+		resp.Nodes[i] = models.NodeResult{
 			ID:   req.Nodes[i].ID,
 			Type: req.Nodes[i].Type,
 			VMs:  make([]models.VMResult, len(req.Nodes[i].VMs)),
 		}
 		for j := range req.Nodes[i].VMs {
-			results[i].VMs[j].ID = req.Nodes[i].VMs[j].ID
+			resp.Nodes[i].VMs[j].ID = req.Nodes[i].VMs[j].ID
 		}
 	}
 
-	routerResults := make([]models.RouterResult, len(req.Routers))
+	if len(req.Routers) == 0 {
+		resp.Conflicts = append(resp.Conflicts, models.Issue{Message: "topology requires at least one router"})
+		return resp
+	}
+
+	zones := mergeZones(req.CustomZones)
+	routerIndex := make(map[string]int, len(req.Routers))
+	routerDomain := make([]string, len(req.Routers))
+	domainDHCP := make(map[string]bool)
+	globalGateways := make(map[string]string)
+
 	for i := range req.Routers {
-		routerResults[i] = models.RouterResult{
-			ID:        req.Routers[i].ID,
-			GatewayIP: req.Routers[i].GatewayIP,
-			Subnet:    req.Routers[i].Subnet,
+		r := &req.Routers[i]
+		defaultGateway := fmt.Sprintf("192.168.%d.1", i+1)
+		if r.GatewayIP == "" {
+			r.GatewayIP = defaultGateway
+		} else if !utils.IsValidIPv4(r.GatewayIP) {
+			resp.Conflicts = append(resp.Conflicts, models.Issue{NodeID: r.ID, Message: fmt.Sprintf("invalid gateway IPv4 address %q; using %s", r.GatewayIP, defaultGateway)})
+			r.GatewayIP = defaultGateway
+		}
+		if r.Subnet == "" {
+			r.Subnet = r.GatewayIP + "/24"
+		}
+
+		network, capacity, mask, err := utils.ParseCIDR(r.Subnet)
+		gateway := utils.IPToUint32(net.ParseIP(r.GatewayIP))
+		if err != nil || capacity <= 1 || gateway <= network || gateway >= network+capacity {
+			resp.Conflicts = append(resp.Conflicts, models.Issue{NodeID: r.ID, Message: fmt.Sprintf("gateway %s is not a usable address in subnet %s; using its /24", r.GatewayIP, r.Subnet)})
+			r.Subnet = r.GatewayIP + "/24"
+			network, capacity, mask, _ = utils.ParseCIDR(r.Subnet)
+		}
+
+		key := fmt.Sprintf("%08x/%08x", network, mask)
+		routerDomain[i] = key
+		domainDHCP[key] = domainDHCP[key] || r.DHCPEnabled
+		routerIndex[r.ID] = i
+		resp.Routers[i] = models.RouterResult{ID: r.ID, GatewayIP: r.GatewayIP, Subnet: r.Subnet}
+
+		if owner, exists := globalGateways[r.GatewayIP]; exists {
+			resp.Conflicts = append(resp.Conflicts, models.Issue{NodeID: r.ID, Message: fmt.Sprintf("gateway IP %s conflicts with %s", r.GatewayIP, owner)})
+		} else {
+			globalGateways[r.GatewayIP] = r.ID
 		}
 	}
 
+	nodeIndex := make(map[string]int, len(req.Nodes))
+	adjacency := make(map[string][]string, len(req.Nodes)+len(req.Routers))
+	for i := range req.Nodes {
+		n := &req.Nodes[i]
+		nodeIndex[n.ID] = i
+		if _, exists := adjacency[n.ID]; !exists {
+			adjacency[n.ID] = nil
+		}
+		for _, neighbor := range n.Connections {
+			adjacency[n.ID] = appendUnique(adjacency[n.ID], neighbor)
+			adjacency[neighbor] = appendUnique(adjacency[neighbor], n.ID)
+		}
+	}
+
+	ownerRouter := make(map[string]int, len(req.Nodes))
 	for ri := range req.Routers {
-		r := &req.Routers[ri]
-		if visited[r.ID] {
+		routerID := req.Routers[ri].ID
+		seen := map[string]bool{routerID: true}
+		queue := []string{routerID}
+		for len(queue) > 0 {
+			current := queue[0]
+			queue = queue[1:]
+			for _, neighbor := range adjacency[current] {
+				if seen[neighbor] || skipNATBoundary(routerID, current, neighbor) {
+					continue
+				}
+				seen[neighbor] = true
+				if _, isRouter := routerIndex[neighbor]; isRouter {
+					continue
+				}
+				idx, isNode := nodeIndex[neighbor]
+				if !isNode {
+					continue
+				}
+				if _, owned := ownerRouter[neighbor]; !owned {
+					ownerRouter[neighbor] = ri
+				}
+				if !NonNetworkTypes[req.Nodes[idx].Type] {
+					queue = append(queue, neighbor)
+				}
+			}
+		}
+	}
+
+	domainByKey := make(map[string]*allocationDomain)
+	domainOrder := make([]string, 0, len(req.Routers))
+	for ri := range req.Routers {
+		key := routerDomain[ri]
+		domain, exists := domainByKey[key]
+		if !exists {
+			r := req.Routers[ri]
+			sa := NewSubnetAllocator(r.Subnet, r.GatewayIP, zones, domainDHCP[key])
+			domain = &allocationDomain{
+				key:       key,
+				allocator: sa,
+				owners: map[uint32]string{
+					sa.Network:               "network address",
+					sa.Network + sa.Capacity: "broadcast address",
+				},
+			}
+			domainByKey[key] = domain
+			domainOrder = append(domainOrder, key)
+		}
+		domain.routerIDs = append(domain.routerIDs, req.Routers[ri].ID)
+		gateway := utils.IPToUint32(net.ParseIP(req.Routers[ri].GatewayIP))
+		if previous, exists := domain.owners[gateway]; exists {
+			resp.Conflicts = append(resp.Conflicts, models.Issue{NodeID: req.Routers[ri].ID, Message: fmt.Sprintf("gateway IP %s conflicts with %s", req.Routers[ri].GatewayIP, previous)})
+		} else {
+			domain.allocator.Used[gateway] = true
+			domain.owners[gateway] = req.Routers[ri].ID
+		}
+	}
+	for i := range req.Nodes {
+		ri, reachable := ownerRouter[req.Nodes[i].ID]
+		if !reachable {
+			_, declaredRouter := routerIndex[req.Nodes[i].ID]
+			if req.Nodes[i].Type != "router" && !declaredRouter && !NonNetworkTypes[req.Nodes[i].Type] {
+				resp.Warnings = append(resp.Warnings, models.Issue{NodeID: req.Nodes[i].ID, Message: "node is not reachable from a router"})
+			}
 			continue
 		}
-		visited[r.ID] = true
+		domainByKey[routerDomain[ri]].nodeIndexes = append(domainByKey[routerDomain[ri]].nodeIndexes, i)
+	}
 
-		vmHostCount := 0
-		for i := range req.Nodes {
-			n := &req.Nodes[i]
-			if NonNetworkTypes[n.Type] {
-				continue
-			}
-			zone := GetZone(n.Type, zones)
-			if zone.CanHostVMs {
-				vmHostCount++
-			}
+	for _, key := range domainOrder {
+		allocateDomain(domainByKey[key], req.Nodes, zones, &resp)
+	}
+
+	return resp
+}
+
+func allocateDomain(domain *allocationDomain, nodes []models.NodeDTO, zones map[string]ZoneConfig, resp *models.AllocateResponse) {
+	sa := domain.allocator
+	hostCount := 0
+	for _, idx := range domain.nodeIndexes {
+		if !NonNetworkTypes[nodes[idx].Type] && GetZone(nodes[idx].Type, zones).CanHostVMs {
+			hostCount++
 		}
+	}
 
-		sa := NewSubnetAllocator(r.Subnet, r.GatewayIP, zones, r.DHCPEnabled)
-
-		dhcpReserved := uint32(0)
-		if r.DHCPEnabled {
-			dhcpReserved = sa.DHCPEnd - sa.DHCPStart + 1
+	dhcpReserved := uint32(0)
+	if sa.DHCPStart != 0 {
+		dhcpReserved = sa.DHCPEnd - sa.DHCPStart + 1
+	}
+	dynamicStep := CalculateDynamicStep(hostCount, sa.Capacity, dhcpReserved)
+	domainZones := make(map[string]ZoneConfig, len(zones))
+	for kind, zone := range zones {
+		if zone.CanHostVMs {
+			zone.Step = dynamicStep
 		}
-		dynamicStep := CalculateDynamicStep(vmHostCount, sa.Capacity, dhcpReserved)
+		domainZones[kind] = zone
+	}
+	sa.Zones = domainZones
 
-		subnetZones := make(map[string]ZoneConfig)
-		for t, z := range zones {
-			if z.CanHostVMs {
-				z.Step = dynamicStep
-			}
-			subnetZones[t] = z
+	acceptedExisting := make(map[string]uint32)
+	for _, idx := range domain.nodeIndexes {
+		node := &nodes[idx]
+		if NonNetworkTypes[node.Type] {
+			continue
 		}
-		sa.Zones = subnetZones
-
-		for _, pr := range preReserves {
-			if pr.ipUint >= sa.Network && pr.ipUint <= sa.Network+sa.Capacity {
-				sa.Reserve(pr.ipUint)
-			}
+		preReserveExisting(node.ID, node.ExistingIP, sa, domain.owners, acceptedExisting, resp)
+		for i := range node.VMs {
+			preReserveExisting(node.VMs[i].ID, node.VMs[i].ExistingIP, sa, domain.owners, acceptedExisting, resp)
 		}
+	}
 
-		type pendingNode struct {
-			entry nodeEntry
-			dto   *models.NodeDTO
+	infra := make([]int, 0)
+	hostByType := make(map[string][]int)
+	for _, idx := range domain.nodeIndexes {
+		node := &nodes[idx]
+		if NonNetworkTypes[node.Type] {
+			continue
 		}
-		var infraNodes []pendingNode
-		vmHostsByType := make(map[string][]pendingNode)
-
-		queue := make([]string, 0, totalNodes)
-		queue = append(queue, r.ID)
-
-		routerSubnet := make(map[string]int)
-		for idx, rr := range req.Routers {
-			routerSubnet[rr.ID] = idx
-		}
-
-		for len(queue) > 0 {
-			cur := queue[0]
-			queue = queue[1:]
-
-			for _, neighborID := range adj[cur] {
-				if isSyntheticNATRouter(r.ID) && neighborID == natOwnerID(r.ID) {
-					continue
-				}
-				if cur == natOwnerID(neighborID) && isSyntheticNATRouter(neighborID) {
-					continue
-				}
-				if visited[neighborID] {
-					continue
-				}
-				visited[neighborID] = true
-
-				if _, isRtr := routerSubnet[neighborID]; isRtr {
-					queue = append(queue, neighborID)
-					continue
-				}
-
-				entry, ok := nodeIndex[neighborID]
-				if !ok {
-					queue = append(queue, neighborID)
-					continue
-				}
-				n := entry.dto
-				queue = append(queue, neighborID)
-
-				if NonNetworkTypes[n.Type] {
-					continue
-				}
-
-				zone := GetZone(n.Type, sa.Zones)
-				pn := pendingNode{entry: entry, dto: n}
-				if cur != r.ID && len(n.Connections) == 1 && n.Connections[0] == r.ID && zone.CanHostVMs {
-					continue
-				}
-				if zone.CanHostVMs {
-					vmHostsByType[n.Type] = append(vmHostsByType[n.Type], pn)
-				} else {
-					infraNodes = append(infraNodes, pn)
-				}
-			}
-		}
-
-		for _, pn := range infraNodes {
-			n := pn.dto
-			res := &results[pn.entry.idx]
-			zone := GetZone(n.Type, sa.Zones)
-
-			if n.ExistingIP != "" && utils.IsValidIPv4(n.ExistingIP) {
-				res.AssignedIP = n.ExistingIP
-				sa.Reserve(utils.IPToUint32(net.ParseIP(n.ExistingIP)))
-			} else {
-				ip := sa.AllocateSlot(zone.BaseOffset)
-				if ip == 0 {
-					resp.Warnings = append(resp.Warnings, models.Issue{
-						NodeID:  n.ID,
-						Message: fmt.Sprintf("subnet exhausted for infra type %q", n.Type),
-					})
-					continue
-				}
-				res.AssignedIP = sa.FormatIP(ip)
-				sa.Reserve(ip)
-			}
-		}
-
-		nextZoneStart := sa.Network + uint32(VMHostStartOffset)
-		if r.DHCPEnabled && nextZoneStart >= sa.DHCPStart && nextZoneStart <= sa.DHCPEnd {
-			nextZoneStart = sa.DHCPEnd + 1
-		}
-
-		for _, typeName := range VMHostTypeOrder {
-			hosts, exists := vmHostsByType[typeName]
-			if !exists || len(hosts) == 0 {
-				continue
-			}
-
-			zone := GetZone(typeName, sa.Zones)
-
-			for _, pn := range hosts {
-				n := pn.dto
-				res := &results[pn.entry.idx]
-
-				var hostIP uint32
-
-				if n.ExistingIP != "" && utils.IsValidIPv4(n.ExistingIP) {
-					res.AssignedIP = n.ExistingIP
-					hostIP = utils.IPToUint32(net.ParseIP(n.ExistingIP))
-					sa.Reserve(hostIP)
-				} else {
-					hostIP = sa.AllocateSlot(int(nextZoneStart - sa.Network))
-					if hostIP == 0 {
-						resp.Warnings = append(resp.Warnings, models.Issue{
-							NodeID:  n.ID,
-							Message: fmt.Sprintf("subnet exhausted for VM host type %q", n.Type),
-						})
-						continue
-					}
-					res.AssignedIP = sa.FormatIP(hostIP)
-					sa.Reserve(hostIP)
-				}
-
-				if zone.CanHostVMs && len(n.VMs) > 0 {
-					for j := range n.VMs {
-						vm := &n.VMs[j]
-						if vm.ExistingIP != "" && utils.IsValidIPv4(vm.ExistingIP) {
-							res.VMs[j].AssignedIP = vm.ExistingIP
-							sa.Reserve(utils.IPToUint32(net.ParseIP(vm.ExistingIP)))
-						} else {
-							vmIP := sa.AllocateSlot(int(hostIP - sa.Network + 1))
-							if vmIP != 0 {
-								res.VMs[j].AssignedIP = sa.FormatIP(vmIP)
-								sa.Reserve(vmIP)
-							} else {
-								resp.Warnings = append(resp.Warnings, models.Issue{
-									NodeID:  vm.ID,
-									Message: "exhausted IP space for VM",
-								})
-							}
-						}
-					}
-				}
-
-				// SEAL the block
-				for k := 1; k < zone.Step; k++ {
-					sa.Reserve(hostIP + uint32(k))
-				}
+		zone := GetZone(node.Type, domainZones)
+		if zone.CanHostVMs {
+			hostByType[node.Type] = append(hostByType[node.Type], idx)
+		} else {
+			infra = append(infra, idx)
+			if len(node.VMs) > 0 {
+				resp.Conflicts = append(resp.Conflicts, models.Issue{NodeID: node.ID, Message: fmt.Sprintf("%s nodes cannot host virtual machines or services", node.Type)})
 			}
 		}
 	}
 
-	resp.Routers = routerResults
-	resp.Nodes = results
-	return resp
+	for _, idx := range infra {
+		node := &nodes[idx]
+		result := &resp.Nodes[idx]
+		if ip, ok := acceptedExisting[node.ID]; ok {
+			result.AssignedIP = sa.FormatIP(ip)
+			continue
+		}
+		zone := GetZone(node.Type, domainZones)
+		ip := sa.AllocateSlot(zone.BaseOffset)
+		if ip == 0 {
+			resp.Warnings = append(resp.Warnings, models.Issue{NodeID: node.ID, Message: fmt.Sprintf("subnet exhausted for infrastructure type %q", node.Type)})
+			continue
+		}
+		sa.Used[ip] = true
+		domain.owners[ip] = node.ID
+		result.AssignedIP = sa.FormatIP(ip)
+	}
+
+	orderedTypes := append([]string(nil), VMHostTypeOrder...)
+	known := make(map[string]bool, len(orderedTypes))
+	for _, kind := range orderedTypes {
+		known[kind] = true
+	}
+	var extraTypes []string
+	for kind := range hostByType {
+		if !known[kind] {
+			extraTypes = append(extraTypes, kind)
+		}
+	}
+	sort.Strings(extraTypes)
+	orderedTypes = append(orderedTypes, extraTypes...)
+
+	nextOffset := VMHostStartOffset
+	if sa.IsDHCPReserved(sa.Network + uint32(nextOffset)) {
+		nextOffset = int(sa.DHCPEnd-sa.Network) + 1
+	}
+
+	for _, kind := range orderedTypes {
+		zone := GetZone(kind, domainZones)
+		for _, idx := range hostByType[kind] {
+			node := &nodes[idx]
+			result := &resp.Nodes[idx]
+			hostIP, hasExisting := acceptedExisting[node.ID]
+			if !hasExisting {
+				hostIP = sa.AllocateSlot(nextOffset)
+				if hostIP == 0 {
+					resp.Warnings = append(resp.Warnings, models.Issue{NodeID: node.ID, Message: fmt.Sprintf("subnet exhausted for VM host type %q", node.Type)})
+					continue
+				}
+				sa.Used[hostIP] = true
+				domain.owners[hostIP] = node.ID
+			}
+			result.AssignedIP = sa.FormatIP(hostIP)
+
+			blockEnd := hostIP + uint32(zone.Step) - 1
+			lastUsable := sa.Network + sa.Capacity - 1
+			if blockEnd > lastUsable || blockEnd < hostIP {
+				blockEnd = lastUsable
+			}
+			for vi := range node.VMs {
+				vm := &node.VMs[vi]
+				if ip, ok := acceptedExisting[vm.ID]; ok {
+					result.VMs[vi].AssignedIP = sa.FormatIP(ip)
+					continue
+				}
+				vmIP := allocateInRange(sa, hostIP+1, blockEnd)
+				if vmIP == 0 {
+					resp.Warnings = append(resp.Warnings, models.Issue{NodeID: vm.ID, Message: fmt.Sprintf("IP block for host %s is exhausted", node.ID)})
+					continue
+				}
+				sa.Used[vmIP] = true
+				domain.owners[vmIP] = vm.ID
+				result.VMs[vi].AssignedIP = sa.FormatIP(vmIP)
+			}
+			for ip := hostIP + 1; ip <= blockEnd && ip > hostIP; ip++ {
+				if !sa.IsDHCPReserved(ip) {
+					sa.Used[ip] = true
+				}
+			}
+			offset := int(hostIP-sa.Network) + zone.Step
+			if offset > nextOffset {
+				nextOffset = offset
+			}
+		}
+	}
+}
+
+func preReserveExisting(entityID, value string, sa *SubnetAllocator, owners map[uint32]string, accepted map[string]uint32, resp *models.AllocateResponse) {
+	if value == "" {
+		return
+	}
+	if !utils.IsValidIPv4(value) {
+		resp.Conflicts = append(resp.Conflicts, models.Issue{NodeID: entityID, Message: fmt.Sprintf("invalid IPv4 address %q; a safe address was assigned instead", value)})
+		return
+	}
+	ip := utils.IPToUint32(net.ParseIP(value))
+	if !sa.IsUsable(ip) {
+		resp.Conflicts = append(resp.Conflicts, models.Issue{NodeID: entityID, Message: fmt.Sprintf("IP %s is outside the assigned subnet; a safe address was assigned instead", value)})
+		return
+	}
+	if sa.IsDHCPReserved(ip) {
+		resp.Conflicts = append(resp.Conflicts, models.Issue{NodeID: entityID, Message: fmt.Sprintf("IP %s is inside the DHCP pool; a safe address was assigned instead", value)})
+		return
+	}
+	if owner, used := owners[ip]; used || sa.Used[ip] {
+		if owner == "" {
+			owner = "another reservation"
+		}
+		resp.Conflicts = append(resp.Conflicts, models.Issue{NodeID: entityID, Message: fmt.Sprintf("IP %s conflicts with %s; a safe address was assigned instead", value, owner)})
+		return
+	}
+	sa.Used[ip] = true
+	owners[ip] = entityID
+	accepted[entityID] = ip
+}
+
+func allocateInRange(sa *SubnetAllocator, start, end uint32) uint32 {
+	if start <= sa.Network {
+		start = sa.Network + 1
+	}
+	if sa.Capacity <= 1 {
+		return 0
+	}
+	lastUsable := sa.Network + sa.Capacity - 1
+	if end > lastUsable {
+		end = lastUsable
+	}
+	for ip := start; ip <= end && ip >= start; ip++ {
+		if sa.IsAvailable(ip) {
+			return ip
+		}
+	}
+	return 0
+}
+
+func appendUnique(values []string, value string) []string {
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+	return append(values, value)
+}
+
+func skipNATBoundary(routerID, current, neighbor string) bool {
+	return strings.HasSuffix(routerID, ":lan") &&
+		current == routerID &&
+		neighbor == strings.TrimSuffix(routerID, ":lan")
 }

@@ -13,10 +13,10 @@ help:
 	@echo "  make clean          - Clean up containers and volumes"
 
 setup:
-	docker compose up -d
+	docker compose up -d --build
 
 up:
-	docker compose up -d
+	docker compose up -d --build
 
 down:
 	docker compose down

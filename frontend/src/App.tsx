@@ -17,12 +17,13 @@ const ChecklistPage = lazy(() => import('./features/setup-guide/pages/checklist-
 const HomelabGuidePage = lazy(() => import('./features/guides/pages/homelab-guide-page'));
 const ArticleVisualPage = lazy(() => import('./features/guides/pages/article-visual-page'));
 const ConfigGeneratorPage = lazy(() => import('./features/builder/pages/config-generator-page'));
+const GuidedPlannerPage = lazy(() => import('./features/builder/pages/guided-planner-page'));
 const ProfilePage = lazy(() => import('./features/auth/pages/profile-page'));
 const DonatePage = lazy(() => import('./features/donate/pages/donate-page'));
 const PrivacyPolicyPage = lazy(() => import('./features/legal/pages/privacy-policy-page'));
 const TermsOfServicePage = lazy(() => import('./features/legal/pages/terms-of-service-page'));
 import { RequireAuth } from './components/auth/require-auth';
-import { Sidebar } from './components/layout/sidebar';
+import { MobileNavigation, Sidebar } from './components/layout/sidebar';
 import { Toaster } from './components/ui/sonner';
 import { CommandPalette } from './components/command-palette';
 
@@ -105,8 +106,13 @@ function AppContent() {
   const isArticleVisualRoute = location.pathname.startsWith('/docs/visuals/');
 
   return (
-    <div className="flex h-screen bg-background text-foreground overflow-hidden">
-      {!isLandingPage && !isSharedRoute && !isArticleVisualRoute && <Sidebar onOpenCommandPalette={() => setCommandOpen(true)} />}
+    <div className="flex h-screen flex-col bg-background text-foreground overflow-hidden md:flex-row">
+      {!isLandingPage && !isSharedRoute && !isArticleVisualRoute && (
+        <MobileNavigation onOpenCommandPalette={() => setCommandOpen(true)} />
+      )}
+      {!isLandingPage && !isSharedRoute && !isArticleVisualRoute && (
+        <Sidebar onOpenCommandPalette={() => setCommandOpen(true)} />
+      )}
       {!isLandingPage && !isSharedRoute && !isArticleVisualRoute && (
         <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} />
       )}
@@ -131,6 +137,14 @@ function AppContent() {
               element={
                 <RequireAuth>
                   <ConfigGeneratorPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/planner"
+              element={
+                <RequireAuth>
+                  <GuidedPlannerPage />
                 </RequireAuth>
               }
             />
@@ -216,7 +230,9 @@ function App() {
     return appProviders;
   }
 
-  return <GoogleOAuthProvider clientId={authConfig.google_client_id}>{appProviders}</GoogleOAuthProvider>;
+  return (
+    <GoogleOAuthProvider clientId={authConfig.google_client_id}>{appProviders}</GoogleOAuthProvider>
+  );
 }
 
 export default App;

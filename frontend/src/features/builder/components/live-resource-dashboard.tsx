@@ -134,10 +134,13 @@ export function LiveResourceDashboard() {
   };
 
   return (
-    <div className="builder-resource-dashboard absolute top-4 right-4 z-50 transition-[top,right] duration-300 pointer-events-auto" data-hide-export="true">
+    <div
+      className="builder-resource-dashboard pointer-events-auto absolute right-4 top-4 z-50 transition-[top,right] duration-300 max-md:bottom-4 max-md:top-auto"
+      data-hide-export="true"
+    >
       <Card
         className={cn(
-          `shadow-none overflow-hidden transition-[width] duration-300 bg-card ${isExpanded ? 'w-[320px]' : 'w-48'}`,
+          `overflow-hidden bg-card shadow-none transition-[width] duration-300 ${isExpanded ? 'w-[min(320px,calc(100vw-2rem))]' : 'w-48'}`,
           cardBorder,
         )}
       >
@@ -230,9 +233,7 @@ export function LiveResourceDashboard() {
                   <span className="flex items-center gap-1.5 text-muted-foreground">
                     <Activity className="size-3.5" /> Power Draw
                   </span>
-                  <span className="font-mono font-medium">
-                    {stats.totalPowerDraw} W
-                  </span>
+                  <span className="font-mono font-medium">{stats.totalPowerDraw} W</span>
                 </div>
                 <div className="flex justify-between items-center text-xs">
                   <span className="flex items-center gap-1.5 text-muted-foreground whitespace-nowrap">
@@ -246,14 +247,16 @@ export function LiveResourceDashboard() {
                       min="0"
                       className="w-16 bg-background border px-1 py-0.5 rounded text-right font-mono"
                       value={costPerKwh}
-                      onChange={(e) => setCostPerKwh(parseFloat(e.target.value) || 0)}
-                      onClick={(e) => e.stopPropagation()}
+                      onChange={e => setCostPerKwh(parseFloat(e.target.value) || 0)}
+                      onClick={e => e.stopPropagation()}
                     />
                   </div>
                 </div>
                 <div className="flex justify-between items-center text-xs uppercase font-bold text-muted-foreground bg-muted/30 p-2 rounded-md">
                   <span>Est. Monthly</span>
-                  <span className="text-foreground tracking-wide font-mono">${monthlyCost.toFixed(2)} / mo</span>
+                  <span className="text-foreground tracking-wide font-mono">
+                    ${monthlyCost.toFixed(2)} / mo
+                  </span>
                 </div>
               </div>
             )}

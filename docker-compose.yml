@@ -24,6 +24,11 @@ services:
 
   app:
     image: ${HLBUILDER_IMAGE:-butterski/homelab-builder}:${HLBUILDER_TAG:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
     container_name: homelab-builder-app
     ports:
       - ${FRONTEND_PORT:-3000}:80

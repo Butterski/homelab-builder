@@ -1,0 +1,46 @@
+# Backend services for the local Vite frontend:
+# docker compose -f docker-compose.local.yml up -d --build
+# cd frontend; npm run dev -- --host 127.0.0.1
+name: homelab-builder-local
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: homelab
+      POSTGRES_PASSWORD: homelab_password
+      POSTGRES_DB: homelab_builder
+    volumes:
+      - local_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U homelab -d homelab_builder"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  hlbipam:
+    build: ./hlbipam
+    environment:
+      PORT: "8081"
+  backend:
+    build: ./backend
+    ports:
+      - "127.0.0.1:${LOCAL_BACKEND_PORT:-8080}:8080"
+    environment:
+      SERVER_PORT: "8080"
+      GIN_MODE: debug
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: homelab
+      DB_PASSWORD: homelab_password
+      DB_NAME: homelab_builder
+      DB_SSLMODE: disable
+      DB_TYPE: postgres
+      JWT_SECRET: local-development-secret-for-homelab-builder
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      IPAM_URL: http://hlbipam:8081
+    depends_on:
+      postgres:
+        condition: service_healthy
+      hlbipam:
+        condition: service_started
+volumes:
+  local_postgres:

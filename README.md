@@ -73,67 +73,37 @@ The entire mechanism is driven by a single condition: **whether `GOOGLE_CLIENT_I
 
 ### Quick Start (Auth-Disabled)
 
-Start the stack with the published Docker Hub app image and leave Google/JWT variables empty:
+Build the stack from this checkout and leave Google/JWT variables empty:
 
 ```bash
 git clone https://github.com/Butterski/homelab-builder.git
 cd homelab-builder
 
 cp .env.hosted.example .env
-docker compose pull
-docker compose up -d
+docker compose up -d --build
 ```
 
 That's it. Open `http://localhost:3000` and you'll be automatically logged in as **Local Admin**.
 
-The default `docker-compose.yml` pulls `butterski/homelab-builder` from Docker Hub and `postgres:17` from Docker Hub. It only exposes the frontend port; the app container runs Nginx, the backend, and hlbIPAM together, with Postgres kept as a separate persistent database container.
+The root `docker-compose.yml` builds the frontend, backend, and hlbIPAM images from the repository and starts them with PostgreSQL. The frontend proxies API traffic internally to the backend.
 
-Important: `DB_HOST=postgres` only resolves inside the Docker Compose network created by this compose file. The compose stack also provides `homelab-builder-db` as an alias for compatibility. If you run the app image by itself with `docker run`, Docker has no database hostname, and startup will fail with `lookup ... no such host`. In that case either use `docker compose up -d`, or put the app and database containers on the same user-defined Docker network and set `DB_HOST` to the database container name or external database hostname.
-
-### Docker Hub Only (No Local Build)
-
-Use this when you want to run HLBuilder from published images only. This still uses Docker Compose because HLBuilder needs two containers: the app image and Postgres.
-
-```bash
-mkdir hlbuilder
-cd hlbuilder
-
-curl -fsSLO https://raw.githubusercontent.com/Butterski/homelab-builder/master/docker-compose.yml
-curl -fsSL https://raw.githubusercontent.com/Butterski/homelab-builder/master/.env.hosted.example -o .env
-
-docker compose pull
-docker compose up -d
-```
-
-`docker compose pull` should pull exactly these images:
-
-```text
-butterski/homelab-builder:latest
-postgres:17
-```
-
-Open `http://localhost:3000`.
-
-Do not run only `docker run butterski/homelab-builder:latest` unless you also create a PostgreSQL container on the same Docker network. The app container expects `DB_HOST=postgres`, which is provided by the Compose service name.
+Important: keep `DB_HOST=postgres` when using the included stack. Docker Compose provides that hostname on its private network and waits for PostgreSQL and hlbIPAM health checks before starting the backend and frontend.
 
 ### Proxmox LXC / Docker Local Workspace
 
-Use this if you want HLBuilder running as a private local workspace on a Proxmox Docker LXC. This path pulls published Docker Hub images only; it does not build anything locally.
+Use this if you want HLBuilder running as a private local workspace on a Proxmox Docker LXC. The same root Compose command builds and runs the complete stack.
 
 Use a Debian or Ubuntu LXC with Docker installed. A small instance is enough for testing, for example 2 CPU cores, 2 GB RAM, and 8 GB disk. For longer-term use, give the LXC more disk because Postgres data is stored in the `postgres_data` Docker volume.
 
 Inside the LXC:
 
 ```bash
-mkdir -p ~/homelab-builder
-cd ~/homelab-builder
-
-curl -fsSLO https://raw.githubusercontent.com/Butterski/homelab-builder/master/docker-compose.yml
-curl -fsSL https://raw.githubusercontent.com/Butterski/homelab-builder/master/.env.hosted.example -o .env
+git clone https://github.com/Butterski/homelab-builder.git
+cd homelab-builder
+cp .env.hosted.example .env
 nano .env
 
-docker compose pull
-docker compose up -d
+docker compose up -d --build
 ```
 
 For local workspace mode, keep Google empty:
@@ -149,8 +119,10 @@ Set `DB_PASSWORD` to something private if this LXC is not disposable. Leave `DB_
 Expected containers:
 
 ```text
-homelab-builder-app
 homelab-builder-db
+homelab-builder-ipam
+homelab-builder-backend
+homelab-builder-app
 ```
 
 For local access, open `http://LXC_IP:3000` from your browser. The app will use the built-in Local Admin workspace account.
@@ -164,7 +136,7 @@ Starting HLBuilder Backend...
 Database connected. Setting up routes...
 ```
 
-There will be **no** panic or error about `JWT_SECRET` because the default Compose config sets `GIN_MODE=debug` for local self-hosting. The published one-image setup can run in local auth-disabled mode or hosted Google OAuth mode; set `GOOGLE_CLIENT_ID` and `JWT_SECRET` in `.env` for hosted mode.
+There will be **no** panic or error about `JWT_SECRET` because the default Compose config sets `GIN_MODE=debug` for local self-hosting. The Compose stack can run in local auth-disabled mode or hosted Google OAuth mode; set `GOOGLE_CLIENT_ID` and `JWT_SECRET` in `.env` for hosted mode.
 
 <!--
 
@@ -185,7 +157,7 @@ docker compose up -d
 | Variable | Where | Required for Auth-Disabled? | Description |
 |---|---|---|---|
 | `GOOGLE_CLIENT_ID` | Backend | **No - leave unset** | When empty, backend sets `AuthDisabled=true` and skips JWT validation on all protected routes. |
-| `VITE_GOOGLE_CLIENT_ID` | Frontend (build arg) | **No - leave unset** | Only needed when rebuilding the frontend image with Google OAuth enabled. The published image defaults to local auth-disabled mode. |
+| `GOOGLE_CLIENT_ID` | Frontend (build arg) | **No - leave unset** | Compose passes this value into the frontend build. Empty values enable local auth-disabled mode. |
 | `JWT_SECRET` | Backend | **No** (unless `GIN_MODE=release`) | Secret for signing JWTs. In auth-disabled mode JWTs are never issued, so this is unused. If running in release mode, set it to any random string. |
 | `GIN_MODE` | Backend | **No** | Set to `debug` (or omit) to skip the JWT_SECRET strength check. Set to `release` for production with Google OAuth. |
 
@@ -235,8 +207,7 @@ git clone https://github.com/Butterski/homelab-builder.git
 cd homelab-builder
 
 cp .env.hosted.example .env
-docker compose pull
-docker compose up -d
+docker compose up -d --build
 
 # Open http://localhost:3000
 ```
@@ -245,7 +216,7 @@ docker compose up -d
 
 ```bash
 # Docker build from local source
-docker compose -f deploy/docker/docker-compose.dev.yml up -d --build
+docker compose up -d --build
 
 # Backend (requires Go 1.24+)
 cd backend

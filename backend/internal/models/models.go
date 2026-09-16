@@ -256,6 +256,7 @@ type Build struct {
 	Settings       json.RawMessage `gorm:"type:jsonb;default:'{}'" json:"settings"` // UI state e.g. boughtItems
 	Thumbnail      string          `gorm:"default:''" json:"thumbnail"`             // Base64 or URL
 	TotalPower     float64         `gorm:"-" json:"total_power"`                    // Transient, calculated on fetch
+	Revision       uint64          `gorm:"not null;default:1" json:"revision"`      // Optimistic topology version
 	ShareToken     *string         `gorm:"uniqueIndex;default:null" json:"share_token,omitempty"`
 	IsShared       bool            `gorm:"default:false" json:"is_shared"`
 	SharedEditable bool            `gorm:"default:false" json:"shared_editable"`
@@ -322,18 +323,19 @@ func (CatalogComponent) TableName() string { return "catalog_components" }
 
 // VirtualMachine represents a nested VM/Container on a node
 type VirtualMachine struct {
-	ID         uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
-	NodeID     uuid.UUID `gorm:"type:uuid;not null;index" json:"node_id"`
-	Name       string    `gorm:"not null" json:"name"`
-	Type       string    `gorm:"not null" json:"type"` // vm, container, lxc
-	IP         string    `gorm:"default:''" json:"ip"`
-	MacAddress string    `gorm:"default:''" json:"mac_address"`
-	OS         string    `gorm:"default:''" json:"os"`
-	CPUCores   float64   `gorm:"default:0" json:"cpu_cores"`
-	RAMMB      int       `gorm:"default:0" json:"ram_mb"`
-	Status     string    `gorm:"default:'stopped'" json:"status"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	ID         uuid.UUID       `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	NodeID     uuid.UUID       `gorm:"type:uuid;not null;index" json:"node_id"`
+	Name       string          `gorm:"not null" json:"name"`
+	Type       string          `gorm:"not null" json:"type"` // vm, container, lxc
+	IP         string          `gorm:"default:''" json:"ip"`
+	MacAddress string          `gorm:"default:''" json:"mac_address"`
+	OS         string          `gorm:"default:''" json:"os"`
+	CPUCores   float64         `gorm:"default:0" json:"cpu_cores"`
+	RAMMB      int             `gorm:"default:0" json:"ram_mb"`
+	Status     string          `gorm:"default:'stopped'" json:"status"`
+	Details    json.RawMessage `gorm:"type:jsonb;default:'{}'" json:"details"`
+	CreatedAt  time.Time       `json:"created_at"`
+	UpdatedAt  time.Time       `json:"updated_at"`
 }
 
 func (VirtualMachine) TableName() string { return "virtual_machines" }

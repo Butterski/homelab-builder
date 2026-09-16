@@ -74,11 +74,7 @@ function CodeBlock({ content, filename }: { content: string; filename: string })
         <span className="text-xs font-mono text-muted-foreground">{filename}</span>
         <div className="flex gap-2">
           <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={copy}>
-            {copied ? (
-              <Check className="size-3.5 text-green-500" />
-            ) : (
-              <Copy className="size-3.5" />
-            )}
+            {copied ? <Check className="size-3.5 text-green-500" /> : <Copy className="size-3.5" />}
             {copied ? 'Copied!' : 'Copy'}
           </Button>
           <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={download}>
@@ -176,7 +172,10 @@ function SettingsPanel({
             {/* Row 1: general */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label htmlFor="lab-name" className="text-xs font-medium text-muted-foreground mb-1.5 block ">
+                <label
+                  htmlFor="lab-name"
+                  className="text-xs font-medium text-muted-foreground mb-1.5 block "
+                >
                   Lab Name
                 </label>
                 <Input
@@ -189,7 +188,10 @@ function SettingsPanel({
                 <p className="text-xs text-muted-foreground mt-1">Used for export filename</p>
               </div>
               <div>
-                <label htmlFor="domain" className="text-xs font-medium text-muted-foreground mb-1.5 block">
+                <label
+                  htmlFor="domain"
+                  className="text-xs font-medium text-muted-foreground mb-1.5 block"
+                >
                   Domain
                 </label>
                 <Input
@@ -199,9 +201,7 @@ function SettingsPanel({
                   placeholder="homelab.local"
                   className="h-8 text-sm"
                 />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Used in Nginx/Traefik configs
-                </p>
+                <p className="text-xs text-muted-foreground mt-1">Used in Nginx/Traefik configs</p>
               </div>
             </div>
 
@@ -237,7 +237,7 @@ interface ConfigState {
 
 export default function ConfigGeneratorPage() {
   const { hardwareNodes, loadBuild, clearCurrentBuild } = useBuilderStore();
-  
+
   const [state, dispatch] = useReducer(
     (state: ConfigState, newState: Partial<ConfigState>) => ({ ...state, ...newState }),
     {
@@ -250,8 +250,9 @@ export default function ConfigGeneratorPage() {
       loadingBuild: false,
       configBundle: null,
       loadingCompose: false,
-    }
+    },
   );
+  const [downloadingBundle, setDownloadingBundle] = useState(false);
 
   const {
     activeTab,
@@ -276,6 +277,29 @@ export default function ConfigGeneratorPage() {
       dispatch({ configBundle: null });
     } finally {
       dispatch({ loadingCompose: false });
+    }
+  };
+
+  const downloadCompleteBundle = async () => {
+    if (!selectedBuildId) {
+      toast.error('Select a project first.');
+      return;
+    }
+    setDownloadingBundle(true);
+    try {
+      const { blob, filename } = await buildApi.downloadExportBundle(selectedBuildId);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = filename;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      toast.success('Complete export bundle downloaded.');
+    } catch (error) {
+      console.error('Complete export failed', error);
+      toast.error('Could not generate the complete export bundle.');
+    } finally {
+      setDownloadingBundle(false);
     }
   };
 
@@ -395,7 +419,7 @@ export default function ConfigGeneratorPage() {
   const content = getContent(activeTab);
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto py-8 px-6">
+    <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
       {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
@@ -405,14 +429,14 @@ export default function ConfigGeneratorPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex w-full items-center gap-2 sm:w-auto sm:gap-3">
           {loadingBuild && (
             <span className="text-xs text-muted-foreground animate-pulse flex items-center gap-1.5">
               <Logo variant="loading" className="size-3" /> Loading&hellip;
             </span>
           )}
           <select
-            className="h-9 w-50 rounded-md border border-input bg-background px-3 py-1 text-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="h-11 min-w-0 flex-1 rounded-md border border-input bg-background px-3 py-1 text-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring sm:h-9 sm:w-50"
             value={selectedBuildId}
             onChange={e => handleSelectBuild(e.target.value)}
           >
@@ -425,6 +449,14 @@ export default function ConfigGeneratorPage() {
               </option>
             ))}
           </select>
+          <Button
+            onClick={downloadCompleteBundle}
+            disabled={!selectedBuildId || downloadingBundle}
+            className="min-h-10"
+          >
+            <Download className="size-4" />
+            {downloadingBundle ? 'Building bundle...' : 'Complete bundle'}
+          </Button>
         </div>
 
         <div className="flex gap-2 flex-wrap mr-16">
@@ -442,7 +474,9 @@ export default function ConfigGeneratorPage() {
             back here to generate configs.
           </p>
           <Button variant="outline" size="sm" asChild>
-            <a href="/builder">Open Visual Builder →</a>
+            <a href={selectedBuildId ? `/builder/${selectedBuildId}` : '/'}>
+              Open Visual Builder →
+            </a>
           </Button>
         </div>
       )}
@@ -461,8 +495,8 @@ export default function ConfigGeneratorPage() {
             labName={labName}
             domain={domain}
             onToggle={() => dispatch({ showSettings: !showSettings })}
-            onLabNameChange={(value) => dispatch({ labName: value })}
-            onDomainChange={(value) => dispatch({ domain: value })}
+            onLabNameChange={value => dispatch({ labName: value })}
+            onDomainChange={value => dispatch({ domain: value })}
           />
 
           {/* IP Zone Legend removed */}

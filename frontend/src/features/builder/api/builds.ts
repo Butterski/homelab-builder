@@ -1,9 +1,22 @@
 import { api } from '../../../lib/api';
+import { apiUrl } from '../../../lib/api-base';
+
+let topologyQueue: Promise<void> = Promise.resolve();
+
+function serializeTopologyMutation<T>(operation: () => Promise<T>): Promise<T> {
+  const result = topologyQueue.then(operation, operation);
+  topologyQueue = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
+}
 
 export interface Build {
   id: string;
   user_id: string;
   name: string;
+  revision: number;
   thumbnail?: string;
   total_power?: number;
   settings: any; // e.g. boughtItems, showBought
@@ -29,6 +42,12 @@ export type CreateBuildParams = {
   services: any[];
 };
 
+export type TopologyUpdateParams = CreateBuildParams & { revision: number };
+export type TopologyUpdateResponse = {
+  build: Build;
+  validation?: { valid: boolean; errors: any[]; warnings: any[] };
+};
+
 export const buildApi = {
   list: async () => {
     const response = await api.get<Build[]>('/api/builds');
@@ -42,9 +61,14 @@ export const buildApi = {
     const response = await api.post<Build>('/api/builds', params);
     return response;
   },
-  update: async (id: string, params: CreateBuildParams) => {
-    const response = await api.put<Build>(`/api/builds/${id}`, params);
+  rename: async (id: string, name: string, revision: number) => {
+    const response = await api.patch<Build>(`/api/builds/${id}`, { name, revision });
     return response;
+  },
+  updateTopology: async (id: string, params: TopologyUpdateParams) => {
+    return serializeTopologyMutation(() =>
+      api.put<TopologyUpdateResponse>(`/api/builds/${id}/topology`, params),
+    );
   },
   delete: async (id: string) => {
     await api.del(`/api/builds/${id}`);
@@ -69,6 +93,19 @@ export const buildApi = {
     }>(`/api/builds/${id}/generate-config`, {});
     return response;
   },
+  downloadExportBundle: async (id: string) => {
+    const token = localStorage.getItem('auth_token');
+    const response = await fetch(apiUrl(`/api/builds/${id}/export-bundle`), {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Export failed' }));
+      throw new Error(error.error || 'Export failed');
+    }
+    const disposition = response.headers.get('content-disposition') || '';
+    const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] || 'homelab-export.zip';
+    return { blob: await response.blob(), filename };
+  },
   share: async (id: string) => {
     const response = await api.post<Build>(`/api/builds/${id}/share`, {});
     return response;
@@ -85,7 +122,7 @@ export const buildApi = {
     const response = await api.get<Build>(`/api/shared/${token}`);
     return response;
   },
-  updateShared: async (token: string, params: CreateBuildParams) => {
+  updateShared: async (token: string, params: TopologyUpdateParams) => {
     const response = await api.put<Build>(`/api/shared/${token}`, params);
     return response;
   },
