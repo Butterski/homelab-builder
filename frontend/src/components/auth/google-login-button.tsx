@@ -49,7 +49,7 @@ export function GoogleLoginButton() {
 
     return (
         <div className="w-full space-y-3">
-            <div className='[&_iframe]:scheme-normal'>
+            <div className='flex justify-center [&_iframe]:scheme-normal'>
                 <GoogleLogin
                     onSuccess={credentialResponse => {
                         if (credentialResponse.credential) {
