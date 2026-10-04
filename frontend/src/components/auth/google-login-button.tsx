@@ -49,8 +49,8 @@ export function GoogleLoginButton() {
 
     return (
         <div className="w-full space-y-3">
-            <div className='flex justify-center [&_iframe]:scheme-normal'>
                 <GoogleLogin
+                    containerProps={{className: 'flex justify-center [&_iframe]:scheme-normal'}}
                     onSuccess={credentialResponse => {
                         if (credentialResponse.credential) {
                             loginWithGoogle(credentialResponse.credential);
@@ -78,7 +78,6 @@ export function GoogleLoginButton() {
                         </button>
                     </>
                 )}
-            </div>
         </div>
     );
 }
