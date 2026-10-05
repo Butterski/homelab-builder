@@ -98,10 +98,14 @@ export function hardwareComponentToDragData(component: HardwareComponent): Bluep
 export function serviceToVm(service: Service): VirtualMachine {
   const req = service.requirements;
   return {
-    id: `vm-${service.id}`,
+    id: crypto.randomUUID(),
     name: service.name,
     type: 'container',
     status: 'running',
+    details: {
+      catalog_service_id: service.id,
+      catalog_service_name: service.name,
+    },
     cpu_cores: req?.recommended_cpu_cores || req?.min_cpu_cores || undefined,
     ram_mb: req?.recommended_ram_mb || req?.min_ram_mb || undefined,
   };

@@ -16,7 +16,7 @@ import {
 import { toast } from 'sonner';
 import '@xyflow/react/dist/style.css';
 import Joyride, { type CallBackProps, STATUS, type Step } from 'react-joyride';
-import { useBuilderStore } from '../store/builder-store';
+import { BuildConflictError, useBuilderStore } from '../store/builder-store';
 import { HardwareToolbox } from './hardware-toolbox';
 import { HardwareNode as HardwareNodeComponent } from './hardware-node';
 import { RackNode } from './rack-node';
@@ -43,7 +43,6 @@ import {
   LayoutGrid,
 } from 'lucide-react';
 import type { HardwareType, HardwareNode } from '../../../types';
-import { buildApi } from '../api/builds';
 import { toPng, toSvg } from 'html-to-image';
 import {
   nodeHasDynamicPorts,
@@ -55,6 +54,7 @@ import {
 import { getNodePortCount } from '../lib/port-count';
 import { computeTopologyLayout } from '../lib/topology-layout';
 import { isNatDownstreamEdge } from '../lib/network-zone';
+import { withFreshChildIds } from '../lib/hardware-instance';
 import { useAuth } from '../../admin/hooks/use-auth';
 import {
   DropdownMenu,
@@ -303,8 +303,7 @@ const Flow = React.memo(function Flow() {
     addInternalComponent,
     addVM,
     reassignAllIPs,
-    loadBuild,
-    currentBuildId,
+    openBuild,
     hardwareNodes,
     projectName,
     edgePreferences,
@@ -568,20 +567,21 @@ const Flow = React.memo(function Flow() {
     [nodes],
   );
 
+  // Always reload on open: the store may still hold an older revision of this
+  // build (renamed or edited elsewhere), and saves from a stale revision are rejected.
   useEffect(() => {
-    if (id && id !== currentBuildId) {
-      buildApi
-        .get(id)
-        .then(build => {
-          loadBuild(build.id, build.name, build);
-        })
-        .catch(err => {
-          console.error('Failed to load build', err);
-          useBuilderStore.getState().clearCurrentBuild();
-          navigate('/');
-        });
-    }
-  }, [id, currentBuildId, loadBuild, navigate]);
+    if (!id) return;
+    let active = true;
+    openBuild(id).catch(err => {
+      if (!active) return;
+      console.error('Failed to load build', err);
+      useBuilderStore.getState().clearCurrentBuild();
+      navigate('/');
+    });
+    return () => {
+      active = false;
+    };
+  }, [id, openBuild, navigate]);
 
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
   const clipboardNodeIdRef = useRef<string | null>(null);
@@ -614,6 +614,7 @@ const Flow = React.memo(function Flow() {
 
   // Auto-save trigger
   const topologyFingerprint = JSON.stringify(useBuilderStore.getState().getBuildData());
+  const pendingSave = useRef(false);
   useEffect(() => {
     if (isFirstRender.current) {
       isFirstRender.current = false;
@@ -621,21 +622,52 @@ const Flow = React.memo(function Flow() {
     }
 
     // Debounce save
+    pendingSave.current = true;
     const timer = setTimeout(() => {
-      void saveProject().catch(() => {
-        toast.error('Auto-save failed. Your local changes are still on this device.');
+      pendingSave.current = false;
+      void saveProject().catch(err => {
+        toast.error(
+          err instanceof BuildConflictError
+            ? err.message
+            : 'Auto-save failed. Your local changes are still on this device.',
+        );
       });
     }, 2000); // 2 seconds debounce
 
     return () => clearTimeout(timer);
   }, [topologyFingerprint]);
 
+  // Leaving the builder cancels the debounce timer, and reopening it reloads the
+  // build from the server, so save the pending change now.
+  useEffect(
+    () => () => {
+      if (!pendingSave.current) return;
+      void useBuilderStore
+        .getState()
+        .reassignAllIPs()
+        .catch(() => {
+          toast.error('Failed to save your last change before leaving the builder.');
+        });
+    },
+    [],
+  );
+
   // Manual save wrapper (immediate)
   const handleManualSave = useCallback(() => {
     toast.promise(saveProjectFn(), {
       loading: 'Saving…',
       success: 'Project saved',
-      error: 'Failed to save',
+      error: (err: unknown) =>
+        err instanceof BuildConflictError ? err.message : 'Failed to save',
+    });
+  }, [saveProjectFn]);
+
+  const handleReassignIPs = useCallback(() => {
+    toast.promise(saveProjectFn(), {
+      loading: 'Reassigning IPs…',
+      success: 'IP addresses reassigned',
+      error: (err: unknown) =>
+        err instanceof Error && err.message ? err.message : 'Failed to reassign IPs',
     });
   }, [saveProjectFn]);
 
@@ -851,7 +883,7 @@ const Flow = React.memo(function Flow() {
           power_draw: data.power_draw,
           parent_id: rackTarget.id,
         };
-        addHardware(newNode);
+        addHardware(withFreshChildIds(newNode));
         return;
       }
 
@@ -921,7 +953,7 @@ const Flow = React.memo(function Flow() {
         vms: data.vms || [],
         power_draw: data.power_draw,
       };
-      addHardware(newNode);
+      addHardware(withFreshChildIds(newNode));
     },
     [screenToFlowPosition, getIntersectingNodes, addHardware, addInternalComponent, addVM],
   );
@@ -1106,7 +1138,7 @@ const Flow = React.memo(function Flow() {
           edges={edges}
           validationIssues={validationIssues}
           onGenerateConfig={() => navigate('/generate')}
-          onReassignIPs={reassignAllIPs}
+          onReassignIPs={handleReassignIPs}
         />
 
         <div className="flex-1 h-full relative" ref={reactFlowWrapper}>
@@ -1239,9 +1271,7 @@ const Flow = React.memo(function Flow() {
 
               <Button
                 variant="secondary"
-                onClick={() => {
-                  void reassignAllIPs().catch(() => undefined);
-                }}
+                onClick={handleReassignIPs}
                 title="Fix IP Conflicts"
                 size="sm"
                 className="builder-control-button h-10 px-3"

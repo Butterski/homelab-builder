@@ -35,8 +35,9 @@ vi.mock('../api/builds', () => ({
 }));
 
 // ─── Import AFTER mock is registered ──────────────────────────────────────
-import { useBuilderStore } from './builder-store';
+import { BuildConflictError, useBuilderStore } from './builder-store';
 import { buildApi } from '../api/builds';
+import { ApiError } from '../../../lib/api';
 import type { HardwareNode } from '../../../types';
 
 describe('virtual network persistence', () => {
@@ -188,6 +189,36 @@ describe('reassignAllIPs', () => {
     expect(useBuilderStore.getState().currentRevision).toBe(3);
   });
 
+  it('adopts the committed build after a revision conflict so the next save succeeds', async () => {
+    const latest = {
+      id: 'build-1',
+      name: 'Renamed elsewhere',
+      revision: 7,
+      nodes: [{ id: 'router-1', type: 'router', name: 'Router', ip: '192.168.1.1' }],
+      edges: [],
+    };
+    vi.mocked(buildApi.updateTopology).mockRejectedValueOnce(
+      new ApiError(409, 'UNKNOWN', 'build revision conflict: expected 7, received 1', {
+        error: 'build revision conflict: expected 7, received 1',
+        build: latest,
+      }),
+    );
+
+    await expect(useBuilderStore.getState().reassignAllIPs()).rejects.toBeInstanceOf(
+      BuildConflictError,
+    );
+    const state = useBuilderStore.getState();
+    expect(state.currentRevision).toBe(7);
+    expect(state.projectName).toBe('Renamed elsewhere');
+    expect(state.hardwareNodes.map(n => n.id)).toEqual(['router-1']);
+
+    await useBuilderStore.getState().reassignAllIPs();
+    expect(buildApi.updateTopology).toHaveBeenLastCalledWith(
+      'build-1',
+      expect.objectContaining({ revision: 7 }),
+    );
+  });
+
   it('does not call the API when no build is open', async () => {
     useBuilderStore.setState({ currentBuildId: null });
 
@@ -282,6 +313,72 @@ describe('reassignAllIPs', () => {
     expect(updated?.details?.wan_ip).toBe('192.168.0.136');
     expect(updated?.details?.lan_gateway_ip).toBe('192.168.1.1');
     expect(updated?.details?.interfaces?.some(iface => iface.role === 'lan')).toBe(true);
+  });
+});
+
+describe('openBuild', () => {
+  beforeEach(() => resetStoreWithBuildId());
+
+  it('loads the server revision even when the build is already open', async () => {
+    useBuilderStore.setState({ currentRevision: 3 });
+    vi.mocked(buildApi.get).mockResolvedValueOnce({
+      id: 'build-1',
+      name: 'Renamed',
+      revision: 4,
+      nodes: [],
+      edges: [],
+    } as any);
+
+    await useBuilderStore.getState().openBuild('build-1');
+
+    expect(useBuilderStore.getState().currentRevision).toBe(4);
+    expect(useBuilderStore.getState().projectName).toBe('Renamed');
+  });
+
+  it('waits for a pending save before reading the build', async () => {
+    let finishSave!: () => void;
+    vi.mocked(buildApi.updateTopology).mockImplementationOnce(
+      () =>
+        new Promise(resolve => {
+          finishSave = () =>
+            resolve({ build: { id: 'build-1', name: 'test', revision: 2, nodes: [] } as any });
+        }),
+    );
+    vi.mocked(buildApi.get).mockResolvedValueOnce({
+      id: 'build-1',
+      name: 'test',
+      revision: 2,
+      nodes: [],
+      edges: [],
+    } as any);
+
+    const save = useBuilderStore.getState().reassignAllIPs();
+    const open = useBuilderStore.getState().openBuild('build-1');
+    await Promise.resolve();
+    expect(buildApi.get).not.toHaveBeenCalled();
+
+    finishSave();
+    await Promise.all([save, open]);
+    expect(buildApi.get).toHaveBeenCalledTimes(1);
+    expect(useBuilderStore.getState().currentRevision).toBe(2);
+  });
+});
+
+describe('duplicateHardware', () => {
+  beforeEach(() => resetStoreWithBuildId());
+
+  it('gives copied internal components their own IDs', () => {
+    useBuilderStore.getState().addHardware({
+      ...makeRouter('server-1'),
+      type: 'server',
+      internal_components: [{ id: 'disk-1', type: 'disk', name: 'SSD' }],
+    });
+
+    useBuilderStore.getState().duplicateHardware('server-1');
+
+    const [original, copy] = useBuilderStore.getState().hardwareNodes;
+    expect(copy.internal_components).toHaveLength(1);
+    expect(copy.internal_components![0].id).not.toBe(original.internal_components![0].id);
   });
 });
 

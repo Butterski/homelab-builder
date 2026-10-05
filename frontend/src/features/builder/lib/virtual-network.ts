@@ -30,6 +30,24 @@ export function connectedVirtualMachines(network: VirtualNetwork): Set<string> {
   return reached;
 }
 
+export function remapVirtualEndpoints(
+  network: VirtualNetwork,
+  ids: Map<string, string>,
+): VirtualNetwork {
+  const remap = (id: string) => ids.get(id) ?? id;
+  return {
+    switches: network.switches,
+    positions: Object.fromEntries(
+      Object.entries(network.positions).map(([id, position]) => [remap(id), position]),
+    ),
+    edges: network.edges.map(edge => ({
+      ...edge,
+      source: remap(edge.source),
+      target: remap(edge.target),
+    })),
+  };
+}
+
 export function removeVirtualEndpoints(network: VirtualNetwork, ids: Set<string>): VirtualNetwork {
   return {
     switches: network.switches.filter(node => !ids.has(node.id)),

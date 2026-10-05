@@ -166,7 +166,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           await toast.promise(reassignAllIPs(), {
             loading: 'Recalculating network IPs...',
             success: 'Network IPs recalculated',
-            error: 'Failed to recalculate network IPs',
+            error: (err: unknown) =>
+              err instanceof Error && err.message ? err.message : 'Failed to recalculate network IPs',
           });
         },
       },

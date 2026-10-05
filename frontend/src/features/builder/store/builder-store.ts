@@ -21,8 +21,10 @@ import type {
   VirtualNetwork,
 } from '../../../types';
 import { initialVirtualNetwork, removeVirtualEndpoints } from '../lib/virtual-network';
+import { withFreshChildIds } from '../lib/hardware-instance';
 import { buildApi, type Build } from '../api/builds';
 import { api } from '../../../services/api';
+import { ApiError } from '../../../lib/api';
 import {
   RACK_U_HEIGHT_PX,
   RACK_WIDTH_PX,
@@ -31,6 +33,20 @@ import {
 } from '../components/rack-node-constants';
 
 let topologyMutationQueue: Promise<void> = Promise.resolve();
+
+function enqueueTopologyMutation(mutation: () => Promise<void>): Promise<void> {
+  const queued = topologyMutationQueue.then(mutation, mutation);
+  topologyMutationQueue = queued.catch(() => undefined);
+  return queued;
+}
+
+/** The build was saved elsewhere first; the store now holds that newer revision. */
+export class BuildConflictError extends Error {
+  constructor() {
+    super('This project was changed elsewhere. Loaded the latest version - please try again.');
+    this.name = 'BuildConflictError';
+  }
+}
 
 // Removed hardcoded NON_NETWORK_TYPES and using isNetworkNode instead.
 
@@ -117,6 +133,7 @@ interface BuilderState {
   setProjectName: (name: string) => void;
 
   loadBuild: (id: string, name: string, data: Build) => void;
+  openBuild: (id: string) => Promise<void>;
   getBuildData: () => any;
 
   // Computed getters
@@ -385,7 +402,7 @@ export const useBuilderStore = create<BuilderState>()(
         // Don't duplicate racks (too complex with children)
         if (orig.type === 'rack') return;
         const newId = crypto.randomUUID();
-        const dup: HardwareNode = {
+        const dup = withFreshChildIds({
           ...orig,
           id: newId,
           name: `${orig.name} (copy)`,
@@ -395,7 +412,7 @@ export const useBuilderStore = create<BuilderState>()(
           vms: [],
           details: { ...orig.details, virtual_network: undefined },
           parent_id: orig.parent_id,
-        };
+        });
 
         const rfNode: Node = {
           id: newId,
@@ -800,13 +817,21 @@ export const useBuilderStore = create<BuilderState>()(
               set({ validationIssues: issues });
             }
           } catch (e) {
+            const latest =
+              e instanceof ApiError && e.status === 409
+                ? (e.data as { build?: Build } | undefined)?.build
+                : undefined;
+            if (latest && get().currentBuildId === currentBuildId) {
+              // Every later save would repeat the stale revision, so adopt the
+              // committed one instead of failing until the page is reloaded.
+              get().loadBuild(latest.id, latest.name, latest);
+              throw new BuildConflictError();
+            }
             console.error('Failed to reassign IPs', e);
             throw e;
           }
         };
-        const queued = topologyMutationQueue.then(mutation, mutation);
-        topologyMutationQueue = queued.catch(() => undefined);
-        return queued;
+        return enqueueTopologyMutation(mutation);
       },
 
       validateNetwork: async () => {
@@ -937,6 +962,13 @@ export const useBuilderStore = create<BuilderState>()(
           historyFuture: [],
         });
       },
+
+      openBuild: id =>
+        // Queued behind pending saves so the loaded revision already contains them.
+        enqueueTopologyMutation(async () => {
+          const build = await buildApi.get(id);
+          get().loadBuild(build.id, build.name, build);
+        }),
 
       getBuildData: () => {
         const state = get();

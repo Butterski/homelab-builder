@@ -77,7 +77,9 @@ describe('catalog mapper', () => {
 
     const vm = serviceToVm(service);
 
-    expect(vm.id).toBe('vm-svc-1');
+    // Backend keeps only UUID IDs; anything else is replaced on save.
+    expect(vm.id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(vm.details?.catalog_service_id).toBe('svc-1');
     expect(vm.name).toBe('Jellyfin');
     expect(vm.type).toBe('container');
     expect(vm.cpu_cores).toBe(2);

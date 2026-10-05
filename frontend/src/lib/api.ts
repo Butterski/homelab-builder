@@ -7,12 +7,14 @@ import type { ThemeSettings } from './theme-registry';
 export class ApiError extends Error {
     public status: number;
     public code: string;
+    public data: unknown;
 
-    constructor(status: number, code: string, message: string) {
+    constructor(status: number, code: string, message: string, data?: unknown) {
         super(message);
         this.name = 'ApiError';
         this.status = status;
         this.code = code;
+        this.data = data;
     }
 }
 
@@ -28,7 +30,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
     if (!res.ok) {
         const errorData = await res.json().catch(() => ({ error: 'Request failed' }));
-        throw new ApiError(res.status, errorData.code || 'UNKNOWN', errorData.error || res.statusText);
+        throw new ApiError(res.status, errorData.code || 'UNKNOWN', errorData.error || res.statusText, errorData);
     }
 
     // Some endpoints might return empty body

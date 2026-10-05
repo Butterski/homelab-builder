@@ -509,6 +509,8 @@ These bugs were diagnosed and fixed; tests guard against regression.
 | 4 | `ip_service.go` | Two routers on same `/24` produced duplicate IPs | Shared `usedOffsets` map keyed by `/24` prefix |
 | 5 | `ip_service.go` | VM IPs never assigned (entire host block marked used first) | Reserve base octet → assign VMs → seal block |
 | 6 | `build_service.go` | `GetByID` missing `Preload("Nodes.VirtualMachines")` | Added preload |
+| 7 | `visual-builder.tsx`, `builder-store.ts` | Reopening a build in the SPA kept a stale revision (e.g. after a rename), so every save/Reassign IPs got a silent 409 until reload | Builder always reloads via queued `openBuild`; a 409 adopts the server's build and raises `BuildConflictError`; Reassign IPs shows errors |
+| 8 | `catalog-mapper.ts`, `hardware-instance.ts` | Blueprint VMs (`vm-<serviceId>`) and copied VMs/components reused non-UUID or duplicate IDs; the backend replaced them, so assigned VM IPs never reached the canvas until reload | Placed and duplicated nodes get fresh UUIDs via `withFreshChildIds` |
 
 ---
 

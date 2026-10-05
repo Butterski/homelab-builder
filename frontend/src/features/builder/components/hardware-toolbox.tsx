@@ -38,6 +38,7 @@ import { Github } from '../../../components/icons/github';
 import { PowerUsagePanel } from './power-usage-panel';
 import { HardwareBlueprintCreator } from '../../catalog/components/hardware-blueprint-creator';
 import { hardwareBlueprintToDragData, hardwareComponentToDragData } from '../lib/catalog-mapper';
+import { withFreshChildIds } from '../lib/hardware-instance';
 
 // ─── Basic component types ─────────────────────────────────────────────────────
 const HARDWARE_TOOLS: {
@@ -699,17 +700,19 @@ export const HardwareToolbox = React.memo(function HardwareToolbox() {
   const addToolToCanvas = (nodeType: HardwareType, rawData: object = {}) => {
     const data = rawData as Record<string, any>;
     const index = hardwareNodes.length;
-    addHardware({
-      id: crypto.randomUUID(),
-      type: nodeType,
-      name: data.name || 'New ' + nodeType.replace('_', ' '),
-      x: 180 + (index % 4) * 250,
-      y: 160 + Math.floor(index / 4) * 190,
-      details: data.details || {},
-      internal_components: data.internal_components || [],
-      vms: data.vms || [],
-      power_draw: data.power_draw,
-    });
+    addHardware(
+      withFreshChildIds({
+        id: crypto.randomUUID(),
+        type: nodeType,
+        name: data.name || 'New ' + nodeType.replace('_', ' '),
+        x: 180 + (index % 4) * 250,
+        y: 160 + Math.floor(index / 4) * 190,
+        details: data.details || {},
+        internal_components: data.internal_components || [],
+        vms: data.vms || [],
+        power_draw: data.power_draw,
+      }),
+    );
     toast.success('Added ' + (data.name || nodeType.replace('_', ' ')) + ' to the canvas.');
   };
 
