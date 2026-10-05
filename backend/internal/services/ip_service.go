@@ -536,9 +536,14 @@ func (s *IPService) CalculateNetwork(buildID uuid.UUID) error {
 // GORM implements the nested Transaction call as a savepoint, so any IPAM or
 // persistence failure rolls the entire graph revision back.
 func (s *IPService) CalculateNetworkInTransaction(tx *gorm.DB, buildID uuid.UUID) error {
+	return s.WithDB(tx).CalculateNetwork(buildID)
+}
+
+// WithDB returns a copy of the service bound to db, usually an open transaction.
+func (s *IPService) WithDB(db *gorm.DB) *IPService {
 	scoped := *s
-	scoped.db = tx
-	return scoped.CalculateNetwork(buildID)
+	scoped.db = db
+	return &scoped
 }
 
 // callIPAM sends a topology to the hlbIPAM /allocate endpoint and returns the result.

@@ -441,6 +441,27 @@
   }
 }
 
+/* The canvas is narrower than the viewport by the sidebar and, when open, the
+   assistant or review panel. These rules follow the canvas itself, so the
+   toolbar stays inside it and clear of the resource dashboard. */
+.builder-canvas {
+  container: builder-canvas / inline-size;
+}
+
+.builder-top-panel {
+  max-width: calc(100cqw - 1.5rem);
+}
+
+@container builder-canvas (max-width: 1000px) {
+  .builder-action-label {
+    display: none;
+  }
+
+  .builder-resource-dashboard {
+    top: 4.25rem;
+  }
+}
+
 .hardware-node-shell {
   --node-accent: #22c55e;
 }
@@ -1168,4 +1189,186 @@
 /* Devices inside a rack get a compact horizontal layout */
 .react-flow__node-hardware[data-inrack="true"] {
   width: calc(100% - 28px) !important;
+}
+
+/* ── LLM proposal preview ──────────────────────────────────────────────────
+   The read-only canvas shown while a proposed change set is reviewed. Nodes
+   and cables keep their normal look; an outline and a tag mark what the
+   proposal adds, changes or removes. */
+.proposal-preview-canvas .react-flow__node,
+.proposal-preview-canvas .react-flow__node *,
+.proposal-preview-canvas .react-flow__edge {
+  pointer-events: none !important;
+}
+
+.proposal-diff-added {
+  --proposal-diff-color: #22c55e;
+}
+
+.proposal-diff-changed {
+  --proposal-diff-color: #f59e0b;
+}
+
+.proposal-diff-removed {
+  --proposal-diff-color: #ef4444;
+}
+
+.proposal-preview-canvas .react-flow__node.proposal-diff {
+  outline: 2px solid var(--proposal-diff-color);
+  outline-offset: 5px;
+  border-radius: 14px;
+}
+
+.proposal-preview-canvas .react-flow__node.proposal-diff::after {
+  position: absolute;
+  top: -11px;
+  right: 10px;
+  z-index: 5;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--proposal-diff-color);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.6;
+  text-transform: uppercase;
+}
+
+.proposal-preview-canvas .react-flow__node.proposal-diff-added::after {
+  content: 'new';
+}
+
+.proposal-preview-canvas .react-flow__node.proposal-diff-changed::after {
+  content: 'changed';
+}
+
+.proposal-preview-canvas .react-flow__node.proposal-diff-removed::after {
+  content: 'removed';
+}
+
+.proposal-preview-canvas .react-flow__node.proposal-diff-removed {
+  outline-style: dashed;
+  opacity: 0.5;
+  filter: grayscale(0.6);
+}
+
+/* ── In-app assistant ──────────────────────────────────────────────────────
+   Replies are Markdown from a model, rendered in a narrow side panel: compact
+   spacing, and wide content (tables, code) scrolls inside its own box. */
+.assistant-markdown {
+  overflow-wrap: anywhere;
+  line-height: 1.55;
+}
+
+.assistant-markdown > * + * {
+  margin-top: 0.6rem;
+}
+
+.assistant-markdown h1,
+.assistant-markdown h2,
+.assistant-markdown h3,
+.assistant-markdown h4 {
+  margin-top: 0.9rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.assistant-markdown ul,
+.assistant-markdown ol {
+  padding-left: 1.25rem;
+}
+
+.assistant-markdown ul {
+  list-style: disc;
+}
+
+.assistant-markdown ol {
+  list-style: decimal;
+}
+
+.assistant-markdown li + li {
+  margin-top: 0.2rem;
+}
+
+.assistant-markdown li > ul,
+.assistant-markdown li > ol {
+  margin-top: 0.2rem;
+}
+
+.assistant-markdown a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.assistant-markdown code {
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+  background: var(--muted);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.8em;
+}
+
+.assistant-markdown pre {
+  overflow-x: auto;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--muted);
+}
+
+.assistant-markdown pre code {
+  padding: 0;
+  background: none;
+  overflow-wrap: normal;
+  white-space: pre;
+}
+
+.assistant-markdown blockquote {
+  padding-left: 0.75rem;
+  border-left: 2px solid var(--border);
+  color: var(--muted-foreground);
+}
+
+.assistant-markdown table {
+  display: block;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.assistant-markdown th,
+.assistant-markdown td {
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+
+.assistant-markdown hr {
+  border-color: var(--border);
+}
+
+.assistant-working-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--primary);
+  animation: assistant-working 1.1s ease-in-out infinite;
+}
+
+@keyframes assistant-working {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assistant-working-dot {
+    animation: none;
+  }
 }

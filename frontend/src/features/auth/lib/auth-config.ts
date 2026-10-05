@@ -3,6 +3,10 @@ import { apiUrl } from '../../../lib/api-base';
 export type AuthConfig = {
   auth_disabled: boolean;
   google_client_id: string;
+  /** Whether this instance exposes the /mcp endpoint for LLM clients. */
+  mcp_enabled: boolean;
+  /** Whether this instance offers the in-app bring-your-own-key assistant. */
+  assistant_enabled: boolean;
 };
 
 function isPlaceholderClientId(clientId: string): boolean {
@@ -14,6 +18,8 @@ function buildTimeFallback(): AuthConfig {
   return {
     auth_disabled: isPlaceholderClientId(clientId),
     google_client_id: isPlaceholderClientId(clientId) ? '' : clientId,
+    mcp_enabled: false,
+    assistant_enabled: false,
   };
 }
 
@@ -31,6 +37,8 @@ export function getAuthConfig(): Promise<AuthConfig> {
         return {
           auth_disabled: config.auth_disabled || isPlaceholderClientId(clientId),
           google_client_id: isPlaceholderClientId(clientId) ? '' : clientId,
+          mcp_enabled: config.mcp_enabled === true,
+          assistant_enabled: config.assistant_enabled === true,
         };
       })
       .catch(() => buildTimeFallback());

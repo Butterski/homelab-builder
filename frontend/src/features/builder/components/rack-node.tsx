@@ -23,7 +23,9 @@ type RackNodeData = {
 const RackNode = memo(({ data, selected, id }: NodeProps) => {
   const nodeData = data as unknown as RackNodeData;
   const rackSize = nodeData.details?.rack_size || 24;
-  const hardwareNodes = useBuilderStore(state => state.hardwareNodes);
+  const hardwareNodes = useBuilderStore(
+    state => state.proposalPreview?.hardwareNodes ?? state.hardwareNodes,
+  );
 
   // Compute usedU dynamically from children in the store
   const usedU = useMemo(() => {

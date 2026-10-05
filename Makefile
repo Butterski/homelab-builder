@@ -6,7 +6,7 @@ help:
 	@echo "  make up             - Start Docker Compose services"
 	@echo "  make down           - Stop Docker Compose services"
 	@echo "  make test           - Run all tests (backend + frontend)"
-	@echo "  make test-backend   - Run Go service tests against the postgres container"
+	@echo "  make test-backend   - Run all backend Go tests in Docker (PostgreSQL + hlbIPAM)"
 	@echo "  make test-frontend  - Run Vitest frontend tests locally (no backend needed)"
 	@echo "  make lint           - Run linters"
 	@echo "  make build          - Build the application"
@@ -24,23 +24,10 @@ down:
 # Run all tests
 test: test-backend test-frontend
 
-# Build the Go builder stage (has toolchain + source) and run tests in a
-# temporary container on the same Docker network as the running postgres service.
-# Requires: docker compose up (postgres container must be healthy).
+# Starts a throwaway PostgreSQL and hlbIPAM, then runs `go test ./...` for the
+# backend in a container. This is the same compose file CI uses.
 test-backend:
-	@echo "Building test runner image from builder stage..."
-	docker build --target builder -t homelab-builder-test-runner ./backend
-	@echo "Running backend tests against postgres..."
-	docker run --rm \
-		--network homelab-builder_default \
-		-e DB_HOST=postgres \
-		-e DB_PORT=5432 \
-		-e DB_USER=homelab \
-		-e DB_PASSWORD=homelab_password \
-		-e DB_SSLMODE=disable \
-		-e TEST_DB_NAME=homelab_builder_test \
-		homelab-builder-test-runner \
-		go test ./internal/services/... -v -count=1
+	docker compose -f docker-compose.test.yml up --build --abort-on-container-exit --exit-code-from backend-test; \n	status=$$?; docker compose -f docker-compose.test.yml down; exit $$status
 
 # Frontend Vitest tests run locally. buildApi is fully mocked - no backend needed.
 test-frontend:

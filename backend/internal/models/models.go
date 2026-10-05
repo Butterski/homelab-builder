@@ -410,3 +410,118 @@ type UserHardwareFavorite struct {
 }
 
 func (UserHardwareFavorite) TableName() string { return "user_hardware_favorites" }
+
+// APIToken is a personal access token used by MCP clients. Only the SHA-256
+// hash of the token is stored; the plaintext is shown once at creation.
+type APIToken struct {
+	ID         uuid.UUID  `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	UserID     uuid.UUID  `gorm:"type:uuid;not null;index" json:"user_id"`
+	Name       string     `gorm:"not null" json:"name"`
+	Prefix     string     `gorm:"not null" json:"prefix"` // display only, e.g. "hlb_AbCd"
+	TokenHash  string     `gorm:"not null;uniqueIndex" json:"-"`
+	Scope      string     `gorm:"not null;default:'read'" json:"scope"`      // read | propose
+	BuildID    *uuid.UUID `gorm:"type:uuid;index" json:"build_id,omitempty"` // optional single-build restriction
+	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
+	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
+	LastUsedIP string     `gorm:"default:''" json:"last_used_ip,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
+
+	User  *User  `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"-"`
+	Build *Build `gorm:"foreignKey:BuildID;constraint:OnDelete:CASCADE" json:"-"`
+}
+
+func (APIToken) TableName() string { return "api_tokens" }
+
+// BuildProposal is a change set an LLM (MCP client or in-app assistant) suggested
+// for a build. Nothing is written to the build until its owner applies it.
+type BuildProposal struct {
+	ID              uuid.UUID       `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	BuildID         uuid.UUID       `gorm:"type:uuid;not null;index" json:"build_id"`
+	UserID          uuid.UUID       `gorm:"type:uuid;not null;index" json:"user_id"`
+	Source          string          `gorm:"not null" json:"source"` // mcp | chat
+	SourceLabel     string          `gorm:"default:''" json:"source_label"`
+	TokenID         *uuid.UUID      `gorm:"type:uuid" json:"token_id,omitempty"`
+	ThreadID        *uuid.UUID      `gorm:"type:uuid;index" json:"thread_id,omitempty"`
+	Summary         string          `gorm:"type:text;default:''" json:"summary"`
+	Operations      json.RawMessage `gorm:"type:jsonb;not null;default:'[]'" json:"operations"` // resolved ops
+	BaseRevision    uint64          `gorm:"not null;default:0" json:"base_revision"`
+	Diff            json.RawMessage `gorm:"type:jsonb;not null;default:'{}'" json:"diff"`
+	Preview         json.RawMessage `gorm:"type:jsonb;not null;default:'{}'" json:"preview,omitempty"` // proposed build + validation
+	Status          string          `gorm:"not null;default:'pending';index" json:"status"`            // pending | applied | rejected | superseded | conflict
+	StatusReason    string          `gorm:"type:text;default:''" json:"status_reason"`
+	AppliedRevision *uint64         `json:"applied_revision,omitempty"`
+	ResolvedAt      *time.Time      `json:"resolved_at,omitempty"`
+	CreatedAt       time.Time       `json:"created_at"`
+	UpdatedAt       time.Time       `json:"updated_at"`
+
+	Build *Build `gorm:"foreignKey:BuildID;constraint:OnDelete:CASCADE" json:"-"`
+	User  *User  `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"-"`
+}
+
+func (BuildProposal) TableName() string { return "build_proposals" }
+
+// AssistantSettings holds a user's bring-your-own-key assistant configuration.
+// The provider key is AES-256-GCM encrypted and never serialized to JSON.
+type AssistantSettings struct {
+	UserID        uuid.UUID  `gorm:"type:uuid;primaryKey" json:"user_id"`
+	Enabled       bool       `gorm:"not null;default:false" json:"enabled"`
+	Provider      string     `gorm:"default:''" json:"provider"`
+	Model         string     `gorm:"default:''" json:"model"`
+	BaseURL       string     `gorm:"default:''" json:"base_url"`
+	KeyCiphertext []byte     `gorm:"type:bytea" json:"-"`
+	KeyNonce      []byte     `gorm:"type:bytea" json:"-"`
+	KeyVersion    int        `gorm:"not null;default:0" json:"-"`
+	KeyHint       string     `gorm:"default:''" json:"-"`
+	KeyStoredAt   *time.Time `json:"-"`
+	KeyLastUsedAt *time.Time `json:"-"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+
+	User *User `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"-"`
+}
+
+func (AssistantSettings) TableName() string { return "assistant_settings" }
+
+// AssistantThread is the single assistant conversation a user has about a build.
+type AssistantThread struct {
+	ID        uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	UserID    uuid.UUID `gorm:"type:uuid;not null;uniqueIndex:idx_assistant_thread_user_build" json:"user_id"`
+	BuildID   uuid.UUID `gorm:"type:uuid;not null;uniqueIndex:idx_assistant_thread_user_build" json:"build_id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+
+	User  *User  `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"-"`
+	Build *Build `gorm:"foreignKey:BuildID;constraint:OnDelete:CASCADE" json:"-"`
+}
+
+func (AssistantThread) TableName() string { return "assistant_threads" }
+
+// AssistantMessage is one turn in a thread. Parts is the provider-neutral
+// transcript shown in the UI; Native keeps the provider's own response message
+// so history can be replayed unchanged to the same provider and model.
+type AssistantMessage struct {
+	ID          uuid.UUID       `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	ThreadID    uuid.UUID       `gorm:"type:uuid;not null;index" json:"thread_id"`
+	Seq         int             `gorm:"not null;default:0" json:"seq"`
+	Role        string          `gorm:"not null" json:"role"` // user | assistant | tool
+	Provider    string          `gorm:"default:''" json:"provider,omitempty"`
+	Model       string          `gorm:"default:''" json:"model,omitempty"`
+	Parts       json.RawMessage `gorm:"type:jsonb;not null;default:'[]'" json:"parts"`
+	Native      json.RawMessage `gorm:"type:jsonb" json:"-"`
+	Interrupted bool            `gorm:"not null;default:false" json:"interrupted"`
+	CreatedAt   time.Time       `json:"created_at"`
+
+	Thread *AssistantThread `gorm:"foreignKey:ThreadID;constraint:OnDelete:CASCADE" json:"-"`
+}
+
+func (AssistantMessage) TableName() string { return "assistant_messages" }
+
+// SystemSetting stores instance-level values such as a generated secrets key.
+type SystemSetting struct {
+	Key       string    `gorm:"primaryKey" json:"key"`
+	Value     string    `gorm:"type:text;not null;default:''" json:"-"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func (SystemSetting) TableName() string { return "system_settings" }

@@ -41,6 +41,7 @@ import {
   Map as MapIcon,
   ClipboardCheck,
   LayoutGrid,
+  Sparkles,
 } from 'lucide-react';
 import type { HardwareType, HardwareNode } from '../../../types';
 import { toPng, toSvg } from 'html-to-image';
@@ -70,6 +71,13 @@ import {
 import { CustomEdge } from './custom-edge';
 import { ReadinessReportDialog } from './readiness-report-dialog';
 import { VirtualNetworkEditor } from './virtual-network-editor';
+import { ProposalBanner } from './proposal-banner';
+import { ProposalPreviewCanvas } from './proposal-preview-canvas';
+import { ProposalReviewPanel } from './proposal-review-panel';
+import { useProposals } from '../hooks/use-proposals';
+import { AssistantPanel } from '../../assistant/components/assistant-panel';
+import { useAssistantStore } from '../../assistant/store/assistant-store';
+import { useAssistantSettings } from '../../settings/api/assistant-settings';
 
 type ZoneBlob = { x: number; y: number; width: number; height: number };
 
@@ -314,6 +322,17 @@ const Flow = React.memo(function Flow() {
   } = useBuilderStore();
 
   const { screenToFlowPosition, getIntersectingNodes, fitView } = useReactFlow();
+
+  // LLM proposals: polled from the server, reviewed on a read-only preview canvas.
+  const proposals = useProposals(id);
+  const reviewingProposal = useBuilderStore(state => state.proposalPreview !== null);
+
+  // The in-app assistant exists only for users who turned it on in Settings.
+  const { data: assistantSettings } = useAssistantSettings();
+  const assistantEnabled = !!assistantSettings?.available && assistantSettings.enabled;
+  const assistantOpen = useAssistantStore(state => state.open);
+  const setAssistantOpen = useAssistantStore(state => state.setOpen);
+  const showAssistant = assistantEnabled && assistantOpen && !!id;
   const visualPreferences = {
     showNetworkZones: edgePreferences.showNetworkZones ?? true,
     showLanZones: edgePreferences.showLanZones ?? false,
@@ -621,6 +640,15 @@ const Flow = React.memo(function Flow() {
       return;
     }
 
+    // Nothing to save when the canvas matches the server: right after a load,
+    // or after a save that only brought back calculated addresses. Without this
+    // a reload triggered by another session would save again and the two
+    // sessions would keep bumping the revision for each other.
+    if (topologyFingerprint === useBuilderStore.getState().lastSyncedFingerprint) {
+      pendingSave.current = false;
+      return;
+    }
+
     // Debounce save
     pendingSave.current = true;
     const timer = setTimeout(() => {
@@ -746,6 +774,12 @@ const Flow = React.memo(function Flow() {
       if (useBuilderStore.getState().virtualHostId) return;
       const tag = (e.target as HTMLElement).tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+      // The proposal preview is read-only: Escape leaves it, nothing else applies.
+      if (useBuilderStore.getState().proposalPreview) {
+        if (e.key === 'Escape') useBuilderStore.getState().endProposalPreview();
+        return;
+      }
 
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
@@ -1130,7 +1164,9 @@ const Flow = React.memo(function Flow() {
           />
         )}
 
-        <HardwareToolbox />
+        <div className={reviewingProposal ? 'hidden' : 'contents'}>
+          <HardwareToolbox />
+        </div>
         <ReadinessReportDialog
           open={readinessOpen}
           onOpenChange={setReadinessOpen}
@@ -1141,7 +1177,9 @@ const Flow = React.memo(function Flow() {
           onReassignIPs={handleReassignIPs}
         />
 
-        <div className="flex-1 h-full relative" ref={reactFlowWrapper}>
+        <div className="builder-canvas flex-1 h-full min-w-0 relative" ref={reactFlowWrapper}>
+          {/* The live canvas stays mounted under the proposal preview but cannot be used. */}
+          <div className="h-full w-full" inert={reviewingProposal}>
           <ReactFlow
             nodes={flowNodes}
             edges={edges}
@@ -1302,6 +1340,20 @@ const Flow = React.memo(function Flow() {
                 <span className="builder-action-label ml-2">Polish</span>
               </Button>
 
+              {assistantEnabled && (
+                <Button
+                  variant={assistantOpen ? 'secondary' : 'outline'}
+                  onClick={() => setAssistantOpen(!assistantOpen)}
+                  title={assistantOpen ? 'Close the assistant' : 'Open the assistant'}
+                  aria-pressed={assistantOpen}
+                  size="sm"
+                  className="builder-control-button h-10 px-3"
+                >
+                  <Sparkles className="size-4" />
+                  <span className="builder-action-label ml-2">Assistant</span>
+                </Button>
+              )}
+
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" className="builder-control-button h-10 px-3">
@@ -1431,7 +1483,40 @@ const Flow = React.memo(function Flow() {
             <ShortcutHints />
             <LiveResourceDashboard />
           </ReactFlow>
+          </div>
+          {proposals.pending && (
+            <ProposalBanner
+              proposal={proposals.pending}
+              loading={proposals.busy === 'open'}
+              onReview={() => void proposals.openReview(proposals.pending!.id)}
+              onDismiss={proposals.dismiss}
+            />
+          )}
+          <ProposalPreviewCanvas />
         </div>
+        {/* One side panel: the review while a proposal is open, otherwise the assistant. */}
+        {(reviewingProposal || showAssistant) && (
+          <aside className="builder-side-panel flex h-full w-[380px] shrink-0 flex-col border-l bg-card max-md:absolute max-md:inset-y-0 max-md:right-0 max-md:z-40 max-md:w-full">
+            {reviewingProposal ? (
+              <ProposalReviewPanel
+                busy={
+                  proposals.busy === 'apply' || proposals.busy === 'reject' ? proposals.busy : null
+                }
+                onApply={() => void proposals.apply()}
+                onReject={reason => void proposals.reject(reason)}
+                onClose={proposals.closeReview}
+              />
+            ) : (
+              <AssistantPanel
+                buildId={id!}
+                openingProposal={proposals.busy === 'open'}
+                onReview={proposalId => void proposals.openReview(proposalId)}
+                onProposal={() => void proposals.refreshSyncState()}
+                onClose={() => setAssistantOpen(false)}
+              />
+            )}
+          </aside>
+        )}
       </div>
     </div>
   );

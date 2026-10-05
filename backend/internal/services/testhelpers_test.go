@@ -95,6 +95,13 @@ func migrateTestDB(db *gorm.DB) error {
 		&models.ShoppingList{},
 		&models.ShoppingListItem{},
 		&models.UserHardwareFavorite{},
+		&models.Event{},
+		&models.APIToken{},
+		&models.BuildProposal{},
+		&models.AssistantSettings{},
+		&models.AssistantThread{},
+		&models.AssistantMessage{},
+		&models.SystemSetting{},
 	)
 }
 

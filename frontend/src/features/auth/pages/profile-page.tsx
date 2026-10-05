@@ -5,7 +5,7 @@ import { buildApi } from '../../builder/api/builds';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';
-import { LogOut, User, Mail, FolderOpen, ChevronLeft, Shield } from 'lucide-react';
+import { LogOut, User, Mail, FolderOpen, ChevronLeft, Shield, Settings } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -13,7 +13,6 @@ import {
   DialogTitle,
   DialogFooter,
 } from '../../../components/ui/dialog';
-import { ThemeSettingsCard } from '../components/theme-settings-card';
 
 export default function ProfilePage() {
   const { user, logout } = useAuth();
@@ -121,7 +120,20 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
 
-        <ThemeSettingsCard />
+        <Card>
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
+            <div className="min-w-0">
+              <p className="text-sm font-medium">Settings</p>
+              <p className="text-xs text-muted-foreground">
+                Theme, and access for MCP clients and the AI assistant.
+              </p>
+            </div>
+            <Button variant="outline" onClick={() => navigate('/settings')}>
+              <Settings className="mr-2 size-4" />
+              Open settings
+            </Button>
+          </CardContent>
+        </Card>
 
         {/* Danger Zone */}
         <Card className="border-destructive/30">

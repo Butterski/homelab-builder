@@ -15,7 +15,6 @@ import type {
   Service,
   HardwareNode,
   VirtualMachine,
-  HardwareType,
   HardwareComponent,
   HardwareNodeValidationIssue,
   VirtualNetwork,
@@ -23,6 +22,13 @@ import type {
 import { initialVirtualNetwork, removeVirtualEndpoints } from '../lib/virtual-network';
 import { withFreshChildIds } from '../lib/hardware-instance';
 import { buildApi, type Build } from '../api/builds';
+import { proposalApi, type Proposal } from '../api/proposals';
+import { mapBuildToFlow } from '../lib/build-mapper';
+import {
+  buildProposalPreview,
+  validationToIssues,
+  type ProposalPreviewGraph,
+} from '../lib/proposal-preview';
 import { api } from '../../../services/api';
 import { ApiError } from '../../../lib/api';
 import {
@@ -51,6 +57,13 @@ export class BuildConflictError extends Error {
 // Removed hardcoded NON_NETWORK_TYPES and using isNetworkNode instead.
 
 type Snapshot = { nodes: Node[]; edges: Edge[]; hardwareNodes: HardwareNode[] };
+
+/** A proposal opened for review, rendered on a read-only canvas over the builder. */
+export type ProposalPreviewState = ProposalPreviewGraph & {
+  proposal: Proposal;
+  /** Nodes the preview canvas should bring into view; nonce re-triggers the same ids. */
+  focus: { ids: string[]; nonce: number } | null;
+};
 
 interface BuilderState {
   virtualHostId: string | null;
@@ -136,6 +149,19 @@ interface BuilderState {
   openBuild: (id: string) => Promise<void>;
   getBuildData: () => any;
 
+  /** Fingerprint of the topology as last loaded from or saved to the server. */
+  lastSyncedFingerprint: string;
+  hasUnsavedChanges: () => boolean;
+  /** Loads a newer server revision when nothing local is waiting to be saved. */
+  syncWithServer: (serverRevision: number) => Promise<boolean>;
+
+  // ── LLM proposals ──────────────────────────────────────────────────
+  proposalPreview: ProposalPreviewState | null;
+  startProposalPreview: (proposal: Proposal) => void;
+  endProposalPreview: () => void;
+  focusProposalNodes: (ids: string[]) => void;
+  applyProposal: (proposalId: string) => Promise<void>;
+
   // Computed getters
   totalCpu: () => number;
   totalRam: () => number;
@@ -210,6 +236,8 @@ export const useBuilderStore = create<BuilderState>()(
       projectThumbnail: '',
       currentBuildId: null,
       currentRevision: 0,
+      lastSyncedFingerprint: '',
+      proposalPreview: null,
 
       onNodesChange: changes => {
         const dragEnds = changes.filter(c => c.type === 'position' && !(c as any).dragging);
@@ -665,7 +693,7 @@ export const useBuilderStore = create<BuilderState>()(
 
       undo: () => {
         const state = get();
-        if (state.historyPast.length === 0) return;
+        if (state.proposalPreview || state.historyPast.length === 0) return;
         const past = [...state.historyPast];
         const snap = past.pop()!;
         const current: Snapshot = {
@@ -689,7 +717,7 @@ export const useBuilderStore = create<BuilderState>()(
 
       redo: () => {
         const state = get();
-        if (state.historyFuture.length === 0) return;
+        if (state.proposalPreview || state.historyFuture.length === 0) return;
         const future = [...state.historyFuture];
         const snap = future.shift()!;
         const current: Snapshot = {
@@ -722,6 +750,7 @@ export const useBuilderStore = create<BuilderState>()(
           try {
             // The backend saves this revision and calculates its network in one transaction.
             const data = getBuildData();
+            const sentFingerprint = JSON.stringify(data);
             const response = await buildApi.updateTopology(currentBuildId, {
               name: projectName || 'Untitled Project',
               thumbnail: '',
@@ -797,11 +826,16 @@ export const useBuilderStore = create<BuilderState>()(
               };
             });
 
+            // Edits made while the request was in flight are not on the server yet.
+            const editedDuringSave = JSON.stringify(get().getBuildData()) !== sentFingerprint;
             set({
               hardwareNodes: hardwareNodesWithIPs as HardwareNode[],
               nodes: reactFlowNodesWithIPs as Node[],
               currentRevision: build.revision,
             });
+            if (!editedDuringSave) {
+              set({ lastSyncedFingerprint: JSON.stringify(get().getBuildData()) });
+            }
 
             if (response.validation) {
               const issues: HardwareNodeValidationIssue[] = [
@@ -883,70 +917,15 @@ export const useBuilderStore = create<BuilderState>()(
           hardwareNodes: [],
           historyPast: [],
           historyFuture: [],
+          lastSyncedFingerprint: '',
+          proposalPreview: null,
         }),
       setProjectName: name => set({ projectName: name }),
 
       loadBuild: (id, name, build: Build) => {
         const settings = build.settings || {};
 
-        // Map relational `nodes` back into flattened array structure
-        const hardwareNodes: HardwareNode[] = (build.nodes || []).map((n: any) => ({
-          id: n.id,
-          type: n.type as HardwareType,
-          name: n.name,
-          ip: n.ip,
-          mac_address: n.mac_address,
-          x: n.x || 0,
-          y: n.y || 0,
-          vms: n.virtual_machines || [],
-          internal_components: n.internal_components || [],
-          details: typeof n.details === 'string' ? JSON.parse(n.details) : n.details || {},
-          parent_id: n.parent_id || undefined,
-        }));
-
-        const hwMap = new Map<string, HardwareNode>(hardwareNodes.map((n: any) => [n.id, n]));
-
-        // Sort: racks first so React Flow can resolve parentId references
-        const sortedBuildNodes = (build.nodes || []).toSorted((a: any, b: any) => {
-          const aIsRack = a.type === 'rack' ? 0 : 1;
-          const bIsRack = b.type === 'rack' ? 0 : 1;
-          return aIsRack - bIsRack;
-        });
-
-        // Construct React Flow nodes from the relational DB nodes
-        const rfNodes = sortedBuildNodes.map((n: any) => {
-          const hw = hwMap.get(n.id);
-          const isRack = n.type === 'rack';
-          const details = hw?.details || {};
-          const rackSize = details.rack_size || 24;
-          const totalHeight = RACK_HEADER_PX + rackSize * RACK_U_HEIGHT_PX + RACK_FOOTER_PX;
-
-          return {
-            id: n.id,
-            type: isRack ? 'rack' : 'hardware',
-            position: { x: n.x, y: n.y },
-            data: { ...(hw || {}), label: n.name },
-            ...(isRack ? { style: { width: RACK_WIDTH_PX, height: totalHeight } } : {}),
-            ...(n.parent_id ? { parentId: n.parent_id, extent: 'parent' as const } : {}),
-          };
-        });
-
-        // Map DB edges to React Flow edges
-        const rfEdges = (build.edges || []).map((e: any) => ({
-          id: String(e.id || `${e.source_node_id}-${e.target_node_id}`),
-          source: String(e.source_node_id),
-          sourceHandle: e.source_handle || undefined,
-          target: String(e.target_node_id),
-          targetHandle: e.target_handle || undefined,
-          type: 'custom',
-          data: {
-            connection_type: e.type || 'ethernet',
-            speed: e.speed || '1 GbE',
-            subnet: e.subnet || '',
-            wireless_standard: e.wireless_standard || 'Wi-Fi 6',
-            direction: e.direction || 'auto',
-          },
-        }));
+        const { hardwareNodes, nodes: rfNodes, edges: rfEdges } = mapBuildToFlow(build);
 
         set({
           currentBuildId: id,
@@ -960,6 +939,91 @@ export const useBuilderStore = create<BuilderState>()(
           showBought: settings.showBought || false,
           historyPast: [],
           historyFuture: [],
+        });
+        set({ lastSyncedFingerprint: JSON.stringify(get().getBuildData()) });
+      },
+
+      hasUnsavedChanges: () => {
+        const state = get();
+        if (!state.currentBuildId) return false;
+        return JSON.stringify(state.getBuildData()) !== state.lastSyncedFingerprint;
+      },
+
+      syncWithServer: serverRevision => {
+        let reloaded = false;
+        return enqueueTopologyMutation(async () => {
+          const { currentBuildId, currentRevision } = get();
+          if (!currentBuildId || serverRevision <= currentRevision) return;
+          // A pending local edit is saved first; if that save is stale it adopts
+          // the newer build through the conflict path.
+          if (get().hasUnsavedChanges()) return;
+          const build = await buildApi.get(currentBuildId);
+          if (get().currentBuildId !== currentBuildId) return;
+          if (build.revision <= get().currentRevision || get().hasUnsavedChanges()) return;
+          get().loadBuild(build.id, build.name, build);
+          reloaded = true;
+        }).then(() => reloaded);
+      },
+
+      // ── LLM proposals ──────────────────────────────────────────────────
+      startProposalPreview: proposal => {
+        const state = get();
+        const graph = buildProposalPreview(proposal, {
+          hardwareNodes: state.hardwareNodes,
+          nodes: state.nodes,
+          edges: state.edges,
+        });
+        set({
+          selectedNodeId: null,
+          proposalPreview: {
+            ...graph,
+            proposal,
+            focus: graph.changedNodeIds.length ? { ids: graph.changedNodeIds, nonce: 0 } : null,
+          },
+        });
+      },
+
+      endProposalPreview: () => set({ proposalPreview: null }),
+
+      focusProposalNodes: ids =>
+        set(state =>
+          state.proposalPreview
+            ? {
+                proposalPreview: {
+                  ...state.proposalPreview,
+                  focus: { ids, nonce: (state.proposalPreview.focus?.nonce ?? 0) + 1 },
+                },
+              }
+            : state,
+        ),
+
+      applyProposal: async proposalId => {
+        // Anything edited but not saved yet must reach the server first, or the
+        // reload after applying would silently drop it.
+        if (get().hasUnsavedChanges()) {
+          await get().reassignAllIPs();
+        }
+        return enqueueTopologyMutation(async () => {
+          const { currentBuildId } = get();
+          if (!currentBuildId) throw new Error('No build is open');
+          const result = await proposalApi.apply(currentBuildId, proposalId);
+          if (get().currentBuildId !== currentBuildId) return;
+
+          const before = get();
+          const snapshot: Snapshot = {
+            nodes: before.nodes,
+            edges: before.edges,
+            hardwareNodes: before.hardwareNodes,
+          };
+          const past = before.historyPast;
+          get().loadBuild(result.build.id, result.build.name, result.build);
+          // One undo step takes the canvas back to how it was before the proposal.
+          set({
+            historyPast: [...past, snapshot].slice(-50),
+            historyFuture: [],
+            proposalPreview: null,
+            validationIssues: validationToIssues(result.validation),
+          });
         });
       },
 
@@ -983,6 +1047,7 @@ export const useBuilderStore = create<BuilderState>()(
             name: rfn.data?.name || hw.name,
             x: rfn.position.x,
             y: rfn.position.y,
+            power_draw: Number(rfn.data?.power_draw ?? hw.power_draw ?? 0) || 0,
             ip: rfn.data?.ip || hw.ip || '',
             mac_address: rfn.data?.mac_address || hw.mac_address || '',
             details: rfn.data?.details || hw.details || {},

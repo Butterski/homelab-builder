@@ -5,9 +5,12 @@ import (
 	"log"
 	"time"
 
+	"github.com/Butterski/homelab-builder/backend/internal/assistant"
 	"github.com/Butterski/homelab-builder/backend/internal/config"
 	"github.com/Butterski/homelab-builder/backend/internal/handlers"
+	"github.com/Butterski/homelab-builder/backend/internal/mcpserver"
 	"github.com/Butterski/homelab-builder/backend/internal/middleware"
+	"github.com/Butterski/homelab-builder/backend/internal/secrets"
 	"github.com/Butterski/homelab-builder/backend/internal/services"
 	"github.com/Butterski/homelab-builder/backend/pkg/database"
 	"github.com/gin-gonic/gin"
@@ -123,13 +126,82 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 		catalogCompHandler := handlers.NewCatalogComponentHandler(catalogCompService)
 		_ = services.NewAnalyticsService(db) // available for future handler integration
 
+		buildService := services.NewBuildService(db)
+		ipService := services.NewIPService(db)
+		buildHandler := handlers.NewBuildHandler(buildService, ipService)
+		configService := services.NewConfigService(db)
+		configHandler := handlers.NewConfigHandler(configService)
+		proposalService := services.NewProposalService(db, buildService, ipService)
+		proposalHandler := handlers.NewProposalHandler(proposalService)
+		apiTokenService := services.NewAPITokenService(db)
+		apiTokenHandler := handlers.NewAPITokenHandler(apiTokenService)
+
+		// One tool registry serves both the MCP endpoint and the in-app assistant.
+		assistantTools := assistant.NewRegistry(assistant.Deps{
+			DB:              db,
+			Builds:          buildService,
+			IP:              ipService,
+			Proposals:       proposalService,
+			Hardware:        hardwareService,
+			Services:        serviceService,
+			Recommendations: recommendationService,
+			Config:          configService,
+		})
+
+		// In-app assistant. Users bring their own provider key, which is stored
+		// encrypted under the instance's master key. A public instance must be
+		// given that key through SECRETS_KEY; without it the assistant stays off
+		// rather than the server refusing to start.
+		var keyring *secrets.Keyring
+		if cfg.AssistantEnabled {
+			requireEnvKey := gin.Mode() == gin.ReleaseMode && !cfg.AuthDisabled
+			loaded, err := services.LoadKeyring(db, cfg.SecretsKey, cfg.SecretsKeyVersion, requireEnvKey)
+			switch {
+			case err != nil:
+				log.Printf("AI assistant disabled: %v", err)
+			case loaded.Source == secrets.SourceDatabase:
+				log.Printf("AI assistant: SECRETS_KEY is not set, so provider keys are encrypted with a key kept in this database. Set SECRETS_KEY to keep the master key outside the database.")
+				keyring = loaded
+			default:
+				keyring = loaded
+			}
+		}
+		assistantSettings := services.NewAssistantSettingsService(db, keyring, cfg.AssistantEnabled, cfg.AssistantAllowPrivateEndpoints)
+		assistantAgent := assistant.NewAgent(assistant.AgentDeps{
+			Registry:     assistantTools,
+			Settings:     assistantSettings,
+			Threads:      services.NewAssistantThreadService(db),
+			Proposals:    proposalService,
+			Builds:       buildService,
+			PublicAppURL: cfg.PublicAppURL,
+		})
+		assistantHandler := handlers.NewAssistantHandler(assistantSettings, assistantAgent)
+
+		// MCP endpoint for external LLM clients. It authenticates with personal
+		// access tokens, never with the browser session.
+		if cfg.MCPEnabled {
+			mcpHandler := mcpserver.NewHandler(mcpserver.Deps{
+				Registry:       assistantTools,
+				Tokens:         apiTokenService,
+				PublicAppURL:   cfg.PublicAppURL,
+				AllowedOrigins: cfg.MCPAllowedOrigins,
+			})
+			router.Any("/mcp", func(c *gin.Context) {
+				// gin resolves the client address through the trusted proxies above.
+				request := c.Request.WithContext(mcpserver.WithClientIP(c.Request.Context(), c.ClientIP()))
+				mcpHandler.ServeHTTP(c.Writer, request)
+			})
+		}
+
 		// Auth routes (public & protected user)
 		auth := router.Group("/auth")
 		{
 			auth.GET("/config", func(c *gin.Context) {
 				c.JSON(200, gin.H{
-					"auth_disabled":    cfg.AuthDisabled,
-					"google_client_id": cfg.GoogleClientID,
+					"auth_disabled":     cfg.AuthDisabled,
+					"google_client_id":  cfg.GoogleClientID,
+					"mcp_enabled":       cfg.MCPEnabled,
+					"assistant_enabled": cfg.AssistantEnabled,
 				})
 			})
 
@@ -195,12 +267,6 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 			protected.PATCH("/my-services/:id/submit-community", serviceHandler.SubmitPrivateToCommunity)
 
 			// Builds
-			buildService := services.NewBuildService(db)
-			ipService := services.NewIPService(db)
-			buildHandler := handlers.NewBuildHandler(buildService, ipService)
-			configService := services.NewConfigService(db)
-			configHandler := handlers.NewConfigHandler(configService)
-
 			protected.GET("/builds", buildHandler.List)
 			protected.POST("/builds", buildHandler.Create)
 			protected.GET("/builds/:id", buildHandler.Get)
@@ -215,6 +281,28 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 			protected.POST("/builds/:id/validate-network", buildHandler.ValidateNetwork)
 			protected.POST("/builds/:id/generate-config", configHandler.GenerateConfig)
 			protected.GET("/builds/:id/export-bundle", configHandler.DownloadBundle)
+
+			// LLM proposals: change sets wait here until the owner applies them.
+			protected.GET("/builds/:id/sync-state", proposalHandler.SyncState)
+			protected.GET("/builds/:id/proposals/:pid", proposalHandler.Get)
+			protected.POST("/builds/:id/proposals/:pid/apply", proposalHandler.Apply)
+			protected.POST("/builds/:id/proposals/:pid/reject", proposalHandler.Reject)
+
+			// Personal access tokens for MCP clients. Session auth only: a token
+			// cannot create or revoke tokens.
+			protected.GET("/tokens", apiTokenHandler.List)
+			protected.POST("/tokens", apiTokenHandler.Create)
+			protected.DELETE("/tokens/:id", apiTokenHandler.Revoke)
+
+			// In-app assistant: bring-your-own-key settings and the chat stream.
+			protected.GET("/assistant/settings", assistantHandler.GetSettings)
+			protected.PUT("/assistant/settings", assistantHandler.UpdateSettings)
+			protected.DELETE("/assistant/settings", assistantHandler.ResetSettings)
+			protected.DELETE("/assistant/settings/key", assistantHandler.DeleteKey)
+			protected.POST("/assistant/settings/test", assistantHandler.TestSettings)
+			protected.GET("/assistant/threads/:buildId", assistantHandler.GetThread)
+			protected.DELETE("/assistant/threads/:buildId", assistantHandler.ClearThread)
+			protected.POST("/assistant/chat", assistantHandler.Chat)
 
 			// Public shared build viewer / editor (no auth required)
 			api.GET("/shared/:token", buildHandler.GetShared)

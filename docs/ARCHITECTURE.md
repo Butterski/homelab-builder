@@ -14,6 +14,7 @@ Remember - I don't want migrations scripts or Legacy things support. If somethin
 2. [Monorepo Layout](#monorepo-layout)
 3. [Backend Architecture](#backend-architecture)
 4. [HLBIPAM Microservice](#hlbipam-microservice)
+   - [LLM Access: MCP Server and Assistant](#llm-access-mcp-server-and-assistant)
 5. [Frontend Architecture](#frontend-architecture)
 6. [Data Model](#data-model)
 7. [IP Assignment Algorithm](#ip-assignment-algorithm)
@@ -29,9 +30,10 @@ Remember - I don't want migrations scripts or Legacy things support. If somethin
 
 **HLBuilder** is a full-stack web app that lets users visually design their home lab network - placing hardware nodes (routers, switches, servers, NAS, etc.), wiring them, and automatically receiving IP address assignments and service recommendations.
 
-- **Backend**: Go 1.24.5, Gin, GORM v1.31.1, PostgreSQL 17
+- **Backend**: Go 1.25, Gin, GORM v1.31.1, PostgreSQL 17
 - **HLBIPAM**: Standalone Go microservice for IP Address Management
-- **Frontend**: React 18, TypeScript, Vite, ReactFlow, Zustand, Vitest
+- **Frontend**: React 19, TypeScript, Vite, ReactFlow, Zustand, Vitest
+- **LLM access**: built-in MCP server (`/mcp`) and an opt-in, bring-your-own-key chat assistant; both can only propose changes
 - **Infrastructure**: Docker Compose (postgres + backend + hlbipam + frontend)
 
 ---
@@ -49,11 +51,16 @@ homelab-builder/
 │   │   ├── server/main.go      # HTTP server entrypoint
 │   │   └── migrate/main.go     # standalone migration runner
 │   ├── internal/
+│   │   ├── assistant/          # LLM tool registry, chat agent, instructions
 │   │   ├── config/config.go    # env var loading
 │   │   ├── handlers/           # Gin route handlers (one file per domain)
+│   │   ├── llm/                # provider adapters (Anthropic, OpenAI-compatible), SSRF guard
+│   │   ├── mcpserver/          # /mcp endpoint: token auth, rate limits
 │   │   ├── middleware/         # auth, admin, rate limiter, security headers
 │   │   ├── models/models.go    # ALL GORM models in one file
-│   │   └── services/           # business logic; the only layer with tests
+│   │   ├── secrets/            # AES-256-GCM sealing of stored provider keys
+│   │   ├── services/           # business logic; most tests live here
+│   │   └── testutil/           # Postgres transaction helper for packages outside services
 │   ├── migrations/             # raw SQL migrations (applied by postgres init)
 │   ├── pkg/database/database.go
 │   ├── go.mod
@@ -75,11 +82,13 @@ homelab-builder/
 │   ├── src/
 │   │   ├── features/           # domain-sliced feature modules
 │   │   │   ├── admin/          # admin dashboard & management
+│   │   │   ├── assistant/      # in-app chat panel (SSE client, store, components)
 │   │   │   ├── auth/           # authentication (Google OAuth, profile)
 │   │   │   ├── builder/        # visual network builder (main feature)
 │   │   │   ├── catalog/        # hardware & service catalog browsing
 │   │   │   ├── donate/         # donation page
 │   │   │   ├── landing/        # landing/login page
+│   │   │   ├── settings/       # settings page: appearance, AI assistant, MCP access
 │   │   │   ├── setup-guide/    # setup checklist
 │   │   │   ├── shopping/       # shopping list generation
 │   │   │   └── survey/         # beta survey
@@ -99,7 +108,9 @@ homelab-builder/
 │   ├── vite.config.ts
 │   └── package.json
 └── docs/
-    └── ARCHITECTURE.md         # copy of this file
+    ├── ARCHITECTURE.md         # copy of this file
+    ├── MCP.md                  # connecting LLM clients over MCP
+    └── AI-ASSISTANT-SECURITY.md # how provider keys and chat data are handled
 ```
 
 ---
@@ -143,12 +154,20 @@ HTTP Request → Gin Router → Middleware → Handler → Service → GORM → 
 | `donate_handler.go` | Donation progress read/update |
 | `survey_handler.go` | Beta survey CRUD |
 | `health.go` | Health check endpoint |
+| `proposal_handler.go` | Sync state poll, proposal get / apply / reject |
+| `api_token_handler.go` | Personal access tokens for MCP clients (JWT only) |
+| `assistant_handler.go` | Assistant settings, provider test, chat thread, chat stream (SSE) |
 
 ### Key Services
 
 | File | Responsibility |
 |---|---|
-| `build_service.go` | CRUD for builds; syncs ReactFlow JSON → relational `nodes`/`edges` tables |
+| `build_service.go` | CRUD for builds; saves the submitted graph into the relational `nodes`/`edges` tables and recalculates IPs |
+| `build_snapshot.go` | `BuildToSyncInput`, `GetOwned`, `PreviewTopology` (dry run) |
+| `proposal_service.go` | LLM proposals: propose, refresh, apply, reject, sync state |
+| `topology_ops*.go`, `topology_ports.go`, `topology_layout.go`, `topology_diff.go` | Change-set engine behind proposals |
+| `api_token_service.go` | Personal access tokens |
+| `assistant_settings_service.go`, `assistant_thread_service.go` | Assistant settings with the encrypted key; stored chat |
 | `ip_service.go` | Graph-aware BFS IP assignment per subnet |
 | `auth_service.go` | Google OAuth token verification, JWT issuance |
 | `hardware_service.go` | Hardware catalog queries + admin operations |
@@ -161,13 +180,17 @@ HTTP Request → Gin Router → Middleware → Handler → Service → GORM → 
 | `catalog_component_service.go` | Catalog component CRUD |
 | `analytics_service.go` | Analytics tracking (available for future handler integration) |
 
-### Build Sync Flow
+### Build Save Flow
 
-When a build is saved (`PUT /builds/:id`), `BuildService.Update` calls `SyncDataFromJSON`:
-1. Parses the `data` JSON blob (ReactFlow state) from the request.
-2. Deletes all existing nodes/edges for the build.
-3. Re-inserts nodes and edges from the JSON.
+Builds are stored as relational rows (`nodes`, `edges`, `virtual_machines`, `internal_components`), not as a JSON blob.
+
+Every write goes through one path: `PUT /builds/:id/topology` -> `BuildService.UpdateAndCalculate` -> `SaveAndCalculateTx`:
+1. Locks the build row and checks the revision the client sent (a stale revision returns 409 with the current build).
+2. `syncGraph` replaces the build's nodes, edges, VMs and components with the submitted `SyncGraphInput`. Node, VM and component UUIDs sent by the client are kept; **edge IDs are regenerated on every save**, so nothing may refer to an edge by ID.
+3. Runs the IP calculation (hlbIPAM) in the same transaction and bumps the revision.
 4. IMPORTANT: `Preload("Nodes.VirtualMachines")` is required on all build fetches or VMs disappear from responses.
+
+`BuildService.PreviewTopology` runs the same steps and then rolls the transaction back (sentinel `errDryRun`). It is how a proposal is checked without touching the build.
 
 ---
 
@@ -196,6 +219,56 @@ The backend communicates with HLBIPAM via `IPAM_URL` (default: `http://hlbipam:8
 
 ---
 
+## LLM Access: MCP Server and Assistant
+
+Two ways for an LLM to work with a user's builds. Both use the same tool registry and the same rule: **an LLM never writes to a build**. It creates a proposal, and only the owner's Apply in the web UI saves it.
+
+User-facing docs: `docs/MCP.md` (client setup) and `docs/AI-ASSISTANT-SECURITY.md` (key handling, threat model).
+
+### Pieces
+
+| Package / file | Responsibility |
+|---|---|
+| `internal/assistant/tools*.go` | Tool registry shared by MCP and the chat: `list_builds`, `get_build`, `validate_build`, `generate_configs`, `search_hardware`, `list_services`, `recommend_hardware`, `get_proposal`, `propose_changes`, `create_build` (MCP only). `Registry.Call` validates arguments against the tool's JSON schema, enforces the actor's scope and build restriction, and audits state-changing calls. |
+| `internal/assistant/instructions.go` | The fixed domain primer: MCP server instructions and the chat system prompt. |
+| `internal/assistant/agent.go` | Chat loop for the in-app assistant: one turn per user at a time, at most 12 model calls per message, history stored append-only. |
+| `internal/mcpserver/` | `/mcp` endpoint (official `modelcontextprotocol/go-sdk`, stateless streamable HTTP). Authenticates a personal access token, rate-limits per token, and builds a per-request server exposing only the tools the token's scope allows. |
+| `internal/llm/` | Provider adapters behind one `Provider` interface: Anthropic (official SDK) and OpenAI-compatible (OpenAI, Gemini, OpenRouter, Ollama, custom). `ssrf.go` restricts which addresses the server may call. |
+| `internal/secrets/` | AES-256-GCM sealing of provider keys, bound to the owner through the AAD. |
+| `services/proposal_service.go` | Propose (dry run + diff), Refresh, Apply (replays the operations on the latest revision), Reject, SyncState. |
+| `services/topology_ops*.go` | Applies a change set (`add_node`, `connect`, `add_vm`, ...) to a `SyncGraphInput` in memory. Mirrors the canvas rules: port handles, port counts, cable orientation, loop rejection, rack slots, auto layout. |
+| `services/topology_diff.go` | Diff between two builds, shown in the review panel. |
+| `services/api_token_service.go` | Personal access tokens (`hlb_...`): only the SHA-256 is stored; scopes `read` / `propose`; optional single-build restriction. |
+| `services/assistant_settings_service.go` | Per-user provider, model and encrypted key. `LoadKeyring` picks the master key (`SECRETS_KEY`, or a generated one kept in `system_settings` on instances without login). |
+| `services/assistant_thread_service.go` | Stored chat messages: provider-neutral parts plus the provider's native message for replay. |
+
+### Proposal flow
+
+```
+propose_changes (MCP tool or chat tool)
+  -> ApplyTopologyOps(current build, ops)      in memory, new entities get their final UUIDs
+  -> BuildService.PreviewTopology              dry run: save + IPAM + validation, rolled back
+  -> DiffBuilds                                stored with the proposal (status: pending)
+builder polls GET /builds/:id/sync-state every 4s -> banner -> read-only preview canvas
+POST /builds/:id/proposals/:pid/apply          replays the ops on the latest revision, then saves
+```
+
+- One pending proposal per build: a new one supersedes the older.
+- Apply rebases: edits saved after the proposal was created are kept. If the operations no longer fit, the proposal becomes `conflict` (409).
+- Connections are addressed by their unordered node pair, never by edge ID.
+
+### Rules that must not be broken
+
+- A provider key is write-only. `AssistantSettings` key fields are `json:"-"`; only `AssistantSettingsService.ResolveCredentials` decrypts, for one request. Never log, return or store the plaintext.
+- Changing the provider or base URL wipes the stored key unless a new key comes in the same request.
+- Provider SDK clients are built with explicit options only (`NewBetaMessageService`, `NewChatCompletionService`, ...). The SDKs' default clients read credentials from the server's environment, which must never be used for a user's request.
+- All provider calls use `AssistantSettingsService.HTTPClient()` (`llm.SafeHTTPClient`): it checks the resolved address on every dial.
+- `/mcp` always requires a token, also when `AUTH_DISABLED` is on. JWT routes never accept an access token, so a token cannot mint tokens.
+- The SQL logger runs with `ParameterizedQueries: true`: statement values (chat text, ciphertext) never reach the log. Keep it that way.
+- Model output is untrusted: the chat renders Markdown without raw HTML and without images.
+
+---
+
 ## Frontend Architecture
 
 ### State Management (Zustand)
@@ -213,6 +286,13 @@ If `calculateNetwork` runs before `update`, the backend reads stale/empty relati
 **Trigger rules:**
 - `onConnect` (new edge drawn) → triggers `reassignAllIPs` via `setTimeout(0)`
 - `addHardware`, `addVM`, `duplicateHardware` → do NOT trigger `reassignAllIPs`
+
+**Proposal preview and sync:**
+- `proposalPreview` is a separate slice rendered by a read-only overlay canvas. The live `nodes`/`edges` are never swapped out, so a preview cannot trigger autosave. Undo/redo do nothing during a preview.
+- `lastSyncedFingerprint` records the graph as last saved or loaded. Autosave is skipped while the canvas matches it. Without this, two open tabs would save in turns forever, because each reloads when the other's save bumps the revision (`useSyncState` polls every 4s).
+- `applyProposal` saves pending edits first, applies on the server, reloads, and pushes one undo step.
+
+The assistant has its own store (`features/assistant/store/assistant-store.ts`, not persisted). The side panel in `visual-builder.tsx` shows the proposal review while a proposal is open, otherwise the assistant.
 
 ### Feature Structure
 
@@ -241,6 +321,8 @@ feature/
 | `landing/` | Landing page shown to unauthenticated users |
 | `setup-guide/` | Interactive setup checklist |
 | `survey/` | Beta user survey |
+| `settings/` | Settings page: appearance, AI assistant (provider, key, key-protection panel), MCP access tokens |
+| `assistant/` | Chat panel in the builder: SSE reader, store, message list, proposal cards |
 
 ### Routing (App.tsx)
 
@@ -251,6 +333,7 @@ feature/
 | `/generate` | `ConfigGeneratorPage` | Yes |
 | `/admin` | `AdminPage` | Yes |
 | `/profile` | `ProfilePage` | Yes |
+| `/settings` | `SettingsPage` | Yes |
 | `/donate` | `DonatePage` | Yes |
 | `/checklist` | `ChecklistPage` | Yes |
 | `/hardware` | `HardwareCatalogPage` | No |
@@ -268,6 +351,11 @@ User ──< Build ──< Node ──< VirtualMachine
 Service ──< ServiceRequirement
 UserSelection >── User
 UserSelection >── Service
+User ──< APIToken                  (optional restriction to one Build)
+Build ──< BuildProposal
+User ──1 AssistantSettings         (encrypted provider key)
+User + Build ──1 AssistantThread ──< AssistantMessage
+SystemSetting                      (key/value, instance-wide)
 ```
 
 ### Node Types and IP Zones
@@ -330,8 +418,9 @@ This requires the `uuid-ossp` extension. **SQLite cannot be used for tests** bec
 
 - **No mocking the database.** Tests run against a real PostgreSQL instance in Docker.
 - **Transaction isolation.** Every test wraps its work in a `db.Begin()` transaction that is always rolled back in `t.Cleanup`. No teardown code needed; tests are fully independent.
-- **Backend tests run in Docker.** The builder stage of `backend/Dockerfile` contains the full Go toolchain and source. A temporary container is spun up on the same Docker network as the running `postgres` service.
-- **Frontend tests run locally.** `buildApi` is fully vi.mock'd - no backend or Docker needed.
+- **Backend tests run in Docker.** `docker-compose.test.yml` starts a throwaway PostgreSQL and hlbIPAM and runs `go test ./...` from `backend/Dockerfile.test`. CI runs the same file.
+- **Frontend tests need no backend.** API modules are vi.mock'd. Run them in a Node container to keep the host clean (see Running Tests).
+- **No real model calls.** Provider adapters are tested against `httptest` servers; the chat agent against a fake `llm.Provider`.
 
 ### Backend Test Pattern
 
@@ -354,6 +443,16 @@ func TestSomething(t *testing.T) {
 testTx(t)                          // *gorm.DB transaction, auto-rolled back
 connectTestDB()                    // connects to homelab_builder_test PG DB
 migrateTestDB(db)                  // CREATE EXTENSION uuid-ossp + AutoMigrate
+```
+
+### Helper Functions (`internal/testutil/pgtest.go`)
+
+For packages outside `services` (`assistant`, `mcpserver`, `handlers`):
+
+```go
+testutil.Tx(t)                     // *gorm.DB transaction, auto-rolled back
+testutil.User(t, db)               // creates a user to own test data
+testutil.IPAMStub(t)               // fake hlbIPAM; use with t.Setenv("IPAM_URL", ...)
 ```
 
 ### Helper Functions (`ip_service_test.go`)
@@ -380,9 +479,22 @@ hasPrefix(s, prefix string) bool
 | `internal/services/shopping_service_test.go` | `services` | Shopping list tests |
 | `internal/services/steering_service_test.go` | `services` | Steering rules tests |
 | `internal/handlers/health_test.go` | `handlers` | Health endpoint test |
+| `internal/handlers/assistant_handler_test.go` | `handlers` | Settings API never returns the key; chat SSE stream |
+| `internal/services/topology_ops_test.go` | `services` | Change-set engine: refs, ports, loops, racks, VMs |
+| `internal/services/proposal_service_test.go` | `services` | Dry run, supersede, apply with rebase, conflict, reject |
+| `internal/services/api_token_service_test.go` | `services` | Token hashing, scopes, expiry, limits |
+| `internal/services/assistant_settings_service_test.go` | `services` | Key encryption, owner binding, key wipe on destination change, audit |
+| `internal/assistant/tools_test.go`, `agent_test.go` | `assistant` | Tool scopes and schemas; chat loop with a fake provider |
+| `internal/mcpserver/server_test.go` | `mcpserver` | End to end with the go-sdk client: auth, scopes, origin check, rate limits |
+| `internal/llm/provider_test.go`, `ssrf_test.go` | `llm` | Provider adapters against `httptest`; blocked-address table |
+| `internal/secrets/aesgcm_test.go` | `secrets` | Round trip, tampering, wrong owner |
 | `hlbipam/internal/core/allocator_test.go` | `core` | IPAM allocator tests |
 | `hlbipam/internal/core/validator_test.go` | `core` | IPAM validator tests |
 | `frontend/src/features/builder/store/builder-store.test.ts` | - | Vitest tests |
+| `frontend/src/features/builder/store/builder-store.proposals.test.ts` | - | Preview, apply as one undo step, sync |
+| `frontend/src/features/builder/components/proposal-review-panel.test.tsx` | - | Review panel |
+| `frontend/src/features/settings/**/*.test.ts(x)` | - | MCP snippets and source links, token card, assistant settings card |
+| `frontend/src/features/assistant/**/*.test.ts(x)` | - | SSE reader, chat store, chat panel |
 
 ### Test Database
 
@@ -411,19 +523,33 @@ make test
 
 ```bash
 make test-backend
+# same as CI:
+docker compose -f docker-compose.test.yml up --build --abort-on-container-exit --exit-code-from backend-test
 ```
 
-Internally this:
-1. Builds `backend/Dockerfile` up to the `builder` stage → image `homelab-builder-test-runner`
-2. Runs a temporary container on `homelab-builder_default` network (same network as the `postgres` service from docker-compose)
-3. Executes `go test ./internal/services/... -v -count=1`
+This starts a throwaway Postgres and hlbIPAM, builds `backend/Dockerfile.test`, and runs `go test ./...` (every package, not only `services`).
+
+To iterate on one package without rebuilding the image, keep the two services up and mount the source:
+
+```bash
+docker compose -f docker-compose.test.yml up -d test-postgres hlbipam
+docker run --rm --network homelab-builder_default -v "$PWD/backend:/app" -w /app \
+  -e CGO_ENABLED=0 -e DB_TYPE=postgres -e DB_HOST=test-postgres -e DB_USER=homelab -e DB_PASSWORD=homelab_password \
+  -e TEST_DB_NAME=homelab_builder_test -e IPAM_URL=http://hlbipam:8081 \
+  golang:1.25-alpine go test ./internal/assistant/... -count=1
+```
 
 ### Frontend only
 
 ```bash
 make test-frontend
 # or: cd frontend && npm test
+# in Docker, keeping node_modules off the host:
+docker run --rm -v "$PWD:/repo" -v hlb-frontend-node-modules:/repo/frontend/node_modules -w /repo/frontend \
+  node:22-alpine sh -c "npm ci --legacy-peer-deps && npx tsc -b && npx vitest run"
 ```
+
+The whole repository is mounted because one test checks that the source files the settings page links to exist.
 
 ### Watching frontend tests
 
@@ -479,7 +605,7 @@ cd frontend && npm run test:watch
 
 ### 7. Docker network name
 
-The docker-compose default network is `homelab-builder_default` (derived from the project folder name). The `test-backend` make target hardcodes this. If you rename the project folder, update the Makefile.
+The docker-compose default network is `homelab-builder_default` (derived from the project folder name). Commands that attach a one-off container to the test stack name it explicitly. If you rename the project folder, adjust them.
 
 ### 8. uuid-ossp extension
 
@@ -488,6 +614,22 @@ The docker-compose default network is `homelab-builder_default` (derived from th
 ### 9. Missing `Preload("Nodes.VirtualMachines")`
 
 GORM does not eager-load associations by default. Any `BuildService` query that returns a build must explicitly preload `Nodes` and `Nodes.VirtualMachines` or VM data will be missing from API responses. The regression test `TestGetByID_PreloadsVirtualMachines` guards this.
+
+### 10. Edge IDs are not stable
+
+`syncGraph` recreates every edge on save, so an edge ID is only valid until the next save. Anything that outlives a save (proposals, diffs, LLM tool arguments) identifies a connection by its two node IDs.
+
+### 11. Provider SDK default clients read server credentials
+
+`anthropic.NewClient()` and `openai.NewClient()` pick up `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` and base URLs from the environment. A user's request must never run on the server's credentials: build the services with explicit options, as `internal/llm` does.
+
+### 12. Autosave and the sync poll
+
+Loading a build must not be followed by a save of the same data. `loadBuild` sets `lastSyncedFingerprint`, and autosave compares against it. If you add a field to `getBuildData`, make sure `mapBuildToFlow` restores it, or every load will look like an unsaved change (`power_draw` was dropped this way before).
+
+### 13. The assistant needs a master key on public instances
+
+With login enabled and `GIN_MODE=release`, a missing `SECRETS_KEY` does not stop the server: the assistant is switched off and the log says `AI assistant disabled`. The settings page then shows it as unavailable.
 
 ---
 
@@ -505,6 +647,8 @@ These bugs were diagnosed and fixed; tests guard against regression.
 | 6 | `build_service.go` | `GetByID` missing `Preload("Nodes.VirtualMachines")` | Added preload |
 | 7 | `visual-builder.tsx`, `builder-store.ts` | Reopening a build in the SPA kept a stale revision (e.g. after a rename), so every save/Reassign IPs got a silent 409 until reload | Builder always reloads via queued `openBuild`; a 409 adopts the server's build and raises `BuildConflictError`; Reassign IPs shows errors |
 | 8 | `catalog-mapper.ts`, `hardware-instance.ts` | Blueprint VMs (`vm-<serviceId>`) and copied VMs/components reused non-UUID or duplicate IDs; the backend replaced them, so assigned VM IPs never reached the canvas until reload | Placed and duplicated nodes get fresh UUIDs via `withFreshChildIds` |
+| 9 | `build_service.go` | Deleting a build with nodes failed with `fk_builds_nodes` (500) | `Delete` clears the topology first, in one transaction |
+| 10 | `builder-store.ts` | `power_draw` was neither saved nor loaded, so a value set elsewhere vanished on the next save | Included in `getBuildData` and restored by `mapBuildToFlow` |
 
 ---
 
@@ -526,6 +670,13 @@ These bugs were diagnosed and fixed; tests guard against regression.
 | `GOOGLE_CLIENT_ID` | - | Google OAuth client ID |
 | `SERVER_PORT` | `8080` | HTTP listen port |
 | `IPAM_URL` | `http://hlbipam:8081` | HLBIPAM microservice URL |
+| `MCP_ENABLED` | `true` | Serves the `/mcp` endpoint |
+| `MCP_ALLOWED_ORIGINS` | - | Browser origins allowed to call `/mcp` cross-origin (comma-separated) |
+| `ASSISTANT_ENABLED` | `true` | Makes the in-app assistant available |
+| `SECRETS_KEY` | - | Master key for stored provider keys: base64 of 32 bytes (`openssl rand -base64 32`). Required with login enabled in release mode |
+| `SECRETS_KEY_VERSION` | `1` | Version label stored with each ciphertext |
+| `ASSISTANT_ALLOW_PRIVATE_ENDPOINTS` | same as `AUTH_DISABLED` | Whether custom provider endpoints may be private addresses |
+| `PUBLIC_APP_URL` | derived from the request | Browser-facing origin used in proposal review links |
 
 ### HLBIPAM
 

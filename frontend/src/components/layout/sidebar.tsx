@@ -17,6 +17,7 @@ import {
   Search,
   Sparkles,
   Menu,
+  Shield,
 } from 'lucide-react';
 import { Github } from '../icons/github';
 import { Discord } from '../icons/discord';
@@ -42,7 +43,8 @@ const BASE_NAV_ITEMS = [
   { label: 'Homelab Guide', href: '/how-to-build-a-homelab', icon: BookOpen },
   // { label: "Shopping List", href: "/shopping-list", icon: ShoppingCart }, // Hidden for Open Beta
   { label: 'Setup Guide', href: '/checklist', icon: CheckSquare },
-  { label: 'Admin', href: '/admin', icon: Settings },
+  { label: 'Settings', href: '/settings', icon: Settings },
+  { label: 'Admin', href: '/admin', icon: Shield },
 ];
 
 export const MobileNavigation = React.memo(function MobileNavigation({

@@ -46,7 +46,18 @@ services:
       DB_TYPE: postgres
       JWT_SECRET: ${JWT_SECRET:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      # MCP endpoint and AI assistant. See docs/MCP.md and docs/AI-ASSISTANT-SECURITY.md.
+      MCP_ENABLED: ${MCP_ENABLED:-true}
+      MCP_ALLOWED_ORIGINS: ${MCP_ALLOWED_ORIGINS:-}
+      ASSISTANT_ENABLED: ${ASSISTANT_ENABLED:-true}
+      SECRETS_KEY: ${SECRETS_KEY:-}
+      SECRETS_KEY_VERSION: ${SECRETS_KEY_VERSION:-1}
+      ASSISTANT_ALLOW_PRIVATE_ENDPOINTS: ${ASSISTANT_ALLOW_PRIVATE_ENDPOINTS:-}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-}
       TZ: ${TZ:-Europe/Berlin}
+    extra_hosts:
+      # Lets the assistant reach a model server on the Docker host (e.g. Ollama) on Linux too.
+      - host.docker.internal:host-gateway
     depends_on:
       postgres:
         condition: service_healthy

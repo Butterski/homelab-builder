@@ -37,6 +37,8 @@ services:
       JWT_SECRET: local-development-secret-for-homelab-builder
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       IPAM_URL: http://hlbipam:8081
+      # Where the Vite frontend runs; used in proposal review links sent to MCP clients.
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://127.0.0.1:5173}
     depends_on:
       postgres:
         condition: service_healthy

@@ -36,16 +36,23 @@ A sophisticated backend microservice manages network addressing:
 - **Itemized Components**: Automatically generates a shopping list including main hardware and necessary peripherals (RAM, NVMe, etc.).
 - **Price Estimation**: Provides estimated costs with direct purchase links based on your region.
 
+### 5. Design With an LLM
+- **MCP server**: Connect Claude Code, Cursor, VS Code or any MCP client to `/mcp` with a personal access token. The client can read your builds, search the catalogs and propose changes. See [docs/MCP.md](./docs/MCP.md).
+- **In-app assistant**: An optional chat panel in the builder, off by default. You bring your own provider and API key (Anthropic, OpenAI, Gemini, OpenRouter, Ollama or any OpenAI-compatible endpoint).
+- **You approve every change**: An LLM never edits a build. It sends a proposal that you review on a preview canvas and then apply or reject; one `Ctrl+Z` undoes an applied proposal.
+- **Keys you can verify**: Provider keys are stored AES-256-GCM encrypted and never sent back to the browser. The settings page shows the stored record and links to the code. See [docs/AI-ASSISTANT-SECURITY.md](./docs/AI-ASSISTANT-SECURITY.md).
+
 ---
 
 ## 🛠️ Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| **Frontend** | React 18 + TypeScript, Vite, ReactFlow, TailwindCSS, Zustand |
-| **Backend API** | Go 1.24+, Gin, GORM v1.25.x |
+| **Frontend** | React 19 + TypeScript, Vite, ReactFlow, TailwindCSS, Zustand |
+| **Backend API** | Go 1.25+, Gin, GORM |
+| **LLM access** | MCP (streamable HTTP, official Go SDK), Anthropic and OpenAI-compatible providers |
 | **IPAM Microservice**| Go 1.24+, Standard Library REST API |
-| **Database** | PostgreSQL 15 |
+| **Database** | PostgreSQL 17 |
 | **Auth & Security** | Google OAuth 2.0 + JWT |
 | **Deploy** | Docker & Docker Compose |
 
@@ -218,7 +225,7 @@ docker compose up -d --build
 # Docker build from local source
 docker compose up -d --build
 
-# Backend (requires Go 1.24+)
+# Backend (requires Go 1.25+)
 cd backend
 cp ../.env.example ../.env
 go run ./cmd/server

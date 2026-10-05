@@ -91,14 +91,20 @@ func (s *BuildService) Rename(buildID, userID uuid.UUID, name string, revision u
 // one revision. The row lock serializes concurrent writers for the same build.
 func (s *BuildService) UpdateAndCalculate(buildID, userID uuid.UUID, input SyncGraphInput, ipService *IPService) (*models.Build, error) {
 	err := s.db.Transaction(func(tx *gorm.DB) error {
-		return s.updateGraphTx(tx, buildID, userID, input, func() error {
-			return ipService.CalculateNetworkInTransaction(tx, buildID)
-		})
+		return s.SaveAndCalculateTx(tx, buildID, userID, input, ipService)
 	})
 	if err != nil {
 		return nil, err
 	}
 	return s.GetByID(buildID)
+}
+
+// SaveAndCalculateTx writes the graph and its calculated addresses inside an
+// already open transaction, so callers can commit it or roll it back as a unit.
+func (s *BuildService) SaveAndCalculateTx(tx *gorm.DB, buildID, userID uuid.UUID, input SyncGraphInput, ipService *IPService) error {
+	return s.updateGraphTx(tx, buildID, userID, input, func() error {
+		return ipService.WithDB(tx).CalculateNetwork(buildID)
+	})
 }
 
 func (s *BuildService) updateGraphTx(tx *gorm.DB, buildID, userID uuid.UUID, input SyncGraphInput, afterSync func() error) error {
@@ -141,19 +147,7 @@ func (s *BuildService) syncGraph(tx *gorm.DB, buildID uuid.UUID, input SyncGraph
 	}
 
 	// 1. Delete existing nodes/edges/services (cleanup)
-	if err := tx.Where("build_id = ?", buildID).Delete(&models.Edge{}).Error; err != nil {
-		return err
-	}
-	if err := tx.Where("build_id = ?", buildID).Delete(&models.ServiceInstance{}).Error; err != nil {
-		return err
-	}
-	if err := tx.Where("node_id IN (?)", tx.Model(&models.Node{}).Select("id").Where("build_id = ?", buildID)).Delete(&models.VirtualMachine{}).Error; err != nil {
-		return err
-	}
-	if err := tx.Where("node_id IN (?)", tx.Model(&models.Node{}).Select("id").Where("build_id = ?", buildID)).Delete(&models.NodeComponent{}).Error; err != nil {
-		return err
-	}
-	if err := tx.Where("build_id = ?", buildID).Delete(&models.Node{}).Error; err != nil {
+	if err := deleteGraph(tx, buildID); err != nil {
 		return err
 	}
 
@@ -290,6 +284,24 @@ func (s *BuildService) syncGraph(tx *gorm.DB, buildID uuid.UUID, input SyncGraph
 	}
 
 	return nil
+}
+
+// deleteGraph removes every topology row of a build, children first, so it
+// works whether or not the foreign keys cascade.
+func deleteGraph(tx *gorm.DB, buildID uuid.UUID) error {
+	if err := tx.Where("build_id = ?", buildID).Delete(&models.Edge{}).Error; err != nil {
+		return err
+	}
+	if err := tx.Where("build_id = ?", buildID).Delete(&models.ServiceInstance{}).Error; err != nil {
+		return err
+	}
+	if err := tx.Where("node_id IN (?)", tx.Model(&models.Node{}).Select("id").Where("build_id = ?", buildID)).Delete(&models.VirtualMachine{}).Error; err != nil {
+		return err
+	}
+	if err := tx.Where("node_id IN (?)", tx.Model(&models.Node{}).Select("id").Where("build_id = ?", buildID)).Delete(&models.NodeComponent{}).Error; err != nil {
+		return err
+	}
+	return tx.Where("build_id = ?", buildID).Delete(&models.Node{}).Error
 }
 
 func validateEdgeEndpoints(nodes []NodeDTO, edges []EdgeDTO) error {
@@ -650,14 +662,20 @@ func (s *BuildService) ListByUser(userID uuid.UUID) ([]models.Build, error) {
 }
 
 func (s *BuildService) Delete(buildID uuid.UUID, userID uuid.UUID) error {
-	result := s.db.Where("id = ? AND user_id = ?", buildID, userID).Delete(&models.Build{})
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return errors.New("build not found or unauthorized")
-	}
-	return nil
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		var owned int64
+		if err := tx.Model(&models.Build{}).Where("id = ? AND user_id = ?", buildID, userID).Count(&owned).Error; err != nil {
+			return err
+		}
+		if owned == 0 {
+			return errors.New("build not found or unauthorized")
+		}
+		// The nodes foreign key does not cascade, so clear the topology first.
+		if err := deleteGraph(tx, buildID); err != nil {
+			return err
+		}
+		return tx.Where("id = ? AND user_id = ?", buildID, userID).Delete(&models.Build{}).Error
+	})
 }
 
 func (s *BuildService) Duplicate(buildID uuid.UUID, userID uuid.UUID) (*models.Build, error) {

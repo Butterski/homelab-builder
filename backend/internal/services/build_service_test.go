@@ -134,6 +134,40 @@ func TestBuildService_Delete(t *testing.T) {
 	}
 }
 
+func TestBuildService_DeleteRemovesTopology(t *testing.T) {
+	tx := testTx(t)
+	svc := NewBuildService(tx)
+	user := models.User{Email: uuid.NewString() + "@t.com", GoogleID: uuid.NewString()}
+	tx.Create(&user)
+
+	build, err := svc.Create(user.ID, SyncGraphInput{
+		Name: "Del with nodes",
+		Nodes: []NodeDTO{
+			{ID: "router", Type: "router", Name: "Router"},
+			{ID: "server", Type: "server_v2", Name: "Server",
+				VMs:                []VMDTO{{ID: uuid.NewString(), Name: "VM", Type: "vm"}},
+				InternalComponents: []ComponentDTO{{ID: uuid.NewString(), Type: "disk", Name: "Disk"}}},
+		},
+		Edges: []EdgeDTO{{Source: "router", SourceHandle: "eth0", Target: "server", TargetHandle: "target-0"}},
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	if err := svc.Delete(build.ID, uuid.New()); err == nil {
+		t.Fatal("another user must not delete the build")
+	}
+	if err := svc.Delete(build.ID, user.ID); err != nil {
+		t.Fatalf("deleting a build with nodes failed: %v", err)
+	}
+	var nodes, edges int64
+	tx.Model(&models.Node{}).Where("build_id = ?", build.ID).Count(&nodes)
+	tx.Model(&models.Edge{}).Where("build_id = ?", build.ID).Count(&edges)
+	if nodes != 0 || edges != 0 {
+		t.Fatalf("topology rows left behind: %d nodes, %d edges", nodes, edges)
+	}
+}
+
 func TestBuildService_Update_InvalidEdgeReferenceRollsBack(t *testing.T) {
 	tx := testTx(t)
 	svc := NewBuildService(tx)

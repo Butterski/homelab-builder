@@ -363,7 +363,10 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
   const lanSubnet = details.lan_subnet || lanInterface?.subnet;
   const isDualHomedGateway = !!(natEnabled || routingEnabled) && !!lanGatewayIP;
 
-  const validationIssues = useBuilderStore(s => s.validationIssues);
+  // On the proposal preview canvas the node shows the previewed build's state.
+  const validationIssues = useBuilderStore(
+    s => s.proposalPreview?.validationIssues ?? s.validationIssues,
+  );
   const nodeIssues = validationIssues.filter((i: HardwareNodeValidationIssue) => i.node_id === id);
   const hasIpError = nodeIssues.some((i: HardwareNodeValidationIssue) => i.type === 'error');
   const hasIpWarning = nodeIssues.some((i: HardwareNodeValidationIssue) => i.type === 'warning');
@@ -431,7 +434,10 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
   // Count edges connected to this node so updateNodeInternals re-fires when
   // a new connection is made (otherwise new edges render at center-bottom).
   const connectedEdgeCount = useBuilderStore(s =>
-    s.edges.reduce((n, e) => n + (e.source === id || e.target === id ? 1 : 0), 0),
+    (s.proposalPreview?.edges ?? s.edges).reduce(
+      (n, e) => n + (e.source === id || e.target === id ? 1 : 0),
+      0,
+    ),
   );
 
   // Double-rAF defers the call past ReactFlow's own internal render cycle.

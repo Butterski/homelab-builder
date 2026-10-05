@@ -127,9 +127,18 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         label: 'Open profile',
         hint: user ? user.email : 'Sign in required',
         icon: User,
-        keywords: ['account', 'theme', 'settings'],
+        keywords: ['account', 'sign out'],
         disabled: !user,
         run: go('/profile'),
+      },
+      {
+        id: 'settings',
+        label: 'Open settings',
+        hint: 'Appearance and MCP access',
+        icon: Settings,
+        keywords: ['theme', 'mcp', 'tokens', 'assistant', 'ai', 'preferences'],
+        disabled: !user,
+        run: go('/settings'),
       },
       {
         id: 'donate',
@@ -224,7 +233,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
               No command found.
             </Command.Empty>
             <Command.Group heading="Navigation" className="command-group">
-              {commands.slice(0, user?.is_admin ? 10 : 9).map(action => (
+              {commands.slice(0, user?.is_admin ? 11 : 10).map(action => (
                 <Command.Item
                   key={action.id}
                   value={`${action.label} ${action.keywords.join(' ')}`}
@@ -247,7 +256,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             </Command.Group>
 
             <Command.Group heading="Builder actions" className="command-group">
-              {commands.slice(user?.is_admin ? 10 : 9).map(action => (
+              {commands.slice(user?.is_admin ? 11 : 10).map(action => (
                 <Command.Item
                   key={action.id}
                   value={`${action.label} ${action.keywords.join(' ')}`}

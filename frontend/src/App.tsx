@@ -19,6 +19,7 @@ const ArticleVisualPage = lazy(() => import('./features/guides/pages/article-vis
 const ConfigGeneratorPage = lazy(() => import('./features/builder/pages/config-generator-page'));
 const GuidedPlannerPage = lazy(() => import('./features/builder/pages/guided-planner-page'));
 const ProfilePage = lazy(() => import('./features/auth/pages/profile-page'));
+const SettingsPage = lazy(() => import('./features/settings/pages/settings-page'));
 const DonatePage = lazy(() => import('./features/donate/pages/donate-page'));
 const PrivacyPolicyPage = lazy(() => import('./features/legal/pages/privacy-policy-page'));
 const TermsOfServicePage = lazy(() => import('./features/legal/pages/terms-of-service-page'));
@@ -161,6 +162,14 @@ function AppContent() {
               element={
                 <RequireAuth>
                   <ProfilePage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/settings"
+              element={
+                <RequireAuth>
+                  <SettingsPage />
                 </RequireAuth>
               }
             />
