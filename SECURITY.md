@@ -2,12 +2,12 @@
 
 ## Supported Versions
 
-Currently only the `master` version of HLBuilder is actively supported for security updates.
+Only the latest release of HLBuilder, built from `master`, receives security updates.
 
 | Version | Supported          |
 | ------- | ------------------ |
-| v1.0.x  | :white_check_mark: |
-| < 1.0   | :x:                |
+| 1.3.x   | :white_check_mark: |
+| < 1.3   | :x:                |
 
 ## Reporting a Vulnerability
 

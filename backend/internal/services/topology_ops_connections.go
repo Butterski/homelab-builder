@@ -30,6 +30,7 @@ func (ed *topologyEditor) connect(op TopologyOp) (TopologyOp, error) {
 	}
 
 	power := isPowerEdge(source.Type, target.Type)
+	wifiClient := isWifiAssociation(source.Type, target.Type)
 	connectionType := "ethernet"
 	if source.Type == "access_point" || target.Type == "access_point" {
 		connectionType = "wireless"
@@ -39,14 +40,28 @@ func (ed *topologyEditor) connect(op TopologyOp) (TopologyOp, error) {
 			return op, err
 		}
 	}
+	if wifiClient && connectionType != "wireless" {
+		return op, fmt.Errorf("%q joins %q over Wi-Fi; leave connection_type out or set it to wireless", source.Name, target.Name)
+	}
 	if !power {
 		for _, endpoint := range []NodeDTO{source, target} {
 			if uncabledNodeTypes[endpoint.Type] {
 				return op, fmt.Errorf("%q is a %s and cannot be cabled", endpoint.Name, endpoint.Type)
 			}
 		}
-		if !hubNodeTypes[source.Type] && !hubNodeTypes[target.Type] {
+		if !wifiClient && !hubNodeTypes[source.Type] && !hubNodeTypes[target.Type] {
 			return op, fmt.Errorf("%q (%s) and %q (%s) cannot be cabled directly; connect each to a switch, router, firewall or modem", source.Name, source.Type, target.Name, target.Type)
+		}
+		for _, endpoint := range []NodeDTO{source, target} {
+			if endpoint.Type != nodeTypeLANTable {
+				continue
+			}
+			if connectionType != "ethernet" {
+				return op, fmt.Errorf("%q is a LAN table and needs a cabled uplink", endpoint.Name)
+			}
+			if ed.networkLinkCount(endpoint.ID) > 0 {
+				return op, fmt.Errorf("%q already has its uplink; a LAN table connects to one switch", endpoint.Name)
+			}
 		}
 	}
 	if err := checkWireless(connectionType, source, target); err != nil {
@@ -95,6 +110,18 @@ func (ed *topologyEditor) connect(op TopologyOp) (TopologyOp, error) {
 	return resolved, nil
 }
 
+// networkLinkCount counts the network links of a node, leaving out power feeds.
+func (ed *topologyEditor) networkLinkCount(nodeID string) int {
+	types := ed.nodeTypes()
+	count := 0
+	for _, edge := range ed.graph.Edges {
+		if (edge.Source == nodeID || edge.Target == nodeID) && !isPowerEdge(types[edge.Source], types[edge.Target]) {
+			count++
+		}
+	}
+	return count
+}
+
 func (ed *topologyEditor) disconnect(op TopologyOp) (TopologyOp, error) {
 	sourceID, targetID, edgeIdx, err := ed.resolveConnection(op)
 	if err != nil {
@@ -121,6 +148,12 @@ func (ed *topologyEditor) updateConnection(op TopologyOp) (TopologyOp, error) {
 		target := ed.graph.Nodes[ed.nodeIndex(edge.Target)]
 		if err := checkWireless(connectionType, source, target); err != nil {
 			return op, err
+		}
+		if isWifiAssociation(source.Type, target.Type) && connectionType != "wireless" {
+			return op, fmt.Errorf("%q joins %q over Wi-Fi; that link stays wireless", source.Name, target.Name)
+		}
+		if (source.Type == nodeTypeLANTable || target.Type == nodeTypeLANTable) && connectionType != "ethernet" {
+			return op, errors.New("a LAN table needs a cabled uplink")
 		}
 		edge.Type = connectionType
 		if connectionType != "wireless" {

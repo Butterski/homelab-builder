@@ -11,6 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Butterski/homelab-builder/backend/internal/gaming"
 	"github.com/Butterski/homelab-builder/backend/internal/llm"
 	"github.com/Butterski/homelab-builder/backend/internal/models"
 	"github.com/Butterski/homelab-builder/backend/internal/services"
@@ -162,6 +163,11 @@ func (t *Turn) contextNote() string {
 	var note strings.Builder
 	fmt.Fprintf(&note, "[Context: the open build is %q, build_id %s, revision %d, %d nodes.",
 		t.build.Name, t.build.ID, t.build.Revision, len(t.build.Nodes))
+	// The kind goes here, with the message, so the system prompt stays the same
+	// for every build and keeps its cache.
+	if kind := gaming.Kind(t.build.Kind); kind.IsGaming() {
+		fmt.Fprintf(&note, " It is a %s plan.", strings.ReplaceAll(string(kind), "_", " "))
+	}
 
 	var since time.Time
 	if len(t.history) > 0 {

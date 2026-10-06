@@ -14,7 +14,10 @@ import {
   Terminal,
   Network,
   Shield,
+  Gamepad2,
+  Armchair,
 } from 'lucide-react';
+import { gamingSetupSteps } from '../../gaming/lib/setup-steps';
 
 interface SetupStep {
   id: string;
@@ -106,7 +109,7 @@ function StepCard({ step, isExpanded, onToggle }: { step: SetupStep; isExpanded:
 }
 
 export default function ChecklistPage() {
-  const { hardwareNodes } = useBuilderStore();
+  const { hardwareNodes, gamingPlan, availableServices } = useBuilderStore();
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set(['prep', 'os']));
 
   // Calculate dynamic data based on the builder state
@@ -274,8 +277,23 @@ export default function ChecklistPage() {
       });
     }
 
+    // 6. Gaming builds: game servers to bring online, a room to prepare
+    for (const step of gamingSetupSteps(hardwareNodes, gamingPlan, availableServices)) {
+      s.push({ ...step, icon: step.id === 'lan-party' ? Armchair : Gamepad2 });
+    }
+
     return s;
-  }, [hasServer, hasRouter, hasSwitch, hasDockerServices, hasPihole, hasProxy]);
+  }, [
+    hasServer,
+    hasRouter,
+    hasSwitch,
+    hasDockerServices,
+    hasPihole,
+    hasProxy,
+    hardwareNodes,
+    gamingPlan,
+    availableServices,
+  ]);
 
   const toggleStep = (id: string) => {
     setExpandedSteps(prev => {

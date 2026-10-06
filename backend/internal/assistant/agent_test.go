@@ -109,6 +109,7 @@ func newAgentEnv(t *testing.T) *agentEnv {
 		DB: tx, Builds: e.builds, IP: ip, Proposals: e.proposals,
 		Hardware: services.NewHardwareService(tx), Services: services.NewServiceService(tx),
 		Recommendations: services.NewRecommendationService(tx), Config: services.NewConfigService(tx),
+		Gaming: services.NewGamingService(e.builds),
 	})
 	e.agent = NewAgent(AgentDeps{
 		Registry: registry, Settings: e.settings, Threads: e.threads, Proposals: e.proposals, Builds: e.builds,

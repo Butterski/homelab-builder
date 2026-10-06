@@ -1,4 +1,0 @@
-DROP TABLE IF EXISTS events;
-ALTER TABLE users DROP COLUMN IF EXISTS is_admin;
-ALTER TABLE hardware_recommendations DROP COLUMN IF EXISTS metadata;
-ALTER TABLE services DROP COLUMN IF EXISTS metadata;

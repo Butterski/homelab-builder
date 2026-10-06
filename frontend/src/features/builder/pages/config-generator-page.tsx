@@ -1,6 +1,7 @@
 import { useReducer, useMemo, useEffect, useState } from 'react';
 import { useBuilderStore } from '../store/builder-store';
-import { buildApi } from '../api/builds';
+import { buildApi, type ConfigBundle } from '../api/builds';
+import { gameServersContent } from '../../gaming/lib/game-compose';
 import {
   generateAnsiblePlaybook,
   generateTraefikLabels,
@@ -23,6 +24,7 @@ import {
   ChevronDown,
   Network,
   Home,
+  Gamepad2,
 } from 'lucide-react';
 import { Logo } from '../../../components/ui/logo';
 import { toast } from 'sonner';
@@ -34,7 +36,8 @@ type Tab =
   | 'ansible-playbook'
   | 'nginx'
   | 'traefik'
-  | 'ip-plan';
+  | 'ip-plan'
+  | 'game-servers';
 
 const TABS: { id: Tab; label: string; icon: React.ElementType; ext: string }[] = [
   { id: 'docker-compose', label: 'Docker Compose', icon: Package, ext: 'docker-compose.yml' },
@@ -44,6 +47,7 @@ const TABS: { id: Tab; label: string; icon: React.ElementType; ext: string }[] =
   { id: 'nginx', label: 'Nginx Config', icon: Globe, ext: 'nginx.conf' },
   { id: 'traefik', label: 'Traefik Labels', icon: Globe, ext: 'traefik-labels.yml' },
   { id: 'ip-plan', label: 'IP Address Plan', icon: Network, ext: 'ip-plan.txt' },
+  { id: 'game-servers', label: 'Game Servers', icon: Gamepad2, ext: 'game-servers.yml' },
 ];
 
 // IpLegend removed as it relied on client-side calculation
@@ -226,12 +230,7 @@ interface ConfigState {
   builds: { id: string; name: string }[];
   selectedBuildId: string;
   loadingBuild: boolean;
-  configBundle: {
-    docker_compose: string;
-    env: string;
-    ansible_inventory: string;
-    nginx: string;
-  } | null;
+  configBundle: ConfigBundle | null;
   loadingCompose: boolean;
 }
 
@@ -365,6 +364,8 @@ export default function ConfigGeneratorPage() {
 
     hardwareNodes.forEach(node => {
       node.vms?.forEach(vm => {
+        // Game servers are not web apps: they have their own tab and no proxy labels.
+        if (vm.details?.game) return;
         if (vm.type === 'container' || vm.type === 'vm') {
           services.push({
             id: vm.id, // Use VM ID
@@ -412,11 +413,16 @@ export default function ConfigGeneratorPage() {
         return generateTraefikLabels(allServices, domain);
       case 'ip-plan':
         return generateIpPlan(hardwareNodes, ipOpts);
+      case 'game-servers':
+        return gameServersContent(configBundle?.game_compose);
     }
   }
 
-  const activeTabMeta = TABS.find(t => t.id === activeTab)!;
-  const content = getContent(activeTab);
+  // The game server tab only appears for builds that have game servers.
+  const hasGameServers = (configBundle?.game_compose?.length ?? 0) > 0;
+  const tabs = TABS.filter(tab => tab.id !== 'game-servers' || hasGameServers);
+  const activeTabMeta = tabs.find(t => t.id === activeTab) ?? tabs[0];
+  const content = getContent(activeTabMeta.id);
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
@@ -503,7 +509,7 @@ export default function ConfigGeneratorPage() {
 
           {/* Tab bar */}
           <div className="flex flex-wrap gap-2">
-            {TABS.map(tab => {
+            {tabs.map(tab => {
               const Icon = tab.icon;
               return (
                 <button
@@ -511,7 +517,7 @@ export default function ConfigGeneratorPage() {
                   type="button"
                   onClick={() => dispatch({ activeTab: tab.id })}
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-colors hover:cursor-pointer ${
-                    activeTab === tab.id
+                    activeTabMeta.id === tab.id
                       ? 'bg-primary text-primary-foreground border-primary'
                       : 'border-border hover:bg-muted'
                   }`}
@@ -532,7 +538,7 @@ export default function ConfigGeneratorPage() {
               Download all configs as individual files, or export the full lab design as JSON.
             </p>
             <div className="flex flex-wrap gap-2">
-              {TABS.map(tab => (
+              {tabs.map(tab => (
                 <Button
                   key={tab.id}
                   variant="ghost"

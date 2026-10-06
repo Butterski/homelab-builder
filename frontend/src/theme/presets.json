@@ -233,6 +233,45 @@
         "sidebar-border": "#3d4c78",
         "sidebar-ring": "#4caf50"
       }
+    },
+    {
+      "id": "lan-party",
+      "name": "LAN Party",
+      "description": "Deep navy with neon violet and cyan, for late-night sessions.",
+      "mode": "dark",
+      "tokens": {
+        "background": "#0a0a12",
+        "foreground": "#f4f4fb",
+        "card": "#11111c",
+        "card-foreground": "#f4f4fb",
+        "popover": "#11111c",
+        "popover-foreground": "#f4f4fb",
+        "primary": "#a78bfa",
+        "primary-foreground": "#0a0a12",
+        "secondary": "#1e1e30",
+        "secondary-foreground": "#f4f4fb",
+        "muted": "#171726",
+        "muted-foreground": "#a3a3c2",
+        "accent": "#1f2a44",
+        "accent-foreground": "#e0f2fe",
+        "destructive": "oklch(0.704 0.191 22.216)",
+        "border": "#2a2a42",
+        "input": "#2a2a42",
+        "ring": "#7c3aed",
+        "chart-1": "#a78bfa",
+        "chart-2": "#22d3ee",
+        "chart-3": "#f472b6",
+        "chart-4": "#a3e635",
+        "chart-5": "#fb923c",
+        "sidebar": "#0a0a12",
+        "sidebar-foreground": "#f4f4fb",
+        "sidebar-primary": "#a78bfa",
+        "sidebar-primary-foreground": "#0a0a12",
+        "sidebar-accent": "#171726",
+        "sidebar-accent-foreground": "#f4f4fb",
+        "sidebar-border": "#2a2a42",
+        "sidebar-ring": "#7c3aed"
+      }
     }
   ]
 }

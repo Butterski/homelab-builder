@@ -16,6 +16,7 @@ import {
   Clipboard,
   Cpu,
   Download,
+  Gamepad2,
   Gauge,
   HardDrive,
   Heart,
@@ -103,6 +104,8 @@ const CATEGORY_META: Record<string, { label: string; icon: ElementType; color: s
   pdu: { label: 'PDUs', icon: Zap, color: 'text-lime-500 bg-lime-500/10' },
   iot: { label: 'IoT', icon: Package, color: 'text-yellow-600 bg-yellow-600/10' },
   modem: { label: 'Modems', icon: Network, color: 'text-blue-600 bg-blue-600/10' },
+  pc: { label: 'PCs', icon: Cpu, color: 'text-cyan-500 bg-cyan-500/10' },
+  console: { label: 'Consoles', icon: Gamepad2, color: 'text-fuchsia-500 bg-fuchsia-500/10' },
 };
 
 type CatalogSource = 'all' | 'blueprints' | 'components' | 'favorites';

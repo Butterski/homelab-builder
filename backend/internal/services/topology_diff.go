@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"sort"
 
+	"github.com/Butterski/homelab-builder/backend/internal/gaming"
 	"github.com/Butterski/homelab-builder/backend/internal/models"
 )
 
@@ -20,6 +21,8 @@ type ProposalDiff struct {
 	VMs         GuestDiffs      `json:"vms"`
 	Components  ComponentDiffs  `json:"components"`
 	IPChanges   []AddressChange `json:"ip_changes"`
+	// Plan lists changes to the build kind and the gaming plan.
+	Plan []FieldChange `json:"plan"`
 }
 
 type DiffCounts struct {
@@ -34,6 +37,7 @@ type DiffCounts struct {
 	VMsChanged         int `json:"vms_changed"`
 	ComponentsAdded    int `json:"components_added"`
 	ComponentsRemoved  int `json:"components_removed"`
+	PlanChanged        int `json:"plan_changed"`
 	IPChanges          int `json:"ip_changes"`
 	// Total counts structural changes; recalculated addresses alone are not a change.
 	Total int `json:"total"`
@@ -119,6 +123,39 @@ type AddressChange struct {
 var derivedDetailKeys = map[string]bool{
 	"wan_ip": true, "lan_gateway_ip": true, "lan_subnet": true, "interfaces": true,
 	"virtual_network": true, "dhcp_locked": true, "rack_position": true,
+	"dhcp_pool": true,
+}
+
+// storedGame reads the game settings of a stored guest.
+func storedGame(vm models.VirtualMachine) *gaming.Instance {
+	details, err := detailsMap(vm.Details)
+	if err != nil {
+		return nil
+	}
+	return guestGame(details)
+}
+
+// planChanges lists what a proposal changes about the build kind and the gaming plan.
+func planChanges(before, after *models.Build) []FieldChange {
+	changes := []FieldChange{}
+	kindOf := func(build *models.Build) string {
+		if build.Kind == "" {
+			return string(gaming.KindHomelab)
+		}
+		return build.Kind
+	}
+	if kindOf(before) != kindOf(after) {
+		changes = append(changes, FieldChange{Field: "kind", Before: kindOf(before), After: kindOf(after)})
+	}
+	was, errBefore := gaming.ParsePlan(before.GamingPlan)
+	now, errAfter := gaming.ParsePlan(after.GamingPlan)
+	if errBefore != nil || errAfter != nil {
+		return changes
+	}
+	for _, change := range gaming.DiffPlans(was, now) {
+		changes = append(changes, FieldChange{Field: change.Field, Before: change.Before, After: change.After})
+	}
+	return changes
 }
 
 // DiffBuilds compares a build with its proposed successor.
@@ -129,6 +166,7 @@ func DiffBuilds(before, after *models.Build) ProposalDiff {
 		VMs:         GuestDiffs{Added: []GuestDiff{}, Removed: []GuestDiff{}, Changed: []GuestDiff{}},
 		Components:  ComponentDiffs{Added: []ComponentDiff{}, Removed: []ComponentDiff{}},
 		IPChanges:   []AddressChange{},
+		Plan:        planChanges(before, after),
 	}
 	if before.Name != after.Name {
 		diff.BuildName = &FieldChange{Field: "name", Before: before.Name, After: after.Name}
@@ -175,12 +213,13 @@ func DiffBuilds(before, after *models.Build) ProposalDiff {
 		ConnectionsAdded: len(diff.Connections.Added), ConnectionsRemoved: len(diff.Connections.Removed), ConnectionsChanged: len(diff.Connections.Changed),
 		VMsAdded: len(diff.VMs.Added), VMsRemoved: len(diff.VMs.Removed), VMsChanged: len(diff.VMs.Changed),
 		ComponentsAdded: len(diff.Components.Added), ComponentsRemoved: len(diff.Components.Removed),
-		IPChanges: len(diff.IPChanges),
+		PlanChanged: len(diff.Plan),
+		IPChanges:   len(diff.IPChanges),
 	}
 	counts.Total = counts.NodesAdded + counts.NodesRemoved + counts.NodesChanged +
 		counts.ConnectionsAdded + counts.ConnectionsRemoved + counts.ConnectionsChanged +
 		counts.VMsAdded + counts.VMsRemoved + counts.VMsChanged +
-		counts.ComponentsAdded + counts.ComponentsRemoved
+		counts.ComponentsAdded + counts.ComponentsRemoved + counts.PlanChanged
 	if diff.BuildName != nil {
 		counts.Total++
 	}
@@ -209,6 +248,7 @@ func (c DiffCounts) Summary() string {
 	add(c.VMsRemoved, "service", "services", "removed")
 	add(c.ComponentsAdded, "component", "components", "added")
 	add(c.ComponentsRemoved, "component", "components", "removed")
+	add(c.PlanChanged, "plan setting", "plan settings", "changed")
 	if len(parts) == 0 {
 		return "no changes"
 	}
@@ -358,6 +398,20 @@ func diffGuests(diff *ProposalDiff, before, after *models.Build) {
 		compare("os", previous.vm.OS, current.vm.OS)
 		compare("status", previous.vm.Status, current.vm.Status)
 		compare("static_ip", requestedVMIP(previous.vm), requestedVMIP(current.vm))
+		// A change to a game server's players or exposure is a change the owner
+		// must see, even when memory and cores stay the same.
+		if was, now := storedGame(previous.vm), storedGame(current.vm); was != nil || now != nil {
+			if was == nil {
+				was = &gaming.Instance{}
+			}
+			if now == nil {
+				now = &gaming.Instance{}
+			}
+			compare("game", was.Profile, now.Profile)
+			compare("players", was.Players, now.Players)
+			compare("exposure", was.Exposure, now.Exposure)
+			compare("port_offset", was.PortOffset, now.PortOffset)
+		}
 		if previous.host.ID != current.host.ID {
 			compare("host", previous.host.Name, current.host.Name)
 		}

@@ -18,12 +18,17 @@ import type {
   HardwareComponent,
   HardwareNodeValidationIssue,
   VirtualNetwork,
+  BuildKind,
+  GamingPlan,
 } from '../../../types';
 import { initialVirtualNetwork, removeVirtualEndpoints } from '../lib/virtual-network';
 import { withFreshChildIds } from '../lib/hardware-instance';
 import { buildApi, type Build } from '../api/builds';
 import { proposalApi, type Proposal } from '../api/proposals';
 import { mapBuildToFlow } from '../lib/build-mapper';
+import { requiredConnectionType } from '../lib/connection-rules';
+import { newTableDetails } from '../../gaming/lib/table';
+import { newGameInstance, sizeServer } from '../../gaming/lib/sizing';
 import {
   buildProposalPreview,
   validationToIssues,
@@ -39,6 +44,20 @@ import {
 } from '../components/rack-node-constants';
 
 let topologyMutationQueue: Promise<void> = Promise.resolve();
+
+// Details the server computes. A key that is missing from the server's answer
+// is gone (DHCP was switched off, a gateway stopped routing), so the local copy
+// must not keep it.
+const DERIVED_DETAIL_KEYS = ['dhcp_pool', 'wan_ip', 'lan_gateway_ip', 'lan_subnet', 'interfaces'];
+
+function mergeServerDetails(
+  local: Record<string, unknown> | undefined,
+  server: Record<string, unknown>,
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = { ...(local ?? {}) };
+  for (const key of DERIVED_DETAIL_KEYS) delete merged[key];
+  return { ...merged, ...server };
+}
 
 function enqueueTopologyMutation(mutation: () => Promise<void>): Promise<void> {
   const queued = topologyMutationQueue.then(mutation, mutation);
@@ -108,6 +127,18 @@ interface BuilderState {
   // Actions
   autoAssignIP: (nodeId?: string) => string | null;
   reassignAllIPs: () => Promise<void>;
+
+  // What the open build is planned for, and its gaming plan as loaded. The plan
+  // object is replaced only by a user edit: it is part of the autosave
+  // fingerprint, and rebuilding it elsewhere would look like an unsaved change.
+  buildKind: BuildKind;
+  gamingPlan: Partial<GamingPlan>;
+  setBuildKind: (kind: BuildKind) => void;
+  setGamingPlan: (plan: GamingPlan) => void;
+
+  // Build settings as loaded from the server. Keys this store does not manage
+  // itself are sent back unchanged, because a save replaces the whole object.
+  buildSettings: Record<string, unknown>;
 
   // Purchase Tracking
   boughtItems: string[];
@@ -202,6 +233,11 @@ export const useBuilderStore = create<BuilderState>()(
       nodes: [],
       edges: [],
       selectedNodeId: null,
+      buildKind: 'homelab',
+      gamingPlan: {},
+      setBuildKind: kind => set({ buildKind: kind }),
+      setGamingPlan: plan => set({ gamingPlan: plan }),
+      buildSettings: {},
       boughtItems: [],
       showBought: false,
       historyPast: [],
@@ -277,9 +313,26 @@ export const useBuilderStore = create<BuilderState>()(
         }
       },
       updateEdge: (id, updates) => {
-        set(state => ({
-          edges: state.edges.map(e => (e.id === id ? { ...e, ...updates } : e)),
-        }));
+        set(state => {
+          const types = new Map(state.hardwareNodes.map(node => [node.id, node.type]));
+          return {
+            edges: state.edges.map(e => {
+              if (e.id !== id) return e;
+              const next = { ...e, ...updates };
+              // Some links have only one valid medium: keep it whatever was picked.
+              const required = requiredConnectionType(types.get(next.source), types.get(next.target));
+              if (required && next.data && next.data.connection_type !== required) {
+                next.data = {
+                  ...next.data,
+                  connection_type: required,
+                  wireless_standard:
+                    required === 'wireless' ? next.data.wireless_standard || 'Wi-Fi 6' : '',
+                };
+              }
+              return next;
+            }),
+          };
+        });
       },
       onConnect: (connection: Connection) => {
         const state = get();
@@ -291,8 +344,11 @@ export const useBuilderStore = create<BuilderState>()(
         const hardwareById = new Map(state.hardwareNodes.map(n => [n.id, n]));
         const sourceHardware = connection.source ? hardwareById.get(connection.source) : undefined;
         const targetHardware = connection.target ? hardwareById.get(connection.target) : undefined;
+        // A LAN table is always cabled, also when a wireless default would apply.
+        const required = requiredConnectionType(sourceHardware?.type, targetHardware?.type);
         const isAccessPointLink =
-          sourceHardware?.type === 'access_point' || targetHardware?.type === 'access_point';
+          required !== 'ethernet' &&
+          (sourceHardware?.type === 'access_point' || targetHardware?.type === 'access_point');
 
         // Default new edges to custom type
         const newEdges = addEdge(
@@ -326,7 +382,17 @@ export const useBuilderStore = create<BuilderState>()(
 
       selectNode: nodeId => set({ selectedNodeId: nodeId }),
 
-      addHardware: hardwareNode => {
+      addHardware: rawNode => {
+        // A LAN table always has its seats, switch and power figure, wherever it comes from.
+        const hardwareNode =
+          rawNode.type === 'lan_table' && rawNode.details?.seats === undefined
+            ? {
+                ...rawNode,
+                name: rawNode.name === 'New lan_table' ? 'LAN Table' : rawNode.name,
+                details: { ...newTableDetails().details, ...(rawNode.details ?? {}) },
+                power_draw: rawNode.power_draw || newTableDetails().power_draw,
+              }
+            : rawNode;
         set(state => {
           const snap: Snapshot = {
             nodes: state.nodes,
@@ -560,7 +626,23 @@ export const useBuilderStore = create<BuilderState>()(
       },
 
       // ── VM Management ──────────────────────────────────────────────────
-      addVM: (nodeId, vm) => {
+      addVM: (nodeId, rawVM) => {
+        // A game from the catalog becomes a game server: LAN-only, for the usual
+        // group, with the memory and cores that group needs.
+        const game = get().availableServices.find(
+          service => service.id === rawVM.details?.catalog_service_id,
+        )?.game;
+        let vm = rawVM;
+        if (game && !rawVM.details?.game) {
+          const instance = newGameInstance(game);
+          const sizing = sizeServer(game, instance.players);
+          vm = {
+            ...rawVM,
+            cpu_cores: sizing.cpu_cores,
+            ram_mb: sizing.ram_mb,
+            details: { ...(rawVM.details ?? {}), game: instance },
+          };
+        }
         set(state => {
           const snap: Snapshot = {
             nodes: state.nodes,
@@ -798,10 +880,10 @@ export const useBuilderStore = create<BuilderState>()(
               return {
                 ...hn,
                 ip: entry.nodeIp,
-                details: {
-                  ...(hn.details ?? {}),
-                  ...entry.details,
-                },
+                details: mergeServerDetails(
+                  hn.details as Record<string, unknown> | undefined,
+                  entry.details,
+                ),
                 vms: hn.vms?.map(vm => ({ ...vm, ip: entry.vmMap.get(vm.id) ?? vm.ip })),
               };
             });
@@ -814,10 +896,10 @@ export const useBuilderStore = create<BuilderState>()(
                 data: {
                   ...rfn.data,
                   ip: entry.nodeIp,
-                  details: {
-                    ...((rfn.data?.details as Record<string, unknown> | undefined) ?? {}),
-                    ...entry.details,
-                  },
+                  details: mergeServerDetails(
+                    rfn.data?.details as Record<string, unknown> | undefined,
+                    entry.details,
+                  ),
                   vms: (Array.isArray(rfn.data?.vms) ? rfn.data.vms : []).map((vm: any) => ({
                     ...vm,
                     ip: entry.vmMap.get(vm.id) ?? vm.ip,
@@ -915,6 +997,9 @@ export const useBuilderStore = create<BuilderState>()(
           nodes: [],
           edges: [],
           hardwareNodes: [],
+          buildKind: 'homelab',
+          gamingPlan: {},
+          buildSettings: {},
           historyPast: [],
           historyFuture: [],
           lastSyncedFingerprint: '',
@@ -935,6 +1020,9 @@ export const useBuilderStore = create<BuilderState>()(
           hardwareNodes,
           nodes: rfNodes,
           edges: rfEdges,
+          buildKind: build.kind || 'homelab',
+          gamingPlan: build.gaming_plan || {},
+          buildSettings: settings,
           boughtItems: settings.boughtItems || [],
           showBought: settings.showBought || false,
           historyPast: [],
@@ -1075,10 +1163,14 @@ export const useBuilderStore = create<BuilderState>()(
         );
 
         return {
+          kind: state.buildKind,
+          // An untouched plan is not sent, so the server keeps what it has.
+          ...(Object.keys(state.gamingPlan).length > 0 ? { gaming_plan: state.gamingPlan } : {}),
           nodes: nodesPayload,
           edges: sanitizedEdgesPayload,
           services: [],
           settings: {
+            ...state.buildSettings,
             boughtItems: state.boughtItems,
             showBought: state.showBought,
           },

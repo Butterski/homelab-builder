@@ -5,6 +5,8 @@ import { useBuilderStore } from '../store/builder-store';
 import { useAuth } from '../../admin/hooks/use-auth';
 import { toast } from 'sonner';
 import { ApiError } from '../../../lib/api';
+import { BUILD_KINDS } from '../../gaming/lib/kind';
+import type { BuildKind, GamingPlan } from '../../../types';
 // ─── Inline helpers (extracted from projects-page.tsx to keep them colocated) ───
 const parseDetailsObject = (value: unknown) => {
   if (!value) return {};
@@ -42,6 +44,9 @@ const summarizeInvalidEdges = (invalidEdges: Array<{ source: string; target: str
     : `${invalidEdges.length} invalid edge(s) were skipped (${examples}).`;
 };
 
+const isBuildKind = (value: unknown): value is BuildKind =>
+  BUILD_KINDS.some(entry => entry.kind === value);
+
 const sanitizeImportPayload = (parsed: any) => {
   const rawNodes = parsed.nodes || parsed.hardwareNodes || [];
   const normalizedNodes = normalizeNodesForSync(rawNodes);
@@ -72,6 +77,11 @@ const sanitizeImportPayload = (parsed: any) => {
       edges: validEdges,
       services: parsed.services || [],
       settings,
+      kind: isBuildKind(parsed.kind) ? parsed.kind : undefined,
+      gaming_plan:
+        parsed.gaming_plan && typeof parsed.gaming_plan === 'object'
+          ? (parsed.gaming_plan as Partial<GamingPlan>)
+          : undefined,
     },
     warning: summarizeInvalidEdges(invalidEdges),
   };
@@ -94,16 +104,17 @@ async function createProjectAtomically(params: CreateBuildParams): Promise<Build
 
 // ─── Modal state types ────────────────────────────────────────────────────────
 type ModalState = {
-  create: { open: boolean; name: string };
+  create: { open: boolean; name: string; kind: BuildKind };
   delete: { open: boolean; buildId: string | null };
   rename: { open: boolean; build: Build | null; value: string };
   share: { open: boolean; build: Build | null; copied: boolean };
 };
 
 type ModalAction =
-  | { type: 'OPEN_CREATE'; name?: string }
+  | { type: 'OPEN_CREATE'; name?: string; kind?: BuildKind }
   | { type: 'CLOSE_CREATE' }
   | { type: 'SET_CREATE_NAME'; name: string }
+  | { type: 'SET_CREATE_KIND'; kind: BuildKind }
   | { type: 'OPEN_DELETE'; buildId: string }
   | { type: 'CLOSE_DELETE' }
   | { type: 'OPEN_RENAME'; build: Build }
@@ -114,7 +125,7 @@ type ModalAction =
   | { type: 'SET_SHARE_COPIED'; copied: boolean };
 
 const initialModal: ModalState = {
-  create: { open: false, name: 'New Project' },
+  create: { open: false, name: 'New Project', kind: 'homelab' },
   delete: { open: false, buildId: null },
   rename: { open: false, build: null, value: '' },
   share: { open: false, build: null, copied: false },
@@ -123,11 +134,16 @@ const initialModal: ModalState = {
 function modalReducer(state: ModalState, action: ModalAction): ModalState {
   switch (action.type) {
     case 'OPEN_CREATE':
-      return { ...state, create: { open: true, name: action.name || 'New Project' } };
+      return {
+        ...state,
+        create: { open: true, name: action.name || 'New Project', kind: action.kind || 'homelab' },
+      };
     case 'CLOSE_CREATE':
       return { ...state, create: { ...state.create, open: false } };
     case 'SET_CREATE_NAME':
       return { ...state, create: { ...state.create, name: action.name } };
+    case 'SET_CREATE_KIND':
+      return { ...state, create: { ...state.create, kind: action.kind } };
     case 'OPEN_DELETE':
       return { ...state, delete: { open: true, buildId: action.buildId } };
     case 'CLOSE_DELETE':
@@ -166,6 +182,8 @@ export function useProjectsPage() {
     edges: any[];
     services: any[];
     settings: any;
+    kind?: BuildKind;
+    gaming_plan?: Partial<GamingPlan>;
   } | null>(null);
   const importWarningRef = useRef<string | null>(null);
 
@@ -222,7 +240,7 @@ export function useProjectsPage() {
         }
         let baseName = file.name.replace('.homelab.json', '').replace('.json', '');
         if (!baseName) baseName = 'Imported Project';
-        dispatchModal({ type: 'OPEN_CREATE', name: baseName });
+        dispatchModal({ type: 'OPEN_CREATE', name: baseName, kind: payload.kind });
       } catch {
         toast.error('Failed to parse JSON');
       }
@@ -244,6 +262,8 @@ export function useProjectsPage() {
       const newBuild = await createProjectAtomically({
         name,
         thumbnail: '',
+        kind: modal.create.kind,
+        ...(payload.gaming_plan ? { gaming_plan: payload.gaming_plan } : {}),
         nodes: payload.nodes,
         edges: payload.edges,
         services: payload.services,
@@ -269,7 +289,7 @@ export function useProjectsPage() {
       importPayloadRef.current = null;
       importWarningRef.current = null;
     }
-  }, [modal.create.name, loadBuild, navigate]);
+  }, [modal.create.name, modal.create.kind, loadBuild, navigate]);
 
   const handleExport = useCallback(async (e: React.MouseEvent, build: Build) => {
     e.stopPropagation();
@@ -279,9 +299,12 @@ export function useProjectsPage() {
       const payload = {
         version: 1,
         name: fullBuild.name,
+        kind: fullBuild.kind || 'homelab',
+        gaming_plan: fullBuild.gaming_plan || {},
         exportedAt: new Date().toISOString(),
         nodes: rawData.nodes || [],
         edges: rawData.edges || [],
+        settings: rawData.settings || {},
         boughtItems: rawData.settings?.boughtItems || [],
         showBought: rawData.settings?.showBought || false,
       };

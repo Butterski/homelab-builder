@@ -60,6 +60,9 @@ type ipamNode struct {
 	Connections []string `json:"connections"`
 	ExistingIP  string   `json:"existing_ip,omitempty"`
 	VMs         []ipamVM `json:"vms,omitempty"`
+	// DHCPClients is the number of leases this node needs for devices that are
+	// not on the canvas: seats at a LAN table, Wi-Fi clients on an access point.
+	DHCPClients int `json:"dhcp_clients,omitempty"`
 }
 
 type ipamRequest struct {
@@ -80,9 +83,50 @@ type ipamNodeResult struct {
 }
 
 type ipamRouterResult struct {
-	ID        string `json:"id"`
-	GatewayIP string `json:"gateway_ip"`
-	Subnet    string `json:"subnet"`
+	ID          string `json:"id"`
+	GatewayIP   string `json:"gateway_ip"`
+	Subnet      string `json:"subnet"`
+	DHCPStart   string `json:"dhcp_start,omitempty"`
+	DHCPEnd     string `json:"dhcp_end,omitempty"`
+	DHCPSize    int    `json:"dhcp_size,omitempty"`
+	DHCPClients int    `json:"dhcp_clients,omitempty"`
+}
+
+// withDHCPPool writes the address pool hlbIPAM carved for a gateway into its
+// details, or removes a stale one when the gateway hands out no leases.
+func withDHCPPool(raw json.RawMessage, pool *ipamRouterResult) (json.RawMessage, error) {
+	details := map[string]any{}
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &details); err != nil || details == nil {
+			return raw, nil // details that are not an object are left alone
+		}
+	}
+	_, had := details["dhcp_pool"]
+	// With DHCP off there is no pool, but devices may still expect a lease:
+	// that count is kept so the gaming report can say so.
+	if pool == nil || (pool.DHCPStart == "" && pool.DHCPClients == 0) {
+		if !had {
+			return raw, nil
+		}
+		delete(details, "dhcp_pool")
+	} else {
+		details["dhcp_pool"] = map[string]any{
+			"start":   pool.DHCPStart,
+			"end":     pool.DHCPEnd,
+			"size":    pool.DHCPSize,
+			"clients": pool.DHCPClients,
+		}
+	}
+	return json.Marshal(details)
+}
+
+// nodeDHCPClients reads the lease demand of a stored node.
+func nodeDHCPClients(node models.Node) int {
+	details := map[string]any{}
+	if len(node.Details) > 0 {
+		_ = json.Unmarshal(node.Details, &details)
+	}
+	return dhcpClientsOf(node.Type, details)
 }
 
 type ipamResponse struct {
@@ -94,6 +138,8 @@ type ipamResponse struct {
 
 var nonNetworkTypes = map[string]bool{
 	"disk": true, "gpu": true, "hba": true, "pcie": true, "pdu": true, "ups": true, "rack": true,
+	// A LAN table has no address of its own: its seats take leases from the pool.
+	nodeTypeLANTable: true,
 }
 
 func ipInGatewaySubnet(ipValue string, gatewayValue string, maskValue string) bool {
@@ -125,6 +171,27 @@ func ipInGatewaySubnet(ipValue string, gatewayValue string, maskValue string) bo
 	return (&net.IPNet{IP: gateway.Mask(mask), Mask: mask}).Contains(ip)
 }
 
+// loadTopology reads a build's nodes, guests and edges in the order they were
+// saved. hlbIPAM hands out addresses in the order it is given the devices, so
+// an unordered read would let two devices of the same type swap addresses
+// between saves whenever the database returns the rows differently.
+func loadTopology(db *gorm.DB, buildID uuid.UUID) ([]models.Node, []models.Edge, error) {
+	var nodes []models.Node
+	err := db.
+		Preload("VirtualMachines", func(guests *gorm.DB) *gorm.DB { return guests.Order("created_at, id") }).
+		Where("build_id = ?", buildID).Order("created_at, id").Find(&nodes).Error
+	if err != nil {
+		return nil, nil, err
+	}
+	// Edge ids change on every save; their endpoints do not.
+	var edges []models.Edge
+	err = db.Where("build_id = ?", buildID).Order("created_at, source_node_id, target_node_id").Find(&edges).Error
+	if err != nil {
+		return nil, nil, err
+	}
+	return nodes, edges, nil
+}
+
 // ─── Public API ─────────────────────────────────────────────────────────────
 
 // CalculateNetwork loads the build's topology from the DB, sends it to
@@ -132,17 +199,12 @@ func ipInGatewaySubnet(ipValue string, gatewayValue string, maskValue string) bo
 func (s *IPService) CalculateNetwork(buildID uuid.UUID) error {
 	return s.db.Transaction(func(tx *gorm.DB) error {
 		// 1. Load nodes and edges
-		var nodes []models.Node
-		if err := tx.Preload("VirtualMachines").Where("build_id = ?", buildID).Find(&nodes).Error; err != nil {
+		nodes, edges, err := loadTopology(tx, buildID)
+		if err != nil {
 			return err
 		}
 		if len(nodes) == 0 {
 			return nil
-		}
-
-		var edges []models.Edge
-		if err := tx.Where("build_id = ?", buildID).Find(&edges).Error; err != nil {
-			return err
 		}
 
 		// Helper to extract numeric port from handle string (e.g. "eth0" -> 0, "eth10" -> 10)
@@ -395,6 +457,7 @@ func (s *IPService) CalculateNetwork(buildID uuid.UUID) error {
 				Connections: adj[nid],
 				ExistingIP:  existingIP,
 				VMs:         vms,
+				DHCPClients: nodeDHCPClients(n),
 			})
 		}
 
@@ -425,9 +488,15 @@ func (s *IPService) CalculateNetwork(buildID uuid.UUID) error {
 			subnet    string
 		}
 		natLANByNodeID := make(map[string]natInterfaceAllocation, len(natGatewayIDs))
+		poolByNodeID := make(map[string]ipamRouterResult, len(result.Routers))
 		for _, rr := range result.Routers {
 			if rr.GatewayIP != "" {
 				routerIPByID[rr.ID] = rr.GatewayIP
+			}
+			if nodeID, ok := natNodeByRouterID[rr.ID]; ok {
+				poolByNodeID[nodeID] = rr
+			} else {
+				poolByNodeID[rr.ID] = rr
 			}
 			if nodeID, ok := natNodeByRouterID[rr.ID]; ok {
 				natLANByNodeID[nodeID] = natInterfaceAllocation{
@@ -503,6 +572,15 @@ func (s *IPService) CalculateNetwork(buildID uuid.UUID) error {
 				}
 				nodes[i].Details = updatedDetails
 			}
+			var pool *ipamRouterResult
+			if found, ok := poolByNodeID[nid]; ok {
+				pool = &found
+			}
+			withPool, err := withDHCPPool(nodes[i].Details, pool)
+			if err != nil {
+				return fmt.Errorf("marshal node details: %w", err)
+			}
+			nodes[i].Details = withPool
 			for j := range nodes[i].VirtualMachines {
 				vmid := nodes[i].VirtualMachines[j].ID.String()
 				nodes[i].VirtualMachines[j].IP = vmIPByID[vmid]
@@ -578,13 +656,8 @@ func (s *IPService) callIPAM(req ipamRequest) (*ipamResponse, error) {
 // ValidateNetwork sends the current topology to the hlbIPAM validate endpoint
 // and returns the raw validation response directly to the caller.
 func (s *IPService) ValidateNetwork(buildID uuid.UUID) (json.RawMessage, error) {
-	var nodes []models.Node
-	if err := s.db.Preload("VirtualMachines").Where("build_id = ?", buildID).Find(&nodes).Error; err != nil {
-		return nil, err
-	}
-
-	var edges []models.Edge
-	if err := s.db.Where("build_id = ?", buildID).Find(&edges).Error; err != nil {
+	nodes, edges, err := loadTopology(s.db, buildID)
+	if err != nil {
 		return nil, err
 	}
 
@@ -773,6 +846,7 @@ func (s *IPService) ValidateNetwork(buildID uuid.UUID) (json.RawMessage, error) 
 			Connections: adj[nid],
 			ExistingIP:  existingIP,
 			VMs:         vms,
+			DHCPClients: nodeDHCPClients(n),
 		})
 	}
 

@@ -40,6 +40,7 @@ import {
   Image as ImageIcon,
   Map as MapIcon,
   ClipboardCheck,
+  Gamepad2,
   LayoutGrid,
   Sparkles,
 } from 'lucide-react';
@@ -50,8 +51,9 @@ import {
   canNodeBeNested,
   canNodeHostNested,
   canNodeHostVMs,
-  canNodeConnectToAny,
+  isFloorNode,
 } from '../../../lib/hardware-config';
+import { checkConnection } from '../lib/connection-rules';
 import { getNodePortCount } from '../lib/port-count';
 import { computeTopologyLayout } from '../lib/topology-layout';
 import { isNatDownstreamEdge } from '../lib/network-zone';
@@ -70,6 +72,8 @@ import {
 
 import { CustomEdge } from './custom-edge';
 import { ReadinessReportDialog } from './readiness-report-dialog';
+import { GamingPlanDialog } from '../../gaming/components/gaming-plan-dialog';
+import { isGamingKind } from '../../gaming/lib/kind';
 import { VirtualNetworkEditor } from './virtual-network-editor';
 import { ProposalBanner } from './proposal-banner';
 import { ProposalPreviewCanvas } from './proposal-preview-canvas';
@@ -251,6 +255,7 @@ const Flow = React.memo(function Flow() {
   // Joyride Tour State
   const [runTour, setRunTour] = useState(false);
   const [readinessOpen, setReadinessOpen] = useState(false);
+  const [gamePlanOpen, setGamePlanOpen] = useState(false);
   const [tourSteps] = useState<Step[]>([
     {
       target: '.tour-toolbox',
@@ -326,6 +331,14 @@ const Flow = React.memo(function Flow() {
   // LLM proposals: polled from the server, reviewed on a read-only preview canvas.
   const proposals = useProposals(id);
   const reviewingProposal = useBuilderStore(state => state.proposalPreview !== null);
+  // The game plan is offered wherever there is something for it to check.
+  const showGamePlan = useBuilderStore(
+    state =>
+      isGamingKind(state.buildKind) ||
+      state.hardwareNodes.some(
+        node => node.type === 'lan_table' || node.vms?.some(vm => !!vm.details?.game),
+      ),
+  );
 
   // The in-app assistant exists only for users who turned it on in Settings.
   const { data: assistantSettings } = useAssistantSettings();
@@ -894,7 +907,7 @@ const Flow = React.memo(function Flow() {
 
       const rackTarget = intersecting.find((n: any) => n.type === 'rack');
 
-      if (rackTarget && data.type !== 'rack' && !isServiceDrag) {
+      if (rackTarget && data.type !== 'rack' && !isFloorNode(data.type) && !isServiceDrag) {
         // Calculate the U-slot position based on drop position within the rack
         const relY = position.y - rackTarget.position.y - RACK_HEADER_PX;
         const uSlot = Math.max(0, Math.round(relY / RACK_U_HEIGHT_PX));
@@ -1005,6 +1018,8 @@ const Flow = React.memo(function Flow() {
         // Find hardware node to check details
         const hardwareNode = storeState.hardwareNodes.find(n => n.id === node.id);
         if (!hardwareNode) return;
+        // Consoles and LAN tables stand on the floor; they stay where they were dropped.
+        if (isFloorNode(hardwareNode.type)) return;
 
         // Calculate relative Y
         const isCurrentlyInRack = node.parentId === rackTarget.id;
@@ -1057,81 +1072,17 @@ const Flow = React.memo(function Flow() {
   const isValidConnection = useCallback(
     (connection: any) => {
       // Always read live state so this never operates on stale closures.
-      const { edges: currentEdges, hardwareNodes: currentNodes } = useBuilderStore.getState();
+      const {
+        edges: currentEdges,
+        hardwareNodes: currentNodes,
+        edgePreferences,
+      } = useBuilderStore.getState();
 
-      // Self-loop guard
-      if (connection.source === connection.target) return false;
-
-      const sourceNode = currentNodes.find(n => n.id === connection.source);
-      const targetNode = currentNodes.find(n => n.id === connection.target);
-      if (!sourceNode || !targetNode) return false;
-
-      const isUPS = sourceNode.type === 'ups' || targetNode.type === 'ups';
-
-      // Port exclusivity - each physical handle can carry at most one cable.
-      // UPS connections are power cables and share ports with network connections.
-      if (!isUPS) {
-        const sourceHandleUsed = currentEdges.some(
-          e =>
-            (e.source === connection.source && e.sourceHandle === connection.sourceHandle) ||
-            (e.target === connection.source && e.targetHandle === connection.sourceHandle),
-        );
-        if (sourceHandleUsed) {
-          toast.error('Source port is already in use.');
-          return false;
-        }
-        const targetHandleUsed = currentEdges.some(
-          e =>
-            (e.source === connection.target && e.sourceHandle === connection.targetHandle) ||
-            (e.target === connection.target && e.targetHandle === connection.targetHandle),
-        );
-        if (targetHandleUsed) {
-          toast.error('Target port is already in use.');
-          return false;
-        }
-      }
-
-      // Cycle detection - BFS through the existing undirected graph (skip for UPS).
-      if (!isUPS && !useBuilderStore.getState().edgePreferences.ignoreNetworkLoops) {
-        const adj = new Map<string, Set<string>>();
-        for (const e of currentEdges) {
-          if (!adj.has(e.source)) adj.set(e.source, new Set());
-          if (!adj.has(e.target)) adj.set(e.target, new Set());
-          adj.get(e.source)!.add(e.target);
-          adj.get(e.target)!.add(e.source);
-        }
-        const visited = new Set<string>();
-        const queue = [connection.source];
-        visited.add(connection.source);
-        while (queue.length > 0) {
-          const current = queue.shift()!;
-          if (current === connection.target) {
-            toast.error('Connection would create a loop.');
-            return false;
-          }
-          for (const neighbor of adj.get(current) ?? []) {
-            if (!visited.has(neighbor)) {
-              visited.add(neighbor);
-              queue.push(neighbor);
-            }
-          }
-        }
-      }
-
-      // Devices generally shouldn't connect directly to each other (e.g. server to server).
-      // They should connect through a device that has 'canConnectToAny' (like a switch, router, modem, hba)
-      // Devices like IoT and UPS also bypass this and can connect anywhere directly.
-      const sourceCanConnectToAny = canNodeConnectToAny(sourceNode.type as HardwareType);
-      const targetCanConnectToAny = canNodeConnectToAny(targetNode.type as HardwareType);
-
-      if (!sourceCanConnectToAny && !targetCanConnectToAny) {
-        toast.error(
-          'Devices generally must connect through a network hub (Switch, Router, Modem, etc).',
-        );
-        return false;
-      }
-
-      return true;
+      const result = checkConnection(connection, currentNodes, currentEdges, {
+        ignoreLoops: edgePreferences.ignoreNetworkLoops,
+      });
+      if (!result.ok && result.message) toast.error(result.message);
+      return result.ok;
     },
     [], // no deps - reads live state via getState()
   );
@@ -1175,6 +1126,11 @@ const Flow = React.memo(function Flow() {
           validationIssues={validationIssues}
           onGenerateConfig={() => navigate('/generate')}
           onReassignIPs={handleReassignIPs}
+        />
+        <GamingPlanDialog
+          open={gamePlanOpen}
+          onOpenChange={setGamePlanOpen}
+          onSelectNode={selectNode}
         />
 
         <div className="builder-canvas flex-1 h-full min-w-0 relative" ref={reactFlowWrapper}>
@@ -1266,6 +1222,9 @@ const Flow = React.memo(function Flow() {
                   <DropdownMenuItem onClick={() => setReadinessOpen(true)}>
                     <ClipboardCheck className="mr-2 size-4" /> Readiness Report
                   </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setGamePlanOpen(true)}>
+                    <Gamepad2 className="mr-2 size-4" /> Game Plan
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={polishTopologyLayout}>
                     <LayoutGrid className="mr-2 size-4" /> Polish Layout
                   </DropdownMenuItem>
@@ -1328,6 +1287,19 @@ const Flow = React.memo(function Flow() {
                 <ClipboardCheck className="size-4" />
                 <span className="builder-action-label ml-2">Readiness</span>
               </Button>
+
+              {showGamePlan && (
+                <Button
+                  variant="outline"
+                  onClick={() => setGamePlanOpen(true)}
+                  title="Open the game plan and its report"
+                  size="sm"
+                  className="builder-control-button h-10 px-3"
+                >
+                  <Gamepad2 className="size-4" />
+                  <span className="builder-action-label ml-2">Game plan</span>
+                </Button>
+              )}
 
               <Button
                 variant="outline"

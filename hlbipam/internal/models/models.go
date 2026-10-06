@@ -22,6 +22,9 @@ type NodeDTO struct {
 	Connections []string `json:"connections"`
 	ExistingIP  string   `json:"existing_ip,omitempty"`
 	VMs         []VMDTO  `json:"vms,omitempty"`
+	// DHCPClients is the number of leases this node needs for devices behind it
+	// that are not listed themselves: seats at a LAN table, Wi-Fi clients.
+	DHCPClients int `json:"dhcp_clients,omitempty"`
 }
 
 type VMDTO struct {
@@ -48,6 +51,12 @@ type RouterResult struct {
 	ID        string `json:"id"`
 	GatewayIP string `json:"gateway_ip"`
 	Subnet    string `json:"subnet"`
+	// The DHCP pool carved out of the subnet; empty when DHCP is off.
+	DHCPStart string `json:"dhcp_start,omitempty"`
+	DHCPEnd   string `json:"dhcp_end,omitempty"`
+	DHCPSize  int    `json:"dhcp_size,omitempty"`
+	// DHCPClients is the lease demand announced by the nodes of this subnet.
+	DHCPClients int `json:"dhcp_clients,omitempty"`
 }
 
 type NodeResult struct {

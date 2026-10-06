@@ -19,6 +19,8 @@ import {
   Shield,
   Cloud,
   Network,
+  Gamepad2,
+  Armchair,
 } from 'lucide-react';
 import { Card } from '../../../components/ui/card';
 import { cn } from '../../../lib/utils';
@@ -38,6 +40,7 @@ import {
 import { useBuilderStore } from '../store/builder-store';
 import { getVmResourceUsage } from '../lib/resource-usage';
 import { getNodePortCount } from '../lib/port-count';
+import { tableSeats, tableSwitchPorts } from '../../gaming/lib/table';
 
 type HardwareNodeData = {
   onOpenVirtualNetwork?: () => void;
@@ -197,6 +200,20 @@ const TYPE_CONFIG: Partial<
     iconColor: 'text-violet-400',
     color: '#7c3aed',
   },
+  console: {
+    icon: Gamepad2,
+    border: 'border-border',
+    bg: 'bg-fuchsia-500',
+    iconColor: 'text-fuchsia-400',
+    color: '#d946ef',
+  },
+  lan_table: {
+    icon: Armchair,
+    border: 'border-border',
+    bg: 'bg-amber-500',
+    iconColor: 'text-amber-400',
+    color: '#f59e0b',
+  },
 };
 const FALLBACK_CONFIG = {
   icon: Server,
@@ -227,6 +244,8 @@ const TYPE_LABEL: Record<HardwareType, string> = {
   iot: 'IoT',
   modem: 'Modem',
   rack: 'Rack',
+  console: 'Console',
+  lan_table: 'LAN Table',
 };
 
 function formatCapacity(value: HardwareSpec['ram'] | HardwareSpec['storage']) {
@@ -466,6 +485,11 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
         })()
       : null;
 
+  const dhcpPool = nodeData.details?.dhcp_pool;
+  const dhcpPoolLabel = dhcpPool
+    ? `.${dhcpPool.start.split('.').pop()}-.${dhcpPool.end.split('.').pop()}`
+    : '';
+
   // Calculate dynamic width for high-port-count switches/routers/etc
   const dynamicMinWidth = nodeHasDynamicPorts(nodeData.type) ? numPorts * 16 : 0;
   const shouldShowBody =
@@ -591,6 +615,28 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
               </p>
             )}
 
+            {nodeData.type === 'lan_table' && (
+              <div className="node-telemetry-grid">
+                <div className="node-telemetry-cell">
+                  <span className="node-telemetry-label">Seats:</span>
+                  <span className="node-telemetry-value font-mono text-foreground">
+                    {tableSeats(nodeData.details)}
+                  </span>
+                </div>
+                <div className="node-telemetry-cell">
+                  <span className="node-telemetry-label">Switch:</span>
+                  <span className="node-telemetry-value font-mono truncate">
+                    {tableSwitchPorts(nodeData.details)}-port{' '}
+                    {nodeData.details?.switch_speed || '1 GbE'}
+                  </span>
+                </div>
+                <div className="node-telemetry-cell">
+                  <span className="node-telemetry-label">IP:</span>
+                  <span className="node-telemetry-value italic text-muted-foreground">DHCP</span>
+                </div>
+              </div>
+            )}
+
             {(isNetworkNode(nodeData.type) || containerRangeHint) && (
               <div className="node-telemetry-grid">
                 {isNetworkNode(nodeData.type) && (
@@ -634,6 +680,18 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
                     </span>
                     <span className="node-telemetry-value font-mono text-sky-300 truncate">
                       {containerRangeHint}
+                    </span>
+                  </div>
+                )}
+
+                {dhcpPool && (
+                  <div
+                    className="node-telemetry-cell"
+                    title={`${dhcpPool.size} addresses, ${dhcpPool.clients} expected`}
+                  >
+                    <span className="node-telemetry-label">DHCP:</span>
+                    <span className="node-telemetry-value font-mono text-sky-300 truncate">
+                      {dhcpPoolLabel}
                     </span>
                   </div>
                 )}

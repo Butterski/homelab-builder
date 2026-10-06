@@ -147,6 +147,10 @@ func usedHandles(nodeID string, nodeTypes map[string]string, edges []EdgeDTO) ma
 		if isPowerEdge(nodeTypes[edge.Source], nodeTypes[edge.Target]) {
 			continue
 		}
+		// Wi-Fi clients do not take the access point's port; it carries the uplink.
+		if nodeTypes[nodeID] == "access_point" && isWifiAssociation(nodeTypes[edge.Source], nodeTypes[edge.Target]) {
+			continue
+		}
 		if edge.Source == nodeID && edge.SourceHandle != "" {
 			used[edge.SourceHandle] = true
 		}

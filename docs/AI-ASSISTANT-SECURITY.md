@@ -91,7 +91,9 @@ Each chat request sends:
   ([`backend/internal/assistant/instructions.go`](../backend/internal/assistant/instructions.go));
 - the results of the tools the model calls. In practice that is the build you have open (device
   names, types and specs, IP addresses, connections, VMs and services), catalog entries it searches
-  for, and the configs it generates for that build.
+  for, and the configs it generates for that build. For a LAN party or game server build this
+  includes the game plan: your line speed, the power circuits, and the address your friends
+  connect to if you entered one.
 
 It does not send your email, your login, your access tokens, or other builds. The chat is confined to
 the build that is open: the same check that confines a single-build MCP token.

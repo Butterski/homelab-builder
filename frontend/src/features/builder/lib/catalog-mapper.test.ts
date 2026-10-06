@@ -67,6 +67,29 @@ describe('catalog mapper', () => {
     expect(dragData.details?.price_est).toBe(400);
   });
 
+  it('takes the power draw from the listing when the spec has no TDP', () => {
+    const base: HardwareComponent = {
+      id: 'hw-2',
+      category: 'console',
+      brand: 'Sony',
+      model: 'PlayStation 5 (Slim)',
+      spec: { ports: '1x GbE' },
+      power_draw: 200,
+      price_est: 499,
+      currency: 'EUR',
+      buy_urls: [],
+      image_url: '',
+      approved: true,
+      likes: 0,
+      created_at: '',
+    };
+
+    expect(hardwareComponentToDragData(base).power_draw).toBe(200);
+    expect(
+      hardwareComponentToDragData({ ...base, spec: { ...base.spec, tdp_w: 150 } }).power_draw,
+    ).toBe(150);
+  });
+
   it('converts services into VM/container defaults', () => {
     const service = makeService({
       id: 'svc-1',

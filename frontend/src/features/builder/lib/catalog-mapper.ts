@@ -91,7 +91,9 @@ export function hardwareComponentToDragData(component: HardwareComponent): Bluep
     type,
     name: `${component.brand} ${component.model}`,
     details,
-    power_draw: Number((component.spec as Record<string, unknown>)?.tdp_w || 0),
+    power_draw:
+      Number((component.spec as Record<string, unknown>)?.tdp_w || 0) ||
+      Number(component.power_draw || 0),
   };
 }
 

@@ -90,6 +90,8 @@ func Models() []any {
 		&models.HardwareBlueprintVote{},
 		&models.HardwareBlueprintReview{},
 		&models.HardwareReview{},
+		&models.SteeringRule{},
+		&models.CatalogComponent{},
 		&models.Node{},
 		&models.Edge{},
 		&models.NodeComponent{},

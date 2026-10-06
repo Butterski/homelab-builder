@@ -22,7 +22,7 @@ const proposeChangesSchema = `{
     "items":{
       "type":"object",
       "properties":{
-        "op":{"type":"string","enum":["add_node","update_node","remove_node","connect","disconnect","update_connection","add_vm","update_vm","remove_vm","add_component","remove_component","rename_build"]},
+        "op":{"type":"string","enum":["add_node","update_node","remove_node","connect","disconnect","update_connection","add_vm","update_vm","remove_vm","add_component","remove_component","rename_build","set_plan"]},
         "ref":{"type":"string","maxLength":64,"description":"add_node, add_vm, add_component: a short label for the new entity (e.g. \"nas1\") that later operations in this call can use in place of an id."},
         "node":{"type":"string","description":"update_node, remove_node, add_component: the node, as an id from get_build, a ref from this call, or its exact unique name."},
         "host":{"type":"string","description":"add_vm: the node that runs the VM, container or service."},
@@ -32,9 +32,9 @@ const proposeChangesSchema = `{
         "target":{"type":"string","description":"connect, disconnect, update_connection: the other end."},
         "parent":{"type":"string","description":"add_node, update_node: the rack to mount this device in. On update_node, \"\" takes it out of its rack."},
         "rack_slot":{"type":"number","minimum":0,"description":"U slot inside the rack, 0 is the top. Omit to use the first free gap."},
-        "type":{"type":"string","description":"add_node: node type (router, switch, firewall, modem, access_point, server_v2, minipc, pc, nas, sbc, vps, iot, ups, pdu, rack). add_vm, update_vm: vm, container or lxc. add_component: disk, gpu, hba or pcie."},
+        "type":{"type":"string","description":"add_node: node type (router, switch, firewall, modem, access_point, server_v2, minipc, pc, nas, sbc, vps, iot, console, lan_table, ups, pdu, rack). add_vm, update_vm: vm, container or lxc. add_component: disk, gpu, hba or pcie."},
         "name":{"type":"string","maxLength":120,"description":"Display name. Required for add_vm and add_component unless a catalog id supplies it; rename_build takes the new build name."},
-        "details":{"type":"object","description":"add_node, update_node, add_component: specs to set, e.g. {\"cpu\":8,\"ram\":32,\"storage\":1000,\"ports\":8,\"model\":\"...\",\"notes\":\"...\"}. On update_node this is a merge patch: listed keys are set, a null value removes a key, other keys stay."},
+        "details":{"type":"object","description":"add_node, update_node, add_component: specs to set, e.g. {\"cpu\":8,\"ram\":32,\"storage\":1000,\"ports\":8,\"model\":\"...\",\"notes\":\"...\"}. On update_node this is a merge patch: listed keys are set, a null value removes a key, other keys stay. A lan_table takes seats, seat_watts, switch_ports and switch_speed; a console takes platform; an access_point takes wifi_clients; circuit names the power circuit of the gaming plan a device is plugged into."},
         "ip":{"type":"string","description":"add_node, update_node: a router's gateway address, or a static address for another device. \"\" releases a static address. Leave out to let the IP manager assign one."},
         "power_draw":{"type":"number","minimum":0,"description":"Typical power draw in watts."},
         "x":{"type":"number","description":"Canvas position. Omit x and y for automatic placement."},
@@ -52,7 +52,12 @@ const proposeChangesSchema = `{
         "os":{"type":"string","maxLength":80,"description":"add_vm, update_vm: e.g. \"Debian 12\"."},
         "status":{"type":"string","enum":["running","stopped","paused"],"description":"add_vm, update_vm."},
         "static_ip":{"type":"string","description":"add_vm, update_vm: request a fixed address inside the host's subnet. \"\" clears it."},
-        "catalog_service_id":{"type":"string","description":"add_vm: service id from list_services. Fills in the name and resource needs."}
+        "catalog_service_id":{"type":"string","description":"add_vm: service id from list_services. Fills in the name and resource needs. A game from the gaming category becomes a game server."},
+        "players":{"type":"number","minimum":1,"description":"add_vm, update_vm on a game server: players online at once. Sizes memory and cores unless cpu_cores or ram_mb are given."},
+        "exposure":{"type":"string","enum":["lan","port_forward","vpn","relay"],"description":"add_vm, update_vm on a game server: who can reach it. lan is the default; port_forward needs a public address on the user's line."},
+        "port_offset":{"type":"number","minimum":0,"description":"add_vm, update_vm on a game server: added to every port, so two servers of the same game can share a host or a router."},
+        "kind":{"type":"string","enum":["homelab","lan_party","game_server"],"description":"set_plan: what the build is planned for."},
+        "plan":{"type":"object","description":"set_plan: merge patch for the gaming plan, e.g. {\"uplink\":{\"down_mbps\":300,\"up_mbps\":20,\"cgnat\":\"no\",\"public_host\":\"play.example.org\"},\"power\":{\"mains_voltage\":230,\"circuits\":[{\"id\":\"c1\",\"label\":\"Hall\",\"breaker_amps\":16}]},\"event\":{\"date\":\"2026-11-14\",\"hours\":24}}. Listed keys are set and other keys stay; circuits is replaced as a whole. cgnat is yes, no or \"\" for unknown."}
       },
       "required":["op"],
       "additionalProperties":false
@@ -119,18 +124,23 @@ func proposeChanges(_ context.Context, r *Registry, actor Actor, args json.RawMe
 		next = "Nothing has changed in the build yet. The user now sees this proposal in the builder with Apply and Reject buttons; " +
 			"tell them briefly what it does and wait for their decision."
 	}
-	return &Result{
-		ProposalID: &proposal.ID,
-		Data: map[string]any{
-			"proposal_id": proposal.ID,
-			"status":      proposal.Status,
-			"summary":     proposal.Summary,
-			"review_url":  reviewURL(actor, buildID, &proposal.ID),
-			"changes":     json.RawMessage(proposal.Diff),
-			"validation":  describeValidation(preview.Validation, preview.Build),
-			"next":        next,
-		},
-	}, nil
+	data := map[string]any{
+		"proposal_id": proposal.ID,
+		"status":      proposal.Status,
+		"summary":     proposal.Summary,
+		"review_url":  reviewURL(actor, buildID, &proposal.ID),
+		"changes":     json.RawMessage(proposal.Diff),
+		"validation":  describeValidation(preview.Validation, preview.Build),
+		"next":        next,
+	}
+	// What the gaming report would say once the proposal is applied, so the
+	// caller can correct the plan before the user reviews it.
+	if preview.Build != nil {
+		if report, err := services.GamingReportForBuild(preview.Build); err == nil && (report.Kind.IsGaming() || len(report.Issues) > 0) {
+			data["gaming"] = map[string]any{"status": report.Status, "issues": report.Issues}
+		}
+	}
+	return &Result{ProposalID: &proposal.ID, Data: data}, nil
 }
 
 func getProposal(_ context.Context, r *Registry, actor Actor, args json.RawMessage) (*Result, error) {

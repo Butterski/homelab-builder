@@ -25,6 +25,7 @@ export const HARDWARE_CATEGORY_LABELS: Record<string, string> = {
   firewall: 'Firewalls',
   vps: 'Cloud/VPS',
   pc: 'PCs',
+  console: 'Consoles',
 };
 
 export const CREATOR_HARDWARE_TYPES: Array<{ type: HardwareType; label: string }> = [
@@ -34,6 +35,7 @@ export const CREATOR_HARDWARE_TYPES: Array<{ type: HardwareType; label: string }
   { type: 'server_v2', label: 'Server' },
   { type: 'minipc', label: 'Mini PC' },
   { type: 'pc', label: 'PC' },
+  { type: 'console', label: 'Console' },
   { type: 'nas', label: 'NAS' },
   { type: 'sbc', label: 'SBC' },
   { type: 'vps', label: 'VPS' },
@@ -80,6 +82,20 @@ export function normalizeHardwareCategory(category: string) {
     case 'single_board_computer':
     case 'single_board_computers':
       return 'sbc';
+    case 'pcs':
+    case 'desktop':
+    case 'desktops':
+    case 'workstation':
+    case 'workstations':
+    case 'gaming_pc':
+    case 'gaming_pcs':
+      return 'pc';
+    case 'consoles':
+    case 'game_console':
+    case 'game_consoles':
+    case 'handheld':
+    case 'handhelds':
+      return 'console';
     default:
       return normalized;
   }

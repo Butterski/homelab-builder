@@ -23,6 +23,9 @@ import {
 import { Button } from '../../../components/ui/button';
 import { Card } from '../../../components/ui/card';
 import { Badge } from '../../../components/ui/badge';
+import { APP_VERSION_LABEL } from '../../../lib/version';
+import { BUILD_KINDS, buildKindInfo, isGamingKind } from '../../gaming/lib/kind';
+import type { BuildKind } from '../../../types';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -154,6 +157,7 @@ function ProjectsPage() {
         onConfirmDelete={confirmDelete}
         onConfirmRename={confirmRename}
         onSetCreateName={(name: string) => dispatchModal({ type: 'SET_CREATE_NAME', name })}
+        onSetCreateKind={(kind: BuildKind) => dispatchModal({ type: 'SET_CREATE_KIND', kind })}
         onSetRenameValue={(value: string) => dispatchModal({ type: 'SET_RENAME_VALUE', value })}
         onCloseCreate={() => dispatchModal({ type: 'CLOSE_CREATE' })}
         onCloseDelete={() => dispatchModal({ type: 'CLOSE_DELETE' })}
@@ -181,13 +185,14 @@ function ProjectModals({
   onConfirmDelete,
   onConfirmRename,
   onSetCreateName,
+  onSetCreateKind,
   onSetRenameValue,
   onCloseCreate,
   onCloseDelete,
   onCloseRename,
 }: {
   modal: {
-    create: { open: boolean; name: string };
+    create: { open: boolean; name: string; kind: BuildKind };
     delete: { open: boolean };
     rename: { open: boolean; value: string };
   };
@@ -195,6 +200,7 @@ function ProjectModals({
   onConfirmDelete: () => void;
   onConfirmRename: () => void;
   onSetCreateName: (name: string) => void;
+  onSetCreateKind: (kind: BuildKind) => void;
   onSetRenameValue: (value: string) => void;
   onCloseCreate: () => void;
   onCloseDelete: () => void;
@@ -207,7 +213,7 @@ function ProjectModals({
           <DialogHeader>
             <DialogTitle>Create New Project</DialogTitle>
             <DialogDescription>
-              Give your homelab project a name to get started. You can change this later.
+              Name the project and say what it is for. Both can be changed later.
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
@@ -224,6 +230,35 @@ function ProjectModals({
                 if (e.key === 'Enter') onConfirmCreate();
               }}
             />
+            <fieldset className="mt-4">
+              <legend className="mb-2 text-sm font-medium">What are you planning?</legend>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {BUILD_KINDS.map(({ kind, label, description, icon: Icon }) => {
+                  const selected = modal.create.kind === kind;
+                  return (
+                    <button
+                      key={kind}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => onSetCreateKind(kind)}
+                      className={`rounded-lg border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                        selected
+                          ? 'border-primary bg-primary/10'
+                          : 'border-border hover:border-primary/40 hover:bg-muted/30'
+                      }`}
+                    >
+                      <Icon
+                        className={`size-4 ${selected ? 'text-primary' : 'text-muted-foreground'}`}
+                      />
+                      <div className="mt-2 text-sm font-medium">{label}</div>
+                      <p className="mt-0.5 text-xs leading-snug text-muted-foreground">
+                        {description}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={onCloseCreate}>
@@ -411,6 +446,8 @@ const BuildCard = React.memo(function BuildCard({
   onDelete: (e: React.MouseEvent, id: string) => void;
 }) {
   const nodeCount = build.nodes && Array.isArray(build.nodes) ? build.nodes.length : 0;
+  const kindInfo = buildKindInfo(build.kind);
+  const KindIcon = kindInfo.icon;
 
   return (
     <Card
@@ -476,9 +513,17 @@ const BuildCard = React.memo(function BuildCard({
           <h3 className="font-semibold truncate pr-2" title={build.name}>
             {build.name}
           </h3>
-          <Badge variant="secondary" className="text-[10px] shrink-0">
-            v1.0
-          </Badge>
+          <div className="flex shrink-0 items-center gap-1">
+            {isGamingKind(build.kind) && (
+              <Badge variant="outline" className="gap-1 text-[10px]">
+                <KindIcon className="size-3" />
+                {kindInfo.label}
+              </Badge>
+            )}
+            <Badge variant="secondary" className="text-[10px]">
+              {APP_VERSION_LABEL}
+            </Badge>
+          </div>
         </div>
 
         <div className="mt-auto space-y-3">

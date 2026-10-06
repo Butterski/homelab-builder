@@ -204,6 +204,67 @@ describe('ProjectsPage Export Functionality', () => {
     readAsTextSpy.mockRestore();
   });
 
+  it('creates a project of the kind picked in the dialog', async () => {
+    (buildApi.list as any).mockResolvedValue([]);
+    (buildApi.create as any).mockResolvedValue({
+      id: 'party-1',
+      name: 'Autumn LAN',
+      kind: 'lan_party',
+      revision: 1,
+    });
+
+    render(
+      <BrowserRouter>
+        <ProjectsPage />
+      </BrowserRouter>,
+    );
+
+    fireEvent.click((await screen.findAllByRole('button', { name: /New Project/i }))[0]);
+    await waitFor(() => {
+      expect(screen.getByText('Create New Project')).toBeInTheDocument();
+    });
+
+    // A plain project stays a homelab unless something else is picked.
+    expect(screen.getByRole('button', { name: /^Homelab/i })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^LAN party/i }));
+    fireEvent.click(screen.getAllByText('Create Project').at(-1) as HTMLElement);
+
+    await waitFor(() => {
+      expect(buildApi.create).toHaveBeenCalledWith(expect.objectContaining({ kind: 'lan_party' }));
+    });
+  });
+
+  it('marks gaming projects on their card and leaves homelabs unmarked', async () => {
+    const base = {
+      user_id: '1',
+      thumbnail: '',
+      nodes: [],
+      settings: {},
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    (buildApi.list as any).mockResolvedValue([
+      { ...base, id: 'b1', name: 'Rack at home', kind: 'homelab' },
+      { ...base, id: 'b2', name: 'Valheim box', kind: 'game_server' },
+      { ...base, id: 'b3', name: 'Old project' },
+    ]);
+
+    render(
+      <BrowserRouter>
+        <ProjectsPage />
+      </BrowserRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Valheim box')).toBeInTheDocument();
+    });
+    expect(screen.getAllByText('Game server')).toHaveLength(1);
+    expect(screen.queryByText('Homelab')).not.toBeInTheDocument();
+  });
+
   it('shows a specific error when backend rejects invalid edge references', async () => {
     (buildApi.list as any).mockResolvedValue([]);
     (buildApi.create as any).mockResolvedValue({

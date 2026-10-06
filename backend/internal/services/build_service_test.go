@@ -117,6 +117,52 @@ func TestBuildService_Duplicate(t *testing.T) {
 	}
 }
 
+func TestBuildService_DuplicateKeepsPowerDrawAndRackParent(t *testing.T) {
+	tx := testTx(t)
+	svc := NewBuildService(tx)
+	user := models.User{Email: uuid.NewString() + "@t.com", GoogleID: uuid.NewString()}
+	tx.Create(&user)
+
+	rackID, serverID := uuid.NewString(), uuid.NewString()
+	build, err := svc.Create(user.ID, SyncGraphInput{
+		Name: "Racked",
+		Nodes: []NodeDTO{
+			{ID: rackID, Type: "rack", Name: "Rack"},
+			{ID: serverID, Type: "server_v2", Name: "Server", PowerDraw: 180, MacAddress: "aa:bb:cc:dd:ee:ff", ParentID: &rackID},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	dup, err := svc.Duplicate(build.ID, user.ID)
+	if err != nil {
+		t.Fatalf("Duplicate failed: %v", err)
+	}
+
+	var rack, server *models.Node
+	for i := range dup.Nodes {
+		switch dup.Nodes[i].Type {
+		case "rack":
+			rack = &dup.Nodes[i]
+		case "server_v2":
+			server = &dup.Nodes[i]
+		}
+	}
+	if rack == nil || server == nil {
+		t.Fatalf("expected a rack and a server in the copy, got %+v", dup.Nodes)
+	}
+	if server.PowerDraw != 180 {
+		t.Errorf("expected power draw 180, got %v", server.PowerDraw)
+	}
+	if server.MacAddress != "aa:bb:cc:dd:ee:ff" {
+		t.Errorf("expected the MAC address to be copied, got %q", server.MacAddress)
+	}
+	if server.ParentID == nil || *server.ParentID != rack.ID {
+		t.Errorf("expected the copied server to sit in the copied rack %s, got %v", rack.ID, server.ParentID)
+	}
+}
+
 func TestBuildService_Delete(t *testing.T) {
 	tx := testTx(t)
 	svc := NewBuildService(tx)

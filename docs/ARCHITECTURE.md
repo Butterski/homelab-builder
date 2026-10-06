@@ -15,6 +15,7 @@ Remember - I don't want migrations scripts or Legacy things support. If somethin
 3. [Backend Architecture](#backend-architecture)
 4. [HLBIPAM Microservice](#hlbipam-microservice)
    - [LLM Access: MCP Server and Assistant](#llm-access-mcp-server-and-assistant)
+   - [Gaming Builds](#gaming-builds)
 5. [Frontend Architecture](#frontend-architecture)
 6. [Data Model](#data-model)
 7. [IP Assignment Algorithm](#ip-assignment-algorithm)
@@ -34,6 +35,7 @@ Remember - I don't want migrations scripts or Legacy things support. If somethin
 - **HLBIPAM**: Standalone Go microservice for IP Address Management
 - **Frontend**: React 19, TypeScript, Vite, ReactFlow, Zustand, Vitest
 - **LLM access**: built-in MCP server (`/mcp`) and an opt-in, bring-your-own-key chat assistant; both can only propose changes
+- **Gaming (1.3)**: a build has a kind (`homelab`, `lan_party`, `game_server`); the gaming kinds add a plan (internet line, power circuits, event) and a report computed on the backend
 - **Infrastructure**: Docker Compose (postgres + backend + hlbipam + frontend)
 
 ---
@@ -48,11 +50,11 @@ homelab-builder/
 ├── AGENTS.md                   # this file
 ├── backend/
 │   ├── cmd/
-│   │   ├── server/main.go      # HTTP server entrypoint
-│   │   └── migrate/main.go     # standalone migration runner
+│   │   └── server/main.go      # HTTP server entrypoint
 │   ├── internal/
 │   │   ├── assistant/          # LLM tool registry, chat agent, instructions
 │   │   ├── config/config.go    # env var loading
+│   │   ├── gaming/             # build kinds, gaming plan, game registry, sizing, report, game compose
 │   │   ├── handlers/           # Gin route handlers (one file per domain)
 │   │   ├── llm/                # provider adapters (Anthropic, OpenAI-compatible), SSRF guard
 │   │   ├── mcpserver/          # /mcp endpoint: token auth, rate limits
@@ -60,9 +62,9 @@ homelab-builder/
 │   │   ├── models/models.go    # ALL GORM models in one file
 │   │   ├── secrets/            # AES-256-GCM sealing of stored provider keys
 │   │   ├── services/           # business logic; most tests live here
-│   │   └── testutil/           # Postgres transaction helper for packages outside services
-│   ├── migrations/             # raw SQL migrations (applied by postgres init)
-│   ├── pkg/database/database.go
+│   │   ├── testutil/           # Postgres transaction helper for packages outside services
+│   │   └── version/version.go  # release number; a frontend test keeps package.json in step
+│   ├── pkg/database/database.go # connection, AutoMigrate, Models() (every table)
 │   ├── go.mod
 │   ├── Dockerfile              # multi-stage: builder → final scratch image
 │   └── Dockerfile.test         # test runner image
@@ -87,6 +89,7 @@ homelab-builder/
 │   │   │   ├── builder/        # visual network builder (main feature)
 │   │   │   ├── catalog/        # hardware & service catalog browsing
 │   │   │   ├── donate/         # donation page
+│   │   │   ├── gaming/         # game plan dialog and report, game server / LAN table / console fields
 │   │   │   ├── landing/        # landing/login page
 │   │   │   ├── settings/       # settings page: appearance, AI assistant, MCP access
 │   │   │   ├── setup-guide/    # setup checklist
@@ -100,7 +103,8 @@ homelab-builder/
 │   │   ├── lib/                # shared utilities
 │   │   │   ├── api.ts          # base axios instance
 │   │   │   ├── templates.ts    # config templates
-│   │   │   └── utils.ts        # general utilities
+│   │   │   ├── utils.ts        # general utilities
+│   │   │   └── version.ts      # app version, taken from package.json at build time
 │   │   ├── services/           # shared service layer (api.ts)
 │   │   ├── types/index.ts      # shared TypeScript types
 │   │   ├── App.tsx             # root component with routing
@@ -110,6 +114,7 @@ homelab-builder/
 └── docs/
     ├── ARCHITECTURE.md         # copy of this file
     ├── MCP.md                  # connecting LLM clients over MCP
+    ├── GAMING.md               # user guide: LAN party and game server builds
     └── AI-ASSISTANT-SECURITY.md # how provider keys and chat data are handled
 ```
 
@@ -153,7 +158,8 @@ HTTP Request → Gin Router → Middleware → Handler → Service → GORM → 
 | `catalog_component_handler.go` | Catalog component CRUD |
 | `donate_handler.go` | Donation progress read/update |
 | `survey_handler.go` | Beta survey CRUD |
-| `health.go` | Health check endpoint |
+| `health.go` | Health check endpoint (also reports the version) |
+| `gaming_handler.go` | Gaming report of a build (`GET /builds/:id/gaming-report`) |
 | `proposal_handler.go` | Sync state poll, proposal get / apply / reject |
 | `api_token_handler.go` | Personal access tokens for MCP clients (JWT only) |
 | `assistant_handler.go` | Assistant settings, provider test, chat thread, chat stream (SSE) |
@@ -162,13 +168,16 @@ HTTP Request → Gin Router → Middleware → Handler → Service → GORM → 
 
 | File | Responsibility |
 |---|---|
-| `build_service.go` | CRUD for builds; saves the submitted graph into the relational `nodes`/`edges` tables and recalculates IPs |
+| `build_service.go` | CRUD for builds; saves the submitted graph into the relational `nodes`/`edges` tables and recalculates IPs; stores the build kind and gaming plan |
 | `build_snapshot.go` | `BuildToSyncInput`, `GetOwned`, `PreviewTopology` (dry run) |
 | `proposal_service.go` | LLM proposals: propose, refresh, apply, reject, sync state |
 | `topology_ops*.go`, `topology_ports.go`, `topology_layout.go`, `topology_diff.go` | Change-set engine behind proposals |
 | `api_token_service.go` | Personal access tokens |
 | `assistant_settings_service.go`, `assistant_thread_service.go` | Assistant settings with the encrypted key; stored chat |
-| `ip_service.go` | Graph-aware BFS IP assignment per subnet |
+| `ip_service.go` | Graph-aware BFS IP assignment per subnet; sends DHCP demand to hlbIPAM and stores each gateway's pool |
+| `gaming_service.go` | Turns a build into `gaming.ReportInput`: gaming report, per-host game compose files, the `gaming/` files of the export bundle |
+| `topology_gaming.go` | Rules for `console` and `lan_table`, the Wi-Fi association rule, table defaults, the `set_plan` operation, DHCP demand per node |
+| `hardware_seed.go`, `default_service_seed.go`, `catalog_seed.go` | Startup seed of the hardware catalog (`hardware_seed.json`) and the service catalog; `SeedCatalog` runs both |
 | `auth_service.go` | Google OAuth token verification, JWT issuance |
 | `hardware_service.go` | Hardware catalog queries + admin operations |
 | `recommendation_service.go` | Service/hardware recommendations based on selections |
@@ -189,6 +198,8 @@ Every write goes through one path: `PUT /builds/:id/topology` -> `BuildService.U
 2. `syncGraph` replaces the build's nodes, edges, VMs and components with the submitted `SyncGraphInput`. Node, VM and component UUIDs sent by the client are kept; **edge IDs are regenerated on every save**, so nothing may refer to an edge by ID.
 3. Runs the IP calculation (hlbIPAM) in the same transaction and bumps the revision.
 4. IMPORTANT: `Preload("Nodes.VirtualMachines")` is required on all build fetches or VMs disappear from responses.
+
+The same save carries the build's `kind` and `gaming_plan` (`applyKindAndPlan`). Both are optional in `SyncGraphInput`: an empty kind and a nil plan leave the stored values alone, so a client that does not know about them cannot wipe them. A save through a share link (`UpdateByShareToken`) never changes them, and whatever a share link gets back goes through `asSharedView`, which leaves out `gaming_plan.uplink.public_host`.
 
 `BuildService.PreviewTopology` runs the same steps and then rolls the transaction back (sentinel `errDryRun`). It is how a proposal is checked without touching the build.
 
@@ -217,6 +228,8 @@ hlbipam/
 
 The backend communicates with HLBIPAM via `IPAM_URL` (default: `http://hlbipam:8081`).
 
+A node may announce `dhcp_clients`: devices behind it that will ask for a lease (the seats of a `lan_table`, the Wi-Fi devices of an access point). The allocator adds them up per subnet, sizes the DHCP pool for the sum with a quarter of headroom (`DHCPHeadroom`), and returns the pool with each router result (`dhcp_start`, `dhcp_end`, `dhcp_size`, `dhcp_clients`). It warns when the demand does not fit the subnet or DHCP is off. With no demand the pool is the same as before 1.3.
+
 ---
 
 ## LLM Access: MCP Server and Assistant
@@ -229,15 +242,15 @@ User-facing docs: `docs/MCP.md` (client setup) and `docs/AI-ASSISTANT-SECURITY.m
 
 | Package / file | Responsibility |
 |---|---|
-| `internal/assistant/tools*.go` | Tool registry shared by MCP and the chat: `list_builds`, `get_build`, `validate_build`, `generate_configs`, `search_hardware`, `list_services`, `recommend_hardware`, `get_proposal`, `propose_changes`, `create_build` (MCP only). `Registry.Call` validates arguments against the tool's JSON schema, enforces the actor's scope and build restriction, and audits state-changing calls. |
+| `internal/assistant/tools*.go` | Tool registry shared by MCP and the chat: `list_builds`, `get_build`, `validate_build`, `generate_configs`, `gaming_report`, `search_hardware`, `list_services`, `recommend_hardware`, `get_proposal`, `propose_changes`, `create_build` (MCP only). `Registry.Call` validates arguments against the tool's JSON schema, enforces the actor's scope and build restriction, and audits state-changing calls. |
 | `internal/assistant/instructions.go` | The fixed domain primer: MCP server instructions and the chat system prompt. |
 | `internal/assistant/agent.go` | Chat loop for the in-app assistant: one turn per user at a time, at most 12 model calls per message, history stored append-only. |
 | `internal/mcpserver/` | `/mcp` endpoint (official `modelcontextprotocol/go-sdk`, stateless streamable HTTP). Authenticates a personal access token, rate-limits per token, and builds a per-request server exposing only the tools the token's scope allows. |
 | `internal/llm/` | Provider adapters behind one `Provider` interface: Anthropic (official SDK) and OpenAI-compatible (OpenAI, Gemini, OpenRouter, Ollama, custom). `ssrf.go` restricts which addresses the server may call. |
 | `internal/secrets/` | AES-256-GCM sealing of provider keys, bound to the owner through the AAD. |
 | `services/proposal_service.go` | Propose (dry run + diff), Refresh, Apply (replays the operations on the latest revision), Reject, SyncState. |
-| `services/topology_ops*.go` | Applies a change set (`add_node`, `connect`, `add_vm`, ...) to a `SyncGraphInput` in memory. Mirrors the canvas rules: port handles, port counts, cable orientation, loop rejection, rack slots, auto layout. |
-| `services/topology_diff.go` | Diff between two builds, shown in the review panel. |
+| `services/topology_ops*.go`, `topology_gaming.go` | Applies a change set (`add_node`, `connect`, `add_vm`, `set_plan`, ...) to a `SyncGraphInput` in memory. Mirrors the canvas rules: port handles, port counts, cable orientation, loop rejection, rack slots, Wi-Fi association, auto layout. |
+| `services/topology_diff.go` | Diff between two builds, shown in the review panel. Covers the gaming plan and the game settings of a guest, so a proposal that changes only those still counts as a change. |
 | `services/api_token_service.go` | Personal access tokens (`hlb_...`): only the SHA-256 is stored; scopes `read` / `propose`; optional single-build restriction. |
 | `services/assistant_settings_service.go` | Per-user provider, model and encrypted key. `LoadKeyring` picks the master key (`SECRETS_KEY`, or a generated one kept in `system_settings` on instances without login). |
 | `services/assistant_thread_service.go` | Stored chat messages: provider-neutral parts plus the provider's native message for replay. |
@@ -256,6 +269,8 @@ POST /builds/:id/proposals/:pid/apply          replays the ops on the latest rev
 - One pending proposal per build: a new one supersedes the older.
 - Apply rebases: edits saved after the proposal was created are kept. If the operations no longer fit, the proposal becomes `conflict` (409).
 - Connections are addressed by their unordered node pair, never by edge ID.
+- `set_plan` is a JSON merge patch on the gaming plan (plus an optional kind), so it replays on a newer revision like any other operation. The answer to `propose_changes` carries the gaming report of the dry run (`gaming: {status, issues}`).
+- The tools and `assistant.Instructions` do not vary by build kind: the instructions are byte-stable for prompt caching. The kind reaches the chat model through the per-turn context note in `agent.go`.
 
 ### Rules that must not be broken
 
@@ -266,6 +281,53 @@ POST /builds/:id/proposals/:pid/apply          replays the ops on the latest rev
 - `/mcp` always requires a token, also when `AUTH_DISABLED` is on. JWT routes never accept an access token, so a token cannot mint tokens.
 - The SQL logger runs with `ParameterizedQueries: true`: statement values (chat text, ciphertext) never reach the log. Keep it that way.
 - Model output is untrusted: the chat renders Markdown without raw HTML and without images.
+
+---
+
+## Gaming Builds
+
+Since 1.3 a build has a **kind**: `homelab` (the default), `lan_party` or `game_server`. A homelab build behaves as before. The gaming kinds add a plan and a report. User guide: `docs/GAMING.md`.
+
+### Pieces
+
+| Package / file | Responsibility |
+|---|---|
+| `internal/gaming/kind.go`, `plan.go` | `Kind` and `Plan` (uplink, power circuits, event). Stored as `builds.kind` and `builds.gaming_plan` (jsonb). `Plan.Normalize` validates and never adds defaults, so the server returns a plan exactly as it was saved. |
+| `internal/gaming/profiles*.go` | The game registry: one `Profile` per game or tool (ports, image, env, per-player figures). Attached to catalog services as the transient `Service.Game` in `Service.AfterFind`; it is not a column. |
+| `internal/gaming/instance.go`, `sizing.go` | A game server is a guest with `details.game = {profile, players, exposure, port_offset}`. `SizeServer` is base plus per player; `ResolvePorts` adds the offset. |
+| `internal/gaming/report*.go` | `ComputeReport`: pure functions over a flat `ReportInput`. Server checks run for every build; party checks run for `lan_party` and for any build with a `lan_table`. Every `Issue` has a stable `Code`. |
+| `internal/gaming/compose.go` | One compose file and `.env.example` per host for its game servers. |
+| `internal/gaming/merge.go` | `MergePlan` (the merge patch behind `set_plan`) and `DiffPlans`. |
+| `services/gaming_service.go` | Build to `ReportInput`; serves `GET /api/builds/:id/gaming-report`; `GameComposeFiles`; the `gaming/` files of the export bundle. |
+| `services/topology_gaming.go` | Rules for the two gaming node types, shared by the save path and the change-set engine. |
+| `frontend/src/features/gaming/` | Game plan dialog (report and plan details), game server settings on a guest, table / console / circuit fields. `lib/sizing.ts` and `lib/table.ts` repeat the backend's arithmetic for instant feedback; the report always comes from the backend. |
+| `frontend/src/features/builder/lib/planner/` | Pure plan builders behind `/planner`: `homelab-plan.ts`, `lan-party-plan.ts`, `game-server-plan.ts`. |
+| `frontend/src/features/builder/lib/connection-rules.ts` | `checkConnection`: the canvas copy of the connection rules. |
+
+`internal/gaming` imports nothing internal, so `models`, `services` and `assistant` can all use it.
+
+### Node types
+
+- `console`: a leaf with one link, cabled or Wi-Fi. IP zone offset 30. No guests, no components, not rack-mountable.
+- `lan_table`: N seats and their table switch as one node (`details.seats`, `seat_watts`, `switch_ports`, `switch_speed`). It has no address; one cabled uplink to a switch or router. `power_draw` is seats x seat_watts + 10 unless set by hand. A `pc` or `console` drawn on its own counts as one seat.
+- `details.circuit` on any powered node names a circuit of the plan. `details.wifi_clients` on an access point counts devices that are not drawn.
+
+### DHCP demand
+
+Table seats and `wifi_clients` are sent to hlbIPAM as `dhcp_clients`. The pool of a subnet grows to `max(default, ceil(demand x 1.25))`; with no demand it is unchanged, so homelab allocations do not move. The backend stores the result as `details.dhcp_pool {start, end, size, clients}` on the gateway. That key is derived (see pitfall 15).
+
+### Rules that exist in more than one place
+
+Change them together.
+
+| Rule | Backend save | Change-set engine | Canvas |
+|---|---|---|---|
+| Wi-Fi association: `access_point` to `pc` / `minipc` / `sbc` / `console` is always wireless, needs no hub and does not take the access point's port | `build_service.go` (`validateEdgeEndpoints`) | `topology_ops_connections.go`, `topology_ports.go` | `connection-rules.ts` |
+| A `lan_table` has one cabled uplink; `lan_table` and `console` cannot sit in a rack | `build_service.go` | `topology_ops.go`, `topology_ops_connections.go` | `connection-rules.ts`, `visual-builder.tsx` |
+| Table defaults: switch size for the seats, power draw | `topology_gaming.go` | `topology_gaming.go` | `features/gaming/lib/table.ts` |
+| Game server sizing and ports | `gaming/sizing.go` | `topology_ops_guests.go` | `features/gaming/lib/sizing.ts` |
+
+A new node type has to be added in: hlbIPAM `core/types.go`; backend `build_service.go` (known types), `ip_service.go` (`nonNetworkTypes` if it has no address), `topology_ops.go` (addable types, default names), `taxonomy.go`, `testutil/pgtest.go` (the IPAM stub); `assistant/instructions.go` and `tools_proposals.go`; frontend `types/index.ts`, `lib/hardware-config.ts`, `lib/hardware-taxonomy.ts`, and in `features/builder`: `hardware-node.tsx`, `hardware-toolbox.tsx`, `lib/topology-layout.ts`.
 
 ---
 
@@ -291,6 +353,10 @@ If `calculateNetwork` runs before `update`, the backend reads stale/empty relati
 - `proposalPreview` is a separate slice rendered by a read-only overlay canvas. The live `nodes`/`edges` are never swapped out, so a preview cannot trigger autosave. Undo/redo do nothing during a preview.
 - `lastSyncedFingerprint` records the graph as last saved or loaded. Autosave is skipped while the canvas matches it. Without this, two open tabs would save in turns forever, because each reloads when the other's save bumps the revision (`useSyncState` polls every 4s).
 - `applyProposal` saves pending edits first, applies on the server, reloads, and pushes one undo step.
+
+**Kind, plan and settings:**
+- `buildKind`, `gamingPlan` and `buildSettings` are loaded by `loadBuild` and are part of the autosave fingerprint. Each object is kept exactly as loaded and replaced only by a user edit (`setBuildKind`, `setGamingPlan`), because Postgres `jsonb` reorders keys and a rebuilt object would look like an unsaved change.
+- `getBuildData` sends `kind` and `gaming_plan` only when they are set, and spreads the whole loaded settings object, so keys the store does not know (for example `settings.planner`) survive a save.
 
 The assistant has its own store (`features/assistant/store/assistant-store.ts`, not persisted). The side panel in `visual-builder.tsx` shows the proposal review while a proposal is open, otherwise the assistant.
 
@@ -323,6 +389,7 @@ feature/
 | `survey/` | Beta user survey |
 | `settings/` | Settings page: appearance, AI assistant (provider, key, key-protection panel), MCP access tokens |
 | `assistant/` | Chat panel in the builder: SSE reader, store, message list, proposal cards |
+| `gaming/` | Game plan dialog and report, game server settings, LAN table / console / circuit fields, setup steps for gaming builds |
 
 ### Routing (App.tsx)
 
@@ -331,6 +398,7 @@ feature/
 | `/` | `ProjectsPage` (logged in) / `LoginPage` (guest) | No |
 | `/builder/:id` | `VisualBuilderPage` | Yes |
 | `/generate` | `ConfigGeneratorPage` | Yes |
+| `/planner` | `GuidedPlannerPage` (`?kind=lan_party` or `?kind=game_server` starts on that plan) | Yes |
 | `/admin` | `AdminPage` | Yes |
 | `/profile` | `ProfilePage` | Yes |
 | `/settings` | `SettingsPage` | Yes |
@@ -358,6 +426,8 @@ User + Build ──1 AssistantThread ──< AssistantMessage
 SystemSetting                      (key/value, instance-wide)
 ```
 
+`Build.kind` is `homelab`, `lan_party` or `game_server`; `Build.gaming_plan` (jsonb) holds the plan of a gaming build. A game server is a `VirtualMachine` whose `details.game` names a profile from the registry in `internal/gaming`.
+
 ### Node Types and IP Zones
 
 Each node type maps to a fixed IP offset block within a `/24` subnet:
@@ -367,6 +437,7 @@ Each node type maps to a fixed IP offset block within a `/24` subnet:
 | router | 1 | 1 | No |
 | switch | 10 | 1 | No |
 | access_point | 20 | 1 | No |
+| console | 30 | 1 | No |
 | ups | 80 | 1 | No |
 | pdu | 85 | 1 | No |
 | nas | 100 | 10 | Yes (.101–.109) |
@@ -377,19 +448,20 @@ Each node type maps to a fixed IP offset block within a `/24` subnet:
 | gpu | 190 | 1 | No (non-network) |
 | hba | 195 | 1 | No (non-network) |
 | pcie | 198 | 1 | No (non-network) |
+| lan_table | - | - | No (non-network; its seats take DHCP leases) |
 
-Non-network types (`disk`, `gpu`, `hba`, `pcie`, `pdu`, `ups`) are never assigned IPs even when connected to a router.
+Non-network types (`disk`, `gpu`, `hba`, `pcie`, `pdu`, `ups`, `lan_table`) are never assigned IPs even when connected to a router.
 
 ### GORM Tag Requirements
 
 All primary keys use PostgreSQL-native UUID generation:
 
 ```go
-ID uuid.UUID `gorm:"type:uuid;default:uuid_generate_v4();primaryKey"`
+ID uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
 ```
 
-This requires the `uuid-ossp` extension. **SQLite cannot be used for tests** because:
-- `uuid_generate_v4()` does not exist in SQLite
+The server and the test helpers enable the `pgcrypto` extension for it. **SQLite cannot be used for tests** because:
+- `gen_random_uuid()` does not exist in SQLite
 - `jsonb` type does not exist in SQLite
 - AutoMigrate fails on both
 
@@ -409,6 +481,10 @@ This requires the `uuid-ossp` extension. **SQLite cannot be used for tests** bec
    - **Shared offset map per `/24` prefix**: two routers in the same `/24` (e.g. both `192.168.1.x`) share a `usedOffsets` map so their connected nodes never get the same IP.
    - VM IPs are assigned *before* the host's full block is sealed: only the host's base octet is reserved first, VMs claim offsets `.base+1` through `.base+step-1`, then the remaining block slots are sealed.
 6. Persist all nodes and VMs.
+
+Nodes, guests and edges are read in a fixed order (`loadTopology`). `syncGraph` rewrites every row on a save, and without the order two saves of the same graph could hand the same addresses to different nodes.
+
+DHCP demand: a `lan_table` sends its seats and an access point its `wifi_clients` as `dhcp_clients`. hlbIPAM sizes the pool of the subnet for them and returns it; the backend stores it as `details.dhcp_pool` on the gateway. See [Gaming Builds](#gaming-builds).
 
 ---
 
@@ -442,7 +518,7 @@ func TestSomething(t *testing.T) {
 ```go
 testTx(t)                          // *gorm.DB transaction, auto-rolled back
 connectTestDB()                    // connects to homelab_builder_test PG DB
-migrateTestDB(db)                  // CREATE EXTENSION uuid-ossp + AutoMigrate
+migrateTestDB(db)                  // CREATE EXTENSION pgcrypto + AutoMigrate(database.Models()...)
 ```
 
 ### Helper Functions (`internal/testutil/pgtest.go`)
@@ -488,6 +564,14 @@ hasPrefix(s, prefix string) bool
 | `internal/mcpserver/server_test.go` | `mcpserver` | End to end with the go-sdk client: auth, scopes, origin check, rate limits |
 | `internal/llm/provider_test.go`, `ssrf_test.go` | `llm` | Provider adapters against `httptest`; blocked-address table |
 | `internal/secrets/aesgcm_test.go` | `secrets` | Round trip, tampering, wrong owner |
+| `internal/gaming/*_test.go` | `gaming` | Registry consistency, plan validation, sizing, every report check, compose files, plan merge and diff |
+| `internal/services/build_kind_test.go` | `services` | Kind and plan round trip; an unaware client cannot wipe them; share links hide the public host |
+| `internal/services/topology_gaming_test.go` | `services` | Console and LAN table rules, Wi-Fi association, DHCP demand and the stored pool |
+| `internal/services/gaming_service_test.go` | `services` | Game server sizing in the change-set engine; report, compose and export files end to end |
+| `internal/services/proposal_gaming_test.go` | `services` | `set_plan` alone is a change and is validated; game settings are diffed |
+| `internal/services/hardware_seed_test.go`, `default_service_seed_test.go` | `services` | Catalog seeds: idempotent, approved, game profiles attached; `Models()` covers every table |
+| `internal/assistant/tools_gaming_test.go` | `assistant` | Planning a game server through the tools; a homelab gets no gaming output |
+| `hlbipam/internal/core/dhcp_demand_test.go` | `core` | Pool grows with demand, no demand keeps the default, console zone, tables get no address |
 | `hlbipam/internal/core/allocator_test.go` | `core` | IPAM allocator tests |
 | `hlbipam/internal/core/validator_test.go` | `core` | IPAM validator tests |
 | `frontend/src/features/builder/store/builder-store.test.ts` | - | Vitest tests |
@@ -495,12 +579,16 @@ hasPrefix(s, prefix string) bool
 | `frontend/src/features/builder/components/proposal-review-panel.test.tsx` | - | Review panel |
 | `frontend/src/features/settings/**/*.test.ts(x)` | - | MCP snippets and source links, token card, assistant settings card |
 | `frontend/src/features/assistant/**/*.test.ts(x)` | - | SSE reader, chat store, chat panel |
+| `frontend/src/features/gaming/**/*.test.ts(x)` | - | Sizing, tables, kinds, setup steps, game compose text, plan dialog, node fields |
+| `frontend/src/features/builder/lib/planner/planner.test.ts`, `lib/connection-rules.test.ts` | - | Plan builders for the three kinds; canvas connection rules |
+| `frontend/src/lib/version.test.ts` | - | `package.json` and `backend/internal/version` carry the same version |
 
 ### Test Database
 
-- Name: `homelab_builder_test` (separate from the production `homelab_builder`)
+- Name: `homelab_builder_test` (separate from the production `homelab_builder`). Packages outside `services` share a second one, `homelab_builder_pkg_test`.
 - Created automatically by `TestMain` if it does not exist.
-- Migrated via GORM `AutoMigrate` (not the raw SQL migration files in `migrations/`).
+- Migrated via GORM `AutoMigrate` of `database.Models()`, the same list the server migrates at startup. There are no SQL migration files: catalog data is seeded in Go at startup (`SeedCatalog`).
+- The shared package database is migrated once per schema: `testutil` keeps a fingerprint of the models in `test_schema_state` and skips `AutoMigrate` when it matches (pitfall 17).
 
 ---
 
@@ -571,7 +659,7 @@ cd frontend && npm run test:watch
 
 ### 2. Tests cannot use SQLite
 
-`models.go` uses `gorm:"type:uuid;default:uuid_generate_v4()"` and `gorm:"type:jsonb"`. These are PostgreSQL-specific. GORM AutoMigrate will fail on SQLite with both types. Tests must always run against a real PostgreSQL instance via Docker.
+`models.go` uses `gorm:"type:uuid;default:gen_random_uuid()"` and `gorm:"type:jsonb"`. These are PostgreSQL-specific. GORM AutoMigrate will fail on SQLite with both types. Tests must always run against a real PostgreSQL instance via Docker.
 
 ### 3. "no router found to establish gateway" from calculateNetwork
 
@@ -607,9 +695,9 @@ cd frontend && npm run test:watch
 
 The docker-compose default network is `homelab-builder_default` (derived from the project folder name). Commands that attach a one-off container to the test stack name it explicitly. If you rename the project folder, adjust them.
 
-### 8. uuid-ossp extension
+### 8. pgcrypto extension
 
-`migrateTestDB` runs `CREATE EXTENSION IF NOT EXISTS "uuid-ossp"` before AutoMigrate. If this step is skipped (e.g. in a fresh DB), insert of any model will fail because `uuid_generate_v4()` is undefined.
+`migrateTestDB` runs `CREATE EXTENSION IF NOT EXISTS "pgcrypto"` before AutoMigrate, and the server does the same at startup. Primary keys default to `gen_random_uuid()`.
 
 ### 9. Missing `Preload("Nodes.VirtualMachines")`
 
@@ -631,6 +719,34 @@ Loading a build must not be followed by a save of the same data. `loadBuild` set
 
 With login enabled and `GIN_MODE=release`, a missing `SECRETS_KEY` does not stop the server: the assistant is switched off and the log says `AI assistant disabled`. The settings page then shows it as unavailable.
 
+### 14. Kind, plan and settings are part of the autosave fingerprint
+
+`loadBuild` must set `buildKind`, `gamingPlan` and `buildSettings` before it computes `lastSyncedFingerprint`, and the server must return the plan exactly as stored (`Plan.Normalize` adds no defaults). Otherwise every load looks like an unsaved change and two tabs save in turns (pitfall 12). `completePlan()` is for display: do not write its result back unless the user edited something.
+
+### 15. `details.dhcp_pool` is derived
+
+The pool on a gateway is written by the IP calculation, like `wan_ip` and `interfaces`. It must stay in `reservedDetailKeys` (`topology_ops.go`), `derivedDetailKeys` (`topology_diff.go`) and `DERIVED_DETAIL_KEYS` (`builder-store.ts`). Leave one out and a proposal shows a pool change the user did not make, or a removed pool lingers on the canvas.
+
+### 16. The Wi-Fi association rule lives in three places
+
+`access_point` to `pc` / `minipc` / `sbc` / `console` is a Wi-Fi association: forced wireless, no hub needed, and it does not use the access point's port. The rule is keyed on the two device types, not on the connection type, because an access point's own uplink is also drawn as wireless. It is implemented in `build_service.go` (`validateEdgeEndpoints`), in the change-set engine (`topology_ops_connections.go`, `topology_ports.go`) and on the canvas (`connection-rules.ts`). Changed in one place only, the canvas draws links the server rejects, or the other way round.
+
+### 17. AutoMigrate is not a no-op, and test binaries share a database
+
+`go test ./...` runs the test binaries of several packages at the same time against `homelab_builder_pkg_test`. `AutoMigrate` re-issues `ALTER TABLE ... SET DEFAULT` for every `jsonb` default even when nothing changed, and each one needs an exclusive lock on its table. A binary that migrates while another runs a test holding two transactions deadlocks, and the suite hangs instead of failing. `testutil.migrateOnce` migrates only when the fingerprint of the models changed. Use `testutil.Tx` in new packages and do not call `AutoMigrate` on the shared database yourself.
+
+### 18. Read a topology in a fixed order
+
+`syncGraph` deletes and recreates every node, guest and edge row on each save. Anything that depends on the order of nodes or edges, the hlbIPAM request above all, must read through `loadTopology` (`ip_service.go`), which orders by `created_at` and then by ids that survive a save. Without it, saving an unchanged graph twice could swap the addresses of two equal devices.
+
+### 19. Share links and the gaming plan
+
+`gaming_plan.uplink.public_host` is the owner's home address on the internet. Everything returned to a share link, the read and the answer to a save, goes through `asSharedView` in `build_service.go`. A new endpoint that serves a shared build must use it too. A save through a share link never changes the kind or the plan.
+
+### 20. Game facts come from the registry, not from the database
+
+`Service.Game` is filled from `internal/gaming` in `AfterFind`; the `services` row only holds the name, category and requirements. Changing a port or an image is a code change in `profiles_data.go`, and the registry test checks slugs, service ids and port ranges (a port plus the largest offset must stay below 65536). Game servers get their own compose file per host (`gaming/compose.go`) because they publish ports on the host; the homelab compose file skips them.
+
 ---
 
 ## Fixed Bugs (Historical)
@@ -649,6 +765,13 @@ These bugs were diagnosed and fixed; tests guard against regression.
 | 8 | `catalog-mapper.ts`, `hardware-instance.ts` | Blueprint VMs (`vm-<serviceId>`) and copied VMs/components reused non-UUID or duplicate IDs; the backend replaced them, so assigned VM IPs never reached the canvas until reload | Placed and duplicated nodes get fresh UUIDs via `withFreshChildIds` |
 | 9 | `build_service.go` | Deleting a build with nodes failed with `fk_builds_nodes` (500) | `Delete` clears the topology first, in one transaction |
 | 10 | `builder-store.ts` | `power_draw` was neither saved nor loaded, so a value set elsewhere vanished on the next save | Included in `getBuildData` and restored by `mapBuildToFlow` |
+| 11 | `builder-store.ts` | Every save replaced `settings` with `boughtItems`/`showBought` only, wiping other keys such as `settings.planner` | The store keeps the loaded settings object and spreads it in `getBuildData` |
+| 12 | `build_service.go` | `Duplicate` dropped `power_draw` and `mac_address` and left rack children pointing at the original rack | Copies both fields and remaps `parent_id` |
+| 13 | `ip_service.go` | Nodes and edges were read without `ORDER BY`, so two saves of the same graph could swap addresses between equal devices | `loadTopology` reads in a fixed order |
+| 14 | `testutil/pgtest.go` | The backend suite could hang: `AutoMigrate` in one test binary waited on a test of another that held two transactions | `migrateOnce` skips the migration when the fingerprint of the models is unchanged |
+| 15 | `pkg/database/database.go`, `services/` | `SteeringRule` and `CatalogComponent` were not migrated at startup, and the hardware catalog was empty on a fresh database: its rows only existed in SQL files nothing applied | Both models are in `Models()`; `SeedCatalog` seeds hardware and services in Go; the SQL files and `cmd/migrate` are removed |
+| 16 | `shared-build-page.tsx` | A save from a shared editable build did not send the connection type, so a wireless link came back as a cable | Sends the full edge payload |
+| 17 | `build_service.go` | The answer to a save through an editable share link was the full build, including `gaming_plan.uplink.public_host` that the shared read hides | Both paths return through `asSharedView` |
 
 ---
 

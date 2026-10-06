@@ -65,6 +65,7 @@ func newAssistantAPI(t *testing.T) *assistantAPI {
 		DB: tx, Builds: builds, IP: ip, Proposals: proposals,
 		Hardware: services.NewHardwareService(tx), Services: services.NewServiceService(tx),
 		Recommendations: services.NewRecommendationService(tx), Config: services.NewConfigService(tx),
+		Gaming: services.NewGamingService(builds),
 	})
 	api := &assistantAPI{tx: tx, provider: &replyProvider{}, tokens: services.NewAPITokenService(tx)}
 	agent := assistant.NewAgent(assistant.AgentDeps{

@@ -7,6 +7,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useSyncState } from '@/features/builder/api/proposals';
 import { useBuilderStore } from '@/features/builder/store/builder-store';
 import { useAssistantSettings } from '@/features/settings/api/assistant-settings';
+import type { BuildKind } from '@/types';
 import { useAssistantStore, type ChatItem, type ChatMessage } from '../store/assistant-store';
 import { Composer } from './composer';
 import { MessageList } from './message-list';
@@ -22,12 +23,26 @@ type AssistantPanelProps = {
   onClose: () => void;
 };
 
-const EXAMPLES = [
-  'Review this build and point out problems.',
-  'Add a NAS and connect it to my switch.',
-  'What hardware do I need to run Jellyfin and Home Assistant?',
-  'Explain how the devices in this build are connected.',
-];
+const EXAMPLES: Record<BuildKind, string[]> = {
+  homelab: [
+    'Review this build and point out problems.',
+    'Add a NAS and connect it to my switch.',
+    'What hardware do I need to run Jellyfin and Home Assistant?',
+    'Explain how the devices in this build are connected.',
+  ],
+  lan_party: [
+    'Check this LAN party plan and tell me what to fix first.',
+    'Add two more tables of 8 and spread them over the power circuits.',
+    'Add a server with LANCache and a Counter-Strike 2 server for everyone.',
+    'Do I have enough switch ports and addresses for 40 players?',
+  ],
+  game_server: [
+    'Check this game server plan and tell me what to fix first.',
+    'Add a Minecraft server for 12 players that my friends can join from outside.',
+    'Which ports do I have to forward, and on which device?',
+    'I am behind carrier-grade NAT. How can my friends still connect?',
+  ],
+};
 
 /** How close to the end (px) the view must be to keep following new text. */
 const FOLLOW_DISTANCE = 80;
@@ -47,6 +62,8 @@ export function AssistantPanel({
 }: AssistantPanelProps) {
   const { data: settings, isLoading: settingsLoading } = useAssistantSettings();
   const { data: syncState, dataUpdatedAt } = useSyncState(buildId);
+  // Suggestions fit what the open build is planned for.
+  const examples = EXAMPLES[useBuilderStore.getState().buildKind] ?? EXAMPLES.homelab;
 
   const threadBuildId = useAssistantStore(state => state.buildId);
   const storedMessages = useAssistantStore(state => state.messages);
@@ -209,7 +226,7 @@ export function AssistantPanel({
                 </p>
                 {ready && (
                   <ul className="space-y-1.5">
-                    {EXAMPLES.map(example => (
+                    {examples.map(example => (
                       <li key={example}>
                         <button
                           type="button"

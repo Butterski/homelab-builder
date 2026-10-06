@@ -110,6 +110,7 @@ type Deps struct {
 	Services        *services.ServiceService
 	Recommendations *services.RecommendationService
 	Config          *services.ConfigService
+	Gaming          *services.GamingService
 }
 
 // Registry owns the tool set and enforces access on every call.

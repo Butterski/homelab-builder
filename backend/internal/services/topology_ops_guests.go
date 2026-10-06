@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"math"
 	"strings"
+
+	"github.com/Butterski/homelab-builder/backend/internal/gaming"
 )
 
 // ── Virtual machines and services ───────────────────────────────────────────
@@ -41,8 +43,15 @@ func (ed *topologyEditor) addVM(op TopologyOp) (TopologyOp, error) {
 				vm.RAMMB = requirements.MinRAMMB
 			}
 		}
+		if service.Game != nil {
+			// A game from the catalog becomes a game server, LAN-only until told otherwise.
+			vm.Details[gaming.InstanceKey] = gaming.Instance{Profile: service.Game.Slug}.Details()
+		}
 	}
 	if err := applyVMFields(&vm, op); err != nil {
+		return op, err
+	}
+	if err := applyGameFields(&vm, op, true); err != nil {
 		return op, err
 	}
 	if vm.Name, err = cleanName(vm.Name, ""); err != nil {
@@ -75,9 +84,63 @@ func (ed *topologyEditor) updateVM(op TopologyOp) (TopologyOp, error) {
 	if err := applyVMFields(vm, op); err != nil {
 		return op, err
 	}
+	if err := applyGameFields(vm, op, false); err != nil {
+		return op, err
+	}
 	resolved := op
 	resolved.VM = vm.ID
 	return resolved, nil
+}
+
+// applyGameFields sets the game server settings of a guest and sizes it for
+// its players. Memory and cores given in the same operation are kept; on a new
+// server they are sized even when no game field is given.
+func applyGameFields(vm *VMDTO, op TopologyOp, created bool) error {
+	instance, isGame, err := gaming.ParseInstance(vm.Details[gaming.InstanceKey])
+	if err != nil {
+		return err
+	}
+	changed := op.Players != nil || op.Exposure != nil || op.PortOffset != nil
+	if !isGame {
+		if changed {
+			return fmt.Errorf("%q is not a game server; players, exposure and port_offset apply to services added from a game in the catalog (see list_services)", vm.Name)
+		}
+		return nil
+	}
+	if !changed && !created {
+		return nil
+	}
+	if op.Players != nil {
+		if *op.Players != math.Trunc(*op.Players) || *op.Players < 1 {
+			return fmt.Errorf("players must be a whole number of at least 1")
+		}
+		instance.Players = int(*op.Players)
+	}
+	if op.Exposure != nil {
+		instance.Exposure = strings.ToLower(strings.TrimSpace(*op.Exposure))
+	}
+	if op.PortOffset != nil {
+		if *op.PortOffset != math.Trunc(*op.PortOffset) {
+			return errors.New("port_offset must be a whole number")
+		}
+		instance.PortOffset = int(*op.PortOffset)
+	}
+	instance, profile, err := instance.Normalize()
+	if err != nil {
+		return err
+	}
+	vm.Details[gaming.InstanceKey] = instance.Details()
+
+	if created || op.Players != nil {
+		needed := gaming.SizeServer(profile, instance.Players)
+		if op.CPUCores == nil {
+			vm.CPUCores = needed.CPUCores
+		}
+		if op.RAMMB == nil {
+			vm.RAMMB = needed.RAMMB
+		}
+	}
+	return nil
 }
 
 func (ed *topologyEditor) removeVM(op TopologyOp) (TopologyOp, error) {

@@ -6,6 +6,7 @@ import { Input } from '../../../components/ui/input';
 import { Label } from '../../../components/ui/label';
 import { Badge } from '../../../components/ui/badge';
 import { Plus, Trash2, Cpu, Box, Container, Wifi, Pencil, Check, X } from 'lucide-react';
+import { GameServerSettings } from '../../gaming/components/game-server-settings';
 
 const VM_TYPE_ICONS: Record<VMType, React.ElementType> = {
   vm: Cpu,
@@ -328,10 +329,8 @@ export const VMManager = React.memo(function VMManager({ nodeId }: Props) {
         }
 
         return (
-          <div
-            key={vm.id}
-            className="flex items-start gap-2 rounded-lg border bg-background/60 p-2.5"
-          >
+          <div key={vm.id} className="rounded-lg border bg-background/60 p-2.5">
+            <div className="flex items-start gap-2">
             <div className="mt-0.5 shrink-0">
               <Icon className="size-3.5 text-muted-foreground" />
             </div>
@@ -388,6 +387,8 @@ export const VMManager = React.memo(function VMManager({ nodeId }: Props) {
                 <Trash2 className="size-3" />
               </Button>
             </div>
+            </div>
+            <GameServerSettings nodeId={nodeId} vm={vm} />
           </div>
         );
       })}

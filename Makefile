@@ -27,7 +27,8 @@ test: test-backend test-frontend
 # Starts a throwaway PostgreSQL and hlbIPAM, then runs `go test ./...` for the
 # backend in a container. This is the same compose file CI uses.
 test-backend:
-	docker compose -f docker-compose.test.yml up --build --abort-on-container-exit --exit-code-from backend-test; \n	status=$$?; docker compose -f docker-compose.test.yml down; exit $$status
+	docker compose -f docker-compose.test.yml up --build --abort-on-container-exit --exit-code-from backend-test; \
+	status=$$?; docker compose -f docker-compose.test.yml down; exit $$status
 
 # Frontend Vitest tests run locally. buildApi is fully mocked - no backend needed.
 test-frontend:

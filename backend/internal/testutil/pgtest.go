@@ -3,11 +3,14 @@
 package testutil
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"reflect"
 	"sync"
 	"testing"
 
@@ -68,13 +71,56 @@ func connect() (*gorm.DB, error) {
 		}
 		defer conn.Exec("SELECT pg_advisory_unlock(?)", migrationLock)
 		conn.Exec(`CREATE EXTENSION IF NOT EXISTS "pgcrypto"`)
-		tables := append(database.Models(), &models.SteeringRule{}, &models.CatalogComponent{})
-		return conn.AutoMigrate(tables...)
+		return migrateOnce(conn, database.Models())
 	})
 	if err != nil {
 		return nil, fmt.Errorf("migrate %s: %w", name, err)
 	}
 	return db, nil
+}
+
+// schemaFingerprint changes whenever a model gains, loses or retags a column.
+func schemaFingerprint(tables []any) string {
+	hash := sha256.New()
+	for _, table := range tables {
+		model := reflect.TypeOf(table)
+		for model.Kind() == reflect.Pointer {
+			model = model.Elem()
+		}
+		fmt.Fprintln(hash, model.String())
+		for i := 0; i < model.NumField(); i++ {
+			field := model.Field(i)
+			fmt.Fprintln(hash, field.Name, field.Type.String(), field.Tag.Get("gorm"))
+		}
+	}
+	return hex.EncodeToString(hash.Sum(nil))
+}
+
+// migrateOnce migrates the shared database only when the models changed since
+// the last migration. The caller holds the migration lock.
+//
+// AutoMigrate is not a no-op on an up-to-date schema: it re-issues ALTER TABLE
+// for every jsonb default, and each one needs an exclusive lock on its table.
+// The first test binary to get here runs its tests while the next one would be
+// migrating; a test that holds two open transactions then waits behind that
+// ALTER, which itself waits for the test, and the run hangs. Migrating once per
+// schema, before any binary runs a test, removes the overlap.
+func migrateOnce(conn *gorm.DB, tables []any) error {
+	if err := conn.Exec(`CREATE TABLE IF NOT EXISTS test_schema_state (id int PRIMARY KEY, fingerprint text NOT NULL)`).Error; err != nil {
+		return err
+	}
+	want := schemaFingerprint(tables)
+	var have string
+	if err := conn.Raw(`SELECT fingerprint FROM test_schema_state WHERE id = 1`).Scan(&have).Error; err != nil {
+		return err
+	}
+	if have == want {
+		return nil
+	}
+	if err := conn.AutoMigrate(tables...); err != nil {
+		return err
+	}
+	return conn.Exec(`INSERT INTO test_schema_state (id, fingerprint) VALUES (1, ?) ON CONFLICT (id) DO UPDATE SET fingerprint = EXCLUDED.fingerprint`, want).Error
 }
 
 // Tx returns a transaction on the shared test database that is rolled back when
@@ -109,7 +155,7 @@ func User(t testing.TB, db *gorm.DB) models.User {
 // t.Setenv("IPAM_URL", url).
 func IPAMStub(t testing.TB) string {
 	t.Helper()
-	offline := map[string]bool{"disk": true, "gpu": true, "hba": true, "pcie": true, "pdu": true, "ups": true, "rack": true}
+	offline := map[string]bool{"disk": true, "gpu": true, "hba": true, "pcie": true, "pdu": true, "ups": true, "rack": true, "lan_table": true}
 	type guest struct {
 		ID         string `json:"id"`
 		ExistingIP string `json:"existing_ip,omitempty"`

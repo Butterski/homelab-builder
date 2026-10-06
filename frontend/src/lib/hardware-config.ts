@@ -34,6 +34,9 @@ export const HARDWARE_FEATURES: Record<HardwareType, HardwareFeatures> = {
   hba:          { hasCPU: false, hasRAM: false, hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: false, isNetworked: false, canBeNested: true,  canHostNested: false, canConnectToAny: true },
   pcie:         { hasCPU: false, hasRAM: false, hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: false, isNetworked: false, canBeNested: true,  canHostNested: false, canConnectToAny: false },
   rack:         { hasCPU: false, hasRAM: false, hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: false, isNetworked: false, canBeNested: false, canHostNested: false, canConnectToAny: false },
+  console:      { hasCPU: false, hasRAM: false, hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: false, isNetworked: true,  canBeNested: false, canHostNested: false, canConnectToAny: false },
+  // A LAN table has no address of its own: its seats take DHCP leases.
+  lan_table:    { hasCPU: false, hasRAM: false, hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: false, isNetworked: false, canBeNested: false, canHostNested: false, canConnectToAny: false },
 };
 
 export const nodeHasCPU = (type: HardwareType) => HARDWARE_FEATURES[type]?.hasCPU ?? false;
@@ -46,3 +49,25 @@ export const isNetworkNode = (type: HardwareType) => HARDWARE_FEATURES[type]?.is
 export const canNodeBeNested = (type: HardwareType) => HARDWARE_FEATURES[type]?.canBeNested ?? false;
 export const canNodeHostNested = (type: HardwareType) => HARDWARE_FEATURES[type]?.canHostNested ?? false;
 export const canNodeConnectToAny = (type: HardwareType) => HARDWARE_FEATURES[type]?.canConnectToAny ?? false;
+
+// ─── Gaming build rules ─────────────────────────────────────────────────────
+// Mirrors backend/internal/services/topology_gaming.go.
+
+/** Devices that can join an access point's network without a cable. */
+const WIFI_CLIENT_TYPES = new Set<HardwareType>(['pc', 'minipc', 'sbc', 'console']);
+
+/** Devices that stand on a desk or the floor and cannot be mounted in a rack. */
+const FLOOR_TYPES = new Set<HardwareType>(['console', 'lan_table']);
+
+export const isWifiClientNode = (type: HardwareType) => WIFI_CLIENT_TYPES.has(type);
+export const isFloorNode = (type: HardwareType) => FLOOR_TYPES.has(type);
+
+/**
+ * A client joining an access point's Wi-Fi. It is keyed on the two device
+ * types, not on the connection type, because an access point's own uplink is
+ * drawn as wireless too. Such a link needs no hub and does not take the access
+ * point's port.
+ */
+export const isWifiAssociation = (a: HardwareType, b: HardwareType) =>
+  (a === 'access_point' && WIFI_CLIENT_TYPES.has(b)) ||
+  (b === 'access_point' && WIFI_CLIENT_TYPES.has(a));

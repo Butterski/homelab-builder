@@ -27,15 +27,22 @@ var DefaultDeviceZones = map[string]ZoneConfig{
 	"pcie":         {BaseOffset: 198, Step: 1, CanHostVMs: false, Label: "PCIe"},
 	"iot":          {BaseOffset: 200, Step: 10, CanHostVMs: true, Label: "IoT"},
 	"modem":        {BaseOffset: 5, Step: 1, CanHostVMs: false, Label: "Modem"},
+	"console":      {BaseOffset: 30, Step: 1, CanHostVMs: false, Label: "Console"},
 }
 
 var FallbackZone = ZoneConfig{BaseOffset: 220, Step: 1, CanHostVMs: false, Label: "Device"}
 
 var VMHostTypeOrder = []string{"nas", "vps", "server_v2", "server", "pc", "minipc", "sbc", "iot"}
 
+// A lan_table has no address of its own: its seats take leases from the pool.
 var NonNetworkTypes = map[string]bool{
 	"disk": true, "gpu": true, "hba": true, "pcie": true, "pdu": true, "ups": true, "rack": true,
+	"lan_table": true,
 }
+
+// DHCPHeadroom is the share of spare leases kept on top of the announced
+// demand, for phones, guests and devices that renew under a new identity.
+const DHCPHeadroom = 1.25
 
 func GetZone(deviceType string, zones map[string]ZoneConfig) ZoneConfig {
 	if zones != nil {

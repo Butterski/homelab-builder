@@ -31,9 +31,11 @@ const TYPE_ORDER: Partial<Record<HardwareType, number>> = {
   sbc: 10,
   vps: 11,
   iot: 12,
-  ups: 13,
-  pdu: 14,
-  rack: 15,
+  console: 13,
+  lan_table: 14,
+  ups: 15,
+  pdu: 16,
+  rack: 17,
 };
 
 function isGatewayNode(node: HardwareNode) {

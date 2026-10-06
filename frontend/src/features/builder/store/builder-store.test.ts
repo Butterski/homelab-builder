@@ -335,6 +335,104 @@ describe('openBuild', () => {
     expect(useBuilderStore.getState().projectName).toBe('Renamed');
   });
 
+  it('sends back settings keys it does not manage itself', () => {
+    // A save replaces the whole settings object on the server, so a key written
+    // elsewhere (the Guided Planner's answers) must survive a load and a save.
+    useBuilderStore.getState().loadBuild('build-1', 'Planned', {
+      id: 'build-1',
+      name: 'Planned',
+      revision: 1,
+      nodes: [],
+      edges: [],
+      settings: { planner: { goals: ['media'] }, showBought: true, boughtItems: ['Router'] },
+    } as any);
+
+    const state = useBuilderStore.getState();
+    expect(state.getBuildData().settings).toEqual({
+      planner: { goals: ['media'] },
+      showBought: true,
+      boughtItems: ['Router'],
+    });
+    // Loading must not look like an unsaved change, or the autosave would loop.
+    expect(state.hasUnsavedChanges()).toBe(false);
+
+    state.markAsBought('Switch');
+    expect(useBuilderStore.getState().getBuildData().settings).toEqual({
+      planner: { goals: ['media'] },
+      showBought: true,
+      boughtItems: ['Router', 'Switch'],
+    });
+    expect(useBuilderStore.getState().hasUnsavedChanges()).toBe(true);
+  });
+
+  it('keeps the kind and the gaming plan of a build across load and save', () => {
+    const plan = {
+      uplink: { down_mbps: 300, up_mbps: 30, cgnat: 'no', public_host: 'play.example.org' },
+      power: { mains_voltage: 230, circuits: [{ id: 'c1', label: 'Hall', breaker_amps: 16 }] },
+      event: { date: '2026-11-14', hours: 24 },
+    };
+    useBuilderStore.getState().loadBuild('build-1', 'Party', {
+      id: 'build-1',
+      name: 'Party',
+      kind: 'lan_party',
+      gaming_plan: plan,
+      revision: 1,
+      nodes: [],
+      edges: [],
+      settings: {},
+    } as any);
+
+    const data = useBuilderStore.getState().getBuildData();
+    expect(data.kind).toBe('lan_party');
+    expect(data.gaming_plan).toEqual(plan);
+    expect(useBuilderStore.getState().hasUnsavedChanges()).toBe(false);
+
+    // Editing the plan is a change the autosave has to pick up.
+    useBuilderStore.getState().setGamingPlan({
+      ...plan,
+      uplink: { ...plan.uplink, up_mbps: 50 },
+    } as any);
+    expect(useBuilderStore.getState().hasUnsavedChanges()).toBe(true);
+    expect(useBuilderStore.getState().getBuildData().gaming_plan.uplink.up_mbps).toBe(50);
+  });
+
+  it('does not send a plan for a build that never had one', () => {
+    // Builds saved before 1.3 come back without a kind and with an empty plan.
+    useBuilderStore.getState().loadBuild('build-1', 'Lab', {
+      id: 'build-1',
+      name: 'Lab',
+      gaming_plan: {},
+      revision: 1,
+      nodes: [],
+      edges: [],
+      settings: {},
+    } as any);
+
+    const data = useBuilderStore.getState().getBuildData();
+    expect(data.kind).toBe('homelab');
+    expect(data).not.toHaveProperty('gaming_plan');
+    expect(useBuilderStore.getState().hasUnsavedChanges()).toBe(false);
+
+    useBuilderStore.getState().setBuildKind('game_server');
+    expect(useBuilderStore.getState().getBuildData().kind).toBe('game_server');
+    expect(useBuilderStore.getState().hasUnsavedChanges()).toBe(true);
+  });
+
+  it('forgets the settings of the previous build when the builder is closed', () => {
+    useBuilderStore.getState().loadBuild('build-1', 'Planned', {
+      id: 'build-1',
+      name: 'Planned',
+      revision: 1,
+      nodes: [],
+      edges: [],
+      settings: { planner: { goals: ['media'] } },
+    } as any);
+
+    useBuilderStore.getState().clearCurrentBuild();
+
+    expect(useBuilderStore.getState().getBuildData().settings).not.toHaveProperty('planner');
+  });
+
   it('waits for a pending save before reading the build', async () => {
     let finishSave!: () => void;
     vi.mocked(buildApi.updateTopology).mockImplementationOnce(
@@ -361,6 +459,124 @@ describe('openBuild', () => {
     await Promise.all([save, open]);
     expect(buildApi.get).toHaveBeenCalledTimes(1);
     expect(useBuilderStore.getState().currentRevision).toBe(2);
+  });
+});
+
+describe('gaming nodes', () => {
+  beforeEach(() => resetStoreWithBuildId());
+
+  const place = (id: string, type: HardwareNode['type'], extra: Partial<HardwareNode> = {}) =>
+    useBuilderStore.getState().addHardware({ id, type, name: id, x: 0, y: 0, ...extra });
+
+  it('gives a new LAN table its seats, switch and power figure', () => {
+    place('table', 'lan_table', { name: 'New lan_table' });
+
+    const table = useBuilderStore.getState().hardwareNodes[0];
+    expect(table.name).toBe('LAN Table');
+    expect(table.details).toMatchObject({ seats: 8, seat_watts: 350, switch_ports: 16 });
+    expect(table.power_draw).toBe(8 * 350 + 10);
+    // What is saved is what the card shows.
+    expect(useBuilderStore.getState().getBuildData().nodes[0]).toMatchObject({
+      type: 'lan_table',
+      power_draw: 2810,
+      details: { seats: 8 },
+    });
+  });
+
+  it('keeps a table that already has its details as it is', () => {
+    place('table', 'lan_table', {
+      details: { seats: 12, seat_watts: 400, switch_ports: 16 },
+      power_draw: 4810,
+    });
+    const table = useBuilderStore.getState().hardwareNodes[0];
+    expect(table.details?.seats).toBe(12);
+    expect(table.power_draw).toBe(4810);
+  });
+
+  it('draws a client on an access point as a Wi-Fi link and a table as a cable', async () => {
+    place('ap', 'access_point');
+    place('deck', 'console');
+    place('switch', 'switch');
+    place('table', 'lan_table');
+    const save = vi.spyOn(useBuilderStore.getState(), 'reassignAllIPs').mockResolvedValue();
+
+    useBuilderStore
+      .getState()
+      .onConnect({ source: 'ap', target: 'deck', sourceHandle: 'eth0', targetHandle: 'target-0' });
+    useBuilderStore.getState().onConnect({
+      source: 'switch',
+      target: 'table',
+      sourceHandle: 'eth0',
+      targetHandle: 'target-0',
+    });
+
+    const [wifi, cable] = useBuilderStore.getState().edges;
+    expect(wifi.data).toMatchObject({ connection_type: 'wireless', wireless_standard: 'Wi-Fi 6' });
+    expect(cable.data).toMatchObject({ connection_type: 'ethernet', wireless_standard: '' });
+
+    // The medium of those two links is not a choice.
+    useBuilderStore
+      .getState()
+      .updateEdge(wifi.id, { data: { ...wifi.data, connection_type: 'ethernet' } });
+    useBuilderStore
+      .getState()
+      .updateEdge(cable.id, { data: { ...cable.data, connection_type: 'wireless' } });
+    const [wifiAfter, cableAfter] = useBuilderStore.getState().edges;
+    expect(wifiAfter.data?.connection_type).toBe('wireless');
+    expect(cableAfter.data?.connection_type).toBe('ethernet');
+    // Other fields of the same update still go through.
+    useBuilderStore
+      .getState()
+      .updateEdge(cable.id, { data: { ...cableAfter.data, speed: '2.5 GbE' } });
+    expect(useBuilderStore.getState().edges[1].data?.speed).toBe('2.5 GbE');
+
+    // Let the saves that onConnect schedules run against the mock before it is removed.
+    await new Promise(resolve => setTimeout(resolve, 10));
+    save.mockRestore();
+  });
+
+  it('drops a DHCP pool the server no longer reports', async () => {
+    place('router-1', 'router', {
+      details: { dhcp_enabled: false, dhcp_pool: { start: 'a', end: 'b', size: 86, clients: 0 } },
+    });
+    vi.mocked(buildApi.updateTopology).mockResolvedValueOnce({
+      build: {
+        id: 'build-1',
+        name: 'test',
+        revision: 2,
+        nodes: [{ id: 'router-1', ip: '192.168.1.1', details: { dhcp_enabled: false } }],
+      },
+    } as any);
+
+    await useBuilderStore.getState().reassignAllIPs();
+
+    const router = useBuilderStore.getState().hardwareNodes[0];
+    expect(router.details).not.toHaveProperty('dhcp_pool');
+    expect(router.details?.dhcp_enabled).toBe(false);
+    expect(useBuilderStore.getState().getBuildData().nodes[0].details).not.toHaveProperty(
+      'dhcp_pool',
+    );
+  });
+
+  it('shows the DHCP pool the server calculated', async () => {
+    place('router-1', 'router', { details: { dhcp_enabled: true } });
+    const pool = { start: '192.168.1.50', end: '192.168.1.149', size: 100, clients: 80 };
+    vi.mocked(buildApi.updateTopology).mockResolvedValueOnce({
+      build: {
+        id: 'build-1',
+        name: 'test',
+        revision: 2,
+        nodes: [
+          { id: 'router-1', ip: '192.168.1.1', details: { dhcp_enabled: true, dhcp_pool: pool } },
+        ],
+      },
+    } as any);
+
+    await useBuilderStore.getState().reassignAllIPs();
+
+    expect(useBuilderStore.getState().hardwareNodes[0].details?.dhcp_pool).toEqual(pool);
+    // A calculated value coming back is not an edit to save again.
+    expect(useBuilderStore.getState().hasUnsavedChanges()).toBe(false);
   });
 });
 

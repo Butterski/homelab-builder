@@ -150,6 +150,9 @@ func mergeDetails(details map[string]any, patch map[string]any, nodeType string)
 }
 
 func cleanDetailValue(key string, value any, nodeType string) (any, error) {
+	if cleaned, handled, err := cleanGamingDetail(key, value, nodeType); handled {
+		return cleaned, err
+	}
 	if numberDetailKeys[key] {
 		number, ok := asNumber(value)
 		if !ok || math.IsNaN(number) || math.IsInf(number, 0) || number < 0 {

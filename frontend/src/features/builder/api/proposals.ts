@@ -65,6 +65,8 @@ export type DiffCounts = {
   vms_changed: number;
   components_added: number;
   components_removed: number;
+  /** Changes to the build kind and the gaming plan. */
+  plan_changed?: number;
   ip_changes: number;
   total: number;
 };
@@ -77,6 +79,8 @@ export type ProposalDiff = {
   vms: { added: GuestDiff[]; removed: GuestDiff[]; changed: GuestDiff[] };
   components: { added: ComponentDiff[]; removed: ComponentDiff[] };
   ip_changes: AddressChange[];
+  /** Build kind and gaming plan settings, e.g. "uplink.up_mbps". */
+  plan?: FieldChange[];
 };
 
 export type ValidationIssue = { node_id?: string; message: string };

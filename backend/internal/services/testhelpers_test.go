@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/Butterski/homelab-builder/backend/internal/models"
+	"github.com/Butterski/homelab-builder/backend/pkg/database"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -75,34 +75,9 @@ func connectTestDB() (*gorm.DB, error) {
 func migrateTestDB(db *gorm.DB) error {
 	// Enable the extension required by the models' gen_random_uuid() defaults.
 	db.Exec(`CREATE EXTENSION IF NOT EXISTS "pgcrypto"`)
-	return db.AutoMigrate(
-		&models.User{},
-		&models.Service{},
-		&models.ServiceRequirement{},
-		&models.Build{},
-		&models.Node{},
-		&models.NodeComponent{},
-		&models.VirtualMachine{},
-		&models.Edge{},
-		&models.ServiceInstance{},
-		&models.HardwareComponent{},
-		&models.HardwareBlueprint{},
-		&models.HardwareBlueprintVote{},
-		&models.HardwareBlueprintReview{},
-		&models.SteeringRule{},
-		&models.CatalogComponent{},
-		&models.HardwareRecommendation{},
-		&models.ShoppingList{},
-		&models.ShoppingListItem{},
-		&models.UserHardwareFavorite{},
-		&models.Event{},
-		&models.APIToken{},
-		&models.BuildProposal{},
-		&models.AssistantSettings{},
-		&models.AssistantThread{},
-		&models.AssistantMessage{},
-		&models.SystemSetting{},
-	)
+	// The same list the server migrates at startup, so a model missing from it
+	// fails here instead of on a fresh install.
+	return db.AutoMigrate(database.Models()...)
 }
 
 // testTx starts an isolated transaction for a single test.
