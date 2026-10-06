@@ -1,9 +1,10 @@
 // @ts-nocheck
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import ProjectsPage from '../projects-page';
 import { BrowserRouter } from 'react-router-dom';
 import { buildApi } from '../../api/builds';
+import { useBuilderStore } from '../../store/builder-store';
 import { useAuth } from '../../../admin/hooks/use-auth';
 import { toast } from 'sonner';
 import { ApiError } from '../../../../lib/api';
@@ -19,6 +20,7 @@ vi.mock('../../api/builds', () => ({
     create: vi.fn(),
     get: vi.fn(),
     delete: vi.fn().mockResolvedValue(undefined),
+    rename: vi.fn(),
     duplicate: vi.fn(),
     updateTopology: vi.fn(),
     calculateNetwork: vi.fn(),
@@ -310,5 +312,96 @@ describe('ProjectsPage Export Functionality', () => {
     });
     expect(buildApi.delete).toHaveBeenCalledWith('new-build');
     readAsTextSpy.mockRestore();
+  });
+});
+
+describe('ProjectsPage and the open project', () => {
+  const listed = {
+    id: 'build-1',
+    user_id: '1',
+    name: 'Garage Lab',
+    revision: 3,
+    nodes: [],
+    settings: {},
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (useAuth as any).mockReturnValue({ user: { id: '1', email: 'test@example.com' } });
+    (buildApi.list as any).mockResolvedValue([{ ...listed }]);
+    (buildApi.delete as any).mockResolvedValue(undefined);
+    // The project is open elsewhere in the app (sidebar, config generator).
+    useBuilderStore.getState().clearCurrentBuild();
+    useBuilderStore.setState({ currentBuildId: 'build-1', projectName: 'Garage Lab' });
+  });
+
+  const openPage = async () => {
+    render(
+      <BrowserRouter>
+        <ProjectsPage />
+      </BrowserRouter>,
+    );
+    await screen.findByText('Garage Lab');
+  };
+
+  it('forgets the open project when it is deleted here', async () => {
+    await openPage();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(buildApi.delete).toHaveBeenCalledWith('build-1'));
+    await waitFor(() => expect(useBuilderStore.getState().currentBuildId).toBeNull());
+  });
+
+  it('keeps another open project when a different one is deleted', async () => {
+    useBuilderStore.setState({ currentBuildId: 'build-2', projectName: 'Other' });
+    await openPage();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Project deleted'));
+    expect(useBuilderStore.getState().currentBuildId).toBe('build-2');
+  });
+
+  it('shows the new name everywhere after a rename', async () => {
+    (buildApi.rename as any).mockResolvedValue({ ...listed, name: 'Basement Lab', revision: 4 });
+    await openPage();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rename' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: 'Basement Lab' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(useBuilderStore.getState().projectName).toBe('Basement Lab'));
+    expect(buildApi.rename).toHaveBeenCalledWith('build-1', 'Basement Lab', 3);
+    expect(await screen.findByText('Basement Lab')).toBeInTheDocument();
+  });
+
+  it('renames a project that was saved since the list was loaded', async () => {
+    // The list still has revision 3; the builder saved revision 6 meanwhile.
+    (buildApi.rename as any)
+      .mockRejectedValueOnce(
+        new ApiError(409, 'UNKNOWN', 'build revision conflict', {
+          error: 'build revision conflict',
+          build: { ...listed, revision: 6 },
+        }),
+      )
+      .mockResolvedValueOnce({ ...listed, name: 'Basement Lab', revision: 7 });
+    await openPage();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rename' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: 'Basement Lab' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Project renamed'));
+    expect(buildApi.rename).toHaveBeenLastCalledWith('build-1', 'Basement Lab', 6);
+    expect(toast.error).not.toHaveBeenCalled();
   });
 });

@@ -245,6 +245,51 @@ describe('applyProposal', () => {
     expect(state.hasUnsavedChanges()).toBe(true);
   });
 
+  it('undo also takes back a rename, a kind and a plan the proposal changed', async () => {
+    const plan = { uplink: { down_mbps: 300, up_mbps: 20, cgnat: 'no', public_host: '' } };
+    vi.mocked(proposalApi.apply).mockResolvedValueOnce({
+      build: {
+        ...serverBuild(4, { nas: true }),
+        name: 'Game Night',
+        kind: 'game_server',
+        gaming_plan: plan,
+      } as Build,
+    });
+    useBuilderStore.getState().startProposalPreview(proposal());
+
+    await useBuilderStore.getState().applyProposal('proposal-1');
+    let state = useBuilderStore.getState();
+    expect(state.projectName).toBe('Game Night');
+    expect(state.buildKind).toBe('game_server');
+    expect(state.gamingPlan).toEqual(plan);
+
+    state.undo();
+    state = useBuilderStore.getState();
+    expect(state.projectName).toBe('Home Lab');
+    expect(state.buildKind).toBe('homelab');
+    expect(state.gamingPlan).toEqual({});
+    // The next save writes the old canvas under the old name and plan.
+    expect(state.hasUnsavedChanges()).toBe(true);
+
+    state.redo();
+    state = useBuilderStore.getState();
+    expect(state.projectName).toBe('Game Night');
+    expect(state.buildKind).toBe('game_server');
+    expect(state.gamingPlan).toEqual(plan);
+  });
+
+  it('asks the canvas to show what was applied', async () => {
+    vi.mocked(proposalApi.apply).mockResolvedValueOnce({ build: serverBuild(4, { nas: true }) });
+    useBuilderStore.getState().startProposalPreview(proposal());
+
+    await useBuilderStore.getState().applyProposal('proposal-1');
+
+    // New devices can be anywhere on the canvas; the removed one is gone.
+    const focus = useBuilderStore.getState().canvasFocus;
+    expect(focus?.ids).toEqual(expect.arrayContaining([NAS, SWITCH]));
+    expect(focus?.ids).not.toContain(OLD_AP);
+  });
+
   it('saves unsaved edits before applying so they are not lost', async () => {
     const order: string[] = [];
     vi.mocked(buildApi.updateTopology).mockImplementationOnce(async () => {

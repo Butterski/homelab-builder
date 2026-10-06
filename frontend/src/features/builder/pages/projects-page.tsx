@@ -290,6 +290,7 @@ function ProjectModals({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Rename Project</DialogTitle>
+            <DialogDescription>The new name is used everywhere this project is shown.</DialogDescription>
           </DialogHeader>
           <div className="py-4">
             <Label htmlFor="rename-project" className="mb-2 block">

@@ -1,5 +1,8 @@
 import { useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { useBuilderStore } from '../../builder/store/builder-store';
+import { useCurrentProject } from '../../builder/hooks/use-current-project';
+import { LoadingScreen } from '../../../components/ui/loading-screen';
 import { SeoMeta } from '../../../components/seo/seo-meta';
 import { Card, CardContent, CardTitle, CardDescription } from '../../../components/ui/card';
 import { Badge } from '../../../components/ui/badge';
@@ -29,7 +32,8 @@ interface SetupStep {
 
 // ─── Sub-components ────────────────────────────────────────────────────────────
 
-function EmptyChecklist() {
+/** Shown when there is nothing to build a guide from: no project, or an empty one. */
+function EmptyChecklist({ projectId }: { projectId: string | null }) {
   return (
     <>
       <SeoMeta
@@ -39,12 +43,19 @@ function EmptyChecklist() {
       />
       <div className="flex flex-col items-center justify-center p-12 text-center border rounded-lg bg-muted/20 min-h-100">
         <ClipboardList className="size-16 mb-6 text-muted-foreground/50" />
-        <h3 className="text-xl font-bold mb-2">Build your lab first</h3>
+        <h3 className="text-xl font-bold mb-2">
+          {projectId ? 'Build your lab first' : 'Open a project first'}
+        </h3>
         <p className="text-muted-foreground mb-6 max-w-md">
-          Your setup instructions will be dynamically generated here based on the hardware and
-          services you add in the Visual Builder.
+          {projectId
+            ? 'Your setup instructions are generated here from the hardware and services you add in the Visual Builder.'
+            : 'The setup guide is written for one project. Open or create one, then come back here.'}
         </p>
-        <Button onClick={() => (window.location.href = '/builder')}>Go to Visual Builder</Button>
+        <Button asChild>
+          <Link to={projectId ? `/builder/${projectId}` : '/'}>
+            {projectId ? 'Go to Visual Builder' : 'Go to Projects'}
+          </Link>
+        </Button>
       </div>
     </>
   );
@@ -109,7 +120,11 @@ function StepCard({ step, isExpanded, onToggle }: { step: SetupStep; isExpanded:
 }
 
 export default function ChecklistPage() {
-  const { hardwareNodes, gamingPlan, availableServices } = useBuilderStore();
+  // The guide is about the open project; after a reload its canvas is fetched again.
+  const project = useCurrentProject();
+  const hardwareNodes = useBuilderStore(state => state.hardwareNodes);
+  const gamingPlan = useBuilderStore(state => state.gamingPlan);
+  const availableServices = useBuilderStore(state => state.availableServices);
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set(['prep', 'os']));
 
   // Calculate dynamic data based on the builder state
@@ -307,8 +322,21 @@ export default function ChecklistPage() {
   const expandAll = () => setExpandedSteps(new Set(steps.map(s => s.id)));
   const collapseAll = () => setExpandedSteps(new Set());
 
-  if (!hasHardware) {
-    return <EmptyChecklist />;
+  if (project.loading) {
+    return <LoadingScreen message="Opening project…" />;
+  }
+  if (project.failed) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-4 p-12 text-center min-h-100">
+        <p className="text-muted-foreground">The project could not be loaded.</p>
+        <Button variant="outline" onClick={project.retry}>
+          Try again
+        </Button>
+      </div>
+    );
+  }
+  if (!project.id || !hasHardware) {
+    return <EmptyChecklist projectId={project.id} />;
   }
 
   return (

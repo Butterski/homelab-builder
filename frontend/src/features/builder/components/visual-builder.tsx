@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect, useEffectEvent, useMemo } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ReactFlow,
@@ -17,6 +17,10 @@ import { toast } from 'sonner';
 import '@xyflow/react/dist/style.css';
 import Joyride, { type CallBackProps, STATUS, type Step } from 'react-joyride';
 import { BuildConflictError, useBuilderStore } from '../store/builder-store';
+import { startAutosave } from '../store/autosave';
+import { ApiError } from '../../../lib/api';
+import { SaveStateChip } from './save-state-chip';
+import { LoadingScreen } from '../../../components/ui/loading-screen';
 import { HardwareToolbox } from './hardware-toolbox';
 import { HardwareNode as HardwareNodeComponent } from './hardware-node';
 import { RackNode } from './rack-node';
@@ -608,6 +612,11 @@ const Flow = React.memo(function Flow() {
       if (!active) return;
       console.error('Failed to load build', err);
       useBuilderStore.getState().clearCurrentBuild();
+      toast.error(
+        err instanceof ApiError && err.status === 404
+          ? 'This project no longer exists.'
+          : 'This project could not be opened.',
+      );
       navigate('/');
     });
     return () => {
@@ -615,102 +624,70 @@ const Flow = React.memo(function Flow() {
     };
   }, [id, openBuild, navigate]);
 
-  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
   const clipboardNodeIdRef = useRef<string | null>(null);
-  const isFirstRender = useRef(true);
-  // Avoid calling impure Date.now() during render to satisfy react-hooks purity rules.
-  // Initialize with 0 and set the actual time on first effect run.
-  const lastSaveTime = useRef<number>(0);
 
-  useEffect(() => {
-    if (lastSaveTime.current === 0) lastSaveTime.current = Date.now();
-  }, []);
+  // The save state lives in the store, so the sidebar shows the same thing.
+  const saveState = useBuilderStore(state => state.saveState);
+  const saveError = useBuilderStore(state => state.saveError);
+  const serverReachable = useBuilderStore(state => state.serverReachable);
+  // Nothing of another build is shown while this one is still on its way.
+  const buildReady = useBuilderStore(
+    state => state.currentBuildId === id && state.buildStatus === 'ready',
+  );
 
-  const saveProjectFn = useCallback(async () => {
-    if (!id) return;
-    setSaveStatus('saving');
-    try {
-      await reassignAllIPs();
-      setSaveStatus('saved');
-      lastSaveTime.current = Date.now();
-    } catch (err) {
-      console.error('Failed to save', err);
-      setSaveStatus('error');
-      throw err;
-    }
-  }, [id, reassignAllIPs]);
-
-  // Wrap saveProjectFn with useEffectEvent so it can be called from setTimeout
-  // without being a dependency, preventing unnecessary effect re-subscriptions
-  const saveProject = useEffectEvent(saveProjectFn);
-
-  // Auto-save trigger
-  const topologyFingerprint = JSON.stringify(useBuilderStore.getState().getBuildData());
-  const pendingSave = useRef(false);
-  useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-      return;
-    }
-
-    // Nothing to save when the canvas matches the server: right after a load,
-    // or after a save that only brought back calculated addresses. Without this
-    // a reload triggered by another session would save again and the two
-    // sessions would keep bumping the revision for each other.
-    if (topologyFingerprint === useBuilderStore.getState().lastSyncedFingerprint) {
-      pendingSave.current = false;
-      return;
-    }
-
-    // Debounce save
-    pendingSave.current = true;
-    const timer = setTimeout(() => {
-      pendingSave.current = false;
-      void saveProject().catch(err => {
-        toast.error(
-          err instanceof BuildConflictError
-            ? err.message
-            : 'Auto-save failed. Your local changes are still on this device.',
-        );
-      });
-    }, 2000); // 2 seconds debounce
-
-    return () => clearTimeout(timer);
-  }, [topologyFingerprint]);
-
-  // Leaving the builder cancels the debounce timer, and reopening it reloads the
-  // build from the server, so save the pending change now.
+  // Autosave watches the store, not this component's renders. Stopping it (on
+  // leaving the builder or switching builds) saves what is still pending.
   useEffect(
-    () => () => {
-      if (!pendingSave.current) return;
-      void useBuilderStore
-        .getState()
-        .reassignAllIPs()
-        .catch(() => {
-          toast.error('Failed to save your last change before leaving the builder.');
-        });
-    },
+    () =>
+      startAutosave({
+        onConflict: error => toast.warning(error.message, { duration: 8000 }),
+        onFailure: message => toast.error(message),
+      }),
     [],
   );
 
+  const saveNow = useCallback(async () => {
+    if (!id) return;
+    await reassignAllIPs();
+  }, [id, reassignAllIPs]);
+
+  const saveErrorText = (err: unknown, fallback: string) =>
+    err instanceof BuildConflictError || (err instanceof ApiError && err.status === 422)
+      ? err.message
+      : fallback;
+
   // Manual save wrapper (immediate)
   const handleManualSave = useCallback(() => {
-    toast.promise(saveProjectFn(), {
+    toast.promise(saveNow(), {
       loading: 'Saving…',
       success: 'Project saved',
-      error: (err: unknown) =>
-        err instanceof BuildConflictError ? err.message : 'Failed to save',
+      error: (err: unknown) => saveErrorText(err, 'Failed to save'),
     });
-  }, [saveProjectFn]);
+  }, [saveNow]);
 
   const handleReassignIPs = useCallback(() => {
-    toast.promise(saveProjectFn(), {
+    toast.promise(saveNow(), {
       loading: 'Reassigning IPs…',
       success: 'IP addresses reassigned',
       error: (err: unknown) =>
         err instanceof Error && err.message ? err.message : 'Failed to reassign IPs',
     });
-  }, [saveProjectFn]);
+  }, [saveNow]);
+
+  // One place moves the camera: an applied proposal, a Polish, "show on canvas".
+  const canvasFocus = useBuilderStore(state => state.canvasFocus);
+  useEffect(() => {
+    if (!canvasFocus) return;
+    const frame = requestAnimationFrame(() => {
+      void fitView({
+        ...(canvasFocus.ids ? { nodes: canvasFocus.ids.map(nodeId => ({ id: nodeId })) } : {}),
+        padding: 0.25,
+        duration: 450,
+        maxZoom: 1.1,
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [canvasFocus, fitView]);
 
   const { getEdges, deleteElements } = useReactFlow();
   const updateNodeInternals = useUpdateNodeInternals();
@@ -1087,7 +1064,19 @@ const Flow = React.memo(function Flow() {
     [], // no deps - reads live state via getState()
   );
 
-  // ...
+  // The project is still on its way from the server. Drawing the canvas now
+  // would show whatever was open before, under this project's address.
+  if (!buildReady) {
+    return (
+      <div
+        className="builder-workbench flex h-full items-center justify-center"
+        role="status"
+        aria-live="polite"
+      >
+        <LoadingScreen message="Opening project…" />
+      </div>
+    );
+  }
 
   return (
     <div className="builder-workbench flex h-full overflow-hidden relative">
@@ -1251,19 +1240,15 @@ const Flow = React.memo(function Flow() {
 
               <div className="builder-project-title builder-glass-panel flex h-12 min-w-0 flex-col justify-center px-3 py-2">
                 <h2 className="text-sm font-semibold leading-none truncate max-w-52">
-                  {projectName || 'HLBuilder'}
+                  {projectName || 'Untitled project'}
                 </h2>
-                <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                  {saveStatus === 'saving' && (
-                    <span className="text-amber-500 flex items-center gap-1">
-                      <span className="animate-spin">⟳</span> Saving…
-                    </span>
-                  )}
-                  {saveStatus === 'saved' && (
-                    <span className="text-green-500 flex items-center gap-1">Cloud Saved</span>
-                  )}
-                  {saveStatus === 'error' && <span className="text-red-500">Save Failed</span>}
-                </span>
+                <SaveStateChip
+                  className="mt-1"
+                  state={saveState}
+                  error={saveError}
+                  reachable={serverReachable}
+                  onRetry={handleManualSave}
+                />
               </div>
 
               <Button

@@ -110,8 +110,11 @@ describe('virtual network persistence', () => {
 
 /** Reset store to empty state and set a build ID so reassignAllIPs can work */
 function resetStoreWithBuildId(id = 'build-1') {
+  useBuilderStore.getState().clearCurrentBuild();
   useBuilderStore.setState({
     currentBuildId: id,
+    // The graph in the store is this build's: only then may it be saved.
+    buildStatus: 'ready',
     hardwareNodes: [],
     nodes: [],
     currentRevision: 1,
@@ -850,5 +853,350 @@ describe('addVM / removeVM', () => {
     const node = useBuilderStore.getState().hardwareNodes.find(n => n.id === 'r1');
     expect(node?.vms?.length).toBe(1);
     expect(node?.vms?.[0].name).toBe('nginx');
+  });
+});
+
+describe('the open project across reloads', () => {
+  beforeEach(() => resetStoreWithBuildId());
+
+  const lab = (extra: Record<string, unknown> = {}) =>
+    ({
+      id: 'build-1',
+      name: 'Garage Lab',
+      revision: 4,
+      nodes: [
+        { id: 'r1', type: 'router', name: 'Router', x: 0, y: 0 },
+        { id: 's1', type: 'switch', name: 'Switch', x: 0, y: 200 },
+      ],
+      edges: [],
+      settings: {},
+      ...extra,
+    }) as any;
+
+  it('remembers which project is open, not its canvas', () => {
+    useBuilderStore.getState().loadBuild('build-1', 'Garage Lab', lab({ kind: 'lan_party' }));
+
+    const stored = JSON.parse(localStorage.getItem('hlb-workspace') ?? '{}');
+    expect(stored.state).toEqual({
+      currentBuildId: 'build-1',
+      projectName: 'Garage Lab',
+      buildKind: 'lan_party',
+    });
+  });
+
+  it('never saves a project whose canvas has not been loaded', async () => {
+    // After a page reload the id is back but the canvas is not. Saving now
+    // would store an empty build over the real one.
+    useBuilderStore.setState({ buildStatus: 'idle', nodes: [], hardwareNodes: [], edges: [] });
+
+    expect(useBuilderStore.getState().hasUnsavedChanges()).toBe(false);
+    await expect(useBuilderStore.getState().reassignAllIPs()).rejects.toThrow('No build is open');
+    expect(buildApi.updateTopology).not.toHaveBeenCalled();
+  });
+
+  it('clears the previous canvas before another project arrives', async () => {
+    useBuilderStore.getState().addHardware(makeRouter('old-router'));
+    let arrive!: (build: unknown) => void;
+    vi.mocked(buildApi.get).mockImplementationOnce(
+      () => new Promise(resolve => (arrive = resolve)) as any,
+    );
+
+    const opening = useBuilderStore.getState().openBuild('build-2');
+    await vi.waitFor(() => expect(buildApi.get).toHaveBeenCalledWith('build-2'));
+
+    // Nothing of the old project is left to be shown, or saved, under the new id.
+    let state = useBuilderStore.getState();
+    expect(state.currentBuildId).toBe('build-2');
+    expect(state.buildStatus).toBe('loading');
+    expect(state.nodes).toEqual([]);
+    expect(state.hardwareNodes).toEqual([]);
+    expect(state.hasUnsavedChanges()).toBe(false);
+
+    arrive({ id: 'build-2', name: 'Other', revision: 9, nodes: [], edges: [], settings: {} });
+    await opening;
+    state = useBuilderStore.getState();
+    expect(state.buildStatus).toBe('ready');
+    expect(state.currentRevision).toBe(9);
+    expect(state.projectName).toBe('Other');
+  });
+
+  it('marks the project as failed when it cannot be fetched', async () => {
+    vi.mocked(buildApi.get).mockRejectedValueOnce(new ApiError(500, 'UNKNOWN', 'boom'));
+
+    await expect(useBuilderStore.getState().openBuild('build-2')).rejects.toBeInstanceOf(ApiError);
+    expect(useBuilderStore.getState().buildStatus).toBe('error');
+  });
+
+  it('keeps measured sizes and the selection when the same build is loaded again', () => {
+    useBuilderStore.getState().loadBuild('build-1', 'Garage Lab', lab());
+    // React Flow reports what it measured through node changes.
+    useBuilderStore
+      .getState()
+      .onNodesChange([{ id: 'r1', type: 'dimensions', dimensions: { width: 220, height: 96 } }]);
+    useBuilderStore.getState().selectNode('r1');
+
+    // The same build one revision later, as a sync or an applied proposal delivers it.
+    useBuilderStore.getState().loadBuild('build-1', 'Garage Lab', lab({ revision: 5 }));
+
+    const state = useBuilderStore.getState();
+    expect(state.nodes.find(node => node.id === 'r1')?.measured).toEqual({ width: 220, height: 96 });
+    expect(state.selectedNodeId).toBe('r1');
+    expect(state.hasUnsavedChanges()).toBe(false);
+  });
+
+  it('drops the selection of a device that is gone, and old sizes for another build', () => {
+    useBuilderStore.getState().loadBuild('build-1', 'Garage Lab', lab());
+    useBuilderStore
+      .getState()
+      .onNodesChange([{ id: 'r1', type: 'dimensions', dimensions: { width: 220, height: 96 } }]);
+    useBuilderStore.getState().selectNode('s1');
+
+    const withoutSwitch = lab({ revision: 5 });
+    withoutSwitch.nodes = [withoutSwitch.nodes[0]];
+    useBuilderStore.getState().loadBuild('build-1', 'Garage Lab', withoutSwitch);
+    expect(useBuilderStore.getState().selectedNodeId).toBeNull();
+
+    // Another project that happens to reuse an id starts unmeasured.
+    useBuilderStore.getState().loadBuild('build-2', 'Other', lab({ id: 'build-2' }));
+    expect(useBuilderStore.getState().nodes[0].measured).toBeUndefined();
+  });
+
+  it('forgets issues that were found for an earlier state of the build', () => {
+    useBuilderStore.setState({
+      validationIssues: [{ node_id: 'r1', message: 'stale', type: 'error' }],
+    });
+    useBuilderStore.getState().loadBuild('build-1', 'Garage Lab', lab());
+    expect(useBuilderStore.getState().validationIssues).toEqual([]);
+  });
+});
+
+describe('save state', () => {
+  // A failed save is logged for whoever debugs it; these tests fail saves on purpose.
+  afterEach(() => vi.restoreAllMocks());
+  beforeEach(() => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    resetStoreWithBuildId();
+    useBuilderStore.getState().loadBuild('build-1', 'Lab', {
+      id: 'build-1',
+      name: 'Lab',
+      revision: 1,
+      nodes: [],
+      edges: [],
+      settings: {},
+    } as any);
+  });
+
+  it('is unsaved as soon as the canvas differs and saved again after the save', async () => {
+    expect(useBuilderStore.getState().saveState).toBe('saved');
+
+    useBuilderStore.getState().addHardware(makeRouter());
+    expect(useBuilderStore.getState().refreshSaveState()).toBe(true);
+    expect(useBuilderStore.getState().saveState).toBe('unsaved');
+
+    await useBuilderStore.getState().reassignAllIPs();
+    const state = useBuilderStore.getState();
+    expect(state.saveState).toBe('saved');
+    expect(state.lastSavedAt).toEqual(expect.any(Number));
+    expect(state.refreshSaveState()).toBe(false);
+  });
+
+  it('shows the reason when the server refuses the canvas', async () => {
+    const reason = 'invalid topology: a LAN table needs one cabled uplink';
+    vi.mocked(buildApi.updateTopology).mockRejectedValueOnce(new ApiError(422, 'UNKNOWN', reason));
+    useBuilderStore.getState().addHardware(makeRouter());
+
+    await expect(useBuilderStore.getState().reassignAllIPs()).rejects.toBeInstanceOf(ApiError);
+    expect(useBuilderStore.getState().saveState).toBe('error');
+    expect(useBuilderStore.getState().saveError).toBe(reason);
+  });
+
+  it('stays failed until the canvas is in sync again', async () => {
+    vi.mocked(buildApi.updateTopology).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    useBuilderStore.getState().addHardware(makeRouter());
+
+    await expect(useBuilderStore.getState().reassignAllIPs()).rejects.toBeInstanceOf(TypeError);
+    expect(useBuilderStore.getState().saveState).toBe('error');
+    expect(useBuilderStore.getState().saveError).toBe('The server could not be reached.');
+    // Another look at the canvas does not turn a failed save into a merely pending one.
+    useBuilderStore.getState().refreshSaveState();
+    expect(useBuilderStore.getState().saveState).toBe('error');
+
+    await useBuilderStore.getState().reassignAllIPs();
+    expect(useBuilderStore.getState().saveState).toBe('saved');
+    expect(useBuilderStore.getState().saveError).toBeNull();
+  });
+});
+
+describe('save conflicts', () => {
+  afterEach(() => vi.restoreAllMocks());
+  beforeEach(() => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    resetStoreWithBuildId();
+  });
+
+  const refusal = (build?: unknown) =>
+    new ApiError(409, 'UNKNOWN', 'build revision conflict', {
+      error: 'build revision conflict',
+      ...(build ? { build } : {}),
+    });
+
+  it('keeps the canvas as it was here one undo step away', async () => {
+    useBuilderStore.getState().addHardware(makeRouter('mine'));
+    vi.mocked(buildApi.updateTopology).mockRejectedValueOnce(
+      refusal({
+        id: 'build-1',
+        name: 'Renamed elsewhere',
+        revision: 7,
+        nodes: [{ id: 'theirs', type: 'switch', name: 'Their switch', x: 0, y: 0 }],
+        edges: [],
+      }),
+    );
+
+    await expect(useBuilderStore.getState().reassignAllIPs()).rejects.toBeInstanceOf(
+      BuildConflictError,
+    );
+    expect(useBuilderStore.getState().hardwareNodes.map(node => node.id)).toEqual(['theirs']);
+    expect(useBuilderStore.getState().saveState).toBe('saved');
+
+    useBuilderStore.getState().undo();
+    const state = useBuilderStore.getState();
+    expect(state.hardwareNodes.map(node => node.id)).toEqual(['mine']);
+    // The canvas comes back; a rename made elsewhere is not undone with it.
+    expect(state.projectName).toBe('Renamed elsewhere');
+    // The server's revision stays, so saving the restored canvas goes through.
+    expect(state.currentRevision).toBe(7);
+    expect(state.hasUnsavedChanges()).toBe(true);
+  });
+
+  it('carries on from its own save when only the answer was lost', async () => {
+    useBuilderStore.getState().addHardware(makeRouter('router-1'));
+    // The save reaches the server, but its answer never comes back.
+    vi.mocked(buildApi.updateTopology).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    await expect(useBuilderStore.getState().reassignAllIPs()).rejects.toBeInstanceOf(TypeError);
+
+    // An edit made after that must not be thrown away as "changed elsewhere".
+    useBuilderStore
+      .getState()
+      .addHardware({ ...makeRouter('switch-1'), type: 'switch', name: 'Switch' });
+    vi.mocked(buildApi.updateTopology)
+      .mockRejectedValueOnce(
+        refusal({
+          id: 'build-1',
+          name: 'Test Project',
+          kind: 'homelab',
+          revision: 2,
+          // What we sent, with the address the server calculated.
+          nodes: [{ id: 'router-1', type: 'router', name: 'Router', x: 0, y: 0, ip: '192.168.1.1' }],
+          edges: [],
+        }),
+      )
+      .mockResolvedValueOnce({
+        build: { id: 'build-1', name: 'Test Project', revision: 3, nodes: [] },
+      } as any);
+
+    await useBuilderStore.getState().reassignAllIPs();
+
+    const state = useBuilderStore.getState();
+    expect(state.hardwareNodes.map(node => node.id)).toEqual(['router-1', 'switch-1']);
+    expect(state.currentRevision).toBe(3);
+    expect(buildApi.updateTopology).toHaveBeenLastCalledWith(
+      'build-1',
+      expect.objectContaining({ revision: 2 }),
+    );
+  });
+
+  it('does not mistake a real change for its own lost save', async () => {
+    useBuilderStore.getState().addHardware(makeRouter('router-1'));
+    vi.mocked(buildApi.updateTopology).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    await expect(useBuilderStore.getState().reassignAllIPs()).rejects.toBeInstanceOf(TypeError);
+
+    // One revision on, but the server holds something we never sent.
+    vi.mocked(buildApi.updateTopology).mockRejectedValueOnce(
+      refusal({
+        id: 'build-1',
+        name: 'Test Project',
+        revision: 2,
+        nodes: [{ id: 'someone-elses', type: 'nas', name: 'NAS', x: 0, y: 0 }],
+        edges: [],
+      }),
+    );
+
+    await expect(useBuilderStore.getState().reassignAllIPs()).rejects.toBeInstanceOf(
+      BuildConflictError,
+    );
+    expect(useBuilderStore.getState().hardwareNodes.map(node => node.id)).toEqual([
+      'someone-elses',
+    ]);
+  });
+
+  it('fetches the latest build itself when the refusal does not carry it', async () => {
+    vi.mocked(buildApi.updateTopology).mockRejectedValueOnce(refusal());
+    vi.mocked(buildApi.get).mockResolvedValueOnce({
+      id: 'build-1',
+      name: 'Latest',
+      revision: 5,
+      nodes: [],
+      edges: [],
+    } as any);
+
+    await expect(useBuilderStore.getState().reassignAllIPs()).rejects.toBeInstanceOf(
+      BuildConflictError,
+    );
+    expect(useBuilderStore.getState().currentRevision).toBe(5);
+    expect(useBuilderStore.getState().projectName).toBe('Latest');
+  });
+});
+
+describe('one list of devices', () => {
+  beforeEach(() => resetStoreWithBuildId());
+
+  const place = (id: string, type: HardwareNode['type'], extra: Partial<HardwareNode> = {}) =>
+    useBuilderStore.getState().addHardware({ id, type, name: id, x: 0, y: 0, ...extra });
+
+  it('follows a delete on the canvas, with what sat in a deleted rack and their cables', () => {
+    place('rack', 'rack');
+    place('server', 'server_v2', { parent_id: 'rack' });
+    place('switch', 'switch');
+    place('pc', 'pc');
+    place('nas', 'nas');
+    useBuilderStore.setState({
+      edges: [
+        { id: 'e1', source: 'switch', target: 'server' },
+        { id: 'e2', source: 'switch', target: 'pc' },
+        { id: 'e3', source: 'switch', target: 'nas' },
+      ] as any,
+      selectedNodeId: 'pc',
+    });
+
+    // Deleting a selection arrives from React Flow as several removals at once.
+    useBuilderStore.getState().onNodesChange([
+      { id: 'rack', type: 'remove' },
+      { id: 'pc', type: 'remove' },
+    ]);
+
+    const state = useBuilderStore.getState();
+    expect(state.hardwareNodes.map(node => node.id)).toEqual(['switch', 'nas']);
+    expect(state.nodes.map(node => node.id)).toEqual(['switch', 'nas']);
+    expect(state.edges.map(edge => edge.id)).toEqual(['e3']);
+    expect(state.selectedNodeId).toBeNull();
+    expect(state.getBuildData().nodes.map((node: { id: string }) => node.id)).toEqual([
+      'switch',
+      'nas',
+    ]);
+
+    state.undo();
+    expect(useBuilderStore.getState().hardwareNodes).toHaveLength(5);
+    expect(useBuilderStore.getState().edges).toHaveLength(3);
+  });
+
+  it('records where a card was dropped in the device list too', () => {
+    place('pc', 'pc');
+
+    useBuilderStore
+      .getState()
+      .onNodesChange([{ id: 'pc', type: 'position', position: { x: 240, y: 120 }, dragging: false }]);
+
+    expect(useBuilderStore.getState().hardwareNodes[0]).toMatchObject({ x: 240, y: 120 });
+    expect(useBuilderStore.getState().nodes[0].position).toEqual({ x: 240, y: 120 });
   });
 });

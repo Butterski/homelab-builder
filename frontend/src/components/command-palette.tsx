@@ -56,6 +56,9 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const { user } = useAuth();
   const currentBuildId = useBuilderStore(s => s.currentBuildId);
   const projectName = useBuilderStore(s => s.projectName);
+  // Which project is open survives a reload; its canvas has to be loaded before
+  // anything can be calculated or saved for it.
+  const canvasLoaded = useBuilderStore(s => !!s.currentBuildId && s.buildStatus === 'ready');
   const reassignAllIPs = useBuilderStore(s => s.reassignAllIPs);
   const validateNetwork = useBuilderStore(s => s.validateNetwork);
 
@@ -184,12 +187,16 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       {
         id: 'network-calculate',
         label: 'Recalculate network IPs',
-        hint: currentBuildId ? 'Save, calculate, reload' : 'Requires an active project',
+        hint: canvasLoaded
+          ? 'Save, calculate, reload'
+          : currentBuildId
+            ? 'Open the project first'
+            : 'Requires an active project',
         icon: Network,
         keywords: ['ip', 'assign', 'calculate', 'router'],
-        disabled: !currentBuildId,
+        disabled: !canvasLoaded,
         run: async () => {
-          if (!currentBuildId) return;
+          if (!canvasLoaded) return;
           onOpenChange(false);
           await toast.promise(reassignAllIPs(), {
             loading: 'Recalculating network IPs...',
@@ -202,12 +209,16 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       {
         id: 'network-validate',
         label: 'Validate network',
-        hint: currentBuildId ? 'Check topology issues' : 'Requires an active project',
+        hint: canvasLoaded
+          ? 'Check topology issues'
+          : currentBuildId
+            ? 'Open the project first'
+            : 'Requires an active project',
         icon: Search,
         keywords: ['issues', 'topology', 'warnings'],
-        disabled: !currentBuildId,
+        disabled: !canvasLoaded,
         run: async () => {
-          if (!currentBuildId) return;
+          if (!canvasLoaded) return;
           onOpenChange(false);
           await toast.promise(validateNetwork(), {
             loading: 'Validating network...',
@@ -219,7 +230,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     );
 
     return items;
-  }, [currentBuildId, location.pathname, navigate, onOpenChange, projectName, reassignAllIPs, user, validateNetwork]);
+  }, [canvasLoaded, currentBuildId, location.pathname, navigate, onOpenChange, projectName, reassignAllIPs, user, validateNetwork]);
 
   const runCommand = (action: CommandAction) => {
     if (action.disabled) return;

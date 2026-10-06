@@ -339,6 +339,10 @@ export function useProjectsPage() {
     try {
       await buildApi.delete(buildId);
       setBuilds(prev => prev.filter(b => b.id !== buildId));
+      // The deleted project may be the one that is open everywhere else.
+      if (useBuilderStore.getState().currentBuildId === buildId) {
+        useBuilderStore.getState().clearCurrentBuild();
+      }
       toast.success('Project deleted');
     } catch {
       toast.error('Failed to delete project');
@@ -368,8 +372,28 @@ export function useProjectsPage() {
     const newName = modal.rename.value.trim();
     if (!build || !newName) return;
     try {
-      const updated = await buildApi.rename(build.id, newName, build.revision);
-      setBuilds(prev => prev.map(b => (b.id === updated.id ? updated : b)));
+      let updated: Build;
+      try {
+        updated = await buildApi.rename(build.id, newName, build.revision);
+      } catch (error) {
+        // The list can be older than the build (it was saved in the builder
+        // since). The refusal carries the current build: rename that one.
+        const latest =
+          error instanceof ApiError && error.status === 409
+            ? (error.data as { build?: Build | null } | undefined)?.build
+            : null;
+        if (!latest) throw error;
+        updated = await buildApi.rename(build.id, newName, latest.revision);
+      }
+      setBuilds(prev => prev.map(b => (b.id === updated.id ? { ...b, ...updated } : b)));
+      // The open project carries its name and revision in the store.
+      const store = useBuilderStore.getState();
+      if (store.currentBuildId === updated.id) {
+        useBuilderStore.setState({
+          projectName: updated.name,
+          ...(store.buildStatus === 'ready' ? { currentRevision: updated.revision } : {}),
+        });
+      }
       toast.success('Project renamed');
     } catch {
       toast.error('Failed to rename project');

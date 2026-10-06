@@ -1,4 +1,5 @@
 import { useReducer, useMemo, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useBuilderStore } from '../store/builder-store';
 import { buildApi, type ConfigBundle } from '../api/builds';
 import { gameServersContent } from '../../gaming/lib/game-compose';
@@ -235,7 +236,9 @@ interface ConfigState {
 }
 
 export default function ConfigGeneratorPage() {
-  const { hardwareNodes, loadBuild, clearCurrentBuild } = useBuilderStore();
+  const hardwareNodes = useBuilderStore(state => state.hardwareNodes);
+  const openBuild = useBuilderStore(state => state.openBuild);
+  const clearCurrentBuild = useBuilderStore(state => state.clearCurrentBuild);
 
   const [state, dispatch] = useReducer(
     (state: ConfigState, newState: Partial<ConfigState>) => ({ ...state, ...newState }),
@@ -302,40 +305,40 @@ export default function ConfigGeneratorPage() {
     }
   };
 
-  const handleSelectBuild = async (id: string) => {
+  // Opens a project here. It goes through the store's queue, so a save that is
+  // still on its way from the builder lands before the configs are generated.
+  const handleSelectBuild = async (id: string, announce = true) => {
     if (!id) return;
-    console.log(`[ConfigGen] Switching to build ID: ${id}`);
     dispatch({ loadingBuild: true, selectedBuildId: id });
     try {
-      const fullBuild = await buildApi.get(id);
-      console.log(`[ConfigGen] Fetched build: ${fullBuild.name}`, fullBuild);
-      console.log(`[ConfigGen] Loading data into store...`, fullBuild);
-      loadBuild(fullBuild.id, fullBuild.name, fullBuild);
-      dispatch({ labName: fullBuild.name.toLowerCase().replace(/[^a-z0-9]/g, '-') });
-      toast.success(`Loaded project: ${fullBuild.name}`);
+      await openBuild(id);
+      const name = useBuilderStore.getState().projectName;
+      dispatch({ labName: name.toLowerCase().replace(/[^a-z0-9]/g, '-') });
+      if (announce) toast.success(`Loaded project: ${name}`);
       await loadConfigBundle(id);
     } catch (e) {
       console.error('[ConfigGen] Failed to load build', e);
       toast.error('Failed to load project - it may have been deleted');
       clearCurrentBuild();
-      dispatch({ selectedBuildId: '' });
+      dispatch({ selectedBuildId: '', configBundle: null });
     } finally {
       dispatch({ loadingBuild: false });
     }
   };
 
-  // Load project list on mount
+  // The page follows the project that is open. It never opens one by itself:
+  // which project is "current" is the user's choice.
   useEffect(() => {
     buildApi
       .list()
       .then(list => {
         dispatch({ builds: list.map(b => ({ id: b.id, name: b.name })) });
         const current = useBuilderStore.getState().currentBuildId;
-        if (current) {
-          dispatch({ selectedBuildId: current });
-          loadConfigBundle(current);
-        } else if (list.length > 0) {
-          handleSelectBuild(list[0].id);
+        if (current && list.some(build => build.id === current)) {
+          void handleSelectBuild(current, false);
+        } else if (current) {
+          // It was deleted elsewhere.
+          clearCurrentBuild();
         }
       })
       .catch(err => console.error('Failed to list builds', err));
@@ -470,8 +473,24 @@ export default function ConfigGeneratorPage() {
         </div>
       </div>
 
-      {/* Empty state */}
-      {!hasContent && (
+      {/* Empty states */}
+      {!selectedBuildId && (
+        <div className="rounded-xl border border-dashed p-12 text-center">
+          <AlertCircle className="size-10 text-muted-foreground/40 mx-auto mb-4" />
+          <h3 className="font-semibold text-lg mb-2">Choose a project</h3>
+          <p className="text-muted-foreground text-sm mb-4">
+            {builds.length > 0
+              ? 'Pick a project above to generate its configs.'
+              : 'Create a project first, then come back here to generate its configs.'}
+          </p>
+          {builds.length === 0 && (
+            <Button variant="outline" size="sm" asChild>
+              <Link to="/">Go to Projects</Link>
+            </Button>
+          )}
+        </div>
+      )}
+      {selectedBuildId && !hasContent && !loadingBuild && (
         <div className="rounded-xl border border-dashed p-12 text-center">
           <AlertCircle className="size-10 text-muted-foreground/40 mx-auto mb-4" />
           <h3 className="font-semibold text-lg mb-2">No lab design yet</h3>
@@ -480,9 +499,7 @@ export default function ConfigGeneratorPage() {
             back here to generate configs.
           </p>
           <Button variant="outline" size="sm" asChild>
-            <a href={selectedBuildId ? `/builder/${selectedBuildId}` : '/'}>
-              Open Visual Builder →
-            </a>
+            <Link to={`/builder/${selectedBuildId}`}>Open Visual Builder →</Link>
           </Button>
         </div>
       )}
