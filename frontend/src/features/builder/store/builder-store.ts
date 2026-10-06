@@ -37,6 +37,8 @@ import {
 import { api } from '../../../services/api';
 import { ApiError } from '../../../lib/api';
 import { WORKSPACE_STORAGE_KEY } from './workspace-storage';
+import { computeLayout, type LayoutResult, type LayoutStyle } from '../lib/layout';
+import { layoutGraphFromFlow } from '../lib/layout/from-flow';
 import {
   RACK_U_HEIGHT_PX,
   RACK_WIDTH_PX,
@@ -287,6 +289,18 @@ interface BuilderState {
   canvasFocus: { ids: string[] | null; nonce: number } | null;
   requestCanvasFocus: (ids?: string[] | null) => void;
 
+  // ── Layout ─────────────────────────────────────────────────────────
+  /**
+   * Arranges the canvas ("Polish"). The new positions are written at once and
+   * are one undo step; the glide to them is only drawn. Returns what was done,
+   * or null when nothing may be moved now (no build open, a proposal in review).
+   */
+  polishLayout: (style: LayoutStyle) => (LayoutResult & { moved: number }) | null;
+  /** Moves top-level nodes to the given places. Returns how many moved. */
+  applyLayout: (positions: LayoutResult['positions']) => number;
+  /** Counts arrangements, so the canvas can animate each one once. */
+  layoutMotion: number;
+
   projectName: string;
   projectThumbnail: string;
   setProjectName: (name: string) => void;
@@ -411,6 +425,55 @@ export const useBuilderStore = create<BuilderState>()(
       canvasFocus: null,
       requestCanvasFocus: (ids = null) =>
         set(state => ({ canvasFocus: { ids, nonce: (state.canvasFocus?.nonce ?? 0) + 1 } })),
+
+      layoutMotion: 0,
+      polishLayout: style => {
+        const state = get();
+        if (state.proposalPreview || state.buildStatus !== 'ready') return null;
+        const result = computeLayout(
+          layoutGraphFromFlow(state.nodes, state.edges, state.hardwareNodes),
+          { style },
+        );
+        return { ...result, moved: get().applyLayout(result.positions) };
+      },
+      applyLayout: positions => {
+        const state = get();
+        if (state.proposalPreview || state.buildStatus !== 'ready') return 0;
+        const target = new Map(positions.map(position => [position.id, position]));
+        let moved = 0;
+        // Node objects are kept and only given a new position: React Flow hides
+        // a node that comes back without its measured size. A device in a rack
+        // stays where it is in the rack.
+        const nodes = state.nodes.map(node => {
+          const to = target.get(node.id);
+          if (!to || node.parentId) return node;
+          if (Math.abs(node.position.x - to.x) < 0.5 && Math.abs(node.position.y - to.y) < 0.5) {
+            return node;
+          }
+          moved += 1;
+          return { ...node, position: { x: to.x, y: to.y } };
+        });
+        if (moved === 0) return 0;
+
+        const placed = new Map(nodes.map(node => [node.id, node.position]));
+        set({
+          historyPast: [
+            ...state.historyPast,
+            { nodes: state.nodes, edges: state.edges, hardwareNodes: state.hardwareNodes },
+          ].slice(-50),
+          historyFuture: [],
+          nodes,
+          hardwareNodes: state.hardwareNodes.map(node => {
+            const position = placed.get(node.id);
+            return position && (position.x !== node.x || position.y !== node.y)
+              ? { ...node, x: position.x, y: position.y }
+              : node;
+          }),
+          layoutMotion: state.layoutMotion + 1,
+        });
+        get().requestCanvasFocus(null);
+        return moved;
+      },
       lastSyncedFingerprint: '',
       proposalPreview: null,
 

@@ -1,5 +1,6 @@
 import type { GameExposure, GamingPlan, Service } from '../../../../types';
 import type { CreateBuildParams } from '../../api/builds';
+import { arrangePlan } from './arrange';
 import { gameHost, gameServerVM, gameService, nextPortOffsets } from './game-hosts';
 import type { GameServerAnswers, PlannedEdge, PlannedNode, PlannedVM } from './types';
 
@@ -121,7 +122,7 @@ export function buildGameServerPlan(
     event: { date: '', hours: 0 },
   };
 
-  return {
+  return arrangePlan({
     name: answers.name.trim() || 'Game Server',
     thumbnail: '',
     kind: 'game_server',
@@ -130,5 +131,5 @@ export function buildGameServerPlan(
     nodes,
     edges,
     services: [],
-  };
+  });
 }

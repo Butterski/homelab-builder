@@ -168,10 +168,8 @@ type topologyEditor struct {
 	opts     ApplyOptions
 	refs     map[string]string
 	refKinds map[string]string
-	// pending lists nodes waiting for automatic placement, with the operation
-	// that created each so the chosen position can be written back.
-	pending   []string
-	pendingOp map[string]int
+	// pending lists nodes waiting for automatic placement.
+	pending []string
 }
 
 // ApplyTopologyOps applies ops in order to a copy of base. The whole batch is
@@ -188,31 +186,26 @@ func ApplyTopologyOps(base SyncGraphInput, ops []TopologyOp, opts ApplyOptions) 
 		return nil, err
 	}
 	editor := &topologyEditor{
-		graph:     graph,
-		opts:      opts,
-		refs:      map[string]string{},
-		refKinds:  map[string]string{},
-		pendingOp: map[string]int{},
+		graph:    graph,
+		opts:     opts,
+		refs:     map[string]string{},
+		refKinds: map[string]string{},
 	}
 
 	resolved := make([]TopologyOp, len(ops))
 	for i, op := range ops {
 		op.Op = strings.ToLower(strings.TrimSpace(op.Op))
-		result, err := editor.apply(i, op)
+		result, err := editor.apply(op)
 		if err != nil {
 			return nil, &OpError{Index: i, Op: op.Op, Message: err.Error()}
 		}
 		resolved[i] = result
 	}
 
+	// A position chosen here is not written into the resolved operations: when
+	// they are replayed on a newer revision (refresh, apply) the canvas may have
+	// been rearranged, and a spot that was free then can be taken now.
 	placeNodes(editor.graph.Nodes, editor.graph.Edges, editor.pending)
-	for _, id := range editor.pending {
-		if i := editor.nodeIndex(id); i >= 0 {
-			x, y := editor.graph.Nodes[i].X, editor.graph.Nodes[i].Y
-			resolved[editor.pendingOp[id]].X = &x
-			resolved[editor.pendingOp[id]].Y = &y
-		}
-	}
 
 	if err := validateVirtualNetworks(editor.graph.Nodes); err != nil {
 		return nil, &OpError{Index: -1, Message: err.Error()}
@@ -243,10 +236,10 @@ func cloneSyncInput(input SyncGraphInput) (SyncGraphInput, error) {
 	return clone, nil
 }
 
-func (ed *topologyEditor) apply(index int, op TopologyOp) (TopologyOp, error) {
+func (ed *topologyEditor) apply(op TopologyOp) (TopologyOp, error) {
 	switch op.Op {
 	case "add_node":
-		return ed.addNode(index, op)
+		return ed.addNode(op)
 	case "update_node":
 		return ed.updateNode(op)
 	case "remove_node":
@@ -447,7 +440,7 @@ func (ed *topologyEditor) resolveComponent(token string) (int, int, error) {
 
 // ── Nodes ───────────────────────────────────────────────────────────────────
 
-func (ed *topologyEditor) addNode(index int, op TopologyOp) (TopologyOp, error) {
+func (ed *topologyEditor) addNode(op TopologyOp) (TopologyOp, error) {
 	if len(ed.graph.Nodes) >= MaxTopologyNodes {
 		return op, fmt.Errorf("a build can hold at most %d nodes", MaxTopologyNodes)
 	}
@@ -534,7 +527,6 @@ func (ed *topologyEditor) addNode(index int, op TopologyOp) (TopologyOp, error) 
 		ed.graph.Nodes[nodeIdx].Y = snapToGrid(*op.Y)
 	default:
 		ed.pending = append(ed.pending, id)
-		ed.pendingOp[id] = index
 	}
 	return resolved, nil
 }
@@ -695,7 +687,6 @@ func (ed *topologyEditor) dropPending(id string) {
 	for i, pendingID := range ed.pending {
 		if pendingID == id {
 			ed.pending = append(ed.pending[:i], ed.pending[i+1:]...)
-			delete(ed.pendingOp, id)
 			return
 		}
 	}

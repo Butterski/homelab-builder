@@ -192,11 +192,15 @@ func TestApplyOps_RefsAutoHandlesAndLayout(t *testing.T) {
 		}
 	}
 
-	// The resolved operations carry the generated id and position, with refs
-	// replaced by UUIDs, so they can be replayed on a newer revision.
+	// The resolved operations carry the generated id, with refs replaced by
+	// UUIDs, so they can be replayed on a newer revision. A position the server
+	// chose is not part of them: it is chosen again on the canvas as it is then.
 	added := result.Resolved[0]
-	if added.ID != nasID || added.X == nil || *added.X != nas.X || added.Y == nil || *added.Y != nas.Y {
-		t.Fatalf("resolved add_node is incomplete: %+v", added)
+	if added.ID != nasID {
+		t.Fatalf("resolved add_node lost its id: %+v", added)
+	}
+	if added.X != nil || added.Y != nil {
+		t.Fatalf("resolved add_node must not freeze an automatic position: %+v", added)
 	}
 	if result.Resolved[1].Target != nasID {
 		t.Fatalf("resolved connect must reference the UUID, got %q", result.Resolved[1].Target)
@@ -214,6 +218,57 @@ func TestApplyOps_RefsAutoHandlesAndLayout(t *testing.T) {
 	// The input passed in is never mutated.
 	if len(f.base.Nodes) != 3 || len(f.base.Edges) != 2 {
 		t.Fatal("ApplyTopologyOps mutated its input")
+	}
+}
+
+// A proposal is applied on the build as it is at that moment. If the canvas was
+// rearranged since the proposal was made, a new device goes where there is room
+// now, next to what it is cabled to, not where there was room before.
+func TestApplyOps_ReplayPlacesNewNodesOnTheCurrentCanvas(t *testing.T) {
+	f := newOpsFixture()
+	result := mustApply(t, f.base,
+		TopologyOp{Op: "add_node", Ref: "nas1", Type: "nas", Name: strPtr("Storage NAS")},
+		TopologyOp{Op: "connect", Source: f.sw, Target: "nas1"},
+	)
+	nasID := result.Refs["nas1"]
+	before := findNode(t, result.Input, nasID)
+
+	// Meanwhile the owner moved the switch and its server across the canvas and
+	// put another device exactly where the NAS was going to be.
+	rearranged, err := cloneSyncInput(f.base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range rearranged.Nodes {
+		if rearranged.Nodes[i].ID == f.sw || rearranged.Nodes[i].ID == f.server {
+			rearranged.Nodes[i].X += 1200
+		}
+	}
+	squatter := NodeDTO{ID: uuid.NewString(), Type: "pc", Name: "Desk PC", X: before.X, Y: before.Y, Details: map[string]any{}}
+	rearranged.Nodes = append(rearranged.Nodes, squatter)
+
+	replayed := mustApply(t, rearranged, result.Resolved...)
+	after := findNode(t, replayed.Input, nasID)
+	for _, other := range replayed.Input.Nodes {
+		if other.ID != nasID && nodeBox(other).overlaps(nodeBox(after)) {
+			t.Fatalf("NAS at %v,%v landed on %s at %v,%v", after.X, after.Y, other.Name, other.X, other.Y)
+		}
+	}
+	sw := findNode(t, replayed.Input, f.sw)
+	if after.X < sw.X-layoutNodeWidth || after.Y <= sw.Y {
+		t.Fatalf("NAS at %v,%v did not follow its switch to %v,%v", after.X, after.Y, sw.X, sw.Y)
+	}
+
+	// An explicit position is the model's choice and stays.
+	pinned := mustApply(t, f.base,
+		TopologyOp{Op: "add_node", Ref: "pc1", Type: "pc", Name: strPtr("Pinned PC"), X: numPtr(905), Y: numPtr(415)},
+	)
+	if op := pinned.Resolved[0]; op.X == nil || op.Y == nil {
+		t.Fatalf("an explicit position must stay in the resolved operation: %+v", op)
+	}
+	pc := findNode(t, mustApply(t, rearranged, pinned.Resolved...).Input, pinned.Refs["pc1"])
+	if pc.X != snapToGrid(905) || pc.Y != snapToGrid(415) {
+		t.Fatalf("explicit position changed on replay: %v,%v", pc.X, pc.Y)
 	}
 }
 

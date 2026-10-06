@@ -19,6 +19,7 @@ import { useBuilderStore } from '../store/builder-store';
 import { HardwareNode as HardwareNodeComponent } from './hardware-node';
 import { RackNode } from './rack-node';
 import type { DiffStatus } from '../lib/proposal-preview';
+import { stepCableBusY } from '../lib/cable-path';
 
 const DIFF_COLORS: Record<DiffStatus, string> = {
   added: '#22c55e',
@@ -53,7 +54,12 @@ function ProposalPreviewEdge({
       ? getStraightPath(params)
       : lineStyle === 'bezier'
         ? getBezierPath(params)
-        : getSmoothStepPath({ ...params, borderRadius: 15 });
+        : getSmoothStepPath({
+            ...params,
+            borderRadius: 15,
+            // Same bend as the live canvas, so a preview shows cables where they will be.
+            centerY: stepCableBusY(sourceY, sourcePosition, targetY, targetPosition),
+          });
 
   const color = status ? DIFF_COLORS[status] : '#71717a';
   return (

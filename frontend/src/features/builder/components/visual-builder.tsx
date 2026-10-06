@@ -59,7 +59,7 @@ import {
 } from '../../../lib/hardware-config';
 import { checkConnection } from '../lib/connection-rules';
 import { getNodePortCount } from '../lib/port-count';
-import { computeTopologyLayout } from '../lib/topology-layout';
+import { polishCanvas } from '../lib/polish';
 import { isNatDownstreamEdge } from '../lib/network-zone';
 import { withFreshChildIds } from '../lib/hardware-instance';
 import { useAuth } from '../../admin/hooks/use-auth';
@@ -79,6 +79,7 @@ import { ReadinessReportDialog } from './readiness-report-dialog';
 import { GamingPlanDialog } from '../../gaming/components/gaming-plan-dialog';
 import { isGamingKind } from '../../gaming/lib/kind';
 import { VirtualNetworkEditor } from './virtual-network-editor';
+import { PolishMenu } from './polish-menu';
 import { ProposalBanner } from './proposal-banner';
 import { ProposalPreviewCanvas } from './proposal-preview-canvas';
 import { ProposalReviewPanel } from './proposal-review-panel';
@@ -164,6 +165,40 @@ function NetworkZoneNode({ data }: any) {
       </div>
     </div>
   );
+}
+
+/** How long cards glide to their new places after a Polish. Matches `.is-arranging` in index.css. */
+const LAYOUT_GLIDE_MS = 450;
+
+const px = (value: number) => `${Math.round(value)}px` as const;
+
+/**
+ * Padding for showing the whole canvas: room for the toolbar on top, and for a
+ * panel that floats over one side (the library can be dragged anywhere).
+ */
+function paddingClearOfPanels(canvas: HTMLElement | null) {
+  const inset = { top: 96, right: 48, bottom: 64, left: 48 };
+  if (canvas) {
+    const area = canvas.getBoundingClientRect();
+    document
+      .querySelectorAll<HTMLElement>('.builder-floating-panel, .builder-resource-dashboard')
+      .forEach(panel => {
+        const box = panel.getBoundingClientRect();
+        // A collapsed panel is only a button in a corner.
+        if (box.width === 0 || box.height < area.height * 0.4) return;
+        if (box.left + box.width / 2 < area.left + area.width / 2) {
+          inset.left = Math.max(inset.left, box.right - area.left + 24);
+        } else {
+          inset.right = Math.max(inset.right, area.right - box.left + 24);
+        }
+      });
+    // Panels on both sides of a narrow window leave nothing to fit into.
+    if (inset.left + inset.right > area.width * 0.6) {
+      inset.left = 48;
+      inset.right = 48;
+    }
+  }
+  return { top: px(inset.top), right: px(inset.right), bottom: px(inset.bottom), left: px(inset.left) };
 }
 
 const nodeTypes: NodeTypes = {
@@ -312,7 +347,6 @@ const Flow = React.memo(function Flow() {
     onEdgesChange,
     onConnect,
     addHardware,
-    updateHardware,
     removeHardware,
     duplicateHardware,
     selectNode,
@@ -357,23 +391,17 @@ const Flow = React.memo(function Flow() {
     zoneOpacity: edgePreferences.zoneOpacity ?? 0.7,
   };
 
-  const polishTopologyLayout = useCallback(() => {
-    const positions = computeTopologyLayout(hardwareNodes, edges);
-    if (positions.length === 0) {
-      toast.error('Add hardware before polishing the layout.');
-      return;
-    }
-
-    positions.forEach(position => {
-      updateHardware(position.id, { x: position.x, y: position.y });
-    });
-
-    window.setTimeout(() => {
-      fitView({ padding: 0.18, duration: 500 });
-    }, 80);
-
-    toast.success('Topology layout polished.');
-  }, [hardwareNodes, edges, updateHardware, fitView]);
+  // Polish writes the final positions at once; only the way there is drawn.
+  // The class has to be on the canvas in the same render that moves the cards,
+  // which is why it is derived from the counter instead of set in an effect.
+  const layoutMotion = useBuilderStore(state => state.layoutMotion);
+  const [settledMotion, setSettledMotion] = useState(layoutMotion);
+  const arranging = layoutMotion !== settledMotion;
+  useEffect(() => {
+    if (layoutMotion === settledMotion) return;
+    const timer = window.setTimeout(() => setSettledMotion(layoutMotion), LAYOUT_GLIDE_MS + 80);
+    return () => window.clearTimeout(timer);
+  }, [layoutMotion, settledMotion]);
 
   const networkZones = useMemo<ReactFlowNode[]>(() => {
     if (!visualPreferences.showNetworkZones) return [];
@@ -434,8 +462,10 @@ const Flow = React.memo(function Flow() {
 
       members.forEach(node => {
         const size = getNodeSize(node);
-        const x = node.position.x - padding;
-        const y = node.position.y - padding;
+        // A device in a rack is positioned relative to the rack.
+        const rack = node.parentId ? reactFlowById.get(node.parentId) : undefined;
+        const x = node.position.x + (rack?.position.x ?? 0) - padding;
+        const y = node.position.y + (rack?.position.y ?? 0) - padding;
         const width = size.width + padding * 2;
         const height = size.height + padding * 2;
 
@@ -681,8 +711,8 @@ const Flow = React.memo(function Flow() {
     const frame = requestAnimationFrame(() => {
       void fitView({
         ...(canvasFocus.ids ? { nodes: canvasFocus.ids.map(nodeId => ({ id: nodeId })) } : {}),
-        padding: 0.25,
-        duration: 450,
+        padding: canvasFocus.ids ? 0.25 : paddingClearOfPanels(reactFlowWrapper.current),
+        duration: LAYOUT_GLIDE_MS,
         maxZoom: 1.1,
       });
     });
@@ -1149,8 +1179,10 @@ const Flow = React.memo(function Flow() {
             onPaneClick={() => selectNode(null)}
             connectionMode={ConnectionMode.Loose}
             fitView
+            // A wide build has to fit on the screen as a whole.
+            minZoom={0.15}
             attributionPosition="bottom-right"
-            className="builder-flow-canvas"
+            className={arranging ? 'builder-flow-canvas is-arranging' : 'builder-flow-canvas'}
             defaultEdgeOptions={{
               type: 'custom',
               animated: true,
@@ -1214,7 +1246,7 @@ const Flow = React.memo(function Flow() {
                   <DropdownMenuItem onClick={() => setGamePlanOpen(true)}>
                     <Gamepad2 className="mr-2 size-4" /> Game Plan
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={polishTopologyLayout}>
+                  <DropdownMenuItem onClick={() => polishCanvas()}>
                     <LayoutGrid className="mr-2 size-4" /> Polish Layout
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
@@ -1286,16 +1318,7 @@ const Flow = React.memo(function Flow() {
                 </Button>
               )}
 
-              <Button
-                variant="outline"
-                onClick={polishTopologyLayout}
-                title="Polish Topology Layout"
-                size="sm"
-                className="builder-control-button h-10 px-3"
-              >
-                <LayoutGrid className="size-4" />
-                <span className="builder-action-label ml-2">Polish</span>
-              </Button>
+              <PolishMenu />
 
               {assistantEnabled && (
                 <Button

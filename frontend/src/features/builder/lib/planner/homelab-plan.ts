@@ -1,5 +1,6 @@
 import type { Service } from '../../../../types';
 import type { CreateBuildParams } from '../../api/builds';
+import { arrangePlan } from './arrange';
 import { GOAL_LABELS, type Goal, type PlannedNode, type PlannerAnswers } from './types';
 
 const SERVICE_BY_GOAL: Record<Goal, string[]> = {
@@ -238,7 +239,7 @@ export function buildHomelabPlan(
     });
   });
 
-  return {
+  return arrangePlan({
     name: answers.name.trim() || 'Guided Homelab',
     thumbnail: '',
     settings: {
@@ -249,5 +250,5 @@ export function buildHomelabPlan(
     nodes,
     edges,
     services: [],
-  };
+  });
 }

@@ -316,4 +316,6 @@ export type EdgeParams = {
   targetY: number;
   targetPosition: Position;
   borderRadius?: number;
+  /** Where a step path runs sideways; React Flow picks the midpoint when left out. */
+  centerY?: number;
 };

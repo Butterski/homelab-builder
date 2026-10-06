@@ -6,6 +6,7 @@ import {
   TABLE_SWITCH_WATTS,
   newTableDetails,
 } from '../../../gaming/lib/table';
+import { arrangePlan } from './arrange';
 import { gameHost, gameServerVM, gameService, nextPortOffsets } from './game-hosts';
 import type { LanPartyAnswers, PlannedEdge, PlannedNode, PlannedVM } from './types';
 
@@ -239,7 +240,7 @@ export function buildLanPartyPlan(
     event: { date: '', hours: Math.max(0, answers.hours || 0) },
   };
 
-  return {
+  return arrangePlan({
     name: answers.name.trim() || 'LAN Party',
     thumbnail: '',
     kind: 'lan_party',
@@ -248,5 +249,5 @@ export function buildLanPartyPlan(
     nodes,
     edges,
     services: [],
-  };
+  });
 }

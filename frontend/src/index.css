@@ -496,6 +496,34 @@
   border-color: color-mix(in srgb, #38bdf8 42%, var(--border));
 }
 
+/*
+ * Polish: the store already holds the final positions. While `is-arranging` is
+ * on the canvas the cards glide there, and what is drawn from positions (cables,
+ * their labels, zone outlines) is hidden until the cards have nearly arrived.
+ * The duration matches LAYOUT_GLIDE_MS in visual-builder.tsx.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .builder-flow-canvas.is-arranging .react-flow__node {
+    transition: transform 450ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .builder-flow-canvas.is-arranging .react-flow__edges,
+  .builder-flow-canvas.is-arranging .react-flow__edgelabel-renderer,
+  .builder-flow-canvas.is-arranging .network-zone-viewport-layer {
+    animation: builder-layout-settle 450ms ease-out both;
+  }
+}
+
+@keyframes builder-layout-settle {
+  0%,
+  60% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
 .network-zone-viewport-layer {
   position: absolute;
   inset: 0;

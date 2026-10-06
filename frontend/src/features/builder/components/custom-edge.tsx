@@ -25,6 +25,7 @@ import {
 import { useBuilderStore } from '../store/builder-store';
 import { getEdgeParams } from './floating-edge-utils';
 import { requiredConnectionType } from '../lib/connection-rules';
+import { stepCableBusY } from '../lib/cable-path';
 import { getSmartEdge, svgDrawSmoothLinePath } from '@tisoap/react-flow-smart-edge';
 import type { EdgeParams } from '@/types';
 
@@ -119,7 +120,12 @@ export function CustomEdge({
       targetY: ty,
       targetPosition: targetPos,
     };
-    if (edgePreferences.lineStyle === 'step') params.borderRadius = 15;
+    if (edgePreferences.lineStyle === 'step') {
+      params.borderRadius = 15;
+      // The sideways run sits just under the port, like a bus bar, instead of
+      // halfway down. The layout engine counts on exactly this route.
+      params.centerY = stepCableBusY(sy, sourcePos, ty, targetPos);
+    }
 
     const [fallbackPath, flX, flY] = pathGen(params);
 
