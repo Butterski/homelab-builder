@@ -1219,13 +1219,16 @@
   width: calc(100% - 28px) !important;
 }
 
-/* ── LLM proposal preview ──────────────────────────────────────────────────
-   The read-only canvas shown while a proposed change set is reviewed. Nodes
-   and cables keep their normal look; an outline and a tag mark what the
-   proposal adds, changes or removes. */
-.proposal-preview-canvas .react-flow__node,
-.proposal-preview-canvas .react-flow__node *,
-.proposal-preview-canvas .react-flow__edge {
+/* ── Reviewing an LLM proposal ─────────────────────────────────────────────
+   While a proposal is reviewed the canvas (`.is-reviewing`) draws the build as
+   it would be. Cards and cables keep their normal look; an outline and a tag
+   mark what the proposal adds, changes or removes, and the changes come in one
+   after another (`--reveal-index`, set per card and per cable) so the eye can
+   follow what the assistant did. Nothing here can be clicked into: a proposal
+   is looked at, then applied or rejected. */
+.is-reviewing .react-flow__node,
+.is-reviewing .react-flow__node *,
+.is-reviewing .react-flow__edge {
   pointer-events: none !important;
 }
 
@@ -1241,13 +1244,13 @@
   --proposal-diff-color: #ef4444;
 }
 
-.proposal-preview-canvas .react-flow__node.proposal-diff {
+.is-reviewing .react-flow__node.proposal-diff {
   outline: 2px solid var(--proposal-diff-color);
   outline-offset: 5px;
   border-radius: 14px;
 }
 
-.proposal-preview-canvas .react-flow__node.proposal-diff::after {
+.is-reviewing .react-flow__node.proposal-diff::after {
   position: absolute;
   top: -11px;
   right: 10px;
@@ -1263,22 +1266,136 @@
   text-transform: uppercase;
 }
 
-.proposal-preview-canvas .react-flow__node.proposal-diff-added::after {
+.is-reviewing .react-flow__node.proposal-diff-added::after {
   content: 'new';
 }
 
-.proposal-preview-canvas .react-flow__node.proposal-diff-changed::after {
+.is-reviewing .react-flow__node.proposal-diff-changed::after {
   content: 'changed';
 }
 
-.proposal-preview-canvas .react-flow__node.proposal-diff-removed::after {
+.is-reviewing .react-flow__node.proposal-diff-removed::after {
   content: 'removed';
 }
 
-.proposal-preview-canvas .react-flow__node.proposal-diff-removed {
+.is-reviewing .react-flow__node.proposal-diff-removed {
   outline-style: dashed;
   opacity: 0.5;
   filter: grayscale(0.6);
+}
+
+/* The staged reveal. `scale` and `opacity` are animated, never `transform`:
+   React Flow positions a card with its transform. */
+@media (prefers-reduced-motion: no-preference) {
+  .is-reviewing .react-flow__node.proposal-diff {
+    --reveal-delay: calc(var(--reveal-index, 0) * 110ms);
+  }
+
+  .is-reviewing .react-flow__node.proposal-diff-added {
+    animation:
+      proposal-arrive 460ms cubic-bezier(0.22, 1, 0.36, 1) var(--reveal-delay) both,
+      proposal-glow 1600ms ease-out calc(var(--reveal-delay) + 200ms) both;
+  }
+
+  .is-reviewing .react-flow__node.proposal-diff-changed {
+    animation: proposal-glow 1400ms ease-out var(--reveal-delay) both;
+  }
+
+  .is-reviewing .react-flow__node.proposal-diff-removed {
+    animation: proposal-leave 520ms ease-out var(--reveal-delay) both;
+  }
+
+  .is-reviewing .react-flow__edge path.proposal-edge-drawn {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    animation: proposal-draw 520ms ease-out calc(var(--reveal-index, 0) * 110ms + 160ms) forwards;
+  }
+
+  .is-reviewing .react-flow__edge path.proposal-edge-faded,
+  .is-reviewing .proposal-edge-label {
+    animation: proposal-fade 360ms ease-out calc(var(--reveal-index, 0) * 110ms + 320ms) both;
+  }
+
+  /* After Apply the same devices light up once on the live canvas. */
+  .react-flow__node.applied-glow {
+    --proposal-diff-color: #22c55e;
+    border-radius: 14px;
+    animation: proposal-glow 2400ms ease-out both;
+  }
+}
+
+/* Devices the assistant's last step was about, while it is still working. */
+.react-flow__node.assistant-focus {
+  outline: 2px solid color-mix(in srgb, var(--primary) 70%, transparent);
+  outline-offset: 5px;
+  border-radius: 14px;
+}
+
+@keyframes proposal-arrive {
+  from {
+    opacity: 0;
+    scale: 0.9;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+@keyframes proposal-leave {
+  from {
+    opacity: 1;
+    filter: none;
+  }
+  to {
+    opacity: 0.5;
+    filter: grayscale(0.6);
+  }
+}
+
+@keyframes proposal-glow {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--proposal-diff-color) 70%, transparent);
+  }
+  35% {
+    box-shadow: 0 0 0 14px color-mix(in srgb, var(--proposal-diff-color) 22%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 22px transparent;
+  }
+}
+
+@keyframes proposal-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes proposal-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* The edge between canvas and side panel, which can be dragged. */
+.builder-side-resizer::after {
+  position: absolute;
+  inset-block: 0;
+  left: 3px;
+  width: 2px;
+  background: var(--primary);
+  content: '';
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.builder-side-resizer:hover::after,
+.builder-side-resizer:focus-visible::after,
+.builder-side-resizer:active::after {
+  opacity: 0.6;
 }
 
 /* ── In-app assistant ──────────────────────────────────────────────────────
@@ -1395,8 +1512,34 @@
   }
 }
 
+/* A step of the assistant that is running: a slow sweep of light across its row. */
+.activity-step + .activity-step {
+  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+.activity-step.is-active {
+  background-image: linear-gradient(
+    100deg,
+    transparent 30%,
+    color-mix(in srgb, var(--primary) 12%, transparent) 50%,
+    transparent 70%
+  );
+  background-size: 220% 100%;
+  animation: assistant-step-sweep 1.6s linear infinite;
+}
+
+@keyframes assistant-step-sweep {
+  from {
+    background-position: 120% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .assistant-working-dot {
+  .assistant-working-dot,
+  .activity-step.is-active {
     animation: none;
   }
 }

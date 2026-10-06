@@ -107,7 +107,7 @@ func listBuilds(_ context.Context, r *Registry, actor Actor, _ json.RawMessage) 
 			UpdatedAt: build.UpdatedAt, URL: reviewURL(actor, build.ID, nil),
 		})
 	}
-	return &Result{Data: map[string]any{"builds": items}}, nil
+	return &Result{Data: map[string]any{"builds": items}, Summary: count(len(items), "build", "builds")}, nil
 }
 
 type guestView struct {
@@ -206,7 +206,8 @@ func getBuild(_ context.Context, r *Registry, actor Actor, args json.RawMessage)
 	if state, err := r.deps.Proposals.SyncState(buildID, actor.UserID); err == nil {
 		view.Proposals = proposalsView{Pending: state.Pending, Recent: state.Recent}
 	}
-	return &Result{Data: view}, nil
+	summary := count(len(view.Nodes), "device", "devices") + ", " + count(len(view.Connections), "connection", "connections")
+	return &Result{Data: view, Summary: summary}, nil
 }
 
 // describeBuild renders a build the way an LLM needs it: ids for every entity,
@@ -305,6 +306,30 @@ type validationView struct {
 	Warnings []validationIssue `json:"warnings"`
 }
 
+// summary is the report in a few words: "No problems", "1 error, 2 warnings".
+func (v validationView) summary() string {
+	parts := []string{}
+	if len(v.Errors) > 0 {
+		parts = append(parts, count(len(v.Errors), "error", "errors"))
+	}
+	if len(v.Warnings) > 0 {
+		parts = append(parts, count(len(v.Warnings), "warning", "warnings"))
+	}
+	if len(parts) == 0 {
+		return "No problems"
+	}
+	return strings.Join(parts, ", ")
+}
+
+// focus lists the nodes the report complains about.
+func (v validationView) focus() []string {
+	ids := []string{}
+	for _, issue := range append(append([]validationIssue{}, v.Errors...), v.Warnings...) {
+		ids = append(ids, strings.TrimSuffix(issue.NodeID, ":lan"))
+	}
+	return focusOn(ids...)
+}
+
 // describeValidation adds node names to an IPAM validation report.
 func describeValidation(raw json.RawMessage, build *models.Build) validationView {
 	view := validationView{Errors: []validationIssue{}, Warnings: []validationIssue{}}
@@ -362,7 +387,8 @@ func validateBuild(_ context.Context, r *Registry, actor Actor, args json.RawMes
 	if err != nil {
 		return nil, err
 	}
-	return &Result{Data: describeValidation(raw, build)}, nil
+	view := describeValidation(raw, build)
+	return &Result{Data: view, Summary: view.summary(), Focus: view.focus()}, nil
 }
 
 func generateConfigs(_ context.Context, r *Registry, actor Actor, args json.RawMessage) (*Result, error) {
@@ -383,7 +409,7 @@ func generateConfigs(_ context.Context, r *Registry, actor Actor, args json.RawM
 	if err != nil {
 		return nil, err
 	}
-	return &Result{Data: bundle}, nil
+	return &Result{Data: bundle, Summary: "Files generated"}, nil
 }
 
 func gamingReport(_ context.Context, r *Registry, actor Actor, args json.RawMessage) (*Result, error) {
@@ -401,7 +427,14 @@ func gamingReport(_ context.Context, r *Registry, actor Actor, args json.RawMess
 	if err != nil {
 		return nil, err
 	}
-	return &Result{Data: report}, nil
+	summary, ids := "No issues", []string{}
+	if len(report.Issues) > 0 {
+		summary = count(len(report.Issues), "issue", "issues")
+		for _, issue := range report.Issues {
+			ids = append(ids, issue.NodeID)
+		}
+	}
+	return &Result{Data: report, Summary: summary, Focus: focusOn(ids...)}, nil
 }
 
 func createBuild(_ context.Context, r *Registry, actor Actor, args json.RawMessage) (*Result, error) {

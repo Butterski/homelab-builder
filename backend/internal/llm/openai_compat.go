@@ -154,9 +154,11 @@ type pendingToolCall struct {
 	id        string
 	name      string
 	arguments strings.Builder
+	// announced is set once the caller was told this call has begun.
+	announced bool
 }
 
-func (p *openAIProvider) Stream(ctx context.Context, req TurnRequest, onText func(string)) (*TurnResult, error) {
+func (p *openAIProvider) Stream(ctx context.Context, req TurnRequest, handlers StreamHandlers) (*TurnResult, error) {
 	params := openai.ChatCompletionNewParams{
 		Model:    shared.ChatModel(p.model),
 		Messages: p.history(req.System, req.Messages),
@@ -182,9 +184,7 @@ func (p *openAIProvider) Stream(ctx context.Context, req TurnRequest, onText fun
 			}
 			if choice.Delta.Content != "" {
 				text.WriteString(choice.Delta.Content)
-				if onText != nil {
-					onText(choice.Delta.Content)
-				}
+				handlers.text(choice.Delta.Content)
 			}
 			for _, delta := range choice.Delta.ToolCalls {
 				slot, known := slotByIndex[delta.Index]
@@ -203,6 +203,16 @@ func (p *openAIProvider) Stream(ctx context.Context, req TurnRequest, onText fun
 					call.name = delta.Function.Name
 				}
 				call.arguments.WriteString(delta.Function.Arguments)
+				// The name can arrive after the first piece of arguments.
+				if call.name != "" {
+					if !call.announced {
+						call.announced = true
+						handlers.toolStart(slot, call.name)
+					}
+					if delta.Function.Arguments != "" {
+						handlers.toolProgress(slot, call.arguments.Len())
+					}
+				}
 			}
 			if choice.FinishReason != "" {
 				finish = choice.FinishReason

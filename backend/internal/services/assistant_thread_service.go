@@ -1,8 +1,10 @@
 package services
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"strings"
 
 	"github.com/Butterski/homelab-builder/backend/internal/models"
 	"github.com/google/uuid"
@@ -41,6 +43,10 @@ type MessagePart struct {
 	// Content is the exact text returned to the model for a tool call.
 	Content string `json:"content,omitempty"`
 	IsError bool   `json:"is_error,omitempty"`
+	// Summary and DurationMS describe a tool result for the chat panel: the
+	// outcome in a few words and how long the tool ran. Not sent to the model.
+	Summary    string `json:"summary,omitempty"`
+	DurationMS int64  `json:"duration_ms,omitempty"`
 
 	// proposal
 	ProposalID string `json:"proposal_id,omitempty"`
@@ -94,11 +100,57 @@ func (s *AssistantThreadService) Messages(threadID uuid.UUID) ([]models.Assistan
 	return messages, err
 }
 
+// nulEscape is a NUL character as JSON text spells it. PostgreSQL's jsonb
+// cannot hold one, and a model is free to write one into a tool call.
+var nulEscape = []byte(`\u0000`)
+
+// storableJSON returns a document jsonb accepts: the same one with NUL
+// characters taken out of its strings. Anything without one passes unchanged.
+func storableJSON(raw []byte) ([]byte, error) {
+	if !bytes.Contains(raw, nulEscape) {
+		return raw, nil
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	var value any
+	if err := decoder.Decode(&value); err != nil {
+		return nil, err
+	}
+	return json.Marshal(withoutNUL(value))
+}
+
+func withoutNUL(value any) any {
+	switch typed := value.(type) {
+	case string:
+		return strings.ReplaceAll(typed, "\x00", "")
+	case []any:
+		for i := range typed {
+			typed[i] = withoutNUL(typed[i])
+		}
+		return typed
+	case map[string]any:
+		cleaned := make(map[string]any, len(typed))
+		for key, child := range typed {
+			cleaned[strings.ReplaceAll(key, "\x00", "")] = withoutNUL(child)
+		}
+		return cleaned
+	}
+	return value
+}
+
 // Append stores the next message of a thread.
 func (s *AssistantThreadService) Append(threadID uuid.UUID, role, provider, model string, parts []MessagePart, native json.RawMessage, interrupted bool) (*models.AssistantMessage, error) {
 	encoded, err := json.Marshal(parts)
 	if err != nil {
 		return nil, err
+	}
+	if encoded, err = storableJSON(encoded); err != nil {
+		return nil, err
+	}
+	// The provider's own form cannot be edited without breaking what it signed.
+	// If it cannot be stored as it is, the parts above are replayed instead.
+	if bytes.Contains(native, nulEscape) {
+		native = nil
 	}
 	message := &models.AssistantMessage{
 		ThreadID: threadID, Role: role, Provider: provider, Model: model,

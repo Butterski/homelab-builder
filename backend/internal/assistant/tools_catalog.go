@@ -3,6 +3,7 @@ package assistant
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sort"
 	"strings"
 
@@ -36,6 +37,7 @@ func catalogTools() []*Tool {
 			Scope:    ScopeRead,
 			ReadOnly: true,
 			handler:  searchHardware,
+			describe: describeSearch,
 		},
 		{
 			Name:  "list_services",
@@ -50,6 +52,7 @@ func catalogTools() []*Tool {
 			Scope:    ScopeRead,
 			ReadOnly: true,
 			handler:  listServices,
+			describe: describeSearch,
 		},
 		{
 			Name:  "recommend_hardware",
@@ -62,8 +65,44 @@ func catalogTools() []*Tool {
 			Scope:    ScopeRead,
 			ReadOnly: true,
 			handler:  recommendHardware,
+			describe: func(args json.RawMessage) string {
+				var in struct {
+					ServiceIDs []string `json:"service_ids"`
+				}
+				if json.Unmarshal(args, &in) != nil || len(in.ServiceIDs) == 0 {
+					return ""
+				}
+				return count(len(in.ServiceIDs), "service", "services")
+			},
 		},
 	}
+}
+
+// describeSearch names what a catalog search looks for.
+func describeSearch(args json.RawMessage) string {
+	var in struct {
+		Query    string `json:"query"`
+		Category string `json:"category"`
+		Brand    string `json:"brand"`
+	}
+	if json.Unmarshal(args, &in) != nil {
+		return ""
+	}
+	words := []string{}
+	for _, word := range []string{in.Query, in.Brand, in.Category} {
+		if word = strings.TrimSpace(word); word != "" {
+			words = append(words, word)
+		}
+	}
+	return strings.Join(words, ", ")
+}
+
+// found says how many results a search returned, and out of how many.
+func found(shown, total int, one, many string) string {
+	if total > shown {
+		return fmt.Sprintf("%d of %d %s", shown, total, many)
+	}
+	return count(shown, one, many)
 }
 
 type hardwareView struct {
@@ -115,22 +154,25 @@ func searchHardware(_ context.Context, r *Registry, _ Actor, args json.RawMessag
 	if limit > maxHardwareResults {
 		limit = maxHardwareResults
 	}
-	found, err := r.deps.Hardware.GetAll(services.HardwareFilter{
+	page, err := r.deps.Hardware.GetAll(services.HardwareFilter{
 		Category: strings.TrimSpace(in.Category), Brand: strings.TrimSpace(in.Brand), Search: strings.TrimSpace(in.Query),
 		MinPrice: in.MinPrice, MaxPrice: in.MaxPrice, Limit: limit, Offset: int(in.Offset),
 	})
 	if err != nil {
 		return nil, err
 	}
-	items := make([]hardwareView, 0, len(found.Data))
-	for _, item := range found.Data {
+	items := make([]hardwareView, 0, len(page.Data))
+	for _, item := range page.Data {
 		items = append(items, describeHardware(item))
 	}
 	categories, err := r.deps.Hardware.GetCategories()
 	if err != nil {
 		return nil, err
 	}
-	return &Result{Data: map[string]any{"total": found.Total, "items": items, "categories": categories}}, nil
+	return &Result{
+		Data:    map[string]any{"total": page.Total, "items": items, "categories": categories},
+		Summary: found(len(items), int(page.Total), "result", "results"),
+	}, nil
 }
 
 type serviceView struct {
@@ -203,7 +245,10 @@ func listServices(_ context.Context, r *Registry, actor Actor, args json.RawMess
 		categories = append(categories, name)
 	}
 	sort.Strings(categories)
-	return &Result{Data: map[string]any{"total": total, "items": matched, "categories": categories}}, nil
+	return &Result{
+		Data:    map[string]any{"total": total, "items": matched, "categories": categories},
+		Summary: found(len(matched), total, "service", "services"),
+	}, nil
 }
 
 type specView struct {
@@ -266,7 +311,7 @@ func recommendHardware(_ context.Context, r *Registry, actor Actor, args json.Ra
 	for _, service := range recommendation.SelectedServices {
 		selected = append(selected, service.Name)
 	}
-	return &Result{Data: map[string]any{
+	return &Result{Summary: "3 hardware profiles", Data: map[string]any{
 		"services":         selected,
 		"summary":          recommendation.Summary,
 		"minimal":          describeSpec(recommendation.MinimalSpec),

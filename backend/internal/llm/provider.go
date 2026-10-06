@@ -86,11 +86,42 @@ type TurnResult struct {
 	OutputTokens int64
 }
 
+// StreamHandlers receive a reply while it is being generated. Each may be nil.
+// The complete reply is in the result either way; these exist so a person
+// watching can see that something is happening.
+type StreamHandlers struct {
+	// Text receives the visible reply as it is written.
+	Text func(delta string)
+	// ToolStart is called when the model begins a tool call, before its
+	// arguments are complete. index counts the calls of this reply from 0.
+	ToolStart func(index int, name string)
+	// ToolProgress reports how many bytes of arguments a call has so far.
+	ToolProgress func(index int, bytes int)
+}
+
+func (h StreamHandlers) text(delta string) {
+	if h.Text != nil && delta != "" {
+		h.Text(delta)
+	}
+}
+
+func (h StreamHandlers) toolStart(index int, name string) {
+	if h.ToolStart != nil {
+		h.ToolStart(index, name)
+	}
+}
+
+func (h StreamHandlers) toolProgress(index int, bytes int) {
+	if h.ToolProgress != nil {
+		h.ToolProgress(index, bytes)
+	}
+}
+
 // Provider is a configured model endpoint.
 type Provider interface {
-	// Stream runs one model call. onText receives the visible reply as it is
+	// Stream runs one model call. The handlers see the reply as it is
 	// generated; the complete reply is also in the result.
-	Stream(ctx context.Context, req TurnRequest, onText func(delta string)) (*TurnResult, error)
+	Stream(ctx context.Context, req TurnRequest, handlers StreamHandlers) (*TurnResult, error)
 	// ListModels returns the model ids the key can use. It costs no tokens and
 	// doubles as a credentials check.
 	ListModels(ctx context.Context) ([]string, error)

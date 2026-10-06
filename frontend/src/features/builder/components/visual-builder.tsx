@@ -81,9 +81,12 @@ import { isGamingKind } from '../../gaming/lib/kind';
 import { VirtualNetworkEditor } from './virtual-network-editor';
 import { PolishMenu } from './polish-menu';
 import { ProposalBanner } from './proposal-banner';
-import { ProposalPreviewCanvas } from './proposal-preview-canvas';
+import { ProposalEdge } from './proposal-edge';
+import { ProposalReviewBar } from './proposal-review-bar';
 import { ProposalReviewPanel } from './proposal-review-panel';
+import { SidePanelShell } from './side-panel-shell';
 import { useProposals } from '../hooks/use-proposals';
+import { AssistantActivityPill } from '../../assistant/components/activity-pill';
 import { AssistantPanel } from '../../assistant/components/assistant-panel';
 import { useAssistantStore } from '../../assistant/store/assistant-store';
 import { useAssistantSettings } from '../../settings/api/assistant-settings';
@@ -172,12 +175,17 @@ const LAYOUT_GLIDE_MS = 450;
 
 const px = (value: number) => `${Math.round(value)}px` as const;
 
+/** One empty list for every "nothing to mark", so memos see the same value. */
+const NO_IDS: string[] = [];
+
 /**
- * Padding for showing the whole canvas: room for the toolbar on top, and for a
- * panel that floats over one side (the library can be dragged anywhere).
+ * Padding for bringing something into view: room for the toolbar on top, and
+ * for a panel that floats over one side (the library can be dragged anywhere).
+ * `margin` is added all around, for when a few devices are shown rather than
+ * the whole canvas and should not touch the edges.
  */
-function paddingClearOfPanels(canvas: HTMLElement | null) {
-  const inset = { top: 96, right: 48, bottom: 64, left: 48 };
+function paddingClearOfPanels(canvas: HTMLElement | null, margin = 0) {
+  const inset = { top: 96 + margin, right: 48 + margin, bottom: 64 + margin, left: 48 + margin };
   if (canvas) {
     const area = canvas.getBoundingClientRect();
     document
@@ -187,9 +195,9 @@ function paddingClearOfPanels(canvas: HTMLElement | null) {
         // A collapsed panel is only a button in a corner.
         if (box.width === 0 || box.height < area.height * 0.4) return;
         if (box.left + box.width / 2 < area.left + area.width / 2) {
-          inset.left = Math.max(inset.left, box.right - area.left + 24);
+          inset.left = Math.max(inset.left, box.right - area.left + 24 + margin);
         } else {
-          inset.right = Math.max(inset.right, area.right - box.left + 24);
+          inset.right = Math.max(inset.right, area.right - box.left + 24 + margin);
         }
       });
     // Panels on both sides of a narrow window leave nothing to fit into.
@@ -208,7 +216,12 @@ const nodeTypes: NodeTypes = {
 
 const edgeTypes = {
   custom: CustomEdge,
+  // Cables of a proposal under review.
+  proposal: ProposalEdge,
 };
+
+/** How long the devices of an applied proposal stay lit. Matches `.applied-glow` in index.css. */
+const APPLIED_GLOW_MS = 2600;
 
 type Shortcut = { combination: string; name: string };
 
@@ -364,11 +377,33 @@ const Flow = React.memo(function Flow() {
     redo,
   } = useBuilderStore();
 
-  const { screenToFlowPosition, getIntersectingNodes, fitView } = useReactFlow();
+  const { screenToFlowPosition, getIntersectingNodes, fitView, getNodesBounds, getViewport } =
+    useReactFlow();
 
-  // LLM proposals: polled from the server, reviewed on a read-only preview canvas.
+  // LLM proposals: polled from the server and reviewed right here. While one
+  // is open the canvas draws the build as it would be instead of the live
+  // graph; the live graph in the store is not touched, so nothing of a
+  // proposal can be saved before it is applied.
   const proposals = useProposals(id);
-  const reviewingProposal = useBuilderStore(state => state.proposalPreview !== null);
+  const previewNodes = useBuilderStore(state => state.proposalPreview?.nodes);
+  const previewEdges = useBuilderStore(state => state.proposalPreview?.edges);
+  const previewHardware = useBuilderStore(state => state.proposalPreview?.hardwareNodes);
+  const previewFocus = useBuilderStore(state => state.proposalPreview?.focus);
+  // A device a proposal adds has no size until React Flow has drawn and
+  // measured it, and the camera cannot be pointed at something without a size.
+  const previewFocusMeasured = useBuilderStore(state => {
+    const preview = state.proposalPreview;
+    if (!preview?.focus) return false;
+    const wanted = new Set(preview.focus.ids);
+    return preview.nodes.every(node => !wanted.has(node.id) || !!node.measured?.width);
+  });
+  const previewTotal = useBuilderStore(state => state.proposalPreview?.proposal.diff.counts.total);
+  const previewId = useBuilderStore(state => state.proposalPreview?.proposal.id);
+  const applyPreviewNodeChanges = useBuilderStore(state => state.applyPreviewNodeChanges);
+  const reviewingProposal = previewNodes !== undefined;
+  const canvasNodes = previewNodes ?? nodes;
+  const canvasEdges = previewEdges ?? edges;
+  const canvasHardware = previewHardware ?? hardwareNodes;
   // The game plan is offered wherever there is something for it to check.
   const showGamePlan = useBuilderStore(
     state =>
@@ -384,6 +419,31 @@ const Flow = React.memo(function Flow() {
   const assistantOpen = useAssistantStore(state => state.open);
   const setAssistantOpen = useAssistantStore(state => state.setOpen);
   const showAssistant = assistantEnabled && assistantOpen && !!id;
+  const noteProposal = useAssistantStore(state => state.noteProposal);
+  // Devices the assistant's last step was about get a ring while it works.
+  const assistantFocus = useAssistantStore(state => (state.buildId === id ? state.focusIds : NO_IDS));
+  // While a proposal is reviewed next to an open chat, the side panel shows the
+  // chat unless the list of changes was asked for. That choice belongs to the
+  // proposal it was made for: the next review starts on the chat again.
+  const [changesShownFor, setChangesShownFor] = useState<string | null>(null);
+  const sideTab = previewId !== undefined && changesShownFor === previewId ? 'changes' : 'chat';
+  const setSideTab = useCallback(
+    (tab: 'chat' | 'changes') => setChangesShownFor(tab === 'changes' ? (previewId ?? null) : null),
+    [previewId],
+  );
+
+  // The card in the chat says at once what was done with its proposal.
+  const applyReviewed = useCallback(async () => {
+    const proposalId = useBuilderStore.getState().proposalPreview?.proposal.id;
+    if (proposalId && (await proposals.apply())) noteProposal(proposalId, 'applied');
+  }, [proposals, noteProposal]);
+  const rejectReviewed = useCallback(
+    async (reason: string) => {
+      const proposalId = useBuilderStore.getState().proposalPreview?.proposal.id;
+      if (proposalId && (await proposals.reject(reason))) noteProposal(proposalId, 'rejected', reason);
+    },
+    [proposals, noteProposal],
+  );
   const visualPreferences = {
     showNetworkZones: edgePreferences.showNetworkZones ?? true,
     showLanZones: edgePreferences.showLanZones ?? false,
@@ -406,12 +466,12 @@ const Flow = React.memo(function Flow() {
   const networkZones = useMemo<ReactFlowNode[]>(() => {
     if (!visualPreferences.showNetworkZones) return [];
 
-    const hardwareById = new Map(hardwareNodes.map(node => [node.id, node]));
-    const reactFlowById = new Map(nodes.map(node => [node.id, node]));
+    const hardwareById = new Map(canvasHardware.map(node => [node.id, node]));
+    const reactFlowById = new Map(canvasNodes.map(node => [node.id, node]));
     const edgeByNode = new Map<string, typeof edges>();
     const natChildIds = new Set<string>();
 
-    edges.forEach(edge => {
+    canvasEdges.forEach(edge => {
       if (edge.data?.connection_type === 'vpn') return;
       edgeByNode.set(edge.source, [...(edgeByNode.get(edge.source) || []), edge]);
       edgeByNode.set(edge.target, [...(edgeByNode.get(edge.target) || []), edge]);
@@ -515,7 +575,7 @@ const Flow = React.memo(function Flow() {
 
     const zoneNodes: ReactFlowNode[] = [];
 
-    hardwareNodes.filter(isNatProvider).forEach(natNode => {
+    canvasHardware.filter(isNatProvider).forEach(natNode => {
       if (!visualPreferences.showNatZones) return;
       const natId = natNode.id;
       const visited = new Set<string>();
@@ -570,7 +630,7 @@ const Flow = React.memo(function Flow() {
     });
 
     const routers = visualPreferences.showLanZones
-      ? hardwareNodes.filter(node => node.type === 'router')
+      ? canvasHardware.filter(node => node.type === 'router')
       : [];
     routers.forEach(router => {
       const routerId = router.id;
@@ -611,26 +671,46 @@ const Flow = React.memo(function Flow() {
 
     return zoneNodes;
   }, [
-    nodes,
-    edges,
-    hardwareNodes,
+    canvasNodes,
+    canvasEdges,
+    canvasHardware,
     visualPreferences.showNetworkZones,
     visualPreferences.showLanZones,
     visualPreferences.showNatZones,
     visualPreferences.zoneOpacity,
   ]);
 
+  // The devices of the proposal applied last light up once.
+  const appliedGlow = useBuilderStore(state => state.appliedGlow);
+  const [glowSeen, setGlowSeen] = useState(appliedGlow?.nonce ?? 0);
+  const glowing = appliedGlow && appliedGlow.nonce !== glowSeen ? appliedGlow.ids : NO_IDS;
+  useEffect(() => {
+    if (!appliedGlow || appliedGlow.nonce === glowSeen) return;
+    const timer = window.setTimeout(() => setGlowSeen(appliedGlow.nonce), APPLIED_GLOW_MS);
+    return () => window.clearTimeout(timer);
+  }, [appliedGlow, glowSeen]);
+
   const flowNodes = useMemo<ReactFlowNode[]>(
     () =>
-      nodes.map(node => ({
-        ...node,
-        data: {
-          ...node.data,
-          onOpenVirtualNetwork: () => useBuilderStore.getState().openVirtualNetwork(node.id),
-        },
-        zIndex: node.type === 'rack' ? 10 : 20,
-      })),
-    [nodes],
+      canvasNodes.map(node => {
+        // A device a proposal removes stays visible behind what takes its place.
+        const removed = (node.data as { proposalDiff?: string }).proposalDiff === 'removed';
+        const marks = [
+          node.className,
+          glowing.includes(node.id) && 'applied-glow',
+          assistantFocus.includes(node.id) && 'assistant-focus',
+        ].filter(Boolean);
+        return {
+          ...node,
+          ...(marks.length > 0 ? { className: marks.join(' ') } : {}),
+          data: {
+            ...node.data,
+            onOpenVirtualNetwork: () => useBuilderStore.getState().openVirtualNetwork(node.id),
+          },
+          zIndex: node.type === 'rack' ? 10 : removed ? 15 : 20,
+        };
+      }),
+    [canvasNodes, glowing, assistantFocus],
   );
 
   // Always reload on open: the store may still hold an older revision of this
@@ -681,6 +761,8 @@ const Flow = React.memo(function Flow() {
     await reassignAllIPs();
   }, [id, reassignAllIPs]);
 
+  const reviewBusy = proposals.busy === 'apply' || proposals.busy === 'reject' ? proposals.busy : null;
+
   const saveErrorText = (err: unknown, fallback: string) =>
     err instanceof BuildConflictError || (err instanceof ApiError && err.status === 422)
       ? err.message
@@ -711,13 +793,56 @@ const Flow = React.memo(function Flow() {
     const frame = requestAnimationFrame(() => {
       void fitView({
         ...(canvasFocus.ids ? { nodes: canvasFocus.ids.map(nodeId => ({ id: nodeId })) } : {}),
-        padding: canvasFocus.ids ? 0.25 : paddingClearOfPanels(reactFlowWrapper.current),
+        padding: paddingClearOfPanels(reactFlowWrapper.current, canvasFocus.ids ? 72 : 0),
         duration: LAYOUT_GLIDE_MS,
         maxZoom: 1.1,
       });
     });
     return () => cancelAnimationFrame(frame);
   }, [canvasFocus, fitView]);
+
+  // A review brings what it changes into view, unless that is on screen
+  // already: then the camera stays where the user left it. A click on a change
+  // in the list always goes there.
+  useEffect(() => {
+    if (!previewFocus || !previewFocusMeasured || previewFocus.ids.length === 0) return;
+    const frame = requestAnimationFrame(() => {
+      const wanted = previewFocus.ids.map(nodeId => ({ id: nodeId }));
+      const canvas = reactFlowWrapper.current;
+      if (previewFocus.nonce === 0 && canvas) {
+        const bounds = getNodesBounds(previewFocus.ids);
+        const { x, y, zoom } = getViewport();
+        const left = bounds.x * zoom + x;
+        const top = bounds.y * zoom + y;
+        const visible =
+          bounds.width > 0 &&
+          left >= 24 &&
+          top >= 72 &&
+          left + bounds.width * zoom <= canvas.clientWidth - 24 &&
+          top + bounds.height * zoom <= canvas.clientHeight - 96;
+        if (visible) return;
+      }
+      void fitView({ nodes: wanted, padding: 0.35, duration: LAYOUT_GLIDE_MS, maxZoom: 1.1 });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [previewFocus, previewFocusMeasured, fitView, getNodesBounds, getViewport]);
+
+  // A build opens shown whole. React Flow's own first fit does not know about
+  // the panels that float over the canvas, so once the cards are measured the
+  // view is fitted again around them.
+  const fittedOnOpen = useRef(false);
+  const cardsMeasured = useBuilderStore(
+    state => state.nodes.length > 0 && state.nodes.every(node => !!node.measured?.width),
+  );
+  useEffect(() => {
+    if (!buildReady || !cardsMeasured || fittedOnOpen.current) return;
+    // A moment later than React Flow's own fit, which would otherwise undo this one.
+    const timer = window.setTimeout(() => {
+      fittedOnOpen.current = true;
+      useBuilderStore.getState().requestCanvasFocus(null);
+    }, 200);
+    return () => window.clearTimeout(timer);
+  }, [buildReady, cardsMeasured]);
 
   const { getEdges, deleteElements } = useReactFlow();
   const updateNodeInternals = useUpdateNodeInternals();
@@ -881,6 +1006,7 @@ const Flow = React.memo(function Flow() {
   const onDrop = useCallback(
     (event: React.DragEvent) => {
       event.preventDefault();
+      if (useBuilderStore.getState().proposalPreview) return;
 
       const position = screenToFlowPosition({
         x: event.clientX,
@@ -1134,6 +1260,7 @@ const Flow = React.memo(function Flow() {
           />
         )}
 
+        {/* The library adds to the build; a review only looks at it. */}
         <div className={reviewingProposal ? 'hidden' : 'contents'}>
           <HardwareToolbox />
         </div>
@@ -1153,19 +1280,20 @@ const Flow = React.memo(function Flow() {
         />
 
         <div className="builder-canvas flex-1 h-full min-w-0 relative" ref={reactFlowWrapper}>
-          {/* The live canvas stays mounted under the proposal preview but cannot be used. */}
-          <div className="h-full w-full" inert={reviewingProposal}>
           <ReactFlow
             nodes={flowNodes}
-            edges={edges}
-            onNodesChange={changes =>
-              onNodesChange(
-                changes.filter(
-                  change => !('id' in change) || !String(change.id).startsWith('network-zone-'),
-                ),
-              )
-            }
-            onEdgesChange={onEdgesChange}
+            edges={canvasEdges}
+            onNodesChange={changes => {
+              const own = changes.filter(
+                change => !('id' in change) || !String(change.id).startsWith('network-zone-'),
+              );
+              // During a review only the sizes React Flow measures are kept.
+              if (reviewingProposal) applyPreviewNodeChanges(own);
+              else onNodesChange(own);
+            }}
+            onEdgesChange={changes => {
+              if (!reviewingProposal) onEdgesChange(changes);
+            }}
             onConnect={onConnect}
             isValidConnection={isValidConnection}
             nodeTypes={nodeTypes}
@@ -1174,15 +1302,26 @@ const Flow = React.memo(function Flow() {
             onDrop={onDrop}
             onNodeDragStop={onNodeDragStop}
             onNodeClick={(_, node) => {
+              if (reviewingProposal) return;
               if (node.type === 'hardware' || node.type === 'rack') selectNode(node.id);
             }}
             onPaneClick={() => selectNode(null)}
+            // A proposal is looked at, not edited: the canvas pans and zooms only.
+            nodesDraggable={!reviewingProposal}
+            nodesConnectable={!reviewingProposal}
+            elementsSelectable={!reviewingProposal}
             connectionMode={ConnectionMode.Loose}
             fitView
             // A wide build has to fit on the screen as a whole.
             minZoom={0.15}
             attributionPosition="bottom-right"
-            className={arranging ? 'builder-flow-canvas is-arranging' : 'builder-flow-canvas'}
+            className={[
+              'builder-flow-canvas',
+              arranging && 'is-arranging',
+              reviewingProposal && 'is-reviewing',
+            ]
+              .filter(Boolean)
+              .join(' ')}
             defaultEdgeOptions={{
               type: 'custom',
               animated: true,
@@ -1209,11 +1348,17 @@ const Flow = React.memo(function Flow() {
                 ))}
               </div>
             </ViewportPortal>
-            <Controls />
+            <Controls showInteractive={!reviewingProposal} />
 
             <Panel
               position="top-left"
-              className="builder-top-panel flex max-w-[calc(100vw-2rem)] flex-wrap items-start gap-2"
+              // The toolbar edits the build; during a review there is nothing to edit.
+              className={[
+                'builder-top-panel flex max-w-[calc(100vw-2rem)] flex-wrap items-start gap-2',
+                reviewingProposal && 'hidden',
+              ]
+                .filter(Boolean)
+                .join(' ')}
             >
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -1457,45 +1602,97 @@ const Flow = React.memo(function Flow() {
             </Panel>
 
             <Panel position="top-right" className="tour-properties">
-              {selectedNodeId && <NodePropertiesPanel />}
+              {selectedNodeId && !reviewingProposal && <NodePropertiesPanel />}
             </Panel>
 
-            <ShortcutHints />
-            <LiveResourceDashboard />
+            {!reviewingProposal && <ShortcutHints />}
+            {!reviewingProposal && <LiveResourceDashboard />}
           </ReactFlow>
-          </div>
+          {id && assistantEnabled && <AssistantActivityPill buildId={id} />}
           {proposals.pending && (
             <ProposalBanner
               proposal={proposals.pending}
               loading={proposals.busy === 'open'}
               onReview={() => void proposals.openReview(proposals.pending!.id)}
-              onDismiss={proposals.dismiss}
             />
           )}
-          <ProposalPreviewCanvas />
+          {reviewingProposal && (
+            <ProposalReviewBar
+              busy={reviewBusy}
+              onApply={() => void applyReviewed()}
+              onReject={reason => void rejectReviewed(reason)}
+              onClose={proposals.closeReview}
+              onShowChanges={() => setSideTab('changes')}
+            />
+          )}
         </div>
-        {/* One side panel: the review while a proposal is open, otherwise the assistant. */}
+        {/* Beside the canvas: the assistant, and the list of changes while a proposal
+            is reviewed. The chat stays mounted behind the list, so a running reply
+            and the place one has scrolled to survive a look at the changes. */}
         {(reviewingProposal || showAssistant) && (
-          <aside className="builder-side-panel flex h-full w-[380px] shrink-0 flex-col border-l bg-card max-md:absolute max-md:inset-y-0 max-md:right-0 max-md:z-40 max-md:w-full">
-            {reviewingProposal ? (
-              <ProposalReviewPanel
-                busy={
-                  proposals.busy === 'apply' || proposals.busy === 'reject' ? proposals.busy : null
-                }
-                onApply={() => void proposals.apply()}
-                onReject={reason => void proposals.reject(reason)}
-                onClose={proposals.closeReview}
-              />
-            ) : (
-              <AssistantPanel
-                buildId={id!}
-                openingProposal={proposals.busy === 'open'}
-                onReview={proposalId => void proposals.openReview(proposalId)}
-                onProposal={() => void proposals.refreshSyncState()}
-                onClose={() => setAssistantOpen(false)}
-              />
+          <SidePanelShell>
+            {reviewingProposal && showAssistant && (
+              <div role="tablist" aria-label="Side panel" className="flex shrink-0 gap-1 border-b px-2 pt-2">
+                {(
+                  [
+                    ['chat', 'Assistant'],
+                    ['changes', `Changes (${previewTotal ?? 0})`],
+                  ] as const
+                ).map(([tab, label]) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    role="tab"
+                    aria-selected={sideTab === tab}
+                    onClick={() => setSideTab(tab)}
+                    className={[
+                      'rounded-t-md border border-b-0 px-3 py-1.5 text-xs font-medium transition-colors hover:cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+                      sideTab === tab
+                        ? 'border-border bg-background text-foreground'
+                        : 'border-transparent text-muted-foreground hover:text-foreground',
+                    ].join(' ')}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             )}
-          </aside>
+            {showAssistant && (
+              <div
+                role={reviewingProposal ? 'tabpanel' : undefined}
+                className={reviewingProposal && sideTab !== 'chat' ? 'hidden' : 'min-h-0 flex-1'}
+              >
+                <AssistantPanel
+                  buildId={id!}
+                  openingProposal={proposals.busy === 'open'}
+                  onReview={proposalId => void proposals.openReview(proposalId)}
+                  onProposal={proposal => {
+                    // What the assistant just suggested goes straight onto the canvas.
+                    void proposals.refreshSyncState();
+                    void proposals.openReview(proposal.id);
+                  }}
+                  reviewBusy={reviewBusy}
+                  onApply={() => void applyReviewed()}
+                  onReject={reason => void rejectReviewed(reason)}
+                  onShowChanges={() => setSideTab('changes')}
+                  onClose={() => setAssistantOpen(false)}
+                />
+              </div>
+            )}
+            {reviewingProposal && (
+              <div
+                role={showAssistant ? 'tabpanel' : undefined}
+                className={showAssistant && sideTab !== 'changes' ? 'hidden' : 'min-h-0 flex-1'}
+              >
+                <ProposalReviewPanel
+                  busy={reviewBusy}
+                  onApply={() => void applyReviewed()}
+                  onReject={reason => void rejectReviewed(reason)}
+                  onClose={proposals.closeReview}
+                />
+              </div>
+            )}
+          </SidePanelShell>
         )}
       </div>
     </div>

@@ -132,7 +132,7 @@ func (p *anthropicProvider) history(messages []Message) []anthropic.BetaMessageP
 	return history
 }
 
-func (p *anthropicProvider) Stream(ctx context.Context, req TurnRequest, onText func(string)) (*TurnResult, error) {
+func (p *anthropicProvider) Stream(ctx context.Context, req TurnRequest, handlers StreamHandlers) (*TurnResult, error) {
 	params := anthropic.BetaMessageNewParams{
 		Model:    anthropic.Model(p.model),
 		Messages: p.history(req.Messages),
@@ -151,7 +151,7 @@ func (p *anthropicProvider) Stream(ctx context.Context, req TurnRequest, onText 
 	var lastErr error
 	for _, maxTokens := range anthropicMaxTokens {
 		params.MaxTokens = maxTokens
-		result, emitted, err := p.streamOnce(ctx, params, onText)
+		result, emitted, err := p.streamOnce(ctx, params, handlers)
 		if err == nil {
 			return result, nil
 		}
@@ -165,23 +165,43 @@ func (p *anthropicProvider) Stream(ctx context.Context, req TurnRequest, onText 
 	return nil, lastErr
 }
 
-// streamOnce runs one request. emitted reports whether any text reached the
+// streamOnce runs one request. emitted reports whether anything reached the
 // caller, in which case the request must not be retried.
-func (p *anthropicProvider) streamOnce(ctx context.Context, params anthropic.BetaMessageNewParams, onText func(string)) (*TurnResult, bool, error) {
+func (p *anthropicProvider) streamOnce(ctx context.Context, params anthropic.BetaMessageNewParams, handlers StreamHandlers) (*TurnResult, bool, error) {
 	stream := p.messages.NewStreaming(ctx, params)
 	defer stream.Close()
 
 	message := anthropic.BetaMessage{}
 	emitted := false
+	// Content blocks are numbered across text, thinking and tool calls; the
+	// handlers count tool calls only.
+	toolOfBlock := map[int64]int{}
+	toolBytes := map[int]int{}
 	for stream.Next() {
 		event := stream.Current()
 		if err := message.Accumulate(event); err != nil {
 			return nil, emitted, &ProviderError{Kind: KindUnavailable, Message: "the provider sent a malformed stream: " + err.Error()}
 		}
-		if event.Type == "content_block_delta" && event.Delta.Type == "text_delta" && event.Delta.Text != "" {
-			emitted = true
-			if onText != nil {
-				onText(event.Delta.Text)
+		switch event.Type {
+		case "content_block_start":
+			if event.ContentBlock.Type == "tool_use" {
+				index := len(toolOfBlock)
+				toolOfBlock[event.Index] = index
+				emitted = true
+				handlers.toolStart(index, event.ContentBlock.Name)
+			}
+		case "content_block_delta":
+			switch event.Delta.Type {
+			case "text_delta":
+				if event.Delta.Text != "" {
+					emitted = true
+					handlers.text(event.Delta.Text)
+				}
+			case "input_json_delta":
+				if index, ok := toolOfBlock[event.Index]; ok && event.Delta.PartialJSON != "" {
+					toolBytes[index] += len(event.Delta.PartialJSON)
+					handlers.toolProgress(index, toolBytes[index])
+				}
 			}
 		}
 	}

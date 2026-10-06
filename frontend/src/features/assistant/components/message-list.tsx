@@ -1,45 +1,51 @@
+import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { CircleAlert, Info } from 'lucide-react';
-import type { ChatItem, ChatMessage } from '../store/assistant-store';
+import type { ChatItem, ChatMessage, ToolStep } from '../store/assistant-store';
+import { ActivityTimeline } from './activity-timeline';
 import { MessageMarkdown } from './message-markdown';
-import { ProposalCard, type ProposalCardStatus } from './proposal-card';
-import { ToolCallChip } from './tool-call-chip';
 
 type ProposalItem = Extract<ChatItem, { kind: 'proposal' }>;
 
 type MessageListProps = {
   messages: ChatMessage[];
-  /** True while the last message is still being written. */
-  streaming: boolean;
-  proposalStatus: (item: ProposalItem) => ProposalCardStatus;
-  /** True while a proposal review is being opened. */
-  openingProposal: boolean;
-  onReview: (proposalId: string) => void;
+  /** What the assistant is doing right now; null when the last message is finished. */
+  activity: string | null;
+  renderProposal: (item: ProposalItem) => ReactNode;
 };
 
 /** Failures the user fixes in Settings rather than by asking again. */
 const SETTINGS_CODES = new Set(['assistant_not_configured', 'assistant_disabled', 'auth', 'model']);
 
+/** What a turn consists of, with the steps between two pieces of text taken together. */
+type Block = { kind: 'steps'; steps: ToolStep[] } | { kind: 'item'; item: Exclude<ChatItem, { kind: 'tool' }> };
+
+function blocksOf(items: ChatItem[]): Block[] {
+  const blocks: Block[] = [];
+  for (const item of items) {
+    const last = blocks[blocks.length - 1];
+    if (item.kind === 'tool') {
+      if (last?.kind === 'steps') last.steps.push(item.step);
+      else blocks.push({ kind: 'steps', steps: [item.step] });
+    } else {
+      blocks.push({ kind: 'item', item });
+    }
+  }
+  return blocks;
+}
+
 function Item({
   item,
-  proposalStatus,
-  openingProposal,
-  onReview,
-}: { item: ChatItem } & Pick<MessageListProps, 'proposalStatus' | 'openingProposal' | 'onReview'>) {
+  renderProposal,
+}: {
+  item: Exclude<ChatItem, { kind: 'tool' }>;
+  renderProposal: MessageListProps['renderProposal'];
+}) {
   switch (item.kind) {
     case 'text':
       return <MessageMarkdown text={item.text} />;
-    case 'tool':
-      return <ToolCallChip step={item.step} />;
     case 'proposal':
-      return (
-        <ProposalCard
-          proposal={item.proposal}
-          status={proposalStatus(item)}
-          opening={openingProposal}
-          onReview={onReview}
-        />
-      );
+      return <>{renderProposal(item)}</>;
     case 'notice':
       return (
         <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
@@ -71,13 +77,7 @@ function Item({
 }
 
 /** The conversation: the user's messages and, per turn, everything the assistant did. */
-export function MessageList({
-  messages,
-  streaming,
-  proposalStatus,
-  openingProposal,
-  onReview,
-}: MessageListProps) {
+export function MessageList({ messages, activity, renderProposal }: MessageListProps) {
   return (
     <ol className="space-y-4" aria-label="Conversation">
       {messages.map((message, index) => {
@@ -91,22 +91,26 @@ export function MessageList({
             </li>
           );
         }
-        const working = streaming && index === messages.length - 1;
+        const working = activity !== null && index === messages.length - 1;
+        const blocks = blocksOf(message.items);
         return (
           <li key={message.id} className="space-y-2 text-sm" data-testid="assistant-message">
-            {message.items.map((item, position) => (
-              <Item
-                key={item.kind === 'tool' ? `tool-${item.step.id}` : position}
-                item={item}
-                proposalStatus={proposalStatus}
-                openingProposal={openingProposal}
-                onReview={onReview}
-              />
-            ))}
+            {blocks.map((block, position) =>
+              block.kind === 'steps' ? (
+                <ActivityTimeline
+                  key={`steps-${block.steps[0].key}`}
+                  steps={block.steps}
+                  // The last run of steps of a running turn may still grow.
+                  live={working && position === blocks.length - 1}
+                />
+              ) : (
+                <Item key={position} item={block.item} renderProposal={renderProposal} />
+              ),
+            )}
             {working && (
               <p className="flex items-center gap-1.5 text-xs text-muted-foreground" role="status">
                 <span className="assistant-working-dot" aria-hidden="true" />
-                Working…
+                {activity}
               </p>
             )}
           </li>

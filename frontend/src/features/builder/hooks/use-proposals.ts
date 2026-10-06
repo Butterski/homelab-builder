@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { ApiError } from '../../../lib/api';
 import { proposalApi, syncStateKey, useSyncState, type ProposalSummary } from '../api/proposals';
+import { polishCanvas } from '../lib/polish';
 import { useBuilderStore } from '../store/builder-store';
 
 type Busy = 'open' | 'apply' | 'reject' | null;
@@ -13,8 +14,8 @@ function messageOf(error: unknown, fallback: string): string {
 }
 
 /**
- * Connects the builder to LLM proposals: it polls for new ones, opens them on
- * the preview canvas, and applies or rejects them. It also reloads the build
+ * Connects the builder to LLM proposals: it polls for new ones, shows them on
+ * the canvas for review, and applies or rejects them. It also reloads the build
  * when a newer revision was saved from another session.
  */
 export function useProposals(buildId: string | undefined) {
@@ -36,7 +37,6 @@ export function useProposals(buildId: string | undefined) {
     errorUpdateCount,
   } = useSyncState(buildId, ready);
   const [busy, setBusy] = useState<Busy>(null);
-  const [dismissedId, setDismissedId] = useState<string | null>(null);
   // Poll results fetched before the preview was opened say nothing about it.
   const openedAt = useRef(0);
 
@@ -69,13 +69,21 @@ export function useProposals(buildId: string | undefined) {
     useBuilderStore.getState().endProposalPreview();
   }, []);
 
-  const apply = useCallback(async () => {
+  /** Applies the proposal under review. Resolves to whether it was applied. */
+  const apply = useCallback(async (): Promise<boolean> => {
     const current = useBuilderStore.getState().proposalPreview;
-    if (!current || !buildId) return;
+    if (!current || !buildId) return false;
     setBusy('apply');
     try {
       await useBuilderStore.getState().applyProposal(current.proposal.id);
-      toast.success('Proposal applied. Press Ctrl+Z to undo it.');
+      // New devices were put where there was room, not where they look best.
+      const added = current.proposal.diff.counts.nodes_added;
+      toast.success('Proposal applied', {
+        description: 'It is one undo step (Ctrl+Z).',
+        action: { label: 'Undo', onClick: () => useBuilderStore.getState().undo() },
+        ...(added > 0 ? { cancel: { label: 'Polish layout', onClick: () => polishCanvas() } } : {}),
+      });
+      return true;
     } catch (error) {
       toast.error(messageOf(error, 'Could not apply the proposal.'));
       if (error instanceof ApiError && error.status === 409) {
@@ -88,24 +96,28 @@ export function useProposals(buildId: string | undefined) {
           closeReview();
         }
       }
+      return false;
     } finally {
       setBusy(null);
       void refreshSyncState();
     }
   }, [buildId, closeReview, refreshSyncState]);
 
+  /** Rejects the proposal under review. Resolves to whether it was rejected. */
   const reject = useCallback(
-    async (reason: string) => {
+    async (reason: string): Promise<boolean> => {
       const current = useBuilderStore.getState().proposalPreview;
-      if (!current || !buildId) return;
+      if (!current || !buildId) return false;
       setBusy('reject');
       try {
         await proposalApi.reject(buildId, current.proposal.id, reason);
         toast.success('Proposal rejected.');
         closeReview();
+        return true;
       } catch (error) {
         toast.error(messageOf(error, 'Could not reject the proposal.'));
         if (error instanceof ApiError && error.status === 409) closeReview();
+        return false;
       } finally {
         setBusy(null);
         void refreshSyncState();
@@ -207,18 +219,16 @@ export function useProposals(buildId: string | undefined) {
   // Leaving the builder ends any open review.
   useEffect(() => () => useBuilderStore.getState().endProposalPreview(), []);
 
-  const pending: ProposalSummary | null =
-    !preview && syncState?.pending && syncState.pending.id !== dismissedId ? syncState.pending : null;
+  const pending: ProposalSummary | null = !preview && syncState?.pending ? syncState.pending : null;
 
   return {
-    /** A proposal waiting for review that is not open or dismissed. */
+    /** A proposal waiting for review that is not open on the canvas. */
     pending,
     busy,
     openReview,
     closeReview,
     apply,
     reject,
-    dismiss: () => setDismissedId(syncState?.pending?.id ?? null),
     refreshSyncState,
   };
 }

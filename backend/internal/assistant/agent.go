@@ -30,6 +30,11 @@ const (
 	maxToolResultChars = 60000
 	turnTimeout        = 5 * time.Minute
 	toolTimeout        = 90 * time.Second
+	// maxSelectedNodes bounds how many selected devices are named to the model.
+	maxSelectedNodes = 5
+	// pendingInterval is how often the growth of a tool call is reported while
+	// the model is still writing it.
+	pendingInterval = 300 * time.Millisecond
 
 	chatSourceLabel = "In-app assistant"
 )
@@ -51,14 +56,17 @@ type Event struct {
 
 // Event types.
 const (
-	EventTurnStart  = "turn_start"
-	EventTextDelta  = "text_delta"
-	EventToolCall   = "tool_call"
-	EventToolResult = "tool_result"
-	EventProposal   = "proposal"
-	EventNotice     = "notice"
-	EventError      = "error"
-	EventDone       = "done"
+	EventTurnStart = "turn_start"
+	EventTextDelta = "text_delta"
+	// EventToolPending says the model has begun a tool call and how much of it
+	// is written. The call itself follows as EventToolCall once it is complete.
+	EventToolPending = "tool_pending"
+	EventToolCall    = "tool_call"
+	EventToolResult  = "tool_result"
+	EventProposal    = "proposal"
+	EventNotice      = "notice"
+	EventError       = "error"
+	EventDone        = "done"
 )
 
 // AgentDeps are the collaborators of the chat agent.
@@ -78,7 +86,7 @@ type AgentDeps struct {
 // model, executes the tools the model calls, and stores the turn.
 type Agent struct {
 	deps    AgentDeps
-	running sync.Map // user id -> struct{}: one turn at a time per user
+	running sync.Map // user id -> build id of the turn in progress: one turn at a time per user
 }
 
 func NewAgent(deps AgentDeps) *Agent {
@@ -99,12 +107,17 @@ type Turn struct {
 	provider llm.Provider
 	creds    *services.AssistantCredentials
 	text     string
+	// selected are the devices the user had selected on the canvas, as the
+	// build has them.
+	selected []models.Node
 	release  func()
 }
 
 // Prepare validates a chat request and reserves the user's single turn slot.
-// The caller must run the returned turn, which releases the slot.
-func (a *Agent) Prepare(userID, buildID uuid.UUID, text string) (*Turn, error) {
+// The caller must run the returned turn, which releases the slot. selection
+// holds node ids the user has selected on the canvas; ids that are not nodes
+// of this build are ignored.
+func (a *Agent) Prepare(userID, buildID uuid.UUID, text string, selection []string) (*Turn, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil, fmt.Errorf("%w: the message is empty", ErrMessageInvalid)
@@ -120,7 +133,7 @@ func (a *Agent) Prepare(userID, buildID uuid.UUID, text string) (*Turn, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, busy := a.running.LoadOrStore(userID, struct{}{}); busy {
+	if _, busy := a.running.LoadOrStore(userID, buildID); busy {
 		return nil, ErrBusy
 	}
 	release := func() { a.running.Delete(userID) }
@@ -130,8 +143,33 @@ func (a *Agent) Prepare(userID, buildID uuid.UUID, text string) (*Turn, error) {
 		release()
 		return nil, err
 	}
+	turn.selected = selectedNodes(build, selection)
 	turn.release = release
 	return turn, nil
+}
+
+// selectedNodes resolves a selection sent by the browser against the build.
+// Only nodes the build really has are kept, in the order given, so nothing the
+// client made up reaches the model.
+func selectedNodes(build *models.Build, selection []string) []models.Node {
+	byID := make(map[string]models.Node, len(build.Nodes))
+	for _, node := range build.Nodes {
+		byID[node.ID.String()] = node
+	}
+	selected := []models.Node{}
+	seen := map[string]bool{}
+	for _, id := range selection {
+		node, ok := byID[strings.ToLower(strings.TrimSpace(id))]
+		if !ok || seen[node.ID.String()] {
+			continue
+		}
+		seen[node.ID.String()] = true
+		selected = append(selected, node)
+		if len(selected) == maxSelectedNodes {
+			break
+		}
+	}
+	return selected
 }
 
 func (a *Agent) prepareLocked(userID uuid.UUID, build *models.Build, creds *services.AssistantCredentials, text string) (*Turn, error) {
@@ -190,6 +228,13 @@ func (t *Turn) contextNote() string {
 			}
 		}
 	}
+	if len(t.selected) > 0 {
+		names := make([]string, 0, len(t.selected))
+		for _, node := range t.selected {
+			names = append(names, fmt.Sprintf("%q (%s, id %s)", node.Name, node.Type, node.ID))
+		}
+		fmt.Fprintf(&note, " The user has selected on the canvas: %s.", strings.Join(names, ", "))
+	}
 	note.WriteString(" Call get_build for the current state before proposing changes.]")
 	return note.String()
 }
@@ -238,10 +283,47 @@ func (t *Turn) Run(ctx context.Context, emit func(Event)) {
 		titles[tool.Name] = tool.Title
 	}
 
+	done := func() {
+		emit(Event{Type: EventDone, Data: map[string]any{"full": t.threadFull()}})
+	}
+
 	for step := 0; step < maxAgentSteps; step++ {
+		var written strings.Builder
+		lastPending := map[int]time.Time{}
+		pending := func(index int, name string, bytes int) {
+			lastPending[index] = time.Now()
+			emit(Event{Type: EventToolPending, Data: map[string]any{
+				"step": step, "index": index, "name": brief(name), "title": titles[name], "bytes": bytes,
+			}})
+		}
+		pendingNames := map[int]string{}
 		result, err := t.provider.Stream(ctx, llm.TurnRequest{System: ChatInstructions, Messages: conversation, Tools: tools},
-			func(delta string) { emit(Event{Type: EventTextDelta, Data: map[string]any{"text": delta}}) })
+			llm.StreamHandlers{
+				Text: func(delta string) {
+					written.WriteString(delta)
+					emit(Event{Type: EventTextDelta, Data: map[string]any{"text": delta}})
+				},
+				// A long tool call (a proposal with many operations) takes the
+				// model a while to write. Saying so beats a silent spinner.
+				ToolStart: func(index int, name string) {
+					pendingNames[index] = name
+					pending(index, name, 0)
+				},
+				ToolProgress: func(index int, bytes int) {
+					if time.Since(lastPending[index]) >= pendingInterval {
+						pending(index, pendingNames[index], bytes)
+					}
+				},
+			})
 		if err != nil {
+			// What was written before the stop is what the user saw: keep it,
+			// marked as unfinished, so the transcript and the next turn agree.
+			if text := written.String(); strings.TrimSpace(text) != "" {
+				if _, storeErr := deps.Threads.Append(t.thread.ID, services.AssistantRoleAssistant, t.creds.Provider, t.creds.Model,
+					[]services.MessagePart{{Type: services.PartText, Text: text}}, nil, true); storeErr != nil {
+					log.Printf("assistant: storing interrupted reply failed: %v", storeErr)
+				}
+			}
 			t.reportProviderError(ctx, err, fail)
 			return
 		}
@@ -292,7 +374,7 @@ func (t *Turn) Run(ctx context.Context, emit func(Event)) {
 			Native: result.Native, NativeFor: t.provider.ID(),
 		})
 		if len(result.ToolCalls) == 0 {
-			emit(Event{Type: EventDone, Data: map[string]any{}})
+			done()
 			return
 		}
 
@@ -301,19 +383,33 @@ func (t *Turn) Run(ctx context.Context, emit func(Event)) {
 		toolCtx, cancelTools := context.WithTimeout(context.WithoutCancel(ctx), toolTimeout)
 		toolParts := []services.MessagePart{}
 		toolResults := []llm.ToolResult{}
-		for _, call := range result.ToolCalls {
-			emit(Event{Type: EventToolCall, Data: map[string]any{"id": call.ID, "name": call.Name, "title": titles[call.Name]}})
-			content, isError, proposalID := t.runTool(toolCtx, actor, call)
-			toolParts = append(toolParts, services.MessagePart{Type: services.PartToolResult, ID: call.ID, Name: call.Name, Content: content, IsError: isError})
-			toolResults = append(toolResults, llm.ToolResult{CallID: call.ID, Name: call.Name, Content: content, IsError: isError})
-			payload := map[string]any{"id": call.ID, "name": call.Name, "ok": !isError}
-			if isError {
-				payload["error"] = truncate(content, 300)
+		for index, call := range result.ToolCalls {
+			emit(Event{Type: EventToolCall, Data: map[string]any{
+				"id": call.ID, "name": brief(call.Name), "title": titles[call.Name],
+				"detail": deps.Registry.Describe(call.Name, recorded[index].Input),
+				"step":   step, "index": index,
+			}})
+			started := time.Now()
+			outcome := t.runTool(toolCtx, actor, call)
+			took := time.Since(started).Milliseconds()
+			toolParts = append(toolParts, services.MessagePart{
+				Type: services.PartToolResult, ID: call.ID, Name: call.Name, Content: outcome.content, IsError: outcome.isError,
+				Summary: outcome.summary, DurationMS: took,
+			})
+			toolResults = append(toolResults, llm.ToolResult{CallID: call.ID, Name: call.Name, Content: outcome.content, IsError: outcome.isError})
+			payload := map[string]any{"id": call.ID, "name": brief(call.Name), "ok": !outcome.isError, "duration_ms": took}
+			if outcome.isError {
+				payload["error"] = truncate(outcome.content, 300)
+			} else {
+				payload["summary"] = outcome.summary
+				if len(outcome.focus) > 0 {
+					payload["focus"] = outcome.focus
+				}
 			}
 			emit(Event{Type: EventToolResult, Data: payload})
-			if proposalID != nil {
-				toolParts = append(toolParts, services.MessagePart{Type: services.PartProposal, ProposalID: proposalID.String()})
-				if proposal, err := deps.Proposals.GetForUser(*proposalID, t.userID); err == nil {
+			if outcome.proposalID != nil {
+				toolParts = append(toolParts, services.MessagePart{Type: services.PartProposal, ProposalID: outcome.proposalID.String()})
+				if proposal, err := deps.Proposals.GetForUser(*outcome.proposalID, t.userID); err == nil {
 					emit(Event{Type: EventProposal, Data: map[string]any{"proposal": services.SummarizeProposal(proposal)}})
 				}
 			}
@@ -341,7 +437,14 @@ func (t *Turn) Run(ctx context.Context, emit func(Event)) {
 		log.Printf("assistant: storing notice failed: %v", err)
 	}
 	emit(Event{Type: EventNotice, Data: map[string]any{"text": notice}})
-	emit(Event{Type: EventDone, Data: map[string]any{}})
+	done()
+}
+
+// threadFull reports whether the conversation reached its length limit with
+// this turn, so the panel can say so without reading the thread again.
+func (t *Turn) threadFull() bool {
+	rows, err := t.agent.deps.Threads.Messages(t.thread.ID)
+	return err == nil && len(rows) >= maxThreadMessages
 }
 
 func (t *Turn) reportProviderError(ctx context.Context, err error, fail func(code, message string)) {
@@ -359,17 +462,31 @@ func (t *Turn) reportProviderError(ctx context.Context, err error, fail func(cod
 	}
 }
 
-// runTool executes one tool call and returns the text handed back to the model.
-func (t *Turn) runTool(ctx context.Context, actor Actor, call llm.ToolCall) (content string, isError bool, proposalID *uuid.UUID) {
+// toolOutcome is what one tool call came to.
+type toolOutcome struct {
+	// content is the text handed back to the model.
+	content    string
+	isError    bool
+	proposalID *uuid.UUID
+	// summary and focus are for the chat panel only.
+	summary string
+	focus   []string
+}
+
+// runTool executes one tool call.
+func (t *Turn) runTool(ctx context.Context, actor Actor, call llm.ToolCall) toolOutcome {
 	result, err := t.agent.deps.Registry.Call(ctx, actor, ContextChat, call.Name, call.Input)
 	if err != nil {
 		var toolErr *ToolError
 		if errors.As(err, &toolErr) {
-			return toolErr.Message, true, nil
+			return toolOutcome{content: toolErr.Message, isError: true}
 		}
-		return "HLBuilder could not complete this call. Try again or take a different approach.", true, nil
+		return toolOutcome{content: "HLBuilder could not complete this call. Try again or take a different approach.", isError: true}
 	}
-	return truncateToolResult(result.Text()), false, result.ProposalID
+	return toolOutcome{
+		content: truncateToolResult(result.Text()), proposalID: result.ProposalID,
+		summary: brief(result.Summary), focus: result.Focus,
+	}
 }
 
 func truncateToolResult(text string) string {
@@ -452,17 +569,23 @@ func answersAll(row models.AssistantMessage, calls []llm.ToolCall) bool {
 	return true
 }
 
-// PartView is a message part as the chat panel shows it. Tool results carry no
-// content: the panel only needs to know whether a step worked.
+// PartView is a message part as the chat panel shows it. Tool calls carry no
+// arguments and tool results no content: the panel shows what a step was
+// about, whether it worked, and what came of it in a few words.
 type PartView struct {
-	Type     string                    `json:"type"`
-	Text     string                    `json:"text,omitempty"`
-	ID       string                    `json:"id,omitempty"`
-	Name     string                    `json:"name,omitempty"`
-	Title    string                    `json:"title,omitempty"`
-	OK       *bool                     `json:"ok,omitempty"`
-	Error    string                    `json:"error,omitempty"`
-	Proposal *services.ProposalSummary `json:"proposal,omitempty"`
+	Type  string `json:"type"`
+	Text  string `json:"text,omitempty"`
+	ID    string `json:"id,omitempty"`
+	Name  string `json:"name,omitempty"`
+	Title string `json:"title,omitempty"`
+	// Detail (tool_call) is what the call was about; Summary and DurationMS
+	// (tool_result) what came of it. All are plain text.
+	Detail     string                    `json:"detail,omitempty"`
+	OK         *bool                     `json:"ok,omitempty"`
+	Error      string                    `json:"error,omitempty"`
+	Summary    string                    `json:"summary,omitempty"`
+	DurationMS int64                     `json:"duration_ms,omitempty"`
+	Proposal   *services.ProposalSummary `json:"proposal,omitempty"`
 }
 
 // MessageView is a stored message as the chat panel shows it.
@@ -480,6 +603,9 @@ type ThreadView struct {
 	Messages []MessageView `json:"messages"`
 	// Full is true when the conversation reached its length limit.
 	Full bool `json:"full"`
+	// Running is true while a turn on this build is still being worked on, for
+	// example in another tab or after the page was reloaded mid-turn.
+	Running bool `json:"running"`
 }
 
 // Thread returns the stored conversation for display.
@@ -488,6 +614,9 @@ func (a *Agent) Thread(userID, buildID uuid.UUID) (*ThreadView, error) {
 		return nil, err
 	}
 	view := &ThreadView{Messages: []MessageView{}}
+	if running, ok := a.running.Load(userID); ok && running == buildID {
+		view.Running = true
+	}
 	thread, err := a.deps.Threads.Find(userID, buildID)
 	if err != nil || thread == nil {
 		return view, err
@@ -509,12 +638,17 @@ func (a *Agent) Thread(userID, buildID uuid.UUID) (*ThreadView, error) {
 			case services.PartText, services.PartNotice:
 				message.Parts = append(message.Parts, PartView{Type: part.Type, Text: part.Text})
 			case services.PartToolCall:
-				message.Parts = append(message.Parts, PartView{Type: part.Type, ID: part.ID, Name: part.Name, Title: titles[part.Name]})
+				message.Parts = append(message.Parts, PartView{
+					Type: part.Type, ID: part.ID, Name: brief(part.Name), Title: titles[part.Name],
+					Detail: a.deps.Registry.Describe(part.Name, part.Input),
+				})
 			case services.PartToolResult:
 				ok := !part.IsError
-				entry := PartView{Type: part.Type, ID: part.ID, Name: part.Name, OK: &ok}
+				entry := PartView{Type: part.Type, ID: part.ID, Name: brief(part.Name), OK: &ok, DurationMS: part.DurationMS}
 				if part.IsError {
 					entry.Error = truncate(part.Content, 300)
+				} else {
+					entry.Summary = brief(part.Summary)
 				}
 				message.Parts = append(message.Parts, entry)
 			case services.PartProposal:

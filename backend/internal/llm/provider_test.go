@@ -137,14 +137,26 @@ func TestAnthropic_StreamsTextAndToolCalls(t *testing.T) {
 		sse(w, anthropicToolTurn("claude-opus-5")...)
 	})
 
-	var deltas []string
+	var deltas, toolEvents []string
 	result, err := provider.Stream(context.Background(), TurnRequest{
 		System:   "You are the HLBuilder assistant.",
 		Messages: []Message{{Role: RoleUser, Text: "What is in my lab?"}},
 		Tools:    testTools,
-	}, func(delta string) { deltas = append(deltas, delta) })
+	}, StreamHandlers{
+		Text:         func(delta string) { deltas = append(deltas, delta) },
+		ToolStart:    func(index int, name string) { toolEvents = append(toolEvents, fmt.Sprintf("start %d %s", index, name)) },
+		ToolProgress: func(index, bytes int) { toolEvents = append(toolEvents, fmt.Sprintf("progress %d %d", index, bytes)) },
+	})
 	if err != nil {
 		t.Fatalf("stream: %v", err)
+	}
+	// The call is announced when the model begins it, and its arguments are
+	// reported as they grow, long before the call is complete.
+	if len(toolEvents) < 2 || toolEvents[0] != "start 0 get_build" {
+		t.Fatalf("tool call not announced while streaming: %q", toolEvents)
+	}
+	if last := toolEvents[len(toolEvents)-1]; last != fmt.Sprintf("progress 0 %d", len(`{"build_id":"b-1"}`)) {
+		t.Fatalf("argument progress must end at the full length, got %q", toolEvents)
 	}
 
 	if strings.Join(deltas, "|") != "Let me look |at the build." || result.Text != "Let me look at the build." {
@@ -201,7 +213,7 @@ func TestAnthropic_ReplaysNativeMessagesOnlyForTheSameModel(t *testing.T) {
 	})
 	first, err := provider.Stream(context.Background(), TurnRequest{
 		System: "s", Messages: []Message{{Role: RoleUser, Text: "hi"}}, Tools: testTools,
-	}, nil)
+	}, StreamHandlers{})
 	if err != nil {
 		t.Fatalf("stream: %v", err)
 	}
@@ -211,7 +223,7 @@ func TestAnthropic_ReplaysNativeMessagesOnlyForTheSameModel(t *testing.T) {
 		{Role: RoleAssistant, Text: first.Text, ToolCalls: first.ToolCalls, Native: first.Native, NativeFor: provider.ID()},
 		{Role: RoleTool, ToolResults: []ToolResult{{CallID: "toolu_1", Name: "get_build", Content: `{"nodes":[]}`}}},
 	}
-	if _, err := provider.Stream(context.Background(), TurnRequest{System: "s", Messages: conversation, Tools: testTools}, nil); err != nil {
+	if _, err := provider.Stream(context.Background(), TurnRequest{System: "s", Messages: conversation, Tools: testTools}, StreamHandlers{}); err != nil {
 		t.Fatalf("second turn: %v", err)
 	}
 	messages := log.last(t).Body["messages"].([]any)
@@ -229,7 +241,7 @@ func TestAnthropic_ReplaysNativeMessagesOnlyForTheSameModel(t *testing.T) {
 
 	// Another model cannot verify those reasoning blocks: send the plain form.
 	conversation[1].NativeFor = "anthropic/claude-sonnet-5"
-	if _, err := provider.Stream(context.Background(), TurnRequest{System: "s", Messages: conversation, Tools: testTools}, nil); err != nil {
+	if _, err := provider.Stream(context.Background(), TurnRequest{System: "s", Messages: conversation, Tools: testTools}, StreamHandlers{}); err != nil {
 		t.Fatalf("third turn: %v", err)
 	}
 	rebuilt := log.last(t).Body["messages"].([]any)[1].(map[string]any)["content"].([]any)
@@ -246,7 +258,7 @@ func TestAnthropic_ModelSpecificBehaviour(t *testing.T) {
 	provider, log := newAnthropicForTest(t, "claude-haiku-4-5", func(w http.ResponseWriter, _ *http.Request) {
 		sse(w, anthropicToolTurn("claude-haiku-4-5")...)
 	})
-	if _, err := provider.Stream(context.Background(), TurnRequest{System: "s", Messages: []Message{{Role: RoleUser, Text: "hi"}}}, nil); err != nil {
+	if _, err := provider.Stream(context.Background(), TurnRequest{System: "s", Messages: []Message{{Role: RoleUser, Text: "hi"}}}, StreamHandlers{}); err != nil {
 		t.Fatalf("stream: %v", err)
 	}
 	request := log.last(t)
@@ -271,7 +283,7 @@ func TestAnthropic_ModelSpecificBehaviour(t *testing.T) {
 		}
 		sse(w, anthropicToolTurn("claude-legacy")...)
 	})
-	if _, err := small.Stream(context.Background(), TurnRequest{System: "s", Messages: []Message{{Role: RoleUser, Text: "hi"}}}, nil); err != nil {
+	if _, err := small.Stream(context.Background(), TurnRequest{System: "s", Messages: []Message{{Role: RoleUser, Text: "hi"}}}, StreamHandlers{}); err != nil {
 		t.Fatalf("stream with a smaller budget: %v", err)
 	}
 	if attempts != 2 || smallLog.last(t).Body["max_tokens"] != float64(8192) {
@@ -291,7 +303,7 @@ func TestAnthropic_RefusalAndErrors(t *testing.T) {
 			anthropicEvent("message_stop", map[string]any{"type": "message_stop"}),
 		)
 	})
-	result, err := refusing.Stream(context.Background(), TurnRequest{System: "s", Messages: []Message{{Role: RoleUser, Text: "hi"}}}, nil)
+	result, err := refusing.Stream(context.Background(), TurnRequest{System: "s", Messages: []Message{{Role: RoleUser, Text: "hi"}}}, StreamHandlers{})
 	if err != nil || result.StopReason != StopRefusal || result.StopDetail != "declined" || len(result.ToolCalls) != 0 {
 		t.Fatalf("refusal not reported: %+v, %v", result, err)
 	}
@@ -310,7 +322,7 @@ func TestAnthropic_RefusalAndErrors(t *testing.T) {
 			w.WriteHeader(status)
 			_, _ = io.WriteString(w, `{"type":"error","error":{"type":"some_error","message":"provider says no"}}`)
 		})
-		_, err := failing.Stream(context.Background(), TurnRequest{System: "s", Messages: []Message{{Role: RoleUser, Text: "hi"}}}, nil)
+		_, err := failing.Stream(context.Background(), TurnRequest{System: "s", Messages: []Message{{Role: RoleUser, Text: "hi"}}}, StreamHandlers{})
 		var providerErr *ProviderError
 		if !errors.As(err, &providerErr) || providerErr.Kind != kind || providerErr.Status != status {
 			t.Errorf("status %d: got %v, want kind %s", status, err, kind)
@@ -382,7 +394,7 @@ func TestOpenAICompatible_StreamsTextAndAssemblesToolCalls(t *testing.T) {
 		)
 	})
 
-	var deltas []string
+	var deltas, toolEvents []string
 	result, err := provider.Stream(context.Background(), TurnRequest{
 		System: "system text",
 		Messages: []Message{
@@ -391,12 +403,22 @@ func TestOpenAICompatible_StreamsTextAndAssemblesToolCalls(t *testing.T) {
 			{Role: RoleTool, ToolResults: []ToolResult{{CallID: "call_0", Name: "list_builds", Content: "boom", IsError: true}}},
 		},
 		Tools: testTools,
-	}, func(delta string) { deltas = append(deltas, delta) })
+	}, StreamHandlers{
+		Text:         func(delta string) { deltas = append(deltas, delta) },
+		ToolStart:    func(index int, name string) { toolEvents = append(toolEvents, fmt.Sprintf("start %d %s", index, name)) },
+		ToolProgress: func(index, bytes int) { toolEvents = append(toolEvents, fmt.Sprintf("progress %d %d", index, bytes)) },
+	})
 	if err != nil {
 		t.Fatalf("stream: %v", err)
 	}
 	if strings.Join(deltas, "|") != "Checking |the build." || result.Text != "Checking the build." || result.StopReason != StopToolUse {
 		t.Fatalf("unexpected result: %q %+v", deltas, result)
+	}
+	// Each call is announced once, when its name is known, and its arguments
+	// are reported as they arrive.
+	wantEvents := "start 0 get_build|progress 0 7|progress 0 18|start 1 validate_build|progress 1 18"
+	if got := strings.Join(toolEvents, "|"); got != wantEvents {
+		t.Fatalf("tool progress:\n got %s\nwant %s", got, wantEvents)
 	}
 	if len(result.ToolCalls) != 2 ||
 		result.ToolCalls[0].ID != "call_a" || string(result.ToolCalls[0].Input) != `{"build_id":"b-1"}` ||
@@ -442,7 +464,7 @@ func TestOpenAICompatible_ToleratesProviderQuirks(t *testing.T) {
 			"data: [DONE]\n\n",
 		)
 	})
-	result, err := provider.Stream(context.Background(), TurnRequest{System: "s", Messages: []Message{{Role: RoleUser, Text: "hi"}}, Tools: testTools}, nil)
+	result, err := provider.Stream(context.Background(), TurnRequest{System: "s", Messages: []Message{{Role: RoleUser, Text: "hi"}}, Tools: testTools}, StreamHandlers{})
 	if err != nil {
 		t.Fatalf("stream: %v", err)
 	}
@@ -460,7 +482,7 @@ func TestOpenAICompatible_ToleratesProviderQuirks(t *testing.T) {
 	truncated, _ := newCompatibleForTest(t, ProviderOpenAICompatible, "k", func(w http.ResponseWriter, _ *http.Request) {
 		sse(w, chunk(map[string]any{"content": "partial"}, "length"), "data: [DONE]\n\n")
 	})
-	if result, err := truncated.Stream(context.Background(), TurnRequest{System: "s", Messages: []Message{{Role: RoleUser, Text: "hi"}}}, nil); err != nil || result.StopReason != StopMaxTokens {
+	if result, err := truncated.Stream(context.Background(), TurnRequest{System: "s", Messages: []Message{{Role: RoleUser, Text: "hi"}}}, StreamHandlers{}); err != nil || result.StopReason != StopMaxTokens {
 		t.Fatalf("length finish: %+v, %v", result, err)
 	}
 }
@@ -479,7 +501,7 @@ func TestOpenAICompatible_GeminiSchemaIsReduced(t *testing.T) {
 			"maximum":{"type":"number","minimum":0,"maximum":10},
 			"operations":{"type":"array","minItems":1,"maxItems":100,"items":{"type":"object","additionalProperties":false,
 				"properties":{"name":{"type":"string","maxLength":120},"op":{"type":"string","enum":["add_node"]}}}}}}`)}}
-	if _, err := gemini.Stream(context.Background(), TurnRequest{System: "s", Messages: []Message{{Role: RoleUser, Text: "hi"}}, Tools: tools}, nil); err != nil {
+	if _, err := gemini.Stream(context.Background(), TurnRequest{System: "s", Messages: []Message{{Role: RoleUser, Text: "hi"}}, Tools: tools}, StreamHandlers{}); err != nil {
 		t.Fatalf("stream: %v", err)
 	}
 	parameters := log.last(t).Body["tools"].([]any)[0].(map[string]any)["function"].(map[string]any)["parameters"].(map[string]any)
@@ -506,7 +528,7 @@ func TestOpenAICompatible_ErrorsAndModels(t *testing.T) {
 		w.WriteHeader(http.StatusUnauthorized)
 		_, _ = io.WriteString(w, `{"error":{"message":"Incorrect API key provided","type":"invalid_request_error","code":"invalid_api_key"}}`)
 	})
-	_, err := failing.Stream(context.Background(), TurnRequest{System: "s", Messages: []Message{{Role: RoleUser, Text: "hi"}}}, nil)
+	_, err := failing.Stream(context.Background(), TurnRequest{System: "s", Messages: []Message{{Role: RoleUser, Text: "hi"}}}, StreamHandlers{})
 	var providerErr *ProviderError
 	if !errors.As(err, &providerErr) || providerErr.Kind != KindAuth || !strings.Contains(providerErr.UserMessage(), "API key") {
 		t.Fatalf("expected an auth error, got %v", err)
@@ -532,7 +554,7 @@ func TestOpenAICompatible_ErrorsAndModels(t *testing.T) {
 		cancel()
 		<-r.Context().Done()
 	})
-	if _, err := hanging.Stream(ctx, TurnRequest{System: "s", Messages: []Message{{Role: RoleUser, Text: "hi"}}}, nil); !errors.Is(err, context.Canceled) {
+	if _, err := hanging.Stream(ctx, TurnRequest{System: "s", Messages: []Message{{Role: RoleUser, Text: "hi"}}}, StreamHandlers{}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled, got %v", err)
 	}
 }

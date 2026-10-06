@@ -80,6 +80,15 @@ func proposalTools() []*Tool {
 			InputSchema: json.RawMessage(proposeChangesSchema),
 			Scope:       ScopePropose,
 			handler:     proposeChanges,
+			describe: func(args json.RawMessage) string {
+				var in struct {
+					Operations []json.RawMessage `json:"operations"`
+				}
+				if json.Unmarshal(args, &in) != nil || len(in.Operations) == 0 {
+					return ""
+				}
+				return count(len(in.Operations), "operation", "operations")
+			},
 		},
 		{
 			Name:        "get_proposal",
@@ -140,7 +149,43 @@ func proposeChanges(_ context.Context, r *Registry, actor Actor, args json.RawMe
 			data["gaming"] = map[string]any{"status": report.Status, "issues": report.Issues}
 		}
 	}
-	return &Result{ProposalID: &proposal.ID, Data: data}, nil
+	validation, _ := data["validation"].(validationView)
+	summary := count(services.SummarizeProposal(proposal).Counts.Total, "change", "changes")
+	if len(validation.Errors)+len(validation.Warnings) > 0 {
+		summary += ", " + validation.summary()
+	}
+	return &Result{ProposalID: &proposal.ID, Data: data, Summary: summary, Focus: touchedNodes(proposal.Diff)}, nil
+}
+
+// touchedNodes lists the nodes a proposal adds, changes or removes, including
+// the ends of its connections and the hosts of its guests and components.
+func touchedNodes(raw json.RawMessage) []string {
+	var diff services.ProposalDiff
+	if json.Unmarshal(raw, &diff) != nil {
+		return nil
+	}
+	ids := []string{}
+	for _, group := range [][]services.NodeDiff{diff.Nodes.Added, diff.Nodes.Changed, diff.Nodes.Removed} {
+		for _, node := range group {
+			ids = append(ids, node.ID)
+		}
+	}
+	for _, group := range [][]services.ConnectionDiff{diff.Connections.Added, diff.Connections.Changed, diff.Connections.Removed} {
+		for _, connection := range group {
+			ids = append(ids, connection.Source, connection.Target)
+		}
+	}
+	for _, group := range [][]services.GuestDiff{diff.VMs.Added, diff.VMs.Changed, diff.VMs.Removed} {
+		for _, guest := range group {
+			ids = append(ids, guest.HostID)
+		}
+	}
+	for _, group := range [][]services.ComponentDiff{diff.Components.Added, diff.Components.Removed} {
+		for _, component := range group {
+			ids = append(ids, component.HostID)
+		}
+	}
+	return focusOn(ids...)
 }
 
 func getProposal(_ context.Context, r *Registry, actor Actor, args json.RawMessage) (*Result, error) {
@@ -181,5 +226,5 @@ func getProposal(_ context.Context, r *Registry, actor Actor, args json.RawMessa
 	if proposal.AppliedRevision != nil {
 		data["applied_revision"] = proposal.AppliedRevision
 	}
-	return &Result{Data: data}, nil
+	return &Result{Data: data, Summary: strings.ReplaceAll(proposal.Status, "_", " ")}, nil
 }

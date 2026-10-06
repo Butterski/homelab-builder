@@ -320,7 +320,15 @@ interface BuilderState {
   startProposalPreview: (proposal: Proposal) => void;
   endProposalPreview: () => void;
   focusProposalNodes: (ids: string[]) => void;
+  /**
+   * While a proposal is reviewed the canvas shows the preview graph. React Flow
+   * still has to store what it measures for the cards it draws; nothing else
+   * about a preview can change.
+   */
+  applyPreviewNodeChanges: OnNodesChange;
   applyProposal: (proposalId: string) => Promise<void>;
+  /** The devices of the proposal applied last, so the canvas can light them up once. */
+  appliedGlow: { ids: string[]; nonce: number } | null;
 
   // Computed getters
   totalCpu: () => number;
@@ -1325,6 +1333,7 @@ export const useBuilderStore = create<BuilderState>()(
           lastSyncedFingerprint: '',
           proposalPreview: null,
           canvasFocus: null,
+          appliedGlow: null,
         });
       },
       setProjectName: name => set({ projectName: name }),
@@ -1415,6 +1424,22 @@ export const useBuilderStore = create<BuilderState>()(
 
       endProposalPreview: () => set({ proposalPreview: null }),
 
+      applyPreviewNodeChanges: changes => {
+        const measured = changes.filter(change => change.type === 'dimensions');
+        if (measured.length === 0) return;
+        set(state =>
+          state.proposalPreview
+            ? {
+                proposalPreview: {
+                  ...state.proposalPreview,
+                  nodes: applyNodeChanges(measured, state.proposalPreview.nodes),
+                },
+              }
+            : state,
+        );
+      },
+      appliedGlow: null,
+
       focusProposalNodes: ids =>
         set(state =>
           state.proposalPreview
@@ -1465,7 +1490,10 @@ export const useBuilderStore = create<BuilderState>()(
           // Bring what was applied into view: new devices may be off screen.
           const applied = new Set(get().nodes.map(node => node.id));
           const visible = touched.filter(nodeId => applied.has(nodeId));
-          if (visible.length > 0) get().requestCanvasFocus(visible);
+          if (visible.length > 0) {
+            set(state => ({ appliedGlow: { ids: visible, nonce: (state.appliedGlow?.nonce ?? 0) + 1 } }));
+            get().requestCanvasFocus(visible);
+          }
         });
       },
 
