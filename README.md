@@ -18,7 +18,8 @@ The core of the application is a visual canvas powered by **ReactFlow**.
 - **Drag-and-drop hardware nodes**: Routers, switches, servers, NAS, Mini-PCs, SBCs (like Raspberry Pi), UPS, game consoles, and more.
 - **Wire components**: Graph-based representation of physical and logical connections.
 - **Nested Virtualization**: Define Virtual Machines (VMs), Containers, or LXCs directly on compute nodes.
-- **Real-time Synchronization**: The visual state is continuously synchronized with a PostgreSQL database.
+- **Polish**: One click arranges the canvas with a layout engine written for it: internet at the top, every device under the port it is plugged into, a rack moved as one block, no overlapping cards, and the cables of the network tree drawn without a crossing. Two styles (Hierarchy and Compact), shown on your own build before anything moves; one `Ctrl+Z` undoes it.
+- **Saves by itself, stays current**: The canvas is saved to PostgreSQL as you work and says honestly whether it is saved. A failed save is retried, changes made in another tab arrive without a reload, and an edit that lost against a newer version is one Undo away.
 
 ### 2. Automated IP Management (`hlbIPAM`)
 A sophisticated backend microservice manages network addressing:
@@ -38,8 +39,8 @@ A sophisticated backend microservice manages network addressing:
 
 ### 5. Design With an LLM
 - **MCP server**: Connect Claude Code, Cursor, VS Code or any MCP client to `/mcp` with a personal access token. The client can read your builds, search the catalogs and propose changes. See [docs/MCP.md](./docs/MCP.md).
-- **In-app assistant**: An optional chat panel in the builder, off by default. You bring your own provider and API key (Anthropic, OpenAI, Gemini, OpenRouter, Ollama or any OpenAI-compatible endpoint).
-- **You approve every change**: An LLM never edits a build. It sends a proposal that you review on a preview canvas and then apply or reject; one `Ctrl+Z` undoes an applied proposal.
+- **In-app assistant**: An optional chat panel in the builder, off by default. You bring your own provider and API key (Anthropic, OpenAI, Gemini, OpenRouter, Ollama or any OpenAI-compatible endpoint). It shows each step it takes while it works: what it reads, what it searches for and what came of it.
+- **You approve every change**: An LLM never edits a build. It sends a proposal that you review on the canvas itself, drawn as the build would be with every change marked, and then apply or reject; one `Ctrl+Z` undoes an applied proposal.
 - **Keys you can verify**: Provider keys are stored AES-256-GCM encrypted and never sent back to the browser. The settings page shows the stored record and links to the code. See [docs/AI-ASSISTANT-SECURITY.md](./docs/AI-ASSISTANT-SECURITY.md).
 
 ### 6. Plan a LAN Party or a Game Server

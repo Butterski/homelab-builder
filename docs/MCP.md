@@ -94,11 +94,17 @@ An LLM client never edits a build directly.
    the IP addresses the devices would get, and any network warnings. An invalid change set is
    refused with a message naming the faulty operation, and nothing is stored.
 2. The proposal waits in the builder. If the build is open, a banner appears within a few seconds;
-   the client also gets a review link.
-3. **Review** shows the proposal on a read-only preview canvas: new, changed and removed parts are
-   marked, and a side panel lists every change.
-4. **Apply** saves the changes. They are applied on top of your latest edits, and `Ctrl+Z` undoes
-   them in one step. **Reject** discards the proposal; the reason you give is passed to the client.
+   the client also gets a review link. Elsewhere in the app, the project's card in the sidebar
+   shows that a proposal is waiting. A banner you put aside leaves a small chip to come back to.
+3. **Review** shows the proposal on the canvas itself, drawn as the build would be: what is removed
+   fades, what changes is marked, and new devices and cables come in one after another. The canvas
+   is read-only while you look, and nothing is saved. A bar under the canvas steps through the
+   changes; the side panel lists every one of them.
+4. **Apply** saves the changes. They are applied on top of your latest edits, the canvas shows what
+   was applied, and `Ctrl+Z` undoes them in one step. A new device is put where there is room on
+   the canvas as it is when you apply, not where the client saw free space; **Polish** arranges
+   everything if you want it in line. **Reject** discards the proposal; the reason you give is
+   passed to the client.
 
 A new proposal for a build replaces the one still waiting. If you change the build so that a
 proposal no longer fits (for example you delete a device it connects to), it is marked as a

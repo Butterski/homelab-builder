@@ -87,6 +87,9 @@ Code: `LoadKeyring` in [`assistant_settings_service.go`](../backend/internal/ser
 Each chat request sends:
 
 - the conversation so far and your new message;
+- the device you have selected on the canvas, if any. A chip above the message box names it and
+  lets you leave it out. The browser sends only its id; the server keeps it if it belongs to the
+  open build and describes the device from its own data (name, type, id);
 - a fixed instruction text, the same for every user
   ([`backend/internal/assistant/instructions.go`](../backend/internal/assistant/instructions.go));
 - the results of the tools the model calls. In practice that is the build you have open (device
@@ -106,19 +109,32 @@ models, HLBuilder asks Anthropic to answer a request the model declines with ano
 Code: [`backend/internal/llm/anthropic.go`](../backend/internal/llm/anthropic.go).
 
 The conversation is stored in the instance's database so it is there when you reopen the build.
-**Clear the chat** in the panel deletes it.
+That includes a reply you stopped or one cut off by an error, as far as it was written and marked
+as unfinished, so what you saw is also what the model is told next time. With each step the
+assistant took, a one-line summary and its duration are stored. **Clear the chat** in the panel
+deletes all of it.
 
 ## The assistant cannot change a build
 
 The model has no tool that writes to a build. It can only create a **proposal**: a change set that is
-checked with a dry run and then waits for you. You see it on a read-only preview with every change
-listed, and only your **Apply** saves it. One `Ctrl+Z` undoes an applied proposal.
-Code: [`backend/internal/services/proposal_service.go`](../backend/internal/services/proposal_service.go).
+checked with a dry run and then waits for you. You see it on the canvas, drawn as the build would
+be with every change marked and listed. The canvas is read-only while you look: the browser keeps
+the proposal apart from your build, so nothing of it can be saved along with your own edits. Only
+your **Apply** saves it, and one `Ctrl+Z` undoes an applied proposal.
+Code: [`backend/internal/services/proposal_service.go`](../backend/internal/services/proposal_service.go),
+`proposalPreview` in [`frontend/src/features/builder/store/builder-store.ts`](../frontend/src/features/builder/store/builder-store.ts).
 
 Text inside a build (device names, notes) reaches the model as data. A reply is rendered as Markdown
 without raw HTML and without images, so a reply cannot make your browser load an address of the
 model's choosing.
 Code: [`frontend/src/features/assistant/components/message-markdown.tsx`](../frontend/src/features/assistant/components/message-markdown.tsx).
+
+The chat also lists the steps the assistant takes, each with what it was about and what came of it
+("Search the hardware catalog", "2.5G switch", "6 results"). Those short texts are built from what
+the model wrote, so they are treated like the reply: the server cuts each to one line of at most 80
+characters without control characters, and the browser shows them as plain text, never as Markdown.
+Code: `brief` in [`backend/internal/assistant/tools.go`](../backend/internal/assistant/tools.go),
+[`frontend/src/features/assistant/components/activity-timeline.tsx`](../frontend/src/features/assistant/components/activity-timeline.tsx).
 
 ## Which addresses the server will call
 
@@ -177,5 +193,7 @@ Behind your own reverse proxy, forward `/api/assistant/` unbuffered so replies s
 | Where the key is used | [`backend/internal/llm/anthropic.go`](../backend/internal/llm/anthropic.go), [`backend/internal/llm/openai_compat.go`](../backend/internal/llm/openai_compat.go) |
 | Address checks | [`backend/internal/llm/ssrf.go`](../backend/internal/llm/ssrf.go), tests in [`ssrf_test.go`](../backend/internal/llm/ssrf_test.go) |
 | The chat loop and its limits | [`backend/internal/assistant/agent.go`](../backend/internal/assistant/agent.go) |
+| What a selection on the canvas adds to a request | `selectedNodes` in [`agent.go`](../backend/internal/assistant/agent.go), tests in [`agent_test.go`](../backend/internal/assistant/agent_test.go) |
+| Step texts are short plain lines | `brief` in [`backend/internal/assistant/tools.go`](../backend/internal/assistant/tools.go), tests in [`agent_test.go`](../backend/internal/assistant/agent_test.go) |
 | HTTP endpoints | [`backend/internal/handlers/assistant_handler.go`](../backend/internal/handlers/assistant_handler.go) |
 | MCP access tokens | [`docs/MCP.md`](MCP.md) |
