@@ -141,18 +141,21 @@ export default function SharedBuildPage() {
         parent_id: (n.data as any).parent_id || null,
       }));
 
-      const edgeDTOs = edges.map((e: Edge) => ({
-        source: e.source,
-        source_handle: e.sourceHandle || '',
-        target: e.target,
-        target_handle: e.targetHandle || '',
-        // The medium matters to the server: a Wi-Fi client saved as a cable is rejected.
-        type: (e.data as any)?.connection_type || 'ethernet',
-        speed: (e.data as any)?.speed || '1 GbE',
-        subnet: (e.data as any)?.subnet || '',
-        wireless_standard: (e.data as any)?.wireless_standard || '',
-        direction: (e.data as any)?.direction || 'auto',
-      }));
+      const edgeDTOs = edges.map((e: Edge) => {
+        const data = (e.data ?? {}) as Record<string, string | undefined>;
+        return {
+          source: e.source,
+          source_handle: e.sourceHandle || '',
+          target: e.target,
+          target_handle: e.targetHandle || '',
+          // The medium matters to the server: a Wi-Fi client saved as a cable is rejected.
+          type: data.connection_type || 'ethernet',
+          speed: data.speed || '1 GbE',
+          subnet: data.subnet || '',
+          wireless_standard: data.wireless_standard || '',
+          direction: data.direction || 'auto',
+        };
+      });
 
       const updated = await buildApi.updateShared(token, {
         revision: build.revision,

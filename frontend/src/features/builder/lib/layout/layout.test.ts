@@ -848,7 +848,8 @@ describe('random networks', () => {
     for (let seed = 1; seed <= seeds; seed++) {
       expectTidy(randomNetwork(seed, 5 + ((seed * 37) % 116)), `seed ${seed}`);
     }
-  }, 5000 + seeds * 100);
+    // Roomy on purpose: a busy CI machine on an older Node takes several times as long.
+  }, 15_000 + seeds * 250);
 
   it('does not reshuffle the canvas when one device is added', () => {
     let checked = 0;

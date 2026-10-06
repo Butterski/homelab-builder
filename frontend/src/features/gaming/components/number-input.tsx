@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 /**
  * A whole-number input that lets the user clear the field and type a new
@@ -27,7 +27,11 @@ export function NumberInput({
   const [draft, setDraft] = useState(String(value));
 
   // Follow changes made elsewhere: undo, a proposal, another field of the form.
-  useEffect(() => setDraft(String(value)), [value]);
+  const [shown, setShown] = useState(value);
+  if (shown !== value) {
+    setShown(value);
+    setDraft(String(value));
+  }
 
   return (
     <input

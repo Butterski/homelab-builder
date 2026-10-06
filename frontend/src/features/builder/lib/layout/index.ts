@@ -53,12 +53,14 @@ export function computeLayout(graph: LayoutGraph, options: LayoutOptions): Layou
     return { positions: [], metrics: EMPTY_METRICS, usedEstimates: false };
   }
   const forest = buildForest(units);
-  const foldWidth = chooseFoldWidth(units, forest, options.style);
+  const fold = chooseFoldWidth(units, forest, options.style);
+  const foldWidth = fold.foldWidth;
 
   // A feeder (a UPS, a second modem) stands beside what it feeds. Which side is
   // tried out: the one where its cables run over fewer cards and cables wins.
+  // The drawing that settled the fold has every feeder on the left already.
   const sides: FeederSides = new Map();
-  let at = place(units, forest, options.style, sides, foldWidth);
+  let at = fold.at;
   let metrics = measureLayout(units, forest, at);
   for (const feeder of forest.feeders) {
     if (feeder.crown) continue;
@@ -99,18 +101,24 @@ const ROOM: Record<LayoutStyle, { width: number; shape: number }> = {
 /** Rows wider than one of these are folded; tried from no folding to a lot of it. */
 const FOLD_WIDTHS = [Infinity, 4800, 3200, 2400, 1600, 1000];
 
+/** A fold width with the drawing it gives, every feeder on its default side. */
+interface Fold {
+  foldWidth: number;
+  at: Map<string, Point>;
+}
+
 /** The least folding that gives the drawing a readable shape, or failing that the best shape on offer. */
-function chooseFoldWidth(units: UnitGraph, forest: Forest, style: LayoutStyle): number {
+function chooseFoldWidth(units: UnitGraph, forest: Forest, style: LayoutStyle): Fold {
   const room = ROOM[style];
-  let best = { foldWidth: Infinity, shape: Infinity };
+  let best: (Fold & { shape: number }) | null = null;
   for (const foldWidth of FOLD_WIDTHS) {
     const at = place(units, forest, style, new Map(), foldWidth);
     const outline = boundsOf(cardsOf(units, at));
     const shape = outline.width / Math.max(outline.height, 1);
-    if (outline.width <= room.width || shape <= room.shape) return foldWidth;
-    if (shape < best.shape - 1e-9) best = { foldWidth, shape };
+    if (outline.width <= room.width || shape <= room.shape) return { foldWidth, at };
+    if (!best || shape < best.shape - 1e-9) best = { foldWidth, shape, at };
   }
-  return best.foldWidth;
+  return best as Fold;
 }
 
 /** The same graph with a layout's positions written into it. */

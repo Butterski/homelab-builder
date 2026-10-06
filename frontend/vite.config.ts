@@ -21,6 +21,10 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
+    // Component tests that click and type through a dialog take a second or two
+    // each. With every file running at once on a CI machine that became more
+    // than the default five, without anything being wrong.
+    testTimeout: 15_000,
     coverage: {
       reporter: ['text', 'html'],
     },

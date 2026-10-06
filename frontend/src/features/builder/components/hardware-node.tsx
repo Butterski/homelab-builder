@@ -382,7 +382,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
   const lanSubnet = details.lan_subnet || lanInterface?.subnet;
   const isDualHomedGateway = !!(natEnabled || routingEnabled) && !!lanGatewayIP;
 
-  // On the proposal preview canvas the node shows the previewed build's state.
+  // While a proposal is reviewed the node shows the state of the build as proposed.
   const validationIssues = useBuilderStore(
     s => s.proposalPreview?.validationIssues ?? s.validationIssues,
   );

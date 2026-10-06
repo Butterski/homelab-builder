@@ -124,10 +124,34 @@ const LEGACY_STORAGE_KEY = 'homelab-builder-storage';
  */
 let unconfirmedSave: { buildId: string; revision: number; signature: string } | null = null;
 
+/** What the signature reads of a node, under the names the save payload and the server use. */
+type SignedNode = {
+  id: string;
+  type?: unknown;
+  name?: unknown;
+  x?: unknown;
+  y?: unknown;
+  parent_id?: unknown;
+  vms?: unknown;
+  virtual_machines?: unknown;
+  internal_components?: unknown;
+};
+
+/** The same for a cable. */
+type SignedEdge = {
+  source?: unknown;
+  source_node_id?: unknown;
+  source_handle?: unknown;
+  target?: unknown;
+  target_node_id?: unknown;
+  target_handle?: unknown;
+  type?: unknown;
+};
+
 type GraphPayload = {
   kind?: string;
-  nodes: Array<Record<string, any>>;
-  edges: Array<Record<string, any>>;
+  nodes: SignedNode[];
+  edges: SignedEdge[];
 };
 
 /**
@@ -178,10 +202,13 @@ function keepMeasured(next: Node, previous: Node | undefined): Node {
   };
 }
 
-/** A proposal opened for review, rendered on a read-only canvas over the builder. */
+/**
+ * A proposal opened for review. While it is set the builder's canvas draws this
+ * graph, read-only, instead of the live `nodes` and `edges`.
+ */
 export type ProposalPreviewState = ProposalPreviewGraph & {
   proposal: Proposal;
-  /** Nodes the preview canvas should bring into view; nonce re-triggers the same ids. */
+  /** Nodes the canvas should bring into view; nonce re-triggers the same ids. */
   focus: { ids: string[]; nonce: number } | null;
 };
 

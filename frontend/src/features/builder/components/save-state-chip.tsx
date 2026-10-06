@@ -1,5 +1,6 @@
 import { AlertTriangle, Check, CloudOff, Loader2, PencilLine } from 'lucide-react';
 import { cn } from '../../../lib/utils';
+import { saveStateLabel } from '../lib/save-state';
 import type { SaveState } from '../store/builder-store';
 
 type SaveStateChipProps = {
@@ -11,20 +12,6 @@ type SaveStateChipProps = {
   onRetry?: () => void;
   className?: string;
 };
-
-/** The save state in words, for labels and tooltips. */
-export function saveStateLabel(state: SaveState, reachable = true): string {
-  switch (state) {
-    case 'saving':
-      return 'Saving…';
-    case 'unsaved':
-      return 'Unsaved changes';
-    case 'error':
-      return 'Save failed';
-    default:
-      return reachable ? 'Saved' : "Can't reach the server";
-  }
-}
 
 /**
  * Whether the open project is saved. The canvas header and the sidebar's

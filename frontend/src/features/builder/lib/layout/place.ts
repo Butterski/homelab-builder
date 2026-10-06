@@ -70,11 +70,27 @@ function merge(into: Shape, part: Shape): void {
  * wherever the two share a height. -Infinity when they never do.
  */
 function clearance(placed: Item[], incoming: Item[]): number {
+  // What `incoming` spans as a whole, and the most any of its items can add to
+  // the right edge of a placed one. Both rule a placed item out at a glance.
+  let spanTop = Infinity;
+  let spanBottom = -Infinity;
+  let reach = -Infinity;
+  for (const b of incoming) {
+    spanTop = Math.min(spanTop, b.y - b.my);
+    spanBottom = Math.max(spanBottom, b.y + b.height + b.my);
+    reach = Math.max(reach, b.mx - b.x);
+  }
   let need = -Infinity;
-  for (const a of placed) {
+  // Newest first: what was placed last is furthest right and settles `need`
+  // early, so most of the older items are skipped by the second test.
+  for (let index = placed.length - 1; index >= 0; index--) {
+    const a = placed[index];
     const top = a.y - a.my;
     const bottom = a.y + a.height + a.my;
+    if (top >= spanBottom || bottom <= spanTop) continue;
     const right = a.x + a.width + a.mx;
+    // The margin keeps a rounding error from skipping an item that counts.
+    if (right + reach + 1e-6 <= need) continue;
     for (const b of incoming) {
       if (b.y - b.my >= bottom || b.y + b.height + b.my <= top) continue;
       need = Math.max(need, right + b.mx - b.x);
@@ -250,11 +266,17 @@ export function place(
       { x: to.x + link.to.at.x, y: to.y + link.to.at.y },
       link.to.side,
     );
-    return segmentsOf(route).map(segment => ({
-      ...segmentBox(segment),
-      mx: CABLE_MARGIN,
-      my: CABLE_MARGIN,
-    }));
+    return segmentsOf(route).map(segment => {
+      const box = segmentBox(segment);
+      return {
+        x: box.x,
+        y: box.y,
+        width: box.width,
+        height: box.height,
+        mx: CABLE_MARGIN,
+        my: CABLE_MARGIN,
+      };
+    });
   };
 
   /** A vertical strip a cable will run in, kept free before the cable itself is known. */
