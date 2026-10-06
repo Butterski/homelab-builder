@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useReducer, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { buildApi, type Build, type CreateBuildParams } from '../api/builds';
+import { useBuilds, useUpdateBuilds } from '../api/use-builds';
 import { useBuilderStore } from '../store/builder-store';
 import { useAuth } from '../../admin/hooks/use-auth';
 import { toast } from 'sonner';
@@ -165,15 +166,30 @@ function modalReducer(state: ModalState, action: ModalAction): ModalState {
   }
 }
 
+const EMPTY_BUILDS: Build[] = [];
+
 export function useProjectsPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const isAuthenticated = !!user;
   const { loadBuild } = useBuilderStore();
 
-  const [modal, dispatchModal] = useReducer(modalReducer, initialModal);
-  const [builds, setBuilds] = useState<Build[]>([]);
-  const [loading, setLoading] = useState(true);
+  // "New project" in the sidebar's switcher leads here with the dialog open.
+  const location = useLocation();
+  const createRequested = !!(location.state as { createProject?: boolean } | null)?.createProject;
+  const [modal, dispatchModal] = useReducer(modalReducer, initialModal, initial =>
+    createRequested ? modalReducer(initial, { type: 'OPEN_CREATE', name: 'New Project' }) : initial,
+  );
+  useEffect(() => {
+    // Asked for once: going back to this page later should not open it again.
+    if (createRequested) navigate(location.pathname, { replace: true, state: null });
+  }, [createRequested, location.pathname, navigate]);
+  // The list is shared with the sidebar's project switcher and Settings; this
+  // page is its home, so it asks the server again every time it is opened.
+  const list = useBuilds({ enabled: isAuthenticated, fresh: true });
+  const builds = useMemo(() => list.data ?? EMPTY_BUILDS, [list.data]);
+  const setBuilds = useUpdateBuilds();
+  const loading = isAuthenticated && list.isPending;
   const [search, setSearch] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -187,28 +203,10 @@ export function useProjectsPage() {
   } | null>(null);
   const importWarningRef = useRef<string | null>(null);
 
+  const loadFailed = list.isError;
   useEffect(() => {
-    if (!isAuthenticated) {
-      setLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    (async () => {
-      try {
-        const data = await buildApi.list();
-        if (!cancelled) setBuilds(data);
-      } catch {
-        if (!cancelled) toast.error('Failed to load projects');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isAuthenticated]);
+    if (loadFailed) toast.error('Failed to load projects');
+  }, [loadFailed]);
 
   const handleCreateNew = useCallback(() => {
     importPayloadRef.current = null;
@@ -349,7 +347,7 @@ export function useProjectsPage() {
     } finally {
       dispatchModal({ type: 'CLOSE_DELETE' });
     }
-  }, [modal.delete.buildId]);
+  }, [modal.delete.buildId, setBuilds]);
 
   const handleDuplicate = useCallback(async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
@@ -360,7 +358,7 @@ export function useProjectsPage() {
     } catch {
       toast.error('Failed to duplicate project');
     }
-  }, []);
+  }, [setBuilds]);
 
   const handleRenameClick = useCallback((e: React.MouseEvent, build: Build) => {
     e.stopPropagation();
@@ -400,7 +398,7 @@ export function useProjectsPage() {
     } finally {
       dispatchModal({ type: 'CLOSE_RENAME' });
     }
-  }, [modal.rename.build, modal.rename.value]);
+  }, [modal.rename.build, modal.rename.value, setBuilds]);
 
   const handleShareClick = useCallback((e: React.MouseEvent, build: Build) => {
     e.stopPropagation();
@@ -420,7 +418,7 @@ export function useProjectsPage() {
     } catch {
       toast.error('Failed to update sharing');
     }
-  }, [modal.share.build]);
+  }, [modal.share.build, setBuilds]);
 
   const handleCopyShareLink = useCallback(() => {
     const build = modal.share.build;
@@ -445,7 +443,7 @@ export function useProjectsPage() {
     } catch {
       toast.error('Failed to update edit permission');
     }
-  }, [modal.share.build]);
+  }, [modal.share.build, setBuilds]);
 
   const filteredBuilds = useMemo(
     () => builds.filter(b => b.name.toLowerCase().includes(search.toLowerCase())),

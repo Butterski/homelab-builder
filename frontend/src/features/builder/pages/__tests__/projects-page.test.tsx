@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import ProjectsPage from '../projects-page';
 import { BrowserRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { buildApi } from '../../api/builds';
 import { useBuilderStore } from '../../store/builder-store';
 import { useAuth } from '../../../admin/hooks/use-auth';
@@ -58,6 +59,19 @@ vi.mock('../store/builder-store', () => ({
   })),
 }));
 
+// The page reads the project list through the shared query; every test gets
+// a cache of its own.
+function page() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return (
+    <QueryClientProvider client={client}>
+      <BrowserRouter>
+        <ProjectsPage />
+      </BrowserRouter>
+    </QueryClientProvider>
+  );
+}
+
 // Mock URL object methods
 const mockCreateObjectURL = vi.fn();
 const mockRevokeObjectURL = vi.fn();
@@ -79,9 +93,7 @@ describe('ProjectsPage Export Functionality', () => {
     (buildApi.list as any).mockResolvedValue([]);
 
     render(
-      <BrowserRouter>
-        <ProjectsPage />
-      </BrowserRouter>,
+      page(),
     );
 
     const plannerLink = await screen.findByRole('link', { name: /Guided Planner/i });
@@ -109,9 +121,7 @@ describe('ProjectsPage Export Functionality', () => {
     (buildApi.get as any).mockResolvedValue(mockBuild);
 
     render(
-      <BrowserRouter>
-        <ProjectsPage />
-      </BrowserRouter>,
+      page(),
     );
 
     // Wait for projects to load
@@ -158,9 +168,7 @@ describe('ProjectsPage Export Functionality', () => {
     });
 
     const { container } = render(
-      <BrowserRouter>
-        <ProjectsPage />
-      </BrowserRouter>,
+      page(),
     );
 
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
@@ -216,9 +224,7 @@ describe('ProjectsPage Export Functionality', () => {
     });
 
     render(
-      <BrowserRouter>
-        <ProjectsPage />
-      </BrowserRouter>,
+      page(),
     );
 
     fireEvent.click((await screen.findAllByRole('button', { name: /New Project/i }))[0]);
@@ -255,9 +261,7 @@ describe('ProjectsPage Export Functionality', () => {
     ]);
 
     render(
-      <BrowserRouter>
-        <ProjectsPage />
-      </BrowserRouter>,
+      page(),
     );
 
     await waitFor(() => {
@@ -279,9 +283,7 @@ describe('ProjectsPage Export Functionality', () => {
     );
 
     const { container } = render(
-      <BrowserRouter>
-        <ProjectsPage />
-      </BrowserRouter>,
+      page(),
     );
 
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
@@ -339,9 +341,7 @@ describe('ProjectsPage and the open project', () => {
 
   const openPage = async () => {
     render(
-      <BrowserRouter>
-        <ProjectsPage />
-      </BrowserRouter>,
+      page(),
     );
     await screen.findByText('Garage Lab');
   };

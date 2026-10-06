@@ -1,5 +1,4 @@
 import { useState, type FormEvent } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { KeyRound, Loader2, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -20,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { buildApi } from '@/features/builder/api/builds';
+import { useBuilds } from '@/features/builder/api/use-builds';
 import { useCreateApiToken, type CreatedToken, type TokenScope } from '../api/api-tokens';
 import { CopyButton, McpSnippetsView } from './mcp-snippets-view';
 
@@ -42,11 +41,7 @@ type CreateTokenDialogProps = {
 
 export function CreateTokenDialog({ open, onOpenChange, endpoint }: CreateTokenDialogProps) {
   const createToken = useCreateApiToken();
-  const { data: builds } = useQuery({
-    queryKey: ['builds-list'],
-    queryFn: () => buildApi.list(),
-    enabled: open,
-  });
+  const { data: builds } = useBuilds({ enabled: open });
 
   const [name, setName] = useState('');
   const [scope, setScope] = useState<TokenScope>('propose');
