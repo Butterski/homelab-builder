@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Butterski/homelab-builder/backend/internal/gaming"
 	"github.com/Butterski/homelab-builder/backend/internal/models"
 	"github.com/Butterski/homelab-builder/backend/internal/services"
 	"github.com/google/uuid"
@@ -56,11 +57,23 @@ func buildTools() []*Tool {
 			handler:     generateConfigs,
 		},
 		{
+			Name:  "gaming_report",
+			Title: "Check a gaming build",
+			Description: "Check the saved build as a game server or LAN party plan. For game servers: what each needs for its players, whether the host is " +
+				"large enough, the port forwards to add on which router, the upload remote players need, and what blocks them (carrier-grade NAT, " +
+				"port conflicts, no path to the internet). For a LAN party: seats against the DHCP pool, free switch ports, table uplinks and " +
+				"the load on each power circuit. Every issue has a severity, a message and a fix.",
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"build_id":{"type":"string"}},"required":["build_id"],"additionalProperties":false}`),
+			Scope:       ScopeRead,
+			ReadOnly:    true,
+			handler:     gamingReport,
+		},
+		{
 			Name:  "create_build",
 			Title: "Create an empty build",
 			Description: "Create a new, empty build in the user's account and return its id. " +
 				"Fill it afterwards with propose_changes; the user still approves that content.",
-			InputSchema: json.RawMessage(`{"type":"object","properties":{"name":{"type":"string","minLength":1,"maxLength":120,"description":"Name shown in the user's project list."}},"required":["name"],"additionalProperties":false}`),
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"name":{"type":"string","minLength":1,"maxLength":120,"description":"Name shown in the user's project list."},"kind":{"type":"string","enum":["homelab","lan_party","game_server"],"description":"What the build is planned for. Defaults to homelab."}},"required":["name"],"additionalProperties":false}`),
 			Scope:       ScopePropose,
 			Contexts:    []string{ContextMCP},
 			AccountWide: true,
@@ -72,6 +85,7 @@ func buildTools() []*Tool {
 type buildListItem struct {
 	ID        uuid.UUID `json:"id"`
 	Name      string    `json:"name"`
+	Kind      string    `json:"kind"`
 	Nodes     int       `json:"nodes"`
 	Revision  uint64    `json:"revision"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -89,11 +103,11 @@ func listBuilds(_ context.Context, r *Registry, actor Actor, _ json.RawMessage) 
 			continue
 		}
 		items = append(items, buildListItem{
-			ID: build.ID, Name: build.Name, Nodes: len(build.Nodes), Revision: build.Revision,
+			ID: build.ID, Name: build.Name, Kind: build.Kind, Nodes: len(build.Nodes), Revision: build.Revision,
 			UpdatedAt: build.UpdatedAt, URL: reviewURL(actor, build.ID, nil),
 		})
 	}
-	return &Result{Data: map[string]any{"builds": items}}, nil
+	return &Result{Data: map[string]any{"builds": items}, Summary: count(len(items), "build", "builds")}, nil
 }
 
 type guestView struct {
@@ -107,6 +121,8 @@ type guestView struct {
 	RAMMB          int     `json:"ram_mb,omitempty"`
 	OS             string  `json:"os,omitempty"`
 	CatalogService string  `json:"catalog_service,omitempty"`
+	// Game is set on game servers: profile, players, exposure and port offset.
+	Game *gaming.Instance `json:"game,omitempty"`
 }
 
 type componentView struct {
@@ -151,6 +167,8 @@ type connectionView struct {
 type buildView struct {
 	ID          uuid.UUID        `json:"id"`
 	Name        string           `json:"name"`
+	Kind        string           `json:"kind"`
+	GamingPlan  *gaming.Plan     `json:"gaming_plan,omitempty"`
 	Revision    uint64           `json:"revision"`
 	UpdatedAt   time.Time        `json:"updated_at"`
 	TotalPowerW float64          `json:"total_power_w"`
@@ -188,7 +206,8 @@ func getBuild(_ context.Context, r *Registry, actor Actor, args json.RawMessage)
 	if state, err := r.deps.Proposals.SyncState(buildID, actor.UserID); err == nil {
 		view.Proposals = proposalsView{Pending: state.Pending, Recent: state.Recent}
 	}
-	return &Result{Data: view}, nil
+	summary := count(len(view.Nodes), "device", "devices") + ", " + count(len(view.Connections), "connection", "connections")
+	return &Result{Data: view, Summary: summary}, nil
 }
 
 // describeBuild renders a build the way an LLM needs it: ids for every entity,
@@ -205,11 +224,15 @@ func describeBuild(build *models.Build) (*buildView, error) {
 	}
 
 	view := &buildView{
-		ID: build.ID, Name: build.Name, Revision: build.Revision, UpdatedAt: build.UpdatedAt,
+		ID: build.ID, Name: build.Name, Kind: input.Kind, Revision: build.Revision, UpdatedAt: build.UpdatedAt,
 		TotalPowerW: build.TotalPower,
 		Nodes:       make([]nodeView, 0, len(input.Nodes)),
 		Connections: make([]connectionView, 0, len(input.Edges)),
 		Proposals:   proposalsView{Recent: []services.ProposalSummary{}},
+	}
+	// The plan is part of the picture only for builds that use it.
+	if gaming.Kind(input.Kind).IsGaming() {
+		view.GamingPlan = input.GamingPlan
 	}
 	for _, node := range input.Nodes {
 		entry := nodeView{ID: node.ID, Type: node.Type, Name: node.Name, IP: node.IP, PowerDraw: node.PowerDraw}
@@ -244,6 +267,9 @@ func describeBuild(build *models.Build) (*buildView, error) {
 			}
 			guest.StaticIP, _ = vm.Details["static_ip"].(string)
 			guest.CatalogService, _ = vm.Details["catalog_service_name"].(string)
+			if instance, found, err := gaming.ParseInstance(vm.Details[gaming.InstanceKey]); found && err == nil {
+				guest.Game = &instance
+			}
 			entry.VMs = append(entry.VMs, guest)
 		}
 		for _, component := range node.InternalComponents {
@@ -278,6 +304,30 @@ type validationView struct {
 	Valid    bool              `json:"valid"`
 	Errors   []validationIssue `json:"errors"`
 	Warnings []validationIssue `json:"warnings"`
+}
+
+// summary is the report in a few words: "No problems", "1 error, 2 warnings".
+func (v validationView) summary() string {
+	parts := []string{}
+	if len(v.Errors) > 0 {
+		parts = append(parts, count(len(v.Errors), "error", "errors"))
+	}
+	if len(v.Warnings) > 0 {
+		parts = append(parts, count(len(v.Warnings), "warning", "warnings"))
+	}
+	if len(parts) == 0 {
+		return "No problems"
+	}
+	return strings.Join(parts, ", ")
+}
+
+// focus lists the nodes the report complains about.
+func (v validationView) focus() []string {
+	ids := []string{}
+	for _, issue := range append(append([]validationIssue{}, v.Errors...), v.Warnings...) {
+		ids = append(ids, strings.TrimSuffix(issue.NodeID, ":lan"))
+	}
+	return focusOn(ids...)
 }
 
 // describeValidation adds node names to an IPAM validation report.
@@ -337,7 +387,8 @@ func validateBuild(_ context.Context, r *Registry, actor Actor, args json.RawMes
 	if err != nil {
 		return nil, err
 	}
-	return &Result{Data: describeValidation(raw, build)}, nil
+	view := describeValidation(raw, build)
+	return &Result{Data: view, Summary: view.summary(), Focus: view.focus()}, nil
 }
 
 func generateConfigs(_ context.Context, r *Registry, actor Actor, args json.RawMessage) (*Result, error) {
@@ -358,12 +409,38 @@ func generateConfigs(_ context.Context, r *Registry, actor Actor, args json.RawM
 	if err != nil {
 		return nil, err
 	}
-	return &Result{Data: bundle}, nil
+	return &Result{Data: bundle, Summary: "Files generated"}, nil
+}
+
+func gamingReport(_ context.Context, r *Registry, actor Actor, args json.RawMessage) (*Result, error) {
+	var in struct {
+		BuildID string `json:"build_id"`
+	}
+	if err := decodeArgs(args, &in); err != nil {
+		return nil, err
+	}
+	buildID, err := ownedBuildID(actor, in.BuildID)
+	if err != nil {
+		return nil, err
+	}
+	report, err := r.deps.Gaming.Report(buildID, actor.UserID)
+	if err != nil {
+		return nil, err
+	}
+	summary, ids := "No issues", []string{}
+	if len(report.Issues) > 0 {
+		summary = count(len(report.Issues), "issue", "issues")
+		for _, issue := range report.Issues {
+			ids = append(ids, issue.NodeID)
+		}
+	}
+	return &Result{Data: report, Summary: summary, Focus: focusOn(ids...)}, nil
 }
 
 func createBuild(_ context.Context, r *Registry, actor Actor, args json.RawMessage) (*Result, error) {
 	var in struct {
 		Name string `json:"name"`
+		Kind string `json:"kind"`
 	}
 	if err := decodeArgs(args, &in); err != nil {
 		return nil, err
@@ -383,12 +460,12 @@ func createBuild(_ context.Context, r *Registry, actor Actor, args json.RawMessa
 	if created >= maxCreatedBuildsPerDay {
 		return nil, toolErrorf("build limit reached: at most %d builds can be created through this connection per day", maxCreatedBuildsPerDay)
 	}
-	build, err := r.deps.Builds.Create(actor.UserID, services.SyncGraphInput{Name: name, Settings: map[string]any{}})
+	build, err := r.deps.Builds.Create(actor.UserID, services.SyncGraphInput{Name: name, Kind: in.Kind, Settings: map[string]any{}})
 	if err != nil {
 		return nil, err
 	}
 	return &Result{Data: map[string]any{
-		"id": build.ID, "name": build.Name, "revision": build.Revision, "url": reviewURL(actor, build.ID, nil),
+		"id": build.ID, "name": build.Name, "kind": build.Kind, "revision": build.Revision, "url": reviewURL(actor, build.ID, nil),
 		"next": "The build is empty. Add nodes and connections with propose_changes; the user approves them in the builder.",
 	}}, nil
 }

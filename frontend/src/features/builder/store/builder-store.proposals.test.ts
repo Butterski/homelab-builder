@@ -216,6 +216,67 @@ describe('proposal preview', () => {
     useBuilderStore.getState().undo();
     expect(useBuilderStore.getState().hardwareNodes).toHaveLength(3);
   });
+
+  it('is drawn on the canvas that is already there: cards keep their size, changes come in order', () => {
+    // React Flow has measured the cards of the live canvas.
+    useBuilderStore.setState(state => ({
+      nodes: state.nodes.map(node => ({ ...node, measured: { width: 220, height: 140 } })),
+    }));
+
+    useBuilderStore.getState().startProposalPreview(proposal());
+    const preview = useBuilderStore.getState().proposalPreview!;
+    const byId = new Map(preview.nodes.map(node => [node.id, node]));
+
+    // A card without its measured size would be hidden until it is measured
+    // again: everything that stays would blink when the review opens.
+    for (const id of [ROUTER, SWITCH, OLD_AP]) {
+      expect(byId.get(id)?.measured, id).toEqual({ width: 220, height: 140 });
+    }
+    // The new device has not been drawn yet.
+    expect(byId.get(NAS)?.measured).toBeUndefined();
+
+    // What goes, then what changes, then what is new; a cable with its later end.
+    const reveal = (id: string) => (byId.get(id)?.style as Record<string, unknown> | undefined)?.['--reveal-index'];
+    expect([reveal(OLD_AP), reveal(SWITCH), reveal(NAS)]).toEqual([0, 1, 2]);
+    expect(reveal(ROUTER)).toBeUndefined();
+    expect(preview.changedNodeIds).toEqual([OLD_AP, SWITCH, NAS]);
+    const cable = (source: string, target: string) =>
+      preview.edges.find(edge => edge.source === source && edge.target === target)!;
+    expect((cable(SWITCH, NAS).data as { revealIndex?: number }).revealIndex).toBe(3);
+    expect((cable(ROUTER, SWITCH).data as { revealIndex?: number }).revealIndex).toBeUndefined();
+    // The canvas animates its cables by default; a reviewed one says what happens to it instead.
+    expect(preview.edges.every(edge => edge.animated === false)).toBe(true);
+  });
+
+  it('keeps what React Flow measures during a review, and nothing else', () => {
+    useBuilderStore.getState().startProposalPreview(proposal());
+    const live = useBuilderStore.getState().nodes;
+
+    useBuilderStore.getState().applyPreviewNodeChanges([
+      { id: NAS, type: 'dimensions', dimensions: { width: 220, height: 200 } },
+      { id: SWITCH, type: 'position', position: { x: 999, y: 999 }, dragging: false },
+      { id: ROUTER, type: 'remove' },
+      { id: ROUTER, type: 'select', selected: true },
+    ]);
+
+    const state = useBuilderStore.getState();
+    const byId = new Map(state.proposalPreview!.nodes.map(node => [node.id, node]));
+    expect(byId.get(NAS)?.measured).toEqual({ width: 220, height: 200 });
+    expect(byId.get(SWITCH)?.position).not.toEqual({ x: 999, y: 999 });
+    expect(byId.has(ROUTER)).toBe(true);
+    expect(byId.get(ROUTER)?.selected).toBe(false);
+    // The live graph, which is what gets saved, never sees any of it.
+    expect(state.nodes).toBe(live);
+    expect(state.hasUnsavedChanges()).toBe(false);
+    expect(state.historyPast).toHaveLength(0);
+
+    // Without a review there is nothing to apply them to.
+    state.endProposalPreview();
+    useBuilderStore.getState().applyPreviewNodeChanges([
+      { id: SWITCH, type: 'dimensions', dimensions: { width: 1, height: 1 } },
+    ]);
+    expect(useBuilderStore.getState().nodes).toBe(live);
+  });
 });
 
 describe('applyProposal', () => {
@@ -243,6 +304,53 @@ describe('applyProposal', () => {
     state = useBuilderStore.getState();
     expect(state.hardwareNodes.map(node => node.name)).toEqual(['Router', 'Switch', 'Old AP']);
     expect(state.hasUnsavedChanges()).toBe(true);
+  });
+
+  it('undo also takes back a rename, a kind and a plan the proposal changed', async () => {
+    const plan = { uplink: { down_mbps: 300, up_mbps: 20, cgnat: 'no', public_host: '' } };
+    vi.mocked(proposalApi.apply).mockResolvedValueOnce({
+      build: {
+        ...serverBuild(4, { nas: true }),
+        name: 'Game Night',
+        kind: 'game_server',
+        gaming_plan: plan,
+      } as Build,
+    });
+    useBuilderStore.getState().startProposalPreview(proposal());
+
+    await useBuilderStore.getState().applyProposal('proposal-1');
+    let state = useBuilderStore.getState();
+    expect(state.projectName).toBe('Game Night');
+    expect(state.buildKind).toBe('game_server');
+    expect(state.gamingPlan).toEqual(plan);
+
+    state.undo();
+    state = useBuilderStore.getState();
+    expect(state.projectName).toBe('Home Lab');
+    expect(state.buildKind).toBe('homelab');
+    expect(state.gamingPlan).toEqual({});
+    // The next save writes the old canvas under the old name and plan.
+    expect(state.hasUnsavedChanges()).toBe(true);
+
+    state.redo();
+    state = useBuilderStore.getState();
+    expect(state.projectName).toBe('Game Night');
+    expect(state.buildKind).toBe('game_server');
+    expect(state.gamingPlan).toEqual(plan);
+  });
+
+  it('asks the canvas to show what was applied', async () => {
+    vi.mocked(proposalApi.apply).mockResolvedValueOnce({ build: serverBuild(4, { nas: true }) });
+    useBuilderStore.getState().startProposalPreview(proposal());
+
+    await useBuilderStore.getState().applyProposal('proposal-1');
+
+    // New devices can be anywhere on the canvas; the removed one is gone.
+    const focus = useBuilderStore.getState().canvasFocus;
+    expect(focus?.ids).toEqual(expect.arrayContaining([NAS, SWITCH]));
+    expect(focus?.ids).not.toContain(OLD_AP);
+    // The same devices light up once on the live canvas.
+    expect(useBuilderStore.getState().appliedGlow).toEqual({ ids: focus?.ids, nonce: 1 });
   });
 
   it('saves unsaved edits before applying so they are not lost', async () => {

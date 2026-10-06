@@ -86,6 +86,15 @@ type TopologyOp struct {
 	Status           *string  `json:"status,omitempty"`
 	StaticIP         *string  `json:"static_ip,omitempty"`
 	CatalogServiceID string   `json:"catalog_service_id,omitempty"`
+
+	// Game server settings of a service added from a game in the catalog.
+	Players    *float64 `json:"players,omitempty"`
+	Exposure   *string  `json:"exposure,omitempty"`
+	PortOffset *float64 `json:"port_offset,omitempty"`
+
+	// set_plan: the build kind and a merge patch for the gaming plan.
+	Kind string         `json:"kind,omitempty"`
+	Plan map[string]any `json:"plan,omitempty"`
 }
 
 // CatalogLookup resolves catalog shortcuts (hardware_id, catalog_service_id).
@@ -114,19 +123,21 @@ var addableNodeTypes = map[string]bool{
 	"router": true, "switch": true, "firewall": true, "server_v2": true, "minipc": true,
 	"pc": true, "nas": true, "sbc": true, "vps": true, "access_point": true, "rack": true,
 	"iot": true, "ups": true, "modem": true, "pdu": true,
+	nodeTypeConsole: true, nodeTypeLANTable: true,
 }
 
 var defaultNodeNames = map[string]string{
 	"router": "Router", "switch": "Switch", "firewall": "Firewall", "server_v2": "Server",
 	"minipc": "Mini PC", "pc": "PC", "nas": "NAS", "sbc": "SBC", "vps": "VPS",
 	"access_point": "Access Point", "rack": "Rack", "iot": "IoT Device", "ups": "UPS",
-	"modem": "Modem", "pdu": "PDU",
+	"modem": "Modem", "pdu": "PDU", nodeTypeConsole: "Console", nodeTypeLANTable: "LAN Table",
 }
 
 // Details keys the canvas and IPAM own; operations may not write them.
 var reservedDetailKeys = map[string]bool{
 	"virtual_network": true, "interfaces": true, "wan_ip": true,
 	"lan_gateway_ip": true, "lan_subnet": true, "rack_position": true,
+	"dhcp_pool": true,
 }
 
 var numberDetailKeys = map[string]bool{
@@ -157,10 +168,8 @@ type topologyEditor struct {
 	opts     ApplyOptions
 	refs     map[string]string
 	refKinds map[string]string
-	// pending lists nodes waiting for automatic placement, with the operation
-	// that created each so the chosen position can be written back.
-	pending   []string
-	pendingOp map[string]int
+	// pending lists nodes waiting for automatic placement.
+	pending []string
 }
 
 // ApplyTopologyOps applies ops in order to a copy of base. The whole batch is
@@ -177,31 +186,26 @@ func ApplyTopologyOps(base SyncGraphInput, ops []TopologyOp, opts ApplyOptions) 
 		return nil, err
 	}
 	editor := &topologyEditor{
-		graph:     graph,
-		opts:      opts,
-		refs:      map[string]string{},
-		refKinds:  map[string]string{},
-		pendingOp: map[string]int{},
+		graph:    graph,
+		opts:     opts,
+		refs:     map[string]string{},
+		refKinds: map[string]string{},
 	}
 
 	resolved := make([]TopologyOp, len(ops))
 	for i, op := range ops {
 		op.Op = strings.ToLower(strings.TrimSpace(op.Op))
-		result, err := editor.apply(i, op)
+		result, err := editor.apply(op)
 		if err != nil {
 			return nil, &OpError{Index: i, Op: op.Op, Message: err.Error()}
 		}
 		resolved[i] = result
 	}
 
+	// A position chosen here is not written into the resolved operations: when
+	// they are replayed on a newer revision (refresh, apply) the canvas may have
+	// been rearranged, and a spot that was free then can be taken now.
 	placeNodes(editor.graph.Nodes, editor.graph.Edges, editor.pending)
-	for _, id := range editor.pending {
-		if i := editor.nodeIndex(id); i >= 0 {
-			x, y := editor.graph.Nodes[i].X, editor.graph.Nodes[i].Y
-			resolved[editor.pendingOp[id]].X = &x
-			resolved[editor.pendingOp[id]].Y = &y
-		}
-	}
 
 	if err := validateVirtualNetworks(editor.graph.Nodes); err != nil {
 		return nil, &OpError{Index: -1, Message: err.Error()}
@@ -232,10 +236,10 @@ func cloneSyncInput(input SyncGraphInput) (SyncGraphInput, error) {
 	return clone, nil
 }
 
-func (ed *topologyEditor) apply(index int, op TopologyOp) (TopologyOp, error) {
+func (ed *topologyEditor) apply(op TopologyOp) (TopologyOp, error) {
 	switch op.Op {
 	case "add_node":
-		return ed.addNode(index, op)
+		return ed.addNode(op)
 	case "update_node":
 		return ed.updateNode(op)
 	case "remove_node":
@@ -258,10 +262,12 @@ func (ed *topologyEditor) apply(index int, op TopologyOp) (TopologyOp, error) {
 		return ed.removeComponent(op)
 	case "rename_build":
 		return ed.renameBuild(op)
+	case "set_plan":
+		return ed.setPlan(op)
 	case "":
 		return op, errors.New("op is required")
 	default:
-		return op, fmt.Errorf("unknown op %q; use add_node, update_node, remove_node, connect, disconnect, update_connection, add_vm, update_vm, remove_vm, add_component, remove_component or rename_build", op.Op)
+		return op, fmt.Errorf("unknown op %q; use add_node, update_node, remove_node, connect, disconnect, update_connection, add_vm, update_vm, remove_vm, add_component, remove_component, rename_build or set_plan", op.Op)
 	}
 }
 
@@ -434,7 +440,7 @@ func (ed *topologyEditor) resolveComponent(token string) (int, int, error) {
 
 // ── Nodes ───────────────────────────────────────────────────────────────────
 
-func (ed *topologyEditor) addNode(index int, op TopologyOp) (TopologyOp, error) {
+func (ed *topologyEditor) addNode(op TopologyOp) (TopologyOp, error) {
 	if len(ed.graph.Nodes) >= MaxTopologyNodes {
 		return op, fmt.Errorf("a build can hold at most %d nodes", MaxTopologyNodes)
 	}
@@ -473,6 +479,12 @@ func (ed *topologyEditor) addNode(index int, op TopologyOp) (TopologyOp, error) 
 	}
 	if err := mergeDetails(details, op.Details, nodeType); err != nil {
 		return op, err
+	}
+	if nodeType == nodeTypeLANTable {
+		if err := applyTableDefaults(details); err != nil {
+			return op, err
+		}
+		power = tablePowerDraw(details)
 	}
 	if op.PowerDraw != nil {
 		if err := checkRange("power_draw", *op.PowerDraw, 0, 100000); err != nil {
@@ -515,7 +527,6 @@ func (ed *topologyEditor) addNode(index int, op TopologyOp) (TopologyOp, error) 
 		ed.graph.Nodes[nodeIdx].Y = snapToGrid(*op.Y)
 	default:
 		ed.pending = append(ed.pending, id)
-		ed.pendingOp[id] = index
 	}
 	return resolved, nil
 }
@@ -546,6 +557,22 @@ func (ed *topologyEditor) updateNode(op TopologyOp) (TopologyOp, error) {
 		}
 		if highest := highestUsedPort(id, ed.graph.Edges); highest >= PortCount(node.Type, node.Details) {
 			return op, fmt.Errorf("%q has a cable on port eth%d; it needs at least %d ports", node.Name, highest, highest+1)
+		}
+		if node.Type == nodeTypeLANTable {
+			// Changing the seats resizes the switch unless the same change sets it.
+			if _, seatsChanged := op.Details["seats"]; seatsChanged {
+				if _, portsGiven := op.Details["switch_ports"]; !portsGiven {
+					delete(node.Details, "switch_ports")
+				}
+			}
+			if err := applyTableDefaults(node.Details); err != nil {
+				return op, err
+			}
+			_, seatsChanged := op.Details["seats"]
+			_, wattsChanged := op.Details["seat_watts"]
+			if (seatsChanged || wattsChanged) && op.PowerDraw == nil {
+				node.PowerDraw = tablePowerDraw(node.Details)
+			}
 		}
 		if node.Type == "rack" {
 			size := rackSizeOf(*node)
@@ -637,6 +664,9 @@ func (ed *topologyEditor) rackNode(nodeIdx int, parentToken string, slot *float6
 	if node.Type == "rack" {
 		return "", errors.New("racks cannot be placed inside other racks")
 	}
+	if floorNodeTypes[node.Type] {
+		return "", fmt.Errorf("%q is a %s and cannot be mounted in a rack", node.Name, node.Type)
+	}
 	var requested *int
 	if slot != nil {
 		value := int(math.Round(*slot))
@@ -657,7 +687,6 @@ func (ed *topologyEditor) dropPending(id string) {
 	for i, pendingID := range ed.pending {
 		if pendingID == id {
 			ed.pending = append(ed.pending[:i], ed.pending[i+1:]...)
-			delete(ed.pendingOp, id)
 			return
 		}
 	}

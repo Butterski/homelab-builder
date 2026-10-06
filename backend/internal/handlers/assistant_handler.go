@@ -14,7 +14,11 @@ import (
 	"github.com/google/uuid"
 )
 
-const chatKeepAlive = 15 * time.Second
+const (
+	chatKeepAlive = 15 * time.Second
+	// maxChatSelection bounds the selection a chat request may carry.
+	maxChatSelection = 50
+)
 
 // AssistantHandler serves the in-app assistant: its per-user settings and the
 // chat stream. All routes use the browser session.
@@ -188,6 +192,9 @@ func (h *AssistantHandler) Chat(c *gin.Context) {
 	var req struct {
 		BuildID string `json:"build_id"`
 		Message string `json:"message"`
+		// Selection is what the user has selected on the canvas. It is checked
+		// against the build; the model is told about it from the build's data.
+		Selection []string `json:"selection"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
@@ -198,7 +205,10 @@ func (h *AssistantHandler) Chat(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid build ID"})
 		return
 	}
-	turn, err := h.agent.Prepare(userID, buildID, req.Message)
+	if len(req.Selection) > maxChatSelection {
+		req.Selection = req.Selection[:maxChatSelection]
+	}
+	turn, err := h.agent.Prepare(userID, buildID, req.Message, req.Selection)
 	if err != nil {
 		respondAssistantError(c, err)
 		return

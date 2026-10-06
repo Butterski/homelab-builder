@@ -1,4 +1,5 @@
 import { apiUrl } from '../lib/api-base';
+import { forgetWorkspace } from '../features/builder/store/workspace-storage';
 
 class ApiRequestError extends Error {
     status: number;
@@ -30,6 +31,7 @@ async function request<T>(
         if (res.status === 401 && !config.suppressAuthRedirect) {
             // Token expired or invalid
             localStorage.removeItem('auth_token');
+            forgetWorkspace();
             // Only redirect if we're not on a public page or checking /me
             const publicPaths = [
                 '/',

@@ -113,6 +113,10 @@ func (s *ConfigService) GenerateDockerCompose(buildID uuid.UUID) (string, error)
 		}
 
 		for _, vm := range node.VirtualMachines {
+			if isGameGuest(vm) {
+				composeStr += fmt.Sprintf("  # %s is a game server: see the game server files for %s.\n", vm.Name, node.Name)
+				continue
+			}
 			if vm.Type != "container" && vm.Type != "lxc" {
 				composeStr += fmt.Sprintf("  # Skipped %s: it is a VM, not a container image.\n", vm.Name)
 				continue
@@ -297,6 +301,8 @@ type ConfigBundle struct {
 	DotEnv           string `json:"env"`
 	AnsibleInventory string `json:"ansible_inventory"`
 	Nginx            string `json:"nginx"`
+	// GameCompose holds one compose file per host that runs game servers.
+	GameCompose []GameComposeFile `json:"game_compose"`
 }
 
 // GenerateNginxConfig generates an Nginx reverse proxy configuration string.
@@ -376,10 +382,16 @@ func (s *ConfigService) GenerateAll(buildID uuid.UUID, userID uuid.UUID) (*Confi
 		return nil, err
 	}
 
+	var full models.Build
+	if err := s.db.Preload("Nodes.VirtualMachines").First(&full, "id = ?", buildID).Error; err != nil {
+		return nil, err
+	}
+
 	return &ConfigBundle{
 		DockerCompose:    composeStr,
 		DotEnv:           envStr,
 		AnsibleInventory: ansibleStr,
 		Nginx:            nginxStr,
+		GameCompose:      GameComposeFiles(&full),
 	}, nil
 }

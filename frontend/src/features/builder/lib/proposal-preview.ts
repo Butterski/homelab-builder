@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import type { Edge, Node } from '@xyflow/react';
 import type { HardwareNode, HardwareNodeValidationIssue } from '../../../types';
 import type { Proposal, ValidationReport } from '../api/proposals';
@@ -29,10 +30,14 @@ export function validationToIssues(
   return [...withType(validation.errors, 'error'), ...withType(validation.warnings, 'warning')];
 }
 
+/** Changes appear one after another: what goes first, then what changes, then what is new. */
+const REVEAL_ORDER: Record<DiffStatus, number> = { removed: 0, changed: 1, added: 2 };
+
 /**
- * Builds the read-only canvas for reviewing a proposal: the build as it would
- * look, with added and changed elements marked, plus "ghosts" of everything the
- * proposal removes, taken from the live canvas.
+ * Builds the canvas for reviewing a proposal: the build as it would look, with
+ * added and changed elements marked, plus "ghosts" of everything the proposal
+ * removes, taken from the live canvas. It is shown in place of the live graph,
+ * on the same React Flow, so the camera and the cards that stay do not move.
  */
 export function buildProposalPreview(proposal: Proposal, live: FlowBuild): ProposalPreviewGraph {
   const proposed = proposal.preview?.build
@@ -57,6 +62,9 @@ export function buildProposalPreview(proposal: Proposal, live: FlowBuild): Propo
 
   const mark = (node: Node, status: DiffStatus | undefined): Node => ({
     ...node,
+    // A card that is on the canvas already keeps its measured size. Without
+    // it React Flow hides the card until it has measured it again.
+    ...(liveById.get(node.id)?.measured ? { measured: liveById.get(node.id)?.measured } : {}),
     selected: false,
     draggable: false,
     selectable: false,
@@ -105,6 +113,9 @@ export function buildProposalPreview(proposal: Proposal, live: FlowBuild): Propo
   const previewEdge = (edge: Edge, status: DiffStatus | undefined): Edge => ({
     ...edge,
     type: 'proposal',
+    // The canvas animates its cables by default; here the line itself says
+    // what happens to a cable, and a new one draws itself once.
+    animated: false,
     selected: false,
     selectable: false,
     deletable: false,
@@ -127,9 +138,39 @@ export function buildProposalPreview(proposal: Proposal, live: FlowBuild): Propo
     ...live.hardwareNodes.filter(node => ghostIds.has(node.id)),
   ];
 
-  const changedNodeIds = nodes
-    .filter(node => (node.data as { proposalDiff?: DiffStatus }).proposalDiff)
-    .map(node => node.id);
+  // The order changes are revealed in, and stepped through: removed, changed,
+  // new; within each, top to bottom and left to right as they stand.
+  const statusOf = (node: Node) => (node.data as { proposalDiff?: DiffStatus }).proposalDiff;
+  const place = (node: Node) => {
+    const rack = node.parentId ? nodes.find(entry => entry.id === node.parentId) : undefined;
+    return { x: node.position.x + (rack?.position.x ?? 0), y: node.position.y + (rack?.position.y ?? 0) };
+  };
+  const changedNodes = nodes
+    .filter(node => statusOf(node))
+    .sort((a, b) => {
+      const order = REVEAL_ORDER[statusOf(a) as DiffStatus] - REVEAL_ORDER[statusOf(b) as DiffStatus];
+      return order || place(a).y - place(b).y || place(a).x - place(b).x || a.id.localeCompare(b.id);
+    });
+  const revealIndex = new Map(changedNodes.map((node, index) => [node.id, index]));
+  const revealed = nodes.map(node =>
+    revealIndex.has(node.id)
+      ? { ...node, style: { ...node.style, '--reveal-index': revealIndex.get(node.id) } as CSSProperties }
+      : node,
+  );
+  // A cable appears with the later of its two ends.
+  const revealedEdges = edges.map(edge =>
+    (edge.data as { proposalDiff?: DiffStatus }).proposalDiff
+      ? {
+          ...edge,
+          data: {
+            ...edge.data,
+            revealIndex: Math.max(revealIndex.get(edge.source) ?? 0, revealIndex.get(edge.target) ?? 0) + 1,
+          },
+        }
+      : edge,
+  );
+
+  const changedNodeIds = changedNodes.map(node => node.id);
   // A changed cable brings both of its ends into view.
   for (const edge of edges) {
     if (!(edge.data as { proposalDiff?: DiffStatus }).proposalDiff) continue;
@@ -140,8 +181,8 @@ export function buildProposalPreview(proposal: Proposal, live: FlowBuild): Propo
 
   return {
     hardwareNodes,
-    nodes,
-    edges,
+    nodes: revealed,
+    edges: revealedEdges,
     validationIssues: validationToIssues(proposal.preview?.validation),
     changedNodeIds,
   };

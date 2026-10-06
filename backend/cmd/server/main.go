@@ -12,6 +12,7 @@ import (
 	"github.com/Butterski/homelab-builder/backend/internal/middleware"
 	"github.com/Butterski/homelab-builder/backend/internal/secrets"
 	"github.com/Butterski/homelab-builder/backend/internal/services"
+	"github.com/Butterski/homelab-builder/backend/internal/version"
 	"github.com/Butterski/homelab-builder/backend/pkg/database"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -101,8 +102,8 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 
 	// API routes (require database)
 	if db != nil {
-		if err := services.SeedExpandedDefaultServices(db); err != nil {
-			log.Printf("Warning: failed to seed expanded default services: %v", err)
+		if err := services.SeedCatalog(db); err != nil {
+			log.Printf("Warning: failed to seed the default catalog: %v", err)
 		}
 
 		authService := services.NewAuthService(db)
@@ -131,6 +132,8 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 		buildHandler := handlers.NewBuildHandler(buildService, ipService)
 		configService := services.NewConfigService(db)
 		configHandler := handlers.NewConfigHandler(configService)
+		gamingService := services.NewGamingService(buildService)
+		gamingHandler := handlers.NewGamingHandler(gamingService)
 		proposalService := services.NewProposalService(db, buildService, ipService)
 		proposalHandler := handlers.NewProposalHandler(proposalService)
 		apiTokenService := services.NewAPITokenService(db)
@@ -146,6 +149,7 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 			Services:        serviceService,
 			Recommendations: recommendationService,
 			Config:          configService,
+			Gaming:          gamingService,
 		})
 
 		// In-app assistant. Users bring their own provider key, which is stored
@@ -185,6 +189,7 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 				Tokens:         apiTokenService,
 				PublicAppURL:   cfg.PublicAppURL,
 				AllowedOrigins: cfg.MCPAllowedOrigins,
+				Version:        version.Version,
 			})
 			router.Any("/mcp", func(c *gin.Context) {
 				// gin resolves the client address through the trusted proxies above.
@@ -281,6 +286,7 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 			protected.POST("/builds/:id/validate-network", buildHandler.ValidateNetwork)
 			protected.POST("/builds/:id/generate-config", configHandler.GenerateConfig)
 			protected.GET("/builds/:id/export-bundle", configHandler.DownloadBundle)
+			protected.GET("/builds/:id/gaming-report", gamingHandler.Report)
 
 			// LLM proposals: change sets wait here until the owner applies them.
 			protected.GET("/builds/:id/sync-state", proposalHandler.SyncState)

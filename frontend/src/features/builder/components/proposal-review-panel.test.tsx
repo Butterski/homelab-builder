@@ -88,6 +88,73 @@ describe('ProposalReviewPanel', () => {
     expect(screen.getByRole('heading', { name: /Addresses that change/ })).toBeInTheDocument();
   });
 
+  it('shows changes to the game plan and to game servers in plain words', () => {
+    const base = proposal();
+    open(
+      proposal({
+        summary: 'Open the Valheim server to friends',
+        diff: {
+          ...base.diff,
+          counts: { ...counts, plan_changed: 4, vms_changed: 1 },
+          vms: {
+            added: [],
+            removed: [],
+            changed: [
+              {
+                id: 'vm',
+                name: 'Valheim',
+                type: 'container',
+                host_id: 'host',
+                host_name: 'Game Host',
+                changes: [
+                  { field: 'players', before: 5, after: 10 },
+                  { field: 'exposure', before: 'lan', after: 'port_forward' },
+                  { field: 'port_offset', before: 0, after: 10 },
+                ],
+              },
+            ],
+          },
+          plan: [
+            { field: 'kind', before: 'homelab', after: 'game_server' },
+            { field: 'uplink.up_mbps', before: 0, after: 20 },
+            { field: 'uplink.cgnat', before: '', after: 'no' },
+            {
+              field: 'power.circuits',
+              before: [],
+              after: [
+                { id: 'c1', label: 'Hall', breaker_amps: 16 },
+                { id: 'c2', label: '', breaker_amps: 10 },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+    render(<ProposalReviewPanel busy={null} {...handlers} />);
+
+    const plan = screen.getByRole('heading', { name: /Game plan/ }).closest('section')!;
+    // Kinds and circuits read the way the Game plan dialog shows them.
+    expect(within(plan).getByText('Planned as:')).toBeInTheDocument();
+    expect(within(plan).getByText('Homelab')).toBeInTheDocument();
+    expect(within(plan).getByText('Game server')).toBeInTheDocument();
+    expect(within(plan).getByText('Upload (Mbps):')).toBeInTheDocument();
+    expect(within(plan).getByText('Carrier-grade NAT:')).toBeInTheDocument();
+    expect(within(plan).getByText('Power circuits:')).toBeInTheDocument();
+    expect(within(plan).getByText('Hall 16 A, c2 10 A')).toBeInTheDocument();
+
+    // A change of players or exposure is listed even when memory stays the same.
+    expect(screen.getByText('players:')).toBeInTheDocument();
+    expect(screen.getByText('exposure:')).toBeInTheDocument();
+    expect(screen.getByText('port_forward')).toBeInTheDocument();
+    expect(screen.getByText('port offset:')).toBeInTheDocument();
+  });
+
+  it('has no game plan section for a proposal that leaves the plan alone', () => {
+    open(proposal());
+    render(<ProposalReviewPanel busy={null} {...handlers} />);
+    expect(screen.queryByRole('heading', { name: /Game plan/ })).not.toBeInTheDocument();
+  });
+
   it('focuses the preview on the row that is clicked', async () => {
     const user = userEvent.setup();
     open(proposal());

@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 
+	"github.com/Butterski/homelab-builder/backend/internal/version"
 	"github.com/gin-gonic/gin"
 )
 
@@ -14,6 +15,7 @@ func NewHealthHandler() *HealthHandler {
 
 func (h *HealthHandler) HealthCheck(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
-		"status": "ok",
+		"status":  "ok",
+		"version": version.Version,
 	})
 }

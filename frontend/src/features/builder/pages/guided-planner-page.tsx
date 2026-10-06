@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft,
   ArrowRight,
@@ -15,86 +15,45 @@ import {
   ShieldCheck,
   Sparkles,
   Wallet,
+  type LucideIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../../../components/ui/button';
 import { Card } from '../../../components/ui/card';
-import type { Service } from '../../../types';
+import type { BuildKind, GameExposure, Service } from '../../../types';
 import { buildApi, type CreateBuildParams } from '../api/builds';
 import { useBuilderStore } from '../store/builder-store';
+import { BUILD_KINDS, buildKindInfo } from '../../gaming/lib/kind';
+import { EXPOSURES, formatMemory, sizeServer } from '../../gaming/lib/sizing';
+import { ChoiceCard, NumberField, ToggleRow } from '../components/planner/choice-card';
+import { buildHomelabPlan } from '../lib/planner/homelab-plan';
+import {
+  MAX_PARTY_SEATS,
+  buildLanPartyPlan,
+  circuitsNeeded,
+  hasPartyServer,
+  seatsPerTable,
+  tablesNeeded,
+} from '../lib/planner/lan-party-plan';
+import { MAX_PLANNED_GAMES, buildGameServerPlan } from '../lib/planner/game-server-plan';
+import {
+  GOAL_LABELS,
+  type Budget,
+  type Footprint,
+  type GameServerAnswers,
+  type Goal,
+  type LanPartyAnswers,
+  type PlannedNode,
+  type PlannerAnswers,
+} from '../lib/planner/types';
 
-type Goal = 'backup' | 'media' | 'home' | 'network' | 'development' | 'security';
-type Footprint = 'compact' | 'desk' | 'rack' | 'cloud';
-type Budget = 'starter' | 'balanced' | 'enthusiast';
-type Reliability = 'simple' | 'resilient';
-
-type PlannerAnswers = {
-  goals: Goal[];
-  footprint: Footprint;
-  budget: Budget;
-  reliability: Reliability;
-  name: string;
-};
-
-type PlannedNode = {
-  id: string;
-  type: string;
-  name: string;
-  x: number;
-  y: number;
-  ip?: string;
-  power_draw?: number;
-  parent_id?: string;
-  details: Record<string, unknown>;
-  vms: Array<{
-    id: string;
-    name: string;
-    type: 'container';
-    status: 'running';
-    cpu_cores?: number;
-    ram_mb?: number;
-    details: Record<string, unknown>;
-  }>;
-  internal_components: unknown[];
-};
-
-const GOALS: Array<{ id: Goal; label: string; description: string; icon: typeof Home }> = [
-  {
-    id: 'backup',
-    label: 'Backups & storage',
-    description: 'Protect family files and device backups.',
-    icon: HardDrive,
-  },
-  {
-    id: 'media',
-    label: 'Media streaming',
-    description: 'Run a private movie and music library.',
-    icon: Play,
-  },
-  {
-    id: 'home',
-    label: 'Smart home',
-    description: 'Keep automations local and dependable.',
-    icon: Home,
-  },
-  {
-    id: 'network',
-    label: 'Better networking',
-    description: 'DNS filtering, Wi-Fi, and visibility.',
-    icon: Network,
-  },
-  {
-    id: 'development',
-    label: 'Development',
-    description: 'Git, CI, containers, and test services.',
-    icon: Server,
-  },
-  {
-    id: 'security',
-    label: 'Remote access',
-    description: 'A safer VPN entry point to your lab.',
-    icon: ShieldCheck,
-  },
+const GOALS: Array<{ id: Goal; description: string; icon: LucideIcon }> = [
+  { id: 'backup', description: 'Protect family files and device backups.', icon: HardDrive },
+  { id: 'media', description: 'Run a private movie and music library.', icon: Play },
+  { id: 'home', description: 'Keep automations local and dependable.', icon: Home },
+  { id: 'network', description: 'DNS filtering, Wi-Fi, and visibility.', icon: Network },
+  { id: 'development', description: 'Git, CI, containers, and test services.', icon: Server },
+  { id: 'security', description: 'A safer VPN entry point to your lab.', icon: ShieldCheck },
 ];
 
 const FOOTPRINTS: Array<{ id: Footprint; label: string; description: string }> = [
@@ -133,302 +92,47 @@ const BUDGETS: Array<{ id: Budget; label: string; description: string; range: st
   },
 ];
 
-const SERVICE_BY_GOAL: Record<Goal, string[]> = {
-  backup: ['restic', 'duplicati', 'syncthing'],
-  media: ['jellyfin'],
-  home: ['home assistant'],
-  network: ['pi-hole', 'adguard home', 'uptime kuma'],
-  development: ['gitea', 'forgejo'],
-  security: ['wireguard easy', 'wg-easy'],
+const STEPS: Record<BuildKind, string[]> = {
+  homelab: ['Goals', 'Shape', 'Budget', 'Review'],
+  lan_party: ['Seats', 'Venue', 'Servers', 'Review'],
+  game_server: ['Games', 'Hosting', 'Review'],
 };
 
-function normalize(value: string) {
-  return value.toLowerCase().replace(/[^a-z0-9]/g, '');
-}
+const INTRO: Record<BuildKind | 'none', { title: string; text: string }> = {
+  none: {
+    title: 'Turn your goals into a working topology.',
+    text: 'Say what you are planning. HLBuilder creates the devices, connections and IP plan so you can refine instead of starting from an empty canvas.',
+  },
+  homelab: {
+    title: 'Turn your goals into a working topology.',
+    text: 'Choose what the lab should do. HLBuilder creates the devices, connections, service placements, and IP plan so you can refine instead of starting from an empty canvas.',
+  },
+  lan_party: {
+    title: 'Plan the room before anyone carries a PC in.',
+    text: 'Enter the seats and what the venue offers. HLBuilder lays out tables, switches and power circuits, and checks addresses and breakers.',
+  },
+  game_server: {
+    title: 'A server your friends can actually join.',
+    text: 'Pick the games and the group size. HLBuilder sizes the host and works out the ports to forward and the upload you need.',
+  },
+};
 
-function chooseService(goal: Goal, services: Service[]): Service | undefined {
-  const candidates = SERVICE_BY_GOAL[goal].map(normalize);
-  return services.find(service =>
-    candidates.some(candidate => normalize(service.name).includes(candidate)),
-  );
-}
+const isKind = (value: string | null): value is BuildKind =>
+  BUILD_KINDS.some(entry => entry.kind === value);
 
-function buildPlan(answers: PlannerAnswers, services: Service[]): CreateBuildParams {
-  const nodes: PlannedNode[] = [];
-  const edges: CreateBuildParams['edges'] = [];
-  const routerID = crypto.randomUUID();
-  const switchID = crypto.randomUUID();
-
-  nodes.push({
-    id: routerID,
-    type: 'router',
-    name: 'Lab Router',
-    x: 80,
-    y: 250,
-    ip: '192.168.10.1',
-    power_draw: 12,
-    details: {
-      model: 'Existing router or firewall',
-      ports: 4,
-      dhcp_enabled: true,
-      subnet_mask: '255.255.255.0',
-      network_zone: 'lan',
-      planner_role: 'gateway',
-    },
-    vms: [],
-    internal_components: [],
-  });
-  nodes.push({
-    id: switchID,
-    type: 'switch',
-    name: answers.budget === 'enthusiast' ? 'Managed 16-port Switch' : 'Managed 8-port Switch',
-    x: 360,
-    y: 250,
-    power_draw: answers.budget === 'enthusiast' ? 24 : 10,
-    details: {
-      ports: answers.budget === 'enthusiast' ? 16 : 8,
-      managed: true,
-      planner_role: 'distribution',
-    },
-    vms: [],
-    internal_components: [],
-  });
-  edges.push({
-    source: routerID,
-    source_handle: 'eth1',
-    target: switchID,
-    target_handle: 'target-0',
-    type: 'ethernet',
-    speed: answers.budget === 'enthusiast' ? '10 GbE' : '1 GbE',
-    direction: 'lan',
-  });
-
-  const computeIDs: string[] = [];
-  const addCompute = (
-    type: string,
-    name: string,
-    x: number,
-    y: number,
-    details: Record<string, unknown>,
-  ) => {
-    const id = crypto.randomUUID();
-    computeIDs.push(id);
-    nodes.push({
-      id,
-      type,
-      name,
-      x,
-      y,
-      power_draw: type === 'vps' ? 0 : type === 'server_v2' ? 115 : 24,
-      details: { ...details, app_host_enabled: true, planner_role: 'compute' },
-      vms: [],
-      internal_components: [],
-    });
-    return id;
-  };
-
-  let rackID: string | undefined;
-  if (answers.footprint === 'rack') {
-    rackID = crypto.randomUUID();
-    nodes.push({
-      id: rackID,
-      type: 'rack',
-      name: '12U Lab Rack',
-      x: 630,
-      y: 70,
-      power_draw: 0,
-      details: { rack_size: 12, planner_role: 'enclosure' },
-      vms: [],
-      internal_components: [],
-    });
-  }
-
-  const primaryType = answers.footprint === 'rack' ? 'server_v2' : 'minipc';
-  const primaryID = addCompute(
-    primaryType,
-    answers.footprint === 'rack' ? 'Primary Virtualization Server' : 'Primary Mini PC',
-    rackID ? 22 : 680,
-    rackID ? 70 : 150,
-    {
-      cpu: answers.budget === 'starter' ? 4 : answers.budget === 'balanced' ? 8 : 16,
-      ram: answers.budget === 'starter' ? 16 : answers.budget === 'balanced' ? 32 : 64,
-      storage: answers.budget === 'starter' ? 512 : 1000,
-      ports: answers.budget === 'enthusiast' ? 4 : 2,
-      ...(rackID ? { rack_units: 2, rack_position: 1 } : {}),
-    },
-  );
-  if (rackID) {
-    nodes[nodes.findIndex(node => node.id === primaryID)].parent_id = rackID;
-  }
-
-  if (answers.reliability === 'resilient') {
-    addCompute(
-      answers.footprint === 'cloud' ? 'vps' : 'minipc',
-      answers.footprint === 'cloud' ? 'Cloud Recovery VPS' : 'Secondary Compute Node',
-      680,
-      390,
-      { cpu: 4, ram: 16, storage: 256, ports: 2, planner_role: 'failover' },
-    );
-  }
-  if (answers.footprint === 'cloud' && !nodes.some(node => node.type === 'vps')) {
-    addCompute('vps', 'Public Edge VPS', 680, 390, {
-      cpu: 2,
-      ram: 4,
-      storage: 40,
-      ports: 2,
-      provider: 'Choose a provider',
-      network_zone: 'cloud',
-    });
-  }
-
-  if (answers.goals.includes('backup') || answers.goals.includes('media')) {
-    nodes.push({
-      id: crypto.randomUUID(),
-      type: 'nas',
-      name: 'Storage NAS',
-      x: 990,
-      y: 320,
-      power_draw: 45,
-      details: {
-        storage:
-          answers.budget === 'starter' ? 4000 : answers.budget === 'balanced' ? 12000 : 24000,
-        raid: answers.reliability === 'resilient' ? 'RAIDZ2 / SHR-2' : 'Mirror / SHR',
-        planner_role: 'storage',
-      },
-      vms: [],
-      internal_components: [],
-    });
-  }
-
-  if (answers.goals.includes('home') || answers.goals.includes('network')) {
-    nodes.push({
-      id: crypto.randomUUID(),
-      type: 'access_point',
-      name: 'Wi-Fi Access Point',
-      x: 990,
-      y: 90,
-      power_draw: 12,
-      details: { wireless_standard: 'Wi-Fi 6', planner_role: 'wireless' },
-      vms: [],
-      internal_components: [],
-    });
-  }
-
-  if (answers.footprint === 'rack' || answers.reliability === 'resilient') {
-    nodes.push({
-      id: crypto.randomUUID(),
-      type: 'ups',
-      name: 'UPS',
-      x: 990,
-      y: 520,
-      power_draw: 5,
-      details: { capacity_va: answers.budget === 'enthusiast' ? 1500 : 900, planner_role: 'power' },
-      vms: [],
-      internal_components: [],
-    });
-  }
-
-  let switchPort = 1;
-  for (const node of nodes) {
-    if (node.id === routerID || node.id === switchID || node.type === 'rack' || node.type === 'ups')
-      continue;
-    edges.push({
-      source: switchID,
-      source_handle: `eth${switchPort++}`,
-      target: node.id,
-      target_handle: 'target-0',
-      type: node.type === 'access_point' ? 'wireless' : 'ethernet',
-      speed: answers.budget === 'enthusiast' && node.type !== 'access_point' ? '10 GbE' : '1 GbE',
-      wireless_standard: node.type === 'access_point' ? 'Wi-Fi 6' : '',
-      direction: 'lan',
-    });
-  }
-
-  const computeNodes = nodes.filter(node => computeIDs.includes(node.id));
-  answers.goals.forEach((goal, index) => {
-    const host = computeNodes[index % Math.max(computeNodes.length, 1)];
-    if (!host) return;
-    const catalogService = chooseService(goal, services);
-    const fallbackName = GOALS.find(item => item.id === goal)?.label || goal;
-    host.vms.push({
-      id: crypto.randomUUID(),
-      name: catalogService?.name || fallbackName,
-      type: 'container',
-      status: 'running',
-      cpu_cores: catalogService?.requirements?.min_cpu_cores || 1,
-      ram_mb: catalogService?.requirements?.min_ram_mb || 512,
-      details: {
-        catalog_service_id: catalogService?.id || '',
-        catalog_service_name: catalogService?.name || fallbackName,
-        planner_goal: goal,
-      },
-    });
-  });
-
-  return {
-    name: answers.name.trim() || 'Guided Homelab',
-    thumbnail: '',
-    settings: {
-      planner: answers,
-      boughtItems: [],
-      showBought: false,
-    },
-    nodes,
-    edges,
-    services: [],
-  };
-}
-
-function ChoiceCard({
-  selected,
-  onClick,
-  title,
-  description,
-  meta,
-  icon: Icon,
-}: {
-  selected: boolean;
-  onClick: () => void;
-  title: string;
-  description: string;
-  meta?: string;
-  icon?: typeof Home;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={selected}
-      onClick={onClick}
-      className={`min-h-32 rounded-2xl border p-5 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
-        selected
-          ? 'border-primary bg-primary/10 shadow-[0_14px_36px_-24px_var(--primary)]'
-          : 'border-border bg-card hover:-translate-y-0.5 hover:border-primary/40 hover:bg-muted/30'
-      }`}
-    >
-      <div className="flex items-start justify-between gap-4">
-        {Icon && (
-          <Icon className={`size-5 ${selected ? 'text-primary' : 'text-muted-foreground'}`} />
-        )}
-        <span
-          className={`grid size-5 place-items-center rounded-full border ${selected ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/30'}`}
-        >
-          {selected && <Check className="size-3" />}
-        </span>
-      </div>
-      <h3 className="mt-4 font-semibold">{title}</h3>
-      <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{description}</p>
-      {meta && (
-        <p className="mt-3 text-xs font-semibold uppercase tracking-wider text-primary">{meta}</p>
-      )}
-    </button>
-  );
-}
+const games = (services: Service[]) => services.filter(service => service.game?.role === 'game');
 
 export default function GuidedPlannerPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { availableServices, fetchServices, loadBuild } = useBuilderStore();
+  const presetKind = searchParams.get('kind');
+  // A link such as /planner?kind=lan_party goes straight to that plan.
+  const [kind, setKind] = useState<BuildKind | null>(isKind(presetKind) ? presetKind : null);
+  const [picked, setPicked] = useState<BuildKind>('homelab');
   const [step, setStep] = useState(0);
   const [creating, setCreating] = useState(false);
+
   const [answers, setAnswers] = useState<PlannerAnswers>({
     goals: ['backup', 'network'],
     footprint: 'compact',
@@ -436,18 +140,55 @@ export default function GuidedPlannerPage() {
     reliability: 'simple',
     name: 'My Guided Homelab',
   });
+  const [party, setParty] = useState<LanPartyAnswers>({
+    name: 'My LAN Party',
+    seats: 16,
+    consoles: 0,
+    wifi: true,
+    mainsVoltage: 230,
+    breakerAmps: 16,
+    circuits: 2,
+    downMbps: 0,
+    upMbps: 0,
+    hours: 24,
+    games: [],
+    lancache: true,
+  });
+  const [server, setServer] = useState<GameServerAnswers>({
+    name: 'My Game Server',
+    games: [],
+    location: 'home',
+    exposure: 'port_forward',
+    downMbps: 0,
+    upMbps: 0,
+    cgnat: '',
+    voice: false,
+  });
 
   useEffect(() => {
     void fetchServices();
   }, [fetchServices]);
 
-  const preview = useMemo(
-    () => buildPlan(answers, availableServices),
-    [answers, availableServices],
-  );
+  const gameCatalog = useMemo(() => games(availableServices), [availableServices]);
+
+  const preview: CreateBuildParams = useMemo(() => {
+    if (kind === 'lan_party') return buildLanPartyPlan(party, availableServices);
+    if (kind === 'game_server') return buildGameServerPlan(server, availableServices);
+    return buildHomelabPlan(answers, availableServices);
+  }, [kind, answers, party, server, availableServices]);
+
   const previewNodes = preview.nodes as PlannedNode[];
   const serviceCount = previewNodes.reduce((sum, node) => sum + node.vms.length, 0);
   const estimatedWatts = previewNodes.reduce((sum, node) => sum + (node.power_draw || 0), 0);
+
+  const steps = kind ? STEPS[kind] : [];
+  const lastStep = steps.length - 1;
+  const name = kind === 'lan_party' ? party.name : kind === 'game_server' ? server.name : answers.name;
+  const setName = (value: string) => {
+    if (kind === 'lan_party') setParty(current => ({ ...current, name: value }));
+    else if (kind === 'game_server') setServer(current => ({ ...current, name: value }));
+    else setAnswers(current => ({ ...current, name: value }));
+  };
 
   const toggleGoal = (goal: Goal) => {
     setAnswers(current => ({
@@ -455,6 +196,35 @@ export default function GuidedPlannerPage() {
       goals: current.goals.includes(goal)
         ? current.goals.filter(item => item !== goal)
         : [...current.goals, goal],
+    }));
+  };
+
+  const togglePartyGame = (slug: string) => {
+    setParty(current => ({
+      ...current,
+      games: current.games.includes(slug)
+        ? current.games.filter(item => item !== slug)
+        : [...current.games, slug],
+    }));
+  };
+
+  const toggleServerGame = (service: Service) => {
+    const slug = service.game!.slug;
+    setServer(current => ({
+      ...current,
+      games: current.games.some(game => game.slug === slug)
+        ? current.games.filter(game => game.slug !== slug)
+        : [...current.games, { slug, players: service.game!.default_players }].slice(
+            0,
+            MAX_PLANNED_GAMES,
+          ),
+    }));
+  };
+
+  const setServerPlayers = (slug: string, players: number) => {
+    setServer(current => ({
+      ...current,
+      games: current.games.map(game => (game.slug === slug ? { ...game, players } : game)),
     }));
   };
 
@@ -474,20 +244,51 @@ export default function GuidedPlannerPage() {
         revision: created.revision,
       });
       loadBuild(result.build.id, result.build.name, result.build);
-      toast.success('Your guided lab is ready to edit.');
+      toast.success(
+        kind === 'homelab' ? 'Your guided lab is ready to edit.' : 'Your plan is ready to edit.',
+      );
       navigate(`/builder/${result.build.id}`);
     } catch (error) {
       if (createdID) {
         await buildApi.delete(createdID).catch(() => undefined);
       }
       console.error('Failed to create guided lab', error);
-      toast.error('Could not create the guided lab. No partial project was kept.');
+      toast.error('Could not create the plan. No partial project was kept.');
     } finally {
       setCreating(false);
     }
   };
 
-  const canContinue = step !== 0 || answers.goals.length > 0;
+  const canContinue =
+    kind === 'homelab'
+      ? step !== 0 || answers.goals.length > 0
+      : kind === 'game_server'
+        ? step !== 0 || server.games.length > 0
+        : true;
+
+  const goBack = () => {
+    if (kind && step > 0) setStep(current => current - 1);
+    else if (kind && !isKind(presetKind)) setKind(null);
+    else navigate('/');
+  };
+
+  const intro = INTRO[kind ?? 'none'];
+  const perTable = seatsPerTable(party.mainsVoltage, party.breakerAmps);
+  const tableCount = tablesNeeded(party);
+  const circuitCount = circuitsNeeded(party);
+  const serverTotals = server.games.reduce(
+    (total, game) => {
+      const profile = gameCatalog.find(service => service.game?.slug === game.slug)?.game;
+      if (!profile) return total;
+      const sizing = sizeServer(profile, game.players);
+      return {
+        ram: total.ram + sizing.ram_mb,
+        cpu: total.cpu + sizing.cpu_cores,
+        upload: total.upload + sizing.upload_kbps,
+      };
+    },
+    { ram: 0, cpu: 0, upload: 0 },
+  );
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
@@ -496,36 +297,57 @@ export default function GuidedPlannerPage() {
         <div className="relative max-w-3xl">
           <div className="mb-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-primary">
             <Sparkles className="size-4" />
-            Guided Lab Planner
+            Guided Planner
           </div>
-          <h1 className="text-3xl font-semibold tracking-tight sm:text-5xl">
-            Turn your goals into a working topology.
-          </h1>
+          <h1 className="text-3xl font-semibold tracking-tight sm:text-5xl">{intro.title}</h1>
           <p className="mt-4 max-w-2xl text-sm leading-7 text-muted-foreground sm:text-base">
-            Choose what the lab should do. HLBuilder creates the devices, connections, service
-            placements, and IP plan so you can refine instead of starting from an empty canvas.
+            {intro.text}
           </p>
         </div>
       </header>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <Card className="overflow-hidden">
-          <div className="flex items-center gap-2 border-b px-5 py-4 sm:px-7">
-            {['Goals', 'Shape', 'Budget', 'Review'].map((label, index) => (
-              <div key={label} className="flex min-w-0 flex-1 items-center gap-2">
-                <span
-                  className={`grid size-7 shrink-0 place-items-center rounded-full text-xs font-semibold ${index <= step ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
-                >
-                  {index < step ? <Check className="size-3.5" /> : index + 1}
-                </span>
-                <span className="hidden truncate text-xs font-medium sm:block">{label}</span>
-                {index < 3 && <span className="h-px flex-1 bg-border" />}
-              </div>
-            ))}
-          </div>
+          {kind && (
+            <div className="flex items-center gap-2 border-b px-5 py-4 sm:px-7">
+              {steps.map((label, index) => (
+                <div key={label} className="flex min-w-0 flex-1 items-center gap-2">
+                  <span
+                    className={`grid size-7 shrink-0 place-items-center rounded-full text-xs font-semibold ${index <= step ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
+                  >
+                    {index < step ? <Check className="size-3.5" /> : index + 1}
+                  </span>
+                  <span className="hidden truncate text-xs font-medium sm:block">{label}</span>
+                  {index < lastStep && <span className="h-px flex-1 bg-border" />}
+                </div>
+              ))}
+            </div>
+          )}
 
           <section className="p-5 sm:p-7" aria-live="polite">
-            {step === 0 && (
+            {!kind && (
+              <fieldset>
+                <legend className="text-2xl font-semibold">What are you planning?</legend>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Each plan asks different questions and adds its own checks.
+                </p>
+                <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                  {BUILD_KINDS.map(entry => (
+                    <ChoiceCard
+                      key={entry.kind}
+                      selected={picked === entry.kind}
+                      onClick={() => setPicked(entry.kind)}
+                      title={entry.label}
+                      description={entry.description}
+                      icon={entry.icon}
+                    />
+                  ))}
+                </div>
+              </fieldset>
+            )}
+
+            {/* ── Homelab ─────────────────────────────────────────────── */}
+            {kind === 'homelab' && step === 0 && (
               <fieldset>
                 <legend className="text-2xl font-semibold">What should your lab do?</legend>
                 <p className="mt-2 text-sm text-muted-foreground">
@@ -537,7 +359,7 @@ export default function GuidedPlannerPage() {
                       key={goal.id}
                       selected={answers.goals.includes(goal.id)}
                       onClick={() => toggleGoal(goal.id)}
-                      title={goal.label}
+                      title={GOAL_LABELS[goal.id]}
                       description={goal.description}
                       icon={goal.icon}
                     />
@@ -546,7 +368,7 @@ export default function GuidedPlannerPage() {
               </fieldset>
             )}
 
-            {step === 1 && (
+            {kind === 'homelab' && step === 1 && (
               <fieldset>
                 <legend className="text-2xl font-semibold">Where will it live?</legend>
                 <p className="mt-2 text-sm text-muted-foreground">
@@ -567,7 +389,7 @@ export default function GuidedPlannerPage() {
               </fieldset>
             )}
 
-            {step === 2 && (
+            {kind === 'homelab' && step === 2 && (
               <div className="space-y-8">
                 <fieldset>
                   <legend className="text-2xl font-semibold">Set the spending lane</legend>
@@ -609,21 +431,281 @@ export default function GuidedPlannerPage() {
               </div>
             )}
 
-            {step === 3 && (
+            {/* ── LAN party ───────────────────────────────────────────── */}
+            {kind === 'lan_party' && step === 0 && (
+              <fieldset>
+                <legend className="text-2xl font-semibold">Who is coming?</legend>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Seats are grouped into tables, each with its own small switch.
+                </p>
+                <div className="mt-6 grid gap-5 sm:grid-cols-2">
+                  <NumberField
+                    id="party-seats"
+                    label="Players with a PC"
+                    hint={`Up to ${MAX_PARTY_SEATS}. Each gets a seat at a table.`}
+                    value={party.seats}
+                    min={1}
+                    max={MAX_PARTY_SEATS}
+                    onChange={seats => setParty(current => ({ ...current, seats }))}
+                  />
+                  <NumberField
+                    id="party-consoles"
+                    label="Consoles"
+                    hint="PlayStation, Xbox or Switch plugged in next to the tables."
+                    value={party.consoles}
+                    max={16}
+                    onChange={consoles => setParty(current => ({ ...current, consoles }))}
+                  />
+                </div>
+                <div className="mt-5">
+                  <ToggleRow
+                    checked={party.wifi}
+                    onChange={wifi => setParty(current => ({ ...current, wifi }))}
+                    title="Wi-Fi for phones and handhelds"
+                    description="Adds an access point and reserves an address for one extra device per player."
+                  />
+                </div>
+              </fieldset>
+            )}
+
+            {kind === 'lan_party' && step === 1 && (
+              <fieldset>
+                <legend className="text-2xl font-semibold">What does the venue offer?</legend>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Power is what ends LAN parties early. A gaming PC with a monitor is planned at 350
+                  W.
+                </p>
+                <div className="mt-6 grid gap-5 sm:grid-cols-3">
+                  <NumberField
+                    id="party-voltage"
+                    label="Mains voltage"
+                    value={party.mainsVoltage}
+                    min={100}
+                    max={240}
+                    unit="V"
+                    onChange={mainsVoltage => setParty(current => ({ ...current, mainsVoltage }))}
+                  />
+                  <NumberField
+                    id="party-breaker"
+                    label="Breaker rating"
+                    value={party.breakerAmps}
+                    min={1}
+                    max={125}
+                    unit="A"
+                    onChange={breakerAmps => setParty(current => ({ ...current, breakerAmps }))}
+                  />
+                  <NumberField
+                    id="party-circuits"
+                    label="Separate circuits"
+                    value={party.circuits}
+                    min={1}
+                    max={32}
+                    onChange={circuits => setParty(current => ({ ...current, circuits }))}
+                  />
+                </div>
+                <p
+                  className={`mt-4 rounded-xl border px-4 py-3 text-sm ${
+                    circuitCount > party.circuits
+                      ? 'border-destructive/40 bg-destructive/10 text-destructive'
+                      : 'bg-muted/25 text-muted-foreground'
+                  }`}
+                >
+                  One circuit safely carries a table of {perTable}. {party.seats} players need{' '}
+                  {tableCount} {tableCount === 1 ? 'table' : 'tables'}
+                  {hasPartyServer(party) && ', and the server a circuit of its own'}
+                  {circuitCount > party.circuits
+                    ? `: ${circuitCount} circuits, ${circuitCount - party.circuits} more than you entered.`
+                    : `: ${circuitCount} ${circuitCount === 1 ? 'circuit' : 'circuits'}.`}
+                </p>
+                <div className="mt-6 grid gap-5 sm:grid-cols-3">
+                  <NumberField
+                    id="party-down"
+                    label="Download speed"
+                    hint="Leave 0 if you do not know yet."
+                    value={party.downMbps}
+                    unit="Mbps"
+                    onChange={downMbps => setParty(current => ({ ...current, downMbps }))}
+                  />
+                  <NumberField
+                    id="party-up"
+                    label="Upload speed"
+                    value={party.upMbps}
+                    unit="Mbps"
+                    onChange={upMbps => setParty(current => ({ ...current, upMbps }))}
+                  />
+                  <NumberField
+                    id="party-hours"
+                    label="Length of the event"
+                    value={party.hours}
+                    unit="hours"
+                    onChange={hours => setParty(current => ({ ...current, hours }))}
+                  />
+                </div>
+              </fieldset>
+            )}
+
+            {kind === 'lan_party' && step === 2 && (
+              <fieldset>
+                <legend className="text-2xl font-semibold">Anything to host on site?</legend>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  A local server keeps matches inside the room. Skip this to play on public servers.
+                </p>
+                <div className="mt-6">
+                  <ToggleRow
+                    checked={party.lancache}
+                    onChange={lancache => setParty(current => ({ ...current, lancache }))}
+                    title="Download cache (LANCache)"
+                    description="A game update is downloaded once and served to everyone else at LAN speed."
+                  />
+                </div>
+                <GamePicker
+                  catalog={gameCatalog}
+                  isSelected={slug => party.games.includes(slug)}
+                  onToggle={service => togglePartyGame(service.game!.slug)}
+                />
+              </fieldset>
+            )}
+
+            {/* ── Game server ─────────────────────────────────────────── */}
+            {kind === 'game_server' && step === 0 && (
+              <fieldset>
+                <legend className="text-2xl font-semibold">Which games, for how many?</legend>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Memory and upload scale with the number of players online at once.
+                </p>
+                <GamePicker
+                  catalog={gameCatalog}
+                  isSelected={slug => server.games.some(game => game.slug === slug)}
+                  onToggle={toggleServerGame}
+                />
+                {server.games.length > 0 && (
+                  <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                    {server.games.map(game => {
+                      const service = gameCatalog.find(item => item.game?.slug === game.slug);
+                      if (!service?.game) return null;
+                      const sizing = sizeServer(service.game, game.players);
+                      return (
+                        <NumberField
+                          key={game.slug}
+                          id={`players-${game.slug}`}
+                          label={`${service.name}: players`}
+                          hint={`Needs about ${formatMemory(sizing.ram_mb)} and ${sizing.cpu_cores} cores.`}
+                          value={game.players}
+                          min={1}
+                          max={service.game.max_players}
+                          onChange={players => setServerPlayers(game.slug, players)}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+              </fieldset>
+            )}
+
+            {kind === 'game_server' && step === 1 && (
+              <div className="space-y-8">
+                <fieldset>
+                  <legend className="text-2xl font-semibold">Where does it run?</legend>
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                    <ChoiceCard
+                      selected={server.location === 'home'}
+                      onClick={() => setServer(current => ({ ...current, location: 'home' }))}
+                      title="At home"
+                      description="A mini PC or server behind your own router."
+                      icon={Home}
+                    />
+                    <ChoiceCard
+                      selected={server.location === 'vps'}
+                      onClick={() => setServer(current => ({ ...current, location: 'vps' }))}
+                      title="Rented VPS"
+                      description="A server in a data centre with a public address and its own line."
+                      icon={Cloud}
+                    />
+                  </div>
+                </fieldset>
+                {server.location === 'home' && (
+                  <fieldset>
+                    <legend className="text-lg font-semibold">How do friends reach it?</legend>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      {EXPOSURES.map(option => (
+                        <ChoiceCard
+                          key={option.value}
+                          selected={server.exposure === option.value}
+                          onClick={() =>
+                            setServer(current => ({
+                              ...current,
+                              exposure: option.value as GameExposure,
+                            }))
+                          }
+                          title={option.label}
+                          description={option.hint}
+                        />
+                      ))}
+                    </div>
+                    <div className="mt-6 grid gap-5 sm:grid-cols-2">
+                      <NumberField
+                        id="server-up"
+                        label="Upload speed of your line"
+                        hint="Leave 0 if you do not know yet."
+                        value={server.upMbps}
+                        unit="Mbps"
+                        onChange={upMbps => setServer(current => ({ ...current, upMbps }))}
+                      />
+                      <NumberField
+                        id="server-down"
+                        label="Download speed"
+                        value={server.downMbps}
+                        unit="Mbps"
+                        onChange={downMbps => setServer(current => ({ ...current, downMbps }))}
+                      />
+                    </div>
+                    <div className="mt-5">
+                      <label htmlFor="server-cgnat" className="text-sm font-semibold">
+                        Does your provider give you a public IPv4 address?
+                      </label>
+                      <select
+                        id="server-cgnat"
+                        value={server.cgnat}
+                        onChange={event =>
+                          setServer(current => ({
+                            ...current,
+                            cgnat: event.target.value as GameServerAnswers['cgnat'],
+                          }))
+                        }
+                        className="mt-2 h-11 w-full rounded-xl border bg-background px-3 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      >
+                        <option value="">I do not know</option>
+                        <option value="no">Yes, a public address</option>
+                        <option value="yes">No, I am behind carrier-grade NAT</option>
+                      </select>
+                    </div>
+                  </fieldset>
+                )}
+                <ToggleRow
+                  checked={server.voice}
+                  onChange={voice => setServer(current => ({ ...current, voice }))}
+                  title="Voice chat (Mumble)"
+                  description="A small voice server next to the games."
+                />
+              </div>
+            )}
+
+            {/* ── Review, shared ──────────────────────────────────────── */}
+            {kind && step === lastStep && (
               <div>
                 <label htmlFor="planner-name" className="text-sm font-semibold">
                   Project name
                 </label>
                 <input
                   id="planner-name"
-                  value={answers.name}
-                  onChange={event =>
-                    setAnswers(current => ({ ...current, name: event.target.value }))
-                  }
+                  value={name}
+                  onChange={event => setName(event.target.value)}
                   className="mt-2 h-12 w-full rounded-xl border bg-background px-4 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 />
                 <div className="mt-6 rounded-2xl border bg-muted/25 p-5">
-                  <h2 className="text-xl font-semibold">Your editable starter lab</h2>
+                  <h2 className="text-xl font-semibold">
+                    {kind === 'homelab' ? 'Your editable starter lab' : 'Your editable plan'}
+                  </h2>
                   <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
                     {[
                       ['Devices', previewNodes.length],
@@ -645,9 +727,19 @@ export default function GuidedPlannerPage() {
                           key={node.id}
                           className="flex items-center justify-between gap-3 border-b border-border/60 pb-2 last:border-0"
                         >
-                          <span>{node.name}</span>
-                          <span className="text-xs uppercase tracking-wider">
-                            {node.type.replace('_', ' ')}
+                          <span>
+                            {node.name}
+                            {node.vms.length > 0 && (
+                              <span className="text-xs">
+                                {' '}
+                                · {node.vms.map(vm => vm.name).join(', ')}
+                              </span>
+                            )}
+                          </span>
+                          <span className="shrink-0 text-xs uppercase tracking-wider">
+                            {node.type === 'lan_table'
+                              ? `${node.details.seats} seats`
+                              : node.type.replace('_', ' ')}
                           </span>
                         </li>
                       ))}
@@ -658,26 +750,37 @@ export default function GuidedPlannerPage() {
           </section>
 
           <footer className="flex flex-col-reverse gap-3 border-t bg-muted/20 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-7">
-            <Button
-              variant="ghost"
-              onClick={() => (step === 0 ? navigate('/') : setStep(current => current - 1))}
-            >
+            <Button variant="ghost" onClick={goBack}>
               <ArrowLeft className="size-4" />
-              {step === 0 ? 'Back to projects' : 'Previous'}
+              {!kind || (step === 0 && isKind(presetKind)) ? 'Back to projects' : 'Previous'}
             </Button>
-            {step < 3 ? (
+            {!kind ? (
+              <Button
+                onClick={() => {
+                  setKind(picked);
+                  setStep(0);
+                }}
+              >
+                Continue
+                <ArrowRight className="size-4" />
+              </Button>
+            ) : step < lastStep ? (
               <Button disabled={!canContinue} onClick={() => setStep(current => current + 1)}>
                 Continue
                 <ArrowRight className="size-4" />
               </Button>
             ) : (
-              <Button disabled={creating || !answers.name.trim()} onClick={createLab}>
+              <Button disabled={creating || !name.trim()} onClick={createLab}>
                 {creating ? (
                   <Loader2 className="size-4 animate-spin" />
                 ) : (
                   <Sparkles className="size-4" />
                 )}
-                {creating ? 'Building topology...' : 'Create this lab'}
+                {creating
+                  ? 'Building topology...'
+                  : kind === 'homelab'
+                    ? 'Create this lab'
+                    : 'Create this plan'}
               </Button>
             )}
           </footer>
@@ -688,28 +791,123 @@ export default function GuidedPlannerPage() {
             Live plan
           </p>
           <div className="mt-4 space-y-4">
-            <div>
-              <p className="text-3xl font-semibold">{previewNodes.length}</p>
-              <p className="text-sm text-muted-foreground">planned devices</p>
-            </div>
-            <div className="h-px bg-border" />
-            <div className="flex flex-wrap gap-2">
-              {answers.goals.map(goal => (
-                <span
-                  key={goal}
-                  className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary"
-                >
-                  {GOALS.find(item => item.id === goal)?.label}
-                </span>
-              ))}
-            </div>
-            <p className="text-xs leading-5 text-muted-foreground">
-              The planner uses real catalog services when a match exists. Missing catalog matches
-              remain clearly labeled placeholders in the editable design.
-            </p>
+            {!kind && (
+              <p className="text-sm leading-6 text-muted-foreground">
+                {buildKindInfo(picked).description}
+              </p>
+            )}
+            {kind && (
+              <div>
+                <p className="text-3xl font-semibold">{previewNodes.length}</p>
+                <p className="text-sm text-muted-foreground">planned devices</p>
+              </div>
+            )}
+            {kind === 'homelab' && (
+              <>
+                <div className="h-px bg-border" />
+                <div className="flex flex-wrap gap-2">
+                  {answers.goals.map(goal => (
+                    <span
+                      key={goal}
+                      className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary"
+                    >
+                      {GOAL_LABELS[goal]}
+                    </span>
+                  ))}
+                </div>
+                <p className="text-xs leading-5 text-muted-foreground">
+                  The planner uses real catalog services when a match exists. Missing catalog
+                  matches remain clearly labeled placeholders in the editable design.
+                </p>
+              </>
+            )}
+            {kind === 'lan_party' && (
+              <>
+                <div className="h-px bg-border" />
+                <dl className="space-y-2 text-sm">
+                  <PlanFact label="Tables" value={`${tableCount} × up to ${perTable} seats`} />
+                  <PlanFact label="Power" value={`${estimatedWatts} W`} />
+                  <PlanFact
+                    label="Circuits"
+                    value={`${party.circuits} of ${circuitCount} needed`}
+                  />
+                </dl>
+                <p className="text-xs leading-5 text-muted-foreground">
+                  After creating the plan, the Game plan report checks every breaker, the address
+                  pool and the switch ports.
+                </p>
+              </>
+            )}
+            {kind === 'game_server' && (
+              <>
+                <div className="h-px bg-border" />
+                <dl className="space-y-2 text-sm">
+                  <PlanFact label="Memory needed" value={formatMemory(serverTotals.ram)} />
+                  <PlanFact label="Cores needed" value={`${serverTotals.cpu}`} />
+                  <PlanFact
+                    label="Upload needed"
+                    value={`${(serverTotals.upload / 1000).toFixed(1)} Mbps`}
+                  />
+                </dl>
+                <p className="text-xs leading-5 text-muted-foreground">
+                  Sizing is an estimate for everyone online at once. The Game plan report lists the
+                  ports to forward.
+                </p>
+              </>
+            )}
           </div>
         </aside>
       </div>
     </main>
+  );
+}
+
+function PlanFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="font-medium">{value}</dd>
+    </div>
+  );
+}
+
+function GamePicker({
+  catalog,
+  isSelected,
+  onToggle,
+}: {
+  catalog: Service[];
+  isSelected: (slug: string) => boolean;
+  onToggle: (service: Service) => void;
+}) {
+  if (catalog.length === 0) {
+    return (
+      <p className="mt-6 rounded-xl border bg-muted/25 px-4 py-3 text-sm text-muted-foreground">
+        The game catalog is not loaded. You can add game servers later from the Services tab in the
+        builder.
+      </p>
+    );
+  }
+  return (
+    <div className="mt-6 flex flex-wrap gap-2" role="group" aria-label="Games">
+      {catalog.map(service => {
+        const selected = isSelected(service.game!.slug);
+        return (
+          <button
+            key={service.id}
+            type="button"
+            aria-pressed={selected}
+            onClick={() => onToggle(service)}
+            className={`rounded-full border px-3 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+              selected
+                ? 'border-primary bg-primary/10 font-medium text-primary'
+                : 'border-border hover:border-primary/40'
+            }`}
+          >
+            {service.name.replace(/ Server$/, '')}
+          </button>
+        );
+      })}
+    </div>
   );
 }

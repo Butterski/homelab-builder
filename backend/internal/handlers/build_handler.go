@@ -96,6 +96,20 @@ func (h *BuildHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, builds)
 }
 
+// conflictResponse is the body of a 409: the reason and the build as it is now,
+// which the client takes over. If the build cannot be read at this moment the
+// key is left out rather than sent as null, and the client fetches it itself.
+func (h *BuildHandler) conflictResponse(id uuid.UUID, cause error) gin.H {
+	response := gin.H{"error": cause.Error()}
+	latest, err := h.service.GetByID(id)
+	if err != nil {
+		log.Printf("Reading build %s after a revision conflict failed: %v", id, err)
+		return response
+	}
+	response["build"] = latest
+	return response
+}
+
 func (h *BuildHandler) Rename(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
@@ -117,8 +131,7 @@ func (h *BuildHandler) Rename(c *gin.Context) {
 	}
 	build, err := h.service.Rename(id, userID.(uuid.UUID), req.Name, req.Revision)
 	if errors.Is(err, services.ErrBuildRevisionConflict) {
-		latest, _ := h.service.GetByID(id)
-		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "build": latest})
+		c.JSON(http.StatusConflict, h.conflictResponse(id, err))
 		return
 	}
 	if err != nil {
@@ -163,8 +176,7 @@ func (h *BuildHandler) UpdateTopology(c *gin.Context) {
 
 	log.Printf("Topology Update Error: %v", err)
 	if errors.Is(err, services.ErrBuildRevisionConflict) {
-		latest, _ := h.service.GetByID(id)
-		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "build": latest})
+		c.JSON(http.StatusConflict, h.conflictResponse(id, err))
 		return
 	}
 	if errors.Is(err, services.ErrInvalidEdgeReferences) || errors.Is(err, services.ErrInvalidTopology) {

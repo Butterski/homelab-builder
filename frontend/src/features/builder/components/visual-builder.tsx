@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect, useEffectEvent, useMemo } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ReactFlow,
@@ -17,6 +17,10 @@ import { toast } from 'sonner';
 import '@xyflow/react/dist/style.css';
 import Joyride, { type CallBackProps, STATUS, type Step } from 'react-joyride';
 import { BuildConflictError, useBuilderStore } from '../store/builder-store';
+import { startAutosave } from '../store/autosave';
+import { ApiError } from '../../../lib/api';
+import { SaveStateChip } from './save-state-chip';
+import { LoadingScreen } from '../../../components/ui/loading-screen';
 import { HardwareToolbox } from './hardware-toolbox';
 import { HardwareNode as HardwareNodeComponent } from './hardware-node';
 import { RackNode } from './rack-node';
@@ -40,6 +44,7 @@ import {
   Image as ImageIcon,
   Map as MapIcon,
   ClipboardCheck,
+  Gamepad2,
   LayoutGrid,
   Sparkles,
 } from 'lucide-react';
@@ -50,10 +55,11 @@ import {
   canNodeBeNested,
   canNodeHostNested,
   canNodeHostVMs,
-  canNodeConnectToAny,
+  isFloorNode,
 } from '../../../lib/hardware-config';
+import { checkConnection } from '../lib/connection-rules';
 import { getNodePortCount } from '../lib/port-count';
-import { computeTopologyLayout } from '../lib/topology-layout';
+import { polishCanvas } from '../lib/polish';
 import { isNatDownstreamEdge } from '../lib/network-zone';
 import { withFreshChildIds } from '../lib/hardware-instance';
 import { useAuth } from '../../admin/hooks/use-auth';
@@ -70,11 +76,17 @@ import {
 
 import { CustomEdge } from './custom-edge';
 import { ReadinessReportDialog } from './readiness-report-dialog';
+import { GamingPlanDialog } from '../../gaming/components/gaming-plan-dialog';
+import { isGamingKind } from '../../gaming/lib/kind';
 import { VirtualNetworkEditor } from './virtual-network-editor';
+import { PolishMenu } from './polish-menu';
 import { ProposalBanner } from './proposal-banner';
-import { ProposalPreviewCanvas } from './proposal-preview-canvas';
+import { ProposalEdge } from './proposal-edge';
+import { ProposalReviewBar } from './proposal-review-bar';
 import { ProposalReviewPanel } from './proposal-review-panel';
+import { SidePanelShell } from './side-panel-shell';
 import { useProposals } from '../hooks/use-proposals';
+import { AssistantActivityPill } from '../../assistant/components/activity-pill';
 import { AssistantPanel } from '../../assistant/components/assistant-panel';
 import { useAssistantStore } from '../../assistant/store/assistant-store';
 import { useAssistantSettings } from '../../settings/api/assistant-settings';
@@ -158,6 +170,45 @@ function NetworkZoneNode({ data }: any) {
   );
 }
 
+/** How long cards glide to their new places after a Polish. Matches `.is-arranging` in index.css. */
+const LAYOUT_GLIDE_MS = 450;
+
+const px = (value: number) => `${Math.round(value)}px` as const;
+
+/** One empty list for every "nothing to mark", so memos see the same value. */
+const NO_IDS: string[] = [];
+
+/**
+ * Padding for bringing something into view: room for the toolbar on top, and
+ * for a panel that floats over one side (the library can be dragged anywhere).
+ * `margin` is added all around, for when a few devices are shown rather than
+ * the whole canvas and should not touch the edges.
+ */
+function paddingClearOfPanels(canvas: HTMLElement | null, margin = 0) {
+  const inset = { top: 96 + margin, right: 48 + margin, bottom: 64 + margin, left: 48 + margin };
+  if (canvas) {
+    const area = canvas.getBoundingClientRect();
+    document
+      .querySelectorAll<HTMLElement>('.builder-floating-panel, .builder-resource-dashboard')
+      .forEach(panel => {
+        const box = panel.getBoundingClientRect();
+        // A collapsed panel is only a button in a corner.
+        if (box.width === 0 || box.height < area.height * 0.4) return;
+        if (box.left + box.width / 2 < area.left + area.width / 2) {
+          inset.left = Math.max(inset.left, box.right - area.left + 24 + margin);
+        } else {
+          inset.right = Math.max(inset.right, area.right - box.left + 24 + margin);
+        }
+      });
+    // Panels on both sides of a narrow window leave nothing to fit into.
+    if (inset.left + inset.right > area.width * 0.6) {
+      inset.left = 48;
+      inset.right = 48;
+    }
+  }
+  return { top: px(inset.top), right: px(inset.right), bottom: px(inset.bottom), left: px(inset.left) };
+}
+
 const nodeTypes: NodeTypes = {
   hardware: HardwareNodeComponent,
   rack: RackNode,
@@ -165,7 +216,12 @@ const nodeTypes: NodeTypes = {
 
 const edgeTypes = {
   custom: CustomEdge,
+  // Cables of a proposal under review.
+  proposal: ProposalEdge,
 };
+
+/** How long the devices of an applied proposal stay lit. Matches `.applied-glow` in index.css. */
+const APPLIED_GLOW_MS = 2600;
 
 type Shortcut = { combination: string; name: string };
 
@@ -251,6 +307,7 @@ const Flow = React.memo(function Flow() {
   // Joyride Tour State
   const [runTour, setRunTour] = useState(false);
   const [readinessOpen, setReadinessOpen] = useState(false);
+  const [gamePlanOpen, setGamePlanOpen] = useState(false);
   const [tourSteps] = useState<Step[]>([
     {
       target: '.tour-toolbox',
@@ -303,7 +360,6 @@ const Flow = React.memo(function Flow() {
     onEdgesChange,
     onConnect,
     addHardware,
-    updateHardware,
     removeHardware,
     duplicateHardware,
     selectNode,
@@ -321,11 +377,41 @@ const Flow = React.memo(function Flow() {
     redo,
   } = useBuilderStore();
 
-  const { screenToFlowPosition, getIntersectingNodes, fitView } = useReactFlow();
+  const { screenToFlowPosition, getIntersectingNodes, fitView, getNodesBounds, getViewport } =
+    useReactFlow();
 
-  // LLM proposals: polled from the server, reviewed on a read-only preview canvas.
+  // LLM proposals: polled from the server and reviewed right here. While one
+  // is open the canvas draws the build as it would be instead of the live
+  // graph; the live graph in the store is not touched, so nothing of a
+  // proposal can be saved before it is applied.
   const proposals = useProposals(id);
-  const reviewingProposal = useBuilderStore(state => state.proposalPreview !== null);
+  const previewNodes = useBuilderStore(state => state.proposalPreview?.nodes);
+  const previewEdges = useBuilderStore(state => state.proposalPreview?.edges);
+  const previewHardware = useBuilderStore(state => state.proposalPreview?.hardwareNodes);
+  const previewFocus = useBuilderStore(state => state.proposalPreview?.focus);
+  // A device a proposal adds has no size until React Flow has drawn and
+  // measured it, and the camera cannot be pointed at something without a size.
+  const previewFocusMeasured = useBuilderStore(state => {
+    const preview = state.proposalPreview;
+    if (!preview?.focus) return false;
+    const wanted = new Set(preview.focus.ids);
+    return preview.nodes.every(node => !wanted.has(node.id) || !!node.measured?.width);
+  });
+  const previewTotal = useBuilderStore(state => state.proposalPreview?.proposal.diff.counts.total);
+  const previewId = useBuilderStore(state => state.proposalPreview?.proposal.id);
+  const applyPreviewNodeChanges = useBuilderStore(state => state.applyPreviewNodeChanges);
+  const reviewingProposal = previewNodes !== undefined;
+  const canvasNodes = previewNodes ?? nodes;
+  const canvasEdges = previewEdges ?? edges;
+  const canvasHardware = previewHardware ?? hardwareNodes;
+  // The game plan is offered wherever there is something for it to check.
+  const showGamePlan = useBuilderStore(
+    state =>
+      isGamingKind(state.buildKind) ||
+      state.hardwareNodes.some(
+        node => node.type === 'lan_table' || node.vms?.some(vm => !!vm.details?.game),
+      ),
+  );
 
   // The in-app assistant exists only for users who turned it on in Settings.
   const { data: assistantSettings } = useAssistantSettings();
@@ -333,6 +419,31 @@ const Flow = React.memo(function Flow() {
   const assistantOpen = useAssistantStore(state => state.open);
   const setAssistantOpen = useAssistantStore(state => state.setOpen);
   const showAssistant = assistantEnabled && assistantOpen && !!id;
+  const noteProposal = useAssistantStore(state => state.noteProposal);
+  // Devices the assistant's last step was about get a ring while it works.
+  const assistantFocus = useAssistantStore(state => (state.buildId === id ? state.focusIds : NO_IDS));
+  // While a proposal is reviewed next to an open chat, the side panel shows the
+  // chat unless the list of changes was asked for. That choice belongs to the
+  // proposal it was made for: the next review starts on the chat again.
+  const [changesShownFor, setChangesShownFor] = useState<string | null>(null);
+  const sideTab = previewId !== undefined && changesShownFor === previewId ? 'changes' : 'chat';
+  const setSideTab = useCallback(
+    (tab: 'chat' | 'changes') => setChangesShownFor(tab === 'changes' ? (previewId ?? null) : null),
+    [previewId],
+  );
+
+  // The card in the chat says at once what was done with its proposal.
+  const applyReviewed = useCallback(async () => {
+    const proposalId = useBuilderStore.getState().proposalPreview?.proposal.id;
+    if (proposalId && (await proposals.apply())) noteProposal(proposalId, 'applied');
+  }, [proposals, noteProposal]);
+  const rejectReviewed = useCallback(
+    async (reason: string) => {
+      const proposalId = useBuilderStore.getState().proposalPreview?.proposal.id;
+      if (proposalId && (await proposals.reject(reason))) noteProposal(proposalId, 'rejected', reason);
+    },
+    [proposals, noteProposal],
+  );
   const visualPreferences = {
     showNetworkZones: edgePreferences.showNetworkZones ?? true,
     showLanZones: edgePreferences.showLanZones ?? false,
@@ -340,33 +451,27 @@ const Flow = React.memo(function Flow() {
     zoneOpacity: edgePreferences.zoneOpacity ?? 0.7,
   };
 
-  const polishTopologyLayout = useCallback(() => {
-    const positions = computeTopologyLayout(hardwareNodes, edges);
-    if (positions.length === 0) {
-      toast.error('Add hardware before polishing the layout.');
-      return;
-    }
-
-    positions.forEach(position => {
-      updateHardware(position.id, { x: position.x, y: position.y });
-    });
-
-    window.setTimeout(() => {
-      fitView({ padding: 0.18, duration: 500 });
-    }, 80);
-
-    toast.success('Topology layout polished.');
-  }, [hardwareNodes, edges, updateHardware, fitView]);
+  // Polish writes the final positions at once; only the way there is drawn.
+  // The class has to be on the canvas in the same render that moves the cards,
+  // which is why it is derived from the counter instead of set in an effect.
+  const layoutMotion = useBuilderStore(state => state.layoutMotion);
+  const [settledMotion, setSettledMotion] = useState(layoutMotion);
+  const arranging = layoutMotion !== settledMotion;
+  useEffect(() => {
+    if (layoutMotion === settledMotion) return;
+    const timer = window.setTimeout(() => setSettledMotion(layoutMotion), LAYOUT_GLIDE_MS + 80);
+    return () => window.clearTimeout(timer);
+  }, [layoutMotion, settledMotion]);
 
   const networkZones = useMemo<ReactFlowNode[]>(() => {
     if (!visualPreferences.showNetworkZones) return [];
 
-    const hardwareById = new Map(hardwareNodes.map(node => [node.id, node]));
-    const reactFlowById = new Map(nodes.map(node => [node.id, node]));
+    const hardwareById = new Map(canvasHardware.map(node => [node.id, node]));
+    const reactFlowById = new Map(canvasNodes.map(node => [node.id, node]));
     const edgeByNode = new Map<string, typeof edges>();
     const natChildIds = new Set<string>();
 
-    edges.forEach(edge => {
+    canvasEdges.forEach(edge => {
       if (edge.data?.connection_type === 'vpn') return;
       edgeByNode.set(edge.source, [...(edgeByNode.get(edge.source) || []), edge]);
       edgeByNode.set(edge.target, [...(edgeByNode.get(edge.target) || []), edge]);
@@ -417,8 +522,10 @@ const Flow = React.memo(function Flow() {
 
       members.forEach(node => {
         const size = getNodeSize(node);
-        const x = node.position.x - padding;
-        const y = node.position.y - padding;
+        // A device in a rack is positioned relative to the rack.
+        const rack = node.parentId ? reactFlowById.get(node.parentId) : undefined;
+        const x = node.position.x + (rack?.position.x ?? 0) - padding;
+        const y = node.position.y + (rack?.position.y ?? 0) - padding;
         const width = size.width + padding * 2;
         const height = size.height + padding * 2;
 
@@ -468,7 +575,7 @@ const Flow = React.memo(function Flow() {
 
     const zoneNodes: ReactFlowNode[] = [];
 
-    hardwareNodes.filter(isNatProvider).forEach(natNode => {
+    canvasHardware.filter(isNatProvider).forEach(natNode => {
       if (!visualPreferences.showNatZones) return;
       const natId = natNode.id;
       const visited = new Set<string>();
@@ -523,7 +630,7 @@ const Flow = React.memo(function Flow() {
     });
 
     const routers = visualPreferences.showLanZones
-      ? hardwareNodes.filter(node => node.type === 'router')
+      ? canvasHardware.filter(node => node.type === 'router')
       : [];
     routers.forEach(router => {
       const routerId = router.id;
@@ -564,26 +671,46 @@ const Flow = React.memo(function Flow() {
 
     return zoneNodes;
   }, [
-    nodes,
-    edges,
-    hardwareNodes,
+    canvasNodes,
+    canvasEdges,
+    canvasHardware,
     visualPreferences.showNetworkZones,
     visualPreferences.showLanZones,
     visualPreferences.showNatZones,
     visualPreferences.zoneOpacity,
   ]);
 
+  // The devices of the proposal applied last light up once.
+  const appliedGlow = useBuilderStore(state => state.appliedGlow);
+  const [glowSeen, setGlowSeen] = useState(appliedGlow?.nonce ?? 0);
+  const glowing = appliedGlow && appliedGlow.nonce !== glowSeen ? appliedGlow.ids : NO_IDS;
+  useEffect(() => {
+    if (!appliedGlow || appliedGlow.nonce === glowSeen) return;
+    const timer = window.setTimeout(() => setGlowSeen(appliedGlow.nonce), APPLIED_GLOW_MS);
+    return () => window.clearTimeout(timer);
+  }, [appliedGlow, glowSeen]);
+
   const flowNodes = useMemo<ReactFlowNode[]>(
     () =>
-      nodes.map(node => ({
-        ...node,
-        data: {
-          ...node.data,
-          onOpenVirtualNetwork: () => useBuilderStore.getState().openVirtualNetwork(node.id),
-        },
-        zIndex: node.type === 'rack' ? 10 : 20,
-      })),
-    [nodes],
+      canvasNodes.map(node => {
+        // A device a proposal removes stays visible behind what takes its place.
+        const removed = (node.data as { proposalDiff?: string }).proposalDiff === 'removed';
+        const marks = [
+          node.className,
+          glowing.includes(node.id) && 'applied-glow',
+          assistantFocus.includes(node.id) && 'assistant-focus',
+        ].filter(Boolean);
+        return {
+          ...node,
+          ...(marks.length > 0 ? { className: marks.join(' ') } : {}),
+          data: {
+            ...node.data,
+            onOpenVirtualNetwork: () => useBuilderStore.getState().openVirtualNetwork(node.id),
+          },
+          zIndex: node.type === 'rack' ? 10 : removed ? 15 : 20,
+        };
+      }),
+    [canvasNodes, glowing, assistantFocus],
   );
 
   // Always reload on open: the store may still hold an older revision of this
@@ -595,6 +722,11 @@ const Flow = React.memo(function Flow() {
       if (!active) return;
       console.error('Failed to load build', err);
       useBuilderStore.getState().clearCurrentBuild();
+      toast.error(
+        err instanceof ApiError && err.status === 404
+          ? 'This project no longer exists.'
+          : 'This project could not be opened.',
+      );
       navigate('/');
     });
     return () => {
@@ -602,102 +734,115 @@ const Flow = React.memo(function Flow() {
     };
   }, [id, openBuild, navigate]);
 
-  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
   const clipboardNodeIdRef = useRef<string | null>(null);
-  const isFirstRender = useRef(true);
-  // Avoid calling impure Date.now() during render to satisfy react-hooks purity rules.
-  // Initialize with 0 and set the actual time on first effect run.
-  const lastSaveTime = useRef<number>(0);
 
-  useEffect(() => {
-    if (lastSaveTime.current === 0) lastSaveTime.current = Date.now();
-  }, []);
+  // The save state lives in the store, so the sidebar shows the same thing.
+  const saveState = useBuilderStore(state => state.saveState);
+  const saveError = useBuilderStore(state => state.saveError);
+  const serverReachable = useBuilderStore(state => state.serverReachable);
+  // Nothing of another build is shown while this one is still on its way.
+  const buildReady = useBuilderStore(
+    state => state.currentBuildId === id && state.buildStatus === 'ready',
+  );
 
-  const saveProjectFn = useCallback(async () => {
-    if (!id) return;
-    setSaveStatus('saving');
-    try {
-      await reassignAllIPs();
-      setSaveStatus('saved');
-      lastSaveTime.current = Date.now();
-    } catch (err) {
-      console.error('Failed to save', err);
-      setSaveStatus('error');
-      throw err;
-    }
-  }, [id, reassignAllIPs]);
-
-  // Wrap saveProjectFn with useEffectEvent so it can be called from setTimeout
-  // without being a dependency, preventing unnecessary effect re-subscriptions
-  const saveProject = useEffectEvent(saveProjectFn);
-
-  // Auto-save trigger
-  const topologyFingerprint = JSON.stringify(useBuilderStore.getState().getBuildData());
-  const pendingSave = useRef(false);
-  useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-      return;
-    }
-
-    // Nothing to save when the canvas matches the server: right after a load,
-    // or after a save that only brought back calculated addresses. Without this
-    // a reload triggered by another session would save again and the two
-    // sessions would keep bumping the revision for each other.
-    if (topologyFingerprint === useBuilderStore.getState().lastSyncedFingerprint) {
-      pendingSave.current = false;
-      return;
-    }
-
-    // Debounce save
-    pendingSave.current = true;
-    const timer = setTimeout(() => {
-      pendingSave.current = false;
-      void saveProject().catch(err => {
-        toast.error(
-          err instanceof BuildConflictError
-            ? err.message
-            : 'Auto-save failed. Your local changes are still on this device.',
-        );
-      });
-    }, 2000); // 2 seconds debounce
-
-    return () => clearTimeout(timer);
-  }, [topologyFingerprint]);
-
-  // Leaving the builder cancels the debounce timer, and reopening it reloads the
-  // build from the server, so save the pending change now.
+  // Autosave watches the store, not this component's renders. Stopping it (on
+  // leaving the builder or switching builds) saves what is still pending.
   useEffect(
-    () => () => {
-      if (!pendingSave.current) return;
-      void useBuilderStore
-        .getState()
-        .reassignAllIPs()
-        .catch(() => {
-          toast.error('Failed to save your last change before leaving the builder.');
-        });
-    },
+    () =>
+      startAutosave({
+        onConflict: error => toast.warning(error.message, { duration: 8000 }),
+        onFailure: message => toast.error(message),
+      }),
     [],
   );
 
+  const saveNow = useCallback(async () => {
+    if (!id) return;
+    await reassignAllIPs();
+  }, [id, reassignAllIPs]);
+
+  const reviewBusy = proposals.busy === 'apply' || proposals.busy === 'reject' ? proposals.busy : null;
+
+  const saveErrorText = (err: unknown, fallback: string) =>
+    err instanceof BuildConflictError || (err instanceof ApiError && err.status === 422)
+      ? err.message
+      : fallback;
+
   // Manual save wrapper (immediate)
   const handleManualSave = useCallback(() => {
-    toast.promise(saveProjectFn(), {
+    toast.promise(saveNow(), {
       loading: 'Saving…',
       success: 'Project saved',
-      error: (err: unknown) =>
-        err instanceof BuildConflictError ? err.message : 'Failed to save',
+      error: (err: unknown) => saveErrorText(err, 'Failed to save'),
     });
-  }, [saveProjectFn]);
+  }, [saveNow]);
 
   const handleReassignIPs = useCallback(() => {
-    toast.promise(saveProjectFn(), {
+    toast.promise(saveNow(), {
       loading: 'Reassigning IPs…',
       success: 'IP addresses reassigned',
       error: (err: unknown) =>
         err instanceof Error && err.message ? err.message : 'Failed to reassign IPs',
     });
-  }, [saveProjectFn]);
+  }, [saveNow]);
+
+  // One place moves the camera: an applied proposal, a Polish, "show on canvas".
+  const canvasFocus = useBuilderStore(state => state.canvasFocus);
+  useEffect(() => {
+    if (!canvasFocus) return;
+    const frame = requestAnimationFrame(() => {
+      void fitView({
+        ...(canvasFocus.ids ? { nodes: canvasFocus.ids.map(nodeId => ({ id: nodeId })) } : {}),
+        padding: paddingClearOfPanels(reactFlowWrapper.current, canvasFocus.ids ? 72 : 0),
+        duration: LAYOUT_GLIDE_MS,
+        maxZoom: 1.1,
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [canvasFocus, fitView]);
+
+  // A review brings what it changes into view, unless that is on screen
+  // already: then the camera stays where the user left it. A click on a change
+  // in the list always goes there.
+  useEffect(() => {
+    if (!previewFocus || !previewFocusMeasured || previewFocus.ids.length === 0) return;
+    const frame = requestAnimationFrame(() => {
+      const wanted = previewFocus.ids.map(nodeId => ({ id: nodeId }));
+      const canvas = reactFlowWrapper.current;
+      if (previewFocus.nonce === 0 && canvas) {
+        const bounds = getNodesBounds(previewFocus.ids);
+        const { x, y, zoom } = getViewport();
+        const left = bounds.x * zoom + x;
+        const top = bounds.y * zoom + y;
+        const visible =
+          bounds.width > 0 &&
+          left >= 24 &&
+          top >= 72 &&
+          left + bounds.width * zoom <= canvas.clientWidth - 24 &&
+          top + bounds.height * zoom <= canvas.clientHeight - 96;
+        if (visible) return;
+      }
+      void fitView({ nodes: wanted, padding: 0.35, duration: LAYOUT_GLIDE_MS, maxZoom: 1.1 });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [previewFocus, previewFocusMeasured, fitView, getNodesBounds, getViewport]);
+
+  // A build opens shown whole. React Flow's own first fit does not know about
+  // the panels that float over the canvas, so once the cards are measured the
+  // view is fitted again around them.
+  const fittedOnOpen = useRef(false);
+  const cardsMeasured = useBuilderStore(
+    state => state.nodes.length > 0 && state.nodes.every(node => !!node.measured?.width),
+  );
+  useEffect(() => {
+    if (!buildReady || !cardsMeasured || fittedOnOpen.current) return;
+    // A moment later than React Flow's own fit, which would otherwise undo this one.
+    const timer = window.setTimeout(() => {
+      fittedOnOpen.current = true;
+      useBuilderStore.getState().requestCanvasFocus(null);
+    }, 200);
+    return () => window.clearTimeout(timer);
+  }, [buildReady, cardsMeasured]);
 
   const { getEdges, deleteElements } = useReactFlow();
   const updateNodeInternals = useUpdateNodeInternals();
@@ -861,6 +1006,7 @@ const Flow = React.memo(function Flow() {
   const onDrop = useCallback(
     (event: React.DragEvent) => {
       event.preventDefault();
+      if (useBuilderStore.getState().proposalPreview) return;
 
       const position = screenToFlowPosition({
         x: event.clientX,
@@ -894,7 +1040,7 @@ const Flow = React.memo(function Flow() {
 
       const rackTarget = intersecting.find((n: any) => n.type === 'rack');
 
-      if (rackTarget && data.type !== 'rack' && !isServiceDrag) {
+      if (rackTarget && data.type !== 'rack' && !isFloorNode(data.type) && !isServiceDrag) {
         // Calculate the U-slot position based on drop position within the rack
         const relY = position.y - rackTarget.position.y - RACK_HEADER_PX;
         const uSlot = Math.max(0, Math.round(relY / RACK_U_HEIGHT_PX));
@@ -1005,6 +1151,8 @@ const Flow = React.memo(function Flow() {
         // Find hardware node to check details
         const hardwareNode = storeState.hardwareNodes.find(n => n.id === node.id);
         if (!hardwareNode) return;
+        // Consoles and LAN tables stand on the floor; they stay where they were dropped.
+        if (isFloorNode(hardwareNode.type)) return;
 
         // Calculate relative Y
         const isCurrentlyInRack = node.parentId === rackTarget.id;
@@ -1057,86 +1205,34 @@ const Flow = React.memo(function Flow() {
   const isValidConnection = useCallback(
     (connection: any) => {
       // Always read live state so this never operates on stale closures.
-      const { edges: currentEdges, hardwareNodes: currentNodes } = useBuilderStore.getState();
+      const {
+        edges: currentEdges,
+        hardwareNodes: currentNodes,
+        edgePreferences,
+      } = useBuilderStore.getState();
 
-      // Self-loop guard
-      if (connection.source === connection.target) return false;
-
-      const sourceNode = currentNodes.find(n => n.id === connection.source);
-      const targetNode = currentNodes.find(n => n.id === connection.target);
-      if (!sourceNode || !targetNode) return false;
-
-      const isUPS = sourceNode.type === 'ups' || targetNode.type === 'ups';
-
-      // Port exclusivity - each physical handle can carry at most one cable.
-      // UPS connections are power cables and share ports with network connections.
-      if (!isUPS) {
-        const sourceHandleUsed = currentEdges.some(
-          e =>
-            (e.source === connection.source && e.sourceHandle === connection.sourceHandle) ||
-            (e.target === connection.source && e.targetHandle === connection.sourceHandle),
-        );
-        if (sourceHandleUsed) {
-          toast.error('Source port is already in use.');
-          return false;
-        }
-        const targetHandleUsed = currentEdges.some(
-          e =>
-            (e.source === connection.target && e.sourceHandle === connection.targetHandle) ||
-            (e.target === connection.target && e.targetHandle === connection.targetHandle),
-        );
-        if (targetHandleUsed) {
-          toast.error('Target port is already in use.');
-          return false;
-        }
-      }
-
-      // Cycle detection - BFS through the existing undirected graph (skip for UPS).
-      if (!isUPS && !useBuilderStore.getState().edgePreferences.ignoreNetworkLoops) {
-        const adj = new Map<string, Set<string>>();
-        for (const e of currentEdges) {
-          if (!adj.has(e.source)) adj.set(e.source, new Set());
-          if (!adj.has(e.target)) adj.set(e.target, new Set());
-          adj.get(e.source)!.add(e.target);
-          adj.get(e.target)!.add(e.source);
-        }
-        const visited = new Set<string>();
-        const queue = [connection.source];
-        visited.add(connection.source);
-        while (queue.length > 0) {
-          const current = queue.shift()!;
-          if (current === connection.target) {
-            toast.error('Connection would create a loop.');
-            return false;
-          }
-          for (const neighbor of adj.get(current) ?? []) {
-            if (!visited.has(neighbor)) {
-              visited.add(neighbor);
-              queue.push(neighbor);
-            }
-          }
-        }
-      }
-
-      // Devices generally shouldn't connect directly to each other (e.g. server to server).
-      // They should connect through a device that has 'canConnectToAny' (like a switch, router, modem, hba)
-      // Devices like IoT and UPS also bypass this and can connect anywhere directly.
-      const sourceCanConnectToAny = canNodeConnectToAny(sourceNode.type as HardwareType);
-      const targetCanConnectToAny = canNodeConnectToAny(targetNode.type as HardwareType);
-
-      if (!sourceCanConnectToAny && !targetCanConnectToAny) {
-        toast.error(
-          'Devices generally must connect through a network hub (Switch, Router, Modem, etc).',
-        );
-        return false;
-      }
-
-      return true;
+      const result = checkConnection(connection, currentNodes, currentEdges, {
+        ignoreLoops: edgePreferences.ignoreNetworkLoops,
+      });
+      if (!result.ok && result.message) toast.error(result.message);
+      return result.ok;
     },
     [], // no deps - reads live state via getState()
   );
 
-  // ...
+  // The project is still on its way from the server. Drawing the canvas now
+  // would show whatever was open before, under this project's address.
+  if (!buildReady) {
+    return (
+      <div
+        className="builder-workbench flex h-full items-center justify-center"
+        role="status"
+        aria-live="polite"
+      >
+        <LoadingScreen message="Opening project…" />
+      </div>
+    );
+  }
 
   return (
     <div className="builder-workbench flex h-full overflow-hidden relative">
@@ -1164,6 +1260,7 @@ const Flow = React.memo(function Flow() {
           />
         )}
 
+        {/* The library adds to the build; a review only looks at it. */}
         <div className={reviewingProposal ? 'hidden' : 'contents'}>
           <HardwareToolbox />
         </div>
@@ -1176,21 +1273,27 @@ const Flow = React.memo(function Flow() {
           onGenerateConfig={() => navigate('/generate')}
           onReassignIPs={handleReassignIPs}
         />
+        <GamingPlanDialog
+          open={gamePlanOpen}
+          onOpenChange={setGamePlanOpen}
+          onSelectNode={selectNode}
+        />
 
         <div className="builder-canvas flex-1 h-full min-w-0 relative" ref={reactFlowWrapper}>
-          {/* The live canvas stays mounted under the proposal preview but cannot be used. */}
-          <div className="h-full w-full" inert={reviewingProposal}>
           <ReactFlow
             nodes={flowNodes}
-            edges={edges}
-            onNodesChange={changes =>
-              onNodesChange(
-                changes.filter(
-                  change => !('id' in change) || !String(change.id).startsWith('network-zone-'),
-                ),
-              )
-            }
-            onEdgesChange={onEdgesChange}
+            edges={canvasEdges}
+            onNodesChange={changes => {
+              const own = changes.filter(
+                change => !('id' in change) || !String(change.id).startsWith('network-zone-'),
+              );
+              // During a review only the sizes React Flow measures are kept.
+              if (reviewingProposal) applyPreviewNodeChanges(own);
+              else onNodesChange(own);
+            }}
+            onEdgesChange={changes => {
+              if (!reviewingProposal) onEdgesChange(changes);
+            }}
             onConnect={onConnect}
             isValidConnection={isValidConnection}
             nodeTypes={nodeTypes}
@@ -1199,13 +1302,26 @@ const Flow = React.memo(function Flow() {
             onDrop={onDrop}
             onNodeDragStop={onNodeDragStop}
             onNodeClick={(_, node) => {
+              if (reviewingProposal) return;
               if (node.type === 'hardware' || node.type === 'rack') selectNode(node.id);
             }}
             onPaneClick={() => selectNode(null)}
+            // A proposal is looked at, not edited: the canvas pans and zooms only.
+            nodesDraggable={!reviewingProposal}
+            nodesConnectable={!reviewingProposal}
+            elementsSelectable={!reviewingProposal}
             connectionMode={ConnectionMode.Loose}
             fitView
+            // A wide build has to fit on the screen as a whole.
+            minZoom={0.15}
             attributionPosition="bottom-right"
-            className="builder-flow-canvas"
+            className={[
+              'builder-flow-canvas',
+              arranging && 'is-arranging',
+              reviewingProposal && 'is-reviewing',
+            ]
+              .filter(Boolean)
+              .join(' ')}
             defaultEdgeOptions={{
               type: 'custom',
               animated: true,
@@ -1232,11 +1348,17 @@ const Flow = React.memo(function Flow() {
                 ))}
               </div>
             </ViewportPortal>
-            <Controls />
+            <Controls showInteractive={!reviewingProposal} />
 
             <Panel
               position="top-left"
-              className="builder-top-panel flex max-w-[calc(100vw-2rem)] flex-wrap items-start gap-2"
+              // The toolbar edits the build; during a review there is nothing to edit.
+              className={[
+                'builder-top-panel flex max-w-[calc(100vw-2rem)] flex-wrap items-start gap-2',
+                reviewingProposal && 'hidden',
+              ]
+                .filter(Boolean)
+                .join(' ')}
             >
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -1266,7 +1388,10 @@ const Flow = React.memo(function Flow() {
                   <DropdownMenuItem onClick={() => setReadinessOpen(true)}>
                     <ClipboardCheck className="mr-2 size-4" /> Readiness Report
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={polishTopologyLayout}>
+                  <DropdownMenuItem onClick={() => setGamePlanOpen(true)}>
+                    <Gamepad2 className="mr-2 size-4" /> Game Plan
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => polishCanvas()}>
                     <LayoutGrid className="mr-2 size-4" /> Polish Layout
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
@@ -1292,19 +1417,15 @@ const Flow = React.memo(function Flow() {
 
               <div className="builder-project-title builder-glass-panel flex h-12 min-w-0 flex-col justify-center px-3 py-2">
                 <h2 className="text-sm font-semibold leading-none truncate max-w-52">
-                  {projectName || 'HLBuilder'}
+                  {projectName || 'Untitled project'}
                 </h2>
-                <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                  {saveStatus === 'saving' && (
-                    <span className="text-amber-500 flex items-center gap-1">
-                      <span className="animate-spin">⟳</span> Saving…
-                    </span>
-                  )}
-                  {saveStatus === 'saved' && (
-                    <span className="text-green-500 flex items-center gap-1">Cloud Saved</span>
-                  )}
-                  {saveStatus === 'error' && <span className="text-red-500">Save Failed</span>}
-                </span>
+                <SaveStateChip
+                  className="mt-1"
+                  state={saveState}
+                  error={saveError}
+                  reachable={serverReachable}
+                  onRetry={handleManualSave}
+                />
               </div>
 
               <Button
@@ -1329,16 +1450,20 @@ const Flow = React.memo(function Flow() {
                 <span className="builder-action-label ml-2">Readiness</span>
               </Button>
 
-              <Button
-                variant="outline"
-                onClick={polishTopologyLayout}
-                title="Polish Topology Layout"
-                size="sm"
-                className="builder-control-button h-10 px-3"
-              >
-                <LayoutGrid className="size-4" />
-                <span className="builder-action-label ml-2">Polish</span>
-              </Button>
+              {showGamePlan && (
+                <Button
+                  variant="outline"
+                  onClick={() => setGamePlanOpen(true)}
+                  title="Open the game plan and its report"
+                  size="sm"
+                  className="builder-control-button h-10 px-3"
+                >
+                  <Gamepad2 className="size-4" />
+                  <span className="builder-action-label ml-2">Game plan</span>
+                </Button>
+              )}
+
+              <PolishMenu />
 
               {assistantEnabled && (
                 <Button
@@ -1477,45 +1602,97 @@ const Flow = React.memo(function Flow() {
             </Panel>
 
             <Panel position="top-right" className="tour-properties">
-              {selectedNodeId && <NodePropertiesPanel />}
+              {selectedNodeId && !reviewingProposal && <NodePropertiesPanel />}
             </Panel>
 
-            <ShortcutHints />
-            <LiveResourceDashboard />
+            {!reviewingProposal && <ShortcutHints />}
+            {!reviewingProposal && <LiveResourceDashboard />}
           </ReactFlow>
-          </div>
+          {id && assistantEnabled && <AssistantActivityPill buildId={id} />}
           {proposals.pending && (
             <ProposalBanner
               proposal={proposals.pending}
               loading={proposals.busy === 'open'}
               onReview={() => void proposals.openReview(proposals.pending!.id)}
-              onDismiss={proposals.dismiss}
             />
           )}
-          <ProposalPreviewCanvas />
+          {reviewingProposal && (
+            <ProposalReviewBar
+              busy={reviewBusy}
+              onApply={() => void applyReviewed()}
+              onReject={reason => void rejectReviewed(reason)}
+              onClose={proposals.closeReview}
+              onShowChanges={() => setSideTab('changes')}
+            />
+          )}
         </div>
-        {/* One side panel: the review while a proposal is open, otherwise the assistant. */}
+        {/* Beside the canvas: the assistant, and the list of changes while a proposal
+            is reviewed. The chat stays mounted behind the list, so a running reply
+            and the place one has scrolled to survive a look at the changes. */}
         {(reviewingProposal || showAssistant) && (
-          <aside className="builder-side-panel flex h-full w-[380px] shrink-0 flex-col border-l bg-card max-md:absolute max-md:inset-y-0 max-md:right-0 max-md:z-40 max-md:w-full">
-            {reviewingProposal ? (
-              <ProposalReviewPanel
-                busy={
-                  proposals.busy === 'apply' || proposals.busy === 'reject' ? proposals.busy : null
-                }
-                onApply={() => void proposals.apply()}
-                onReject={reason => void proposals.reject(reason)}
-                onClose={proposals.closeReview}
-              />
-            ) : (
-              <AssistantPanel
-                buildId={id!}
-                openingProposal={proposals.busy === 'open'}
-                onReview={proposalId => void proposals.openReview(proposalId)}
-                onProposal={() => void proposals.refreshSyncState()}
-                onClose={() => setAssistantOpen(false)}
-              />
+          <SidePanelShell>
+            {reviewingProposal && showAssistant && (
+              <div role="tablist" aria-label="Side panel" className="flex shrink-0 gap-1 border-b px-2 pt-2">
+                {(
+                  [
+                    ['chat', 'Assistant'],
+                    ['changes', `Changes (${previewTotal ?? 0})`],
+                  ] as const
+                ).map(([tab, label]) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    role="tab"
+                    aria-selected={sideTab === tab}
+                    onClick={() => setSideTab(tab)}
+                    className={[
+                      'rounded-t-md border border-b-0 px-3 py-1.5 text-xs font-medium transition-colors hover:cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+                      sideTab === tab
+                        ? 'border-border bg-background text-foreground'
+                        : 'border-transparent text-muted-foreground hover:text-foreground',
+                    ].join(' ')}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             )}
-          </aside>
+            {showAssistant && (
+              <div
+                role={reviewingProposal ? 'tabpanel' : undefined}
+                className={reviewingProposal && sideTab !== 'chat' ? 'hidden' : 'min-h-0 flex-1'}
+              >
+                <AssistantPanel
+                  buildId={id!}
+                  openingProposal={proposals.busy === 'open'}
+                  onReview={proposalId => void proposals.openReview(proposalId)}
+                  onProposal={proposal => {
+                    // What the assistant just suggested goes straight onto the canvas.
+                    void proposals.refreshSyncState();
+                    void proposals.openReview(proposal.id);
+                  }}
+                  reviewBusy={reviewBusy}
+                  onApply={() => void applyReviewed()}
+                  onReject={reason => void rejectReviewed(reason)}
+                  onShowChanges={() => setSideTab('changes')}
+                  onClose={() => setAssistantOpen(false)}
+                />
+              </div>
+            )}
+            {reviewingProposal && (
+              <div
+                role={showAssistant ? 'tabpanel' : undefined}
+                className={showAssistant && sideTab !== 'changes' ? 'hidden' : 'min-h-0 flex-1'}
+              >
+                <ProposalReviewPanel
+                  busy={reviewBusy}
+                  onApply={() => void applyReviewed()}
+                  onReject={reason => void rejectReviewed(reason)}
+                  onClose={proposals.closeReview}
+                />
+              </div>
+            )}
+          </SidePanelShell>
         )}
       </div>
     </div>

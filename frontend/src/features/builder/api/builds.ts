@@ -1,5 +1,6 @@
 import { api } from '../../../lib/api';
 import { apiUrl } from '../../../lib/api-base';
+import type { BuildKind, GamingPlan } from '../../../types';
 
 let topologyQueue: Promise<void> = Promise.resolve();
 
@@ -16,6 +17,10 @@ export interface Build {
   id: string;
   user_id: string;
   name: string;
+  /** What the build is planned for. Builds saved before 1.3 are homelabs. */
+  kind?: BuildKind;
+  /** Empty object until the owner fills in a gaming plan. */
+  gaming_plan?: Partial<GamingPlan>;
   revision: number;
   thumbnail?: string;
   total_power?: number;
@@ -40,9 +45,31 @@ export type CreateBuildParams = {
   nodes: any[];
   edges: any[];
   services: any[];
+  /** Left out, the server keeps the kind and plan the build already has. */
+  kind?: BuildKind;
+  gaming_plan?: Partial<GamingPlan>;
 };
 
 export type TopologyUpdateParams = CreateBuildParams & { revision: number };
+
+/** The compose file for the game servers on one host. */
+export type GameComposeFile = {
+  host_id: string;
+  host: string;
+  /** Folder of this host under gaming/ in the export bundle. */
+  folder: string;
+  compose: string;
+  env: string;
+  services: number;
+};
+
+export type ConfigBundle = {
+  docker_compose: string;
+  env: string;
+  ansible_inventory: string;
+  nginx: string;
+  game_compose?: GameComposeFile[];
+};
 export type TopologyUpdateResponse = {
   build: Build;
   validation?: { valid: boolean; errors: any[]; warnings: any[] };
@@ -85,12 +112,7 @@ export const buildApi = {
     return response;
   },
   generateConfig: async (id: string) => {
-    const response = await api.post<{
-      docker_compose: string;
-      env: string;
-      ansible_inventory: string;
-      nginx: string;
-    }>(`/api/builds/${id}/generate-config`, {});
+    const response = await api.post<ConfigBundle>(`/api/builds/${id}/generate-config`, {});
     return response;
   },
   downloadExportBundle: async (id: string) => {

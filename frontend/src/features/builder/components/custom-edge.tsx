@@ -24,6 +24,8 @@ import {
 } from '../../../components/ui/select';
 import { useBuilderStore } from '../store/builder-store';
 import { getEdgeParams } from './floating-edge-utils';
+import { requiredConnectionType } from '../lib/connection-rules';
+import { stepCableBusY } from '../lib/cable-path';
 import { getSmartEdge, svgDrawSmoothLinePath } from '@tisoap/react-flow-smart-edge';
 import type { EdgeParams } from '@/types';
 
@@ -118,7 +120,12 @@ export function CustomEdge({
       targetY: ty,
       targetPosition: targetPos,
     };
-    if (edgePreferences.lineStyle === 'step') params.borderRadius = 15;
+    if (edgePreferences.lineStyle === 'step') {
+      params.borderRadius = 15;
+      // The sideways run sits just under the port, like a bus bar, instead of
+      // halfway down. The layout engine counts on exactly this route.
+      params.centerY = stepCableBusY(sy, sourcePos, ty, targetPos);
+    }
 
     const [fallbackPath, flX, flY] = pathGen(params);
 
@@ -177,6 +184,11 @@ export function CustomEdge({
   const direction = (data?.direction as string) || 'auto';
   const isWireless = connectionType === 'wireless';
   const isVpn = connectionType === 'vpn';
+  // A Wi-Fi client is always wireless and a LAN table always cabled.
+  const lockedMedium = useBuilderStore(state => {
+    const typeOf = (nodeId: string) => state.hardwareNodes.find(node => node.id === nodeId)?.type;
+    return requiredConnectionType(typeOf(source), typeOf(target));
+  });
   const edgeColor = isVpn
     ? '#14b8a6'
     : isWireless ? WIRELESS_COLORS[wirelessStandard] || '#22d3ee' : SPEED_COLORS[speed] || '#f97316';
@@ -378,6 +390,7 @@ export function CustomEdge({
                     <Label className="text-xs">Medium</Label>
                     <Select
                       value={connectionType}
+                      disabled={!!lockedMedium}
                       onValueChange={val => updateEdgeData({ connection_type: val })}
                     >
                       <SelectTrigger className="h-8 text-xs">

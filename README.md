@@ -15,10 +15,11 @@ HLBuilder is a comprehensive, interactive web application designed to simplify t
 
 ### 1. Visual Network Builder
 The core of the application is a visual canvas powered by **ReactFlow**.
-- **Drag-and-drop hardware nodes**: Routers, switches, servers, NAS, Mini-PCs, SBCs (like Raspberry Pi), UPS, and more.
+- **Drag-and-drop hardware nodes**: Routers, switches, servers, NAS, Mini-PCs, SBCs (like Raspberry Pi), UPS, game consoles, and more.
 - **Wire components**: Graph-based representation of physical and logical connections.
 - **Nested Virtualization**: Define Virtual Machines (VMs), Containers, or LXCs directly on compute nodes.
-- **Real-time Synchronization**: The visual state is continuously synchronized with a PostgreSQL database.
+- **Polish**: One click arranges the canvas with a layout engine written for it: internet at the top, every device under the port it is plugged into, a rack moved as one block, no overlapping cards, and the cables of the network tree drawn without a crossing. Two styles (Hierarchy and Compact), shown on your own build before anything moves; one `Ctrl+Z` undoes it.
+- **Saves by itself, stays current**: The canvas is saved to PostgreSQL as you work and says honestly whether it is saved. A failed save is retried, changes made in another tab arrive without a reload, and an edit that lost against a newer version is one Undo away.
 
 ### 2. Automated IP Management (`hlbIPAM`)
 A sophisticated backend microservice manages network addressing:
@@ -38,9 +39,17 @@ A sophisticated backend microservice manages network addressing:
 
 ### 5. Design With an LLM
 - **MCP server**: Connect Claude Code, Cursor, VS Code or any MCP client to `/mcp` with a personal access token. The client can read your builds, search the catalogs and propose changes. See [docs/MCP.md](./docs/MCP.md).
-- **In-app assistant**: An optional chat panel in the builder, off by default. You bring your own provider and API key (Anthropic, OpenAI, Gemini, OpenRouter, Ollama or any OpenAI-compatible endpoint).
-- **You approve every change**: An LLM never edits a build. It sends a proposal that you review on a preview canvas and then apply or reject; one `Ctrl+Z` undoes an applied proposal.
+- **In-app assistant**: An optional chat panel in the builder, off by default. You bring your own provider and API key (Anthropic, OpenAI, Gemini, OpenRouter, Ollama or any OpenAI-compatible endpoint). It shows each step it takes while it works: what it reads, what it searches for and what came of it.
+- **You approve every change**: An LLM never edits a build. It sends a proposal that you review on the canvas itself, drawn as the build would be with every change marked, and then apply or reject; one `Ctrl+Z` undoes an applied proposal.
 - **Keys you can verify**: Provider keys are stored AES-256-GCM encrypted and never sent back to the browser. The settings page shows the stored record and links to the code. See [docs/AI-ASSISTANT-SECURITY.md](./docs/AI-ASSISTANT-SECURITY.md).
+
+### 6. Plan a LAN Party or a Game Server
+A project can be a homelab, a **LAN party** or a **game server** for friends. See [docs/GAMING.md](./docs/GAMING.md).
+- **Guided planner**: Answer a few questions (players, games, your internet line, the venue's power) and get a wired, addressed build to refine.
+- **LAN tables and consoles**: A table stands for its seats and its switch, so a 64-seat party stays readable. Seats take DHCP leases and the router's pool grows to fit them. PCs and consoles can join an access point over Wi-Fi.
+- **Game servers sized per player**: Minecraft, Valheim, Palworld, CS2, Factorio and more, plus LANCache, Mumble and server panels. Each server knows its ports and how friends reach it: LAN only, port forward, VPN or relay.
+- **Game plan report**: Which ports to forward on which router, whether your upload is enough, carrier-grade NAT, port clashes, free switch ports, the DHCP pool, and the load on every power circuit against its breaker.
+- **Ready-to-use files**: A compose file per game host, the port-forward list, a connect sheet for your players and a party plan.
 
 ---
 
@@ -59,8 +68,7 @@ A sophisticated backend microservice manages network addressing:
 ---
 
 ## 🏗️ Architecture Overview
-For detailed information on the codebase architecture, folder structure, testing infrastructure, and known pitfalls, please refer to [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md). 
-For the feature roadmap and future ideas, see [ROADMAP.md](./ROADMAP.md).
+For detailed information on the codebase architecture, folder structure, testing infrastructure, and known pitfalls, please refer to [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md).
 
 ---
 

@@ -1,6 +1,8 @@
 import { useReducer, useMemo, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useBuilderStore } from '../store/builder-store';
-import { buildApi } from '../api/builds';
+import { buildApi, type ConfigBundle } from '../api/builds';
+import { gameServersContent } from '../../gaming/lib/game-compose';
 import {
   generateAnsiblePlaybook,
   generateTraefikLabels,
@@ -23,6 +25,7 @@ import {
   ChevronDown,
   Network,
   Home,
+  Gamepad2,
 } from 'lucide-react';
 import { Logo } from '../../../components/ui/logo';
 import { toast } from 'sonner';
@@ -34,7 +37,8 @@ type Tab =
   | 'ansible-playbook'
   | 'nginx'
   | 'traefik'
-  | 'ip-plan';
+  | 'ip-plan'
+  | 'game-servers';
 
 const TABS: { id: Tab; label: string; icon: React.ElementType; ext: string }[] = [
   { id: 'docker-compose', label: 'Docker Compose', icon: Package, ext: 'docker-compose.yml' },
@@ -44,6 +48,7 @@ const TABS: { id: Tab; label: string; icon: React.ElementType; ext: string }[] =
   { id: 'nginx', label: 'Nginx Config', icon: Globe, ext: 'nginx.conf' },
   { id: 'traefik', label: 'Traefik Labels', icon: Globe, ext: 'traefik-labels.yml' },
   { id: 'ip-plan', label: 'IP Address Plan', icon: Network, ext: 'ip-plan.txt' },
+  { id: 'game-servers', label: 'Game Servers', icon: Gamepad2, ext: 'game-servers.yml' },
 ];
 
 // IpLegend removed as it relied on client-side calculation
@@ -226,17 +231,14 @@ interface ConfigState {
   builds: { id: string; name: string }[];
   selectedBuildId: string;
   loadingBuild: boolean;
-  configBundle: {
-    docker_compose: string;
-    env: string;
-    ansible_inventory: string;
-    nginx: string;
-  } | null;
+  configBundle: ConfigBundle | null;
   loadingCompose: boolean;
 }
 
 export default function ConfigGeneratorPage() {
-  const { hardwareNodes, loadBuild, clearCurrentBuild } = useBuilderStore();
+  const hardwareNodes = useBuilderStore(state => state.hardwareNodes);
+  const openBuild = useBuilderStore(state => state.openBuild);
+  const clearCurrentBuild = useBuilderStore(state => state.clearCurrentBuild);
 
   const [state, dispatch] = useReducer(
     (state: ConfigState, newState: Partial<ConfigState>) => ({ ...state, ...newState }),
@@ -303,40 +305,40 @@ export default function ConfigGeneratorPage() {
     }
   };
 
-  const handleSelectBuild = async (id: string) => {
+  // Opens a project here. It goes through the store's queue, so a save that is
+  // still on its way from the builder lands before the configs are generated.
+  const handleSelectBuild = async (id: string, announce = true) => {
     if (!id) return;
-    console.log(`[ConfigGen] Switching to build ID: ${id}`);
     dispatch({ loadingBuild: true, selectedBuildId: id });
     try {
-      const fullBuild = await buildApi.get(id);
-      console.log(`[ConfigGen] Fetched build: ${fullBuild.name}`, fullBuild);
-      console.log(`[ConfigGen] Loading data into store...`, fullBuild);
-      loadBuild(fullBuild.id, fullBuild.name, fullBuild);
-      dispatch({ labName: fullBuild.name.toLowerCase().replace(/[^a-z0-9]/g, '-') });
-      toast.success(`Loaded project: ${fullBuild.name}`);
+      await openBuild(id);
+      const name = useBuilderStore.getState().projectName;
+      dispatch({ labName: name.toLowerCase().replace(/[^a-z0-9]/g, '-') });
+      if (announce) toast.success(`Loaded project: ${name}`);
       await loadConfigBundle(id);
     } catch (e) {
       console.error('[ConfigGen] Failed to load build', e);
       toast.error('Failed to load project - it may have been deleted');
       clearCurrentBuild();
-      dispatch({ selectedBuildId: '' });
+      dispatch({ selectedBuildId: '', configBundle: null });
     } finally {
       dispatch({ loadingBuild: false });
     }
   };
 
-  // Load project list on mount
+  // The page follows the project that is open. It never opens one by itself:
+  // which project is "current" is the user's choice.
   useEffect(() => {
     buildApi
       .list()
       .then(list => {
         dispatch({ builds: list.map(b => ({ id: b.id, name: b.name })) });
         const current = useBuilderStore.getState().currentBuildId;
-        if (current) {
-          dispatch({ selectedBuildId: current });
-          loadConfigBundle(current);
-        } else if (list.length > 0) {
-          handleSelectBuild(list[0].id);
+        if (current && list.some(build => build.id === current)) {
+          void handleSelectBuild(current, false);
+        } else if (current) {
+          // It was deleted elsewhere.
+          clearCurrentBuild();
         }
       })
       .catch(err => console.error('Failed to list builds', err));
@@ -365,6 +367,8 @@ export default function ConfigGeneratorPage() {
 
     hardwareNodes.forEach(node => {
       node.vms?.forEach(vm => {
+        // Game servers are not web apps: they have their own tab and no proxy labels.
+        if (vm.details?.game) return;
         if (vm.type === 'container' || vm.type === 'vm') {
           services.push({
             id: vm.id, // Use VM ID
@@ -412,11 +416,16 @@ export default function ConfigGeneratorPage() {
         return generateTraefikLabels(allServices, domain);
       case 'ip-plan':
         return generateIpPlan(hardwareNodes, ipOpts);
+      case 'game-servers':
+        return gameServersContent(configBundle?.game_compose);
     }
   }
 
-  const activeTabMeta = TABS.find(t => t.id === activeTab)!;
-  const content = getContent(activeTab);
+  // The game server tab only appears for builds that have game servers.
+  const hasGameServers = (configBundle?.game_compose?.length ?? 0) > 0;
+  const tabs = TABS.filter(tab => tab.id !== 'game-servers' || hasGameServers);
+  const activeTabMeta = tabs.find(t => t.id === activeTab) ?? tabs[0];
+  const content = getContent(activeTabMeta.id);
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
@@ -464,8 +473,24 @@ export default function ConfigGeneratorPage() {
         </div>
       </div>
 
-      {/* Empty state */}
-      {!hasContent && (
+      {/* Empty states */}
+      {!selectedBuildId && (
+        <div className="rounded-xl border border-dashed p-12 text-center">
+          <AlertCircle className="size-10 text-muted-foreground/40 mx-auto mb-4" />
+          <h3 className="font-semibold text-lg mb-2">Choose a project</h3>
+          <p className="text-muted-foreground text-sm mb-4">
+            {builds.length > 0
+              ? 'Pick a project above to generate its configs.'
+              : 'Create a project first, then come back here to generate its configs.'}
+          </p>
+          {builds.length === 0 && (
+            <Button variant="outline" size="sm" asChild>
+              <Link to="/">Go to Projects</Link>
+            </Button>
+          )}
+        </div>
+      )}
+      {selectedBuildId && !hasContent && !loadingBuild && (
         <div className="rounded-xl border border-dashed p-12 text-center">
           <AlertCircle className="size-10 text-muted-foreground/40 mx-auto mb-4" />
           <h3 className="font-semibold text-lg mb-2">No lab design yet</h3>
@@ -474,9 +499,7 @@ export default function ConfigGeneratorPage() {
             back here to generate configs.
           </p>
           <Button variant="outline" size="sm" asChild>
-            <a href={selectedBuildId ? `/builder/${selectedBuildId}` : '/'}>
-              Open Visual Builder →
-            </a>
+            <Link to={`/builder/${selectedBuildId}`}>Open Visual Builder →</Link>
           </Button>
         </div>
       )}
@@ -503,7 +526,7 @@ export default function ConfigGeneratorPage() {
 
           {/* Tab bar */}
           <div className="flex flex-wrap gap-2">
-            {TABS.map(tab => {
+            {tabs.map(tab => {
               const Icon = tab.icon;
               return (
                 <button
@@ -511,7 +534,7 @@ export default function ConfigGeneratorPage() {
                   type="button"
                   onClick={() => dispatch({ activeTab: tab.id })}
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-colors hover:cursor-pointer ${
-                    activeTab === tab.id
+                    activeTabMeta.id === tab.id
                       ? 'bg-primary text-primary-foreground border-primary'
                       : 'border-border hover:bg-muted'
                   }`}
@@ -532,7 +555,7 @@ export default function ConfigGeneratorPage() {
               Download all configs as individual files, or export the full lab design as JSON.
             </p>
             <div className="flex flex-wrap gap-2">
-              {TABS.map(tab => (
+              {tabs.map(tab => (
                 <Button
                   key={tab.id}
                   variant="ghost"

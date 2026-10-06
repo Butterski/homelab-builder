@@ -1,12 +1,10 @@
-import React, { useState, useEffect, type ReactNode } from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate, Link } from 'react-router-dom';
 import {
   LayoutDashboard,
-  CheckSquare,
   Settings,
   HardDrive,
   BookOpen,
-  FileCode,
   ChevronsLeft,
   ChevronsRight,
   Heart,
@@ -24,25 +22,23 @@ import { Discord } from '../icons/discord';
 import { BuyMeACoffee } from '../icons/buymeacoffee';
 import { cn } from '../../lib/utils';
 import { useAuth } from '../../features/admin/hooks/use-auth';
-import { useBuilderStore } from '../../features/builder/store/builder-store';
 import { GoogleLoginButton } from '../auth/google-login-button';
-import { LayoutTemplate } from 'lucide-react';
 import { Logo } from '../ui/logo';
+import { ProjectCard } from './project-card';
 import { Sheet, SheetClose, SheetContent, SheetTitle, SheetTrigger } from '../ui/sheet';
 import { useSurvey } from '../../features/survey/api/use-survey';
 import { SurveyModal } from '../../features/survey/components/survey-modal';
 
 const STORAGE_KEY = 'sidebar-collapsed';
 
-const BASE_NAV_ITEMS = [
-  { label: 'Projects', href: '/', icon: LayoutDashboard },
+// The open project comes right after "Projects" as a card of its own, with
+// its pages (canvas, config generator, setup guide) under it: see ProjectCard.
+const PROJECTS_ITEM = { label: 'Projects', href: '/', icon: LayoutDashboard };
+const NAV_ITEMS = [
   { label: 'Guided Planner', href: '/planner', icon: Sparkles },
-  { label: 'Config Generator', href: '/generate', icon: FileCode },
   { label: 'Hardware Catalog', href: '/hardware', icon: HardDrive },
   { label: 'Service Library', href: '/services', icon: AppWindow },
   { label: 'Homelab Guide', href: '/how-to-build-a-homelab', icon: BookOpen },
-  // { label: "Shopping List", href: "/shopping-list", icon: ShoppingCart }, // Hidden for Open Beta
-  { label: 'Setup Guide', href: '/checklist', icon: CheckSquare },
   { label: 'Settings', href: '/settings', icon: Settings },
   { label: 'Admin', href: '/admin', icon: Shield },
 ];
@@ -53,14 +49,13 @@ export const MobileNavigation = React.memo(function MobileNavigation({
   onOpenCommandPalette?: () => void;
 }) {
   const { user } = useAuth();
-  const currentBuildId = useBuilderStore(state => state.currentBuildId);
-  const items = [
-    BASE_NAV_ITEMS[0],
-    ...(currentBuildId
-      ? [{ label: 'Active Project', href: '/builder/' + currentBuildId, icon: LayoutTemplate }]
-      : []),
-    ...BASE_NAV_ITEMS.slice(1),
-  ].filter(item => item.label !== 'Admin' || user?.is_admin);
+  const [open, setOpen] = useState(false);
+  const items = NAV_ITEMS.filter(item => item.label !== 'Admin' || user?.is_admin);
+  const mobileLink = ({ isActive }: { isActive: boolean }) =>
+    cn(
+      'flex min-h-11 items-center rounded-lg px-3 text-sm font-medium text-sidebar-foreground/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring',
+      isActive && 'bg-sidebar-accent text-sidebar-accent-foreground',
+    );
 
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b bg-sidebar px-3 text-sidebar-foreground md:hidden">
@@ -71,7 +66,7 @@ export const MobileNavigation = React.memo(function MobileNavigation({
         <Logo className="size-7" />
         <span>HLBuilder</span>
       </Link>
-      <Sheet>
+      <Sheet open={open} onOpenChange={setOpen}>
         <SheetTrigger asChild>
           <button
             type="button"
@@ -93,17 +88,18 @@ export const MobileNavigation = React.memo(function MobileNavigation({
             </div>
           </div>
           <nav className="grid gap-1 p-3" aria-label="Mobile navigation">
+            <SheetClose asChild>
+              <NavLink to={PROJECTS_ITEM.href} className={mobileLink}>
+                <PROJECTS_ITEM.icon className="mr-3 size-4" aria-hidden="true" />
+                {PROJECTS_ITEM.label}
+              </NavLink>
+            </SheetClose>
+            <div className="py-1">
+              <ProjectCard onNavigate={() => setOpen(false)} />
+            </div>
             {items.map(item => (
               <SheetClose asChild key={item.href}>
-                <NavLink
-                  to={item.href}
-                  className={({ isActive }) =>
-                    cn(
-                      'flex min-h-11 items-center rounded-lg px-3 text-sm font-medium text-sidebar-foreground/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring',
-                      isActive && 'bg-sidebar-accent text-sidebar-accent-foreground',
-                    )
-                  }
-                >
+                <NavLink to={item.href} className={mobileLink}>
                   <item.icon className="mr-3 size-4" aria-hidden="true" />
                   {item.label}
                 </NavLink>
@@ -136,7 +132,6 @@ export const Sidebar = React.memo(function Sidebar({
   onOpenCommandPalette?: () => void;
 }) {
   const { user } = useAuth();
-  const { currentBuildId } = useBuilderStore();
   const navigate = useNavigate();
 
   const [showSurvey, setShowSurvey] = useState(false);
@@ -159,13 +154,31 @@ export const Sidebar = React.memo(function Sidebar({
     }
   }, [collapsed]);
 
-  const navItems = [
-    BASE_NAV_ITEMS[0],
-    ...(currentBuildId
-      ? [{ label: 'Active Project', href: `/builder/${currentBuildId}`, icon: LayoutTemplate }]
-      : []),
-    ...BASE_NAV_ITEMS.slice(1),
-  ];
+  const navLink = (item: (typeof NAV_ITEMS)[number]) => (
+    <NavLink
+      key={item.href}
+      to={item.href}
+      title={collapsed ? item.label : undefined}
+      className={({ isActive }) =>
+        cn(
+          'group flex min-h-10 items-center rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground/68 transition-[background-color,color,box-shadow,transform] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sidebar-ring',
+          isActive &&
+            'translate-x-0.5 bg-sidebar-accent text-sidebar-accent-foreground shadow-[0_0_0_1px_color-mix(in_oklab,var(--sidebar-primary)_28%,transparent),0_12px_28px_-22px_var(--sidebar-primary)] [&>svg]:rounded-md [&>svg]:bg-sidebar-primary [&>svg]:p-0.5 [&>svg]:text-sidebar-primary-foreground',
+          collapsed && 'justify-center px-2',
+        )
+      }
+    >
+      <item.icon className={cn('size-4 shrink-0', !collapsed && 'mr-2')} aria-hidden="true" />
+      <span
+        className={cn(
+          'whitespace-nowrap transition-[opacity,width] duration-300',
+          collapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100',
+        )}
+      >
+        {item.label}
+      </span>
+    </NavLink>
+  );
 
   return (
     <>
@@ -196,40 +209,10 @@ export const Sidebar = React.memo(function Sidebar({
 
         {/* Navigation */}
         <div className="flex-1 overflow-y-auto py-4">
-          <nav className="grid gap-1 px-2">
-            {navItems.reduce<ReactNode[]>((acc, item) => {
-              if (item.label !== 'Admin' || user?.is_admin) {
-                acc.push(
-                  <NavLink
-                    key={item.href}
-                    to={item.href}
-                    title={collapsed ? item.label : undefined}
-                    className={({ isActive }) =>
-                      cn(
-                        'group flex min-h-10 items-center rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground/68 transition-[background-color,color,box-shadow,transform] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sidebar-ring',
-                        isActive &&
-                          'translate-x-0.5 bg-sidebar-accent text-sidebar-accent-foreground shadow-[0_0_0_1px_color-mix(in_oklab,var(--sidebar-primary)_28%,transparent),0_12px_28px_-22px_var(--sidebar-primary)] [&>svg]:rounded-md [&>svg]:bg-sidebar-primary [&>svg]:p-0.5 [&>svg]:text-sidebar-primary-foreground',
-                        collapsed && 'justify-center px-2',
-                      )
-                    }
-                  >
-                    <item.icon
-                      className={cn('size-4 shrink-0', !collapsed && 'mr-2')}
-                      aria-hidden="true"
-                    />
-                    <span
-                      className={cn(
-                        'whitespace-nowrap transition-[opacity,width] duration-300',
-                        collapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100',
-                      )}
-                    >
-                      {item.label}
-                    </span>
-                  </NavLink>,
-                );
-              }
-              return acc;
-            }, [])}
+          <nav className="grid gap-1 px-2" aria-label="Main navigation">
+            {navLink(PROJECTS_ITEM)}
+            <ProjectCard collapsed={collapsed} />
+            {NAV_ITEMS.filter(item => item.label !== 'Admin' || user?.is_admin).map(navLink)}
           </nav>
         </div>
 

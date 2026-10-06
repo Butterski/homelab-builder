@@ -6,6 +6,8 @@ import { Textarea } from '../../../components/ui/textarea';
 import { cn } from '../../../lib/utils';
 import { useBuilderStore } from '../store/builder-store';
 import type { ConnectionDiff, FieldChange, Proposal, ProposalStatus } from '../api/proposals';
+import { buildKindInfo } from '../../gaming/lib/kind';
+import type { BuildKind, PowerCircuit } from '../../../types';
 
 type ProposalReviewPanelProps = {
   /** Which action is running, if any; disables the buttons. */
@@ -27,8 +29,33 @@ function sourceText(proposal: Proposal): string {
   return proposal.source_label ? `${proposal.source_label} · MCP` : 'MCP client';
 }
 
+const PLAN_LABELS: Record<string, string> = {
+  kind: 'Planned as',
+  'uplink.down_mbps': 'Download (Mbps)',
+  'uplink.up_mbps': 'Upload (Mbps)',
+  'uplink.cgnat': 'Carrier-grade NAT',
+  'uplink.public_host': 'Address friends connect to',
+  'power.mains_voltage': 'Mains voltage',
+  'power.circuits': 'Power circuits',
+  'event.date': 'Date',
+  'event.hours': 'Length (hours)',
+};
+
 function fieldLabel(field: string): string {
-  return field.replace(/^details\./, '').replace(/_/g, ' ');
+  return PLAN_LABELS[field] ?? field.replace(/^details\./, '').replace(/_/g, ' ');
+}
+
+/** Says a plan value the way the Game plan dialog shows it. */
+function planValue(change: FieldChange, value: unknown): unknown {
+  if (change.field === 'kind') return buildKindInfo(value as BuildKind).label;
+  if (change.field === 'power.circuits' && Array.isArray(value)) {
+    const circuits = value as PowerCircuit[];
+    if (circuits.length === 0) return '';
+    return circuits
+      .map(circuit => `${circuit.label || circuit.id} ${circuit.breaker_amps} A`)
+      .join(', ');
+  }
+  return value;
 }
 
 function formatValue(value: unknown): string {
@@ -130,6 +157,7 @@ export function ProposalReviewPanel({ busy, onApply, onReject, onClose }: Propos
   if (!preview) return null;
   const { proposal, validationIssues } = preview;
   const diff = proposal.diff;
+  const planChanges = diff.plan ?? [];
   const pending = proposal.status === 'pending';
   const errors = validationIssues.filter(issue => issue.type === 'error');
   const warnings = validationIssues.filter(issue => issue.type === 'warning');
@@ -197,6 +225,18 @@ export function ProposalReviewPanel({ busy, onApply, onReject, onClose }: Propos
             <Row kind="changed" title="Rename project" changes={[diff.build_name]} />
           </Group>
         )}
+
+        <Group title="Game plan" count={planChanges.length}>
+          <Row
+            kind="changed"
+            title="Plan settings"
+            changes={planChanges.map(change => ({
+              field: change.field,
+              before: planValue(change, change.before),
+              after: planValue(change, change.after),
+            }))}
+          />
+        </Group>
 
         <Group
           title="Devices"

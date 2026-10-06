@@ -65,6 +65,8 @@ export type DiffCounts = {
   vms_changed: number;
   components_added: number;
   components_removed: number;
+  /** Changes to the build kind and the gaming plan. */
+  plan_changed?: number;
   ip_changes: number;
   total: number;
 };
@@ -77,6 +79,8 @@ export type ProposalDiff = {
   vms: { added: GuestDiff[]; removed: GuestDiff[]; changed: GuestDiff[] };
   components: { added: ComponentDiff[]; removed: ComponentDiff[] };
   ip_changes: AddressChange[];
+  /** Build kind and gaming plan settings, e.g. "uplink.up_mbps". */
+  plan?: FieldChange[];
 };
 
 export type ValidationIssue = { node_id?: string; message: string };
@@ -143,14 +147,20 @@ export const syncStateKey = (buildId: string | null | undefined) => ['build-sync
 
 /**
  * Polls the build's revision and pending proposal while the tab is visible, so
- * the builder notices changes made by an LLM client or another session.
+ * the builder notices changes made by an LLM client or another session. With
+ * `enabled` off nothing is fetched, but what another caller fetched for the
+ * same build is still returned.
  */
-export function useSyncState(buildId: string | null | undefined, enabled = true) {
+export function useSyncState(
+  buildId: string | null | undefined,
+  enabled = true,
+  intervalMs = SYNC_STATE_INTERVAL_MS,
+) {
   return useQuery({
     queryKey: syncStateKey(buildId),
     queryFn: () => proposalApi.syncState(buildId as string),
     enabled: enabled && !!buildId,
-    refetchInterval: SYNC_STATE_INTERVAL_MS,
+    refetchInterval: intervalMs,
     refetchIntervalInBackground: false,
     retry: false,
     staleTime: 0,

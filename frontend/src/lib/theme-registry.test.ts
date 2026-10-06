@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_THEME_ID,
   buildThemeExportPayload,
+  getPresetThemes,
   normalizeThemeSettings,
   parseThemeImportPayload,
   themeSettingsFromPreferences,
@@ -49,6 +50,25 @@ const sampleTheme = {
 };
 
 describe('theme registry', () => {
+  it('ships complete built-in themes, the LAN Party one among them', () => {
+    const presets = getPresetThemes();
+    // A preset with a missing token is dropped on load, so each must be listed here.
+    expect(presets.map(theme => theme.id)).toEqual([
+      'dark',
+      'light',
+      'dark-pro',
+      'overwatch-light',
+      'hatsune-miku',
+      'tetris',
+      'lan-party',
+    ]);
+    const tokens = Object.keys(sampleTheme.tokens).sort();
+    for (const theme of presets) {
+      expect(Object.keys(theme.tokens).sort(), theme.id).toEqual(tokens);
+      expect(['dark', 'light']).toContain(theme.mode);
+    }
+  });
+
   it('falls back to backend theme settings when available', () => {
     const settings = themeSettingsFromPreferences({
       theme: 'light',

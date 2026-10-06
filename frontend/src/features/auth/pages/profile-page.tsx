@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../admin/hooks/use-auth';
-import { buildApi } from '../../builder/api/builds';
-import { useQuery } from '@tanstack/react-query';
+import { useBuilds } from '../../builder/api/use-builds';
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';
 import { LogOut, User, Mail, FolderOpen, ChevronLeft, Shield, Settings } from 'lucide-react';
@@ -19,11 +18,7 @@ export default function ProfilePage() {
   const navigate = useNavigate();
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
 
-  const { data: builds } = useQuery({
-    queryKey: ['builds-count'],
-    queryFn: () => buildApi.list(),
-    enabled: !!user,
-  });
+  const { data: builds } = useBuilds({ enabled: !!user });
 
   const projectCount = builds?.length ?? 0;
 

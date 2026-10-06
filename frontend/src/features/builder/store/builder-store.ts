@@ -18,12 +18,17 @@ import type {
   HardwareComponent,
   HardwareNodeValidationIssue,
   VirtualNetwork,
+  BuildKind,
+  GamingPlan,
 } from '../../../types';
 import { initialVirtualNetwork, removeVirtualEndpoints } from '../lib/virtual-network';
 import { withFreshChildIds } from '../lib/hardware-instance';
 import { buildApi, type Build } from '../api/builds';
 import { proposalApi, type Proposal } from '../api/proposals';
 import { mapBuildToFlow } from '../lib/build-mapper';
+import { requiredConnectionType } from '../lib/connection-rules';
+import { newTableDetails } from '../../gaming/lib/table';
+import { newGameInstance, sizeServer } from '../../gaming/lib/sizing';
 import {
   buildProposalPreview,
   validationToIssues,
@@ -31,6 +36,9 @@ import {
 } from '../lib/proposal-preview';
 import { api } from '../../../services/api';
 import { ApiError } from '../../../lib/api';
+import { WORKSPACE_STORAGE_KEY } from './workspace-storage';
+import { computeLayout, type LayoutResult, type LayoutStyle } from '../lib/layout';
+import { layoutGraphFromFlow } from '../lib/layout/from-flow';
 import {
   RACK_U_HEIGHT_PX,
   RACK_WIDTH_PX,
@@ -40,28 +48,167 @@ import {
 
 let topologyMutationQueue: Promise<void> = Promise.resolve();
 
+// Details the server computes. A key that is missing from the server's answer
+// is gone (DHCP was switched off, a gateway stopped routing), so the local copy
+// must not keep it.
+const DERIVED_DETAIL_KEYS = ['dhcp_pool', 'wan_ip', 'lan_gateway_ip', 'lan_subnet', 'interfaces'];
+
+function mergeServerDetails(
+  local: Record<string, unknown> | undefined,
+  server: Record<string, unknown>,
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = { ...(local ?? {}) };
+  for (const key of DERIVED_DETAIL_KEYS) delete merged[key];
+  return { ...merged, ...server };
+}
+
 function enqueueTopologyMutation(mutation: () => Promise<void>): Promise<void> {
   const queued = topologyMutationQueue.then(mutation, mutation);
   topologyMutationQueue = queued.catch(() => undefined);
   return queued;
 }
 
-/** The build was saved elsewhere first; the store now holds that newer revision. */
+/**
+ * The build was saved elsewhere first. The store now holds that newer revision,
+ * and the canvas as it was here is one undo step away.
+ */
 export class BuildConflictError extends Error {
   constructor() {
-    super('This project was changed elsewhere. Loaded the latest version - please try again.');
+    super('This project was changed elsewhere. The latest version is loaded; Undo brings yours back.');
     this.name = 'BuildConflictError';
   }
 }
 
-// Removed hardcoded NON_NETWORK_TYPES and using isNetworkNode instead.
+/** Whether the graph in the store belongs to `currentBuildId`. */
+export type BuildStatus = 'idle' | 'loading' | 'ready' | 'error';
 
-type Snapshot = { nodes: Node[]; edges: Edge[]; hardwareNodes: HardwareNode[] };
+/** "unsaved" means the canvas differs from the server and a save is due. */
+export type SaveState = 'saved' | 'unsaved' | 'saving' | 'error';
 
-/** A proposal opened for review, rendered on a read-only canvas over the builder. */
+/**
+ * What an undo step restores besides the canvas. A step only lists what it
+ * changed: an applied proposal can rename the build, a reload after a save
+ * conflict cannot be allowed to undo a rename made elsewhere.
+ */
+type SnapshotMeta = {
+  projectName?: string;
+  buildKind?: BuildKind;
+  gamingPlan?: Partial<GamingPlan>;
+};
+
+/** The same fields as `meta`, with the values the store holds now. */
+function currentMeta(
+  meta: SnapshotMeta,
+  state: { projectName: string; buildKind: BuildKind; gamingPlan: Partial<GamingPlan> },
+): SnapshotMeta {
+  return {
+    ...('projectName' in meta ? { projectName: state.projectName } : {}),
+    ...('buildKind' in meta ? { buildKind: state.buildKind } : {}),
+    ...('gamingPlan' in meta ? { gamingPlan: state.gamingPlan } : {}),
+  };
+}
+
+type Snapshot = {
+  nodes: Node[];
+  edges: Edge[];
+  hardwareNodes: HardwareNode[];
+  meta?: SnapshotMeta;
+};
+
+/** The key the store used before 1.3 to keep a whole canvas in the browser. */
+const LEGACY_STORAGE_KEY = 'homelab-builder-storage';
+
+/**
+ * A save whose answer never arrived. If the next save is refused as stale and
+ * the server holds exactly this, the conflict is with ourselves.
+ */
+let unconfirmedSave: { buildId: string; revision: number; signature: string } | null = null;
+
+/** What the signature reads of a node, under the names the save payload and the server use. */
+type SignedNode = {
+  id: string;
+  type?: unknown;
+  name?: unknown;
+  x?: unknown;
+  y?: unknown;
+  parent_id?: unknown;
+  vms?: unknown;
+  virtual_machines?: unknown;
+  internal_components?: unknown;
+};
+
+/** The same for a cable. */
+type SignedEdge = {
+  source?: unknown;
+  source_node_id?: unknown;
+  source_handle?: unknown;
+  target?: unknown;
+  target_node_id?: unknown;
+  target_handle?: unknown;
+  type?: unknown;
+};
+
+type GraphPayload = {
+  kind?: string;
+  nodes: SignedNode[];
+  edges: SignedEdge[];
+};
+
+/**
+ * What a build looks like structurally: devices, guests, positions and cables.
+ * Addresses and other values the server calculates are left out, so a payload
+ * we sent and the build the server made of it give the same signature.
+ */
+export function graphSignature(payload: GraphPayload): string {
+  const nodes = payload.nodes
+    .map(node => ({
+      id: node.id,
+      type: node.type,
+      name: node.name,
+      x: Math.round(Number(node.x) || 0),
+      y: Math.round(Number(node.y) || 0),
+      parent: node.parent_id || '',
+      vms: ((node.vms ?? node.virtual_machines ?? []) as Array<{ id: string; name: string }>)
+        .map(vm => `${vm.id}:${vm.name}`)
+        .sort(),
+      components: ((node.internal_components ?? []) as Array<{ id: string }>)
+        .map(component => component.id)
+        .sort(),
+    }))
+    .sort((a, b) => a.id.localeCompare(b.id));
+  const edges = payload.edges
+    .map(edge =>
+      [
+        edge.source ?? edge.source_node_id,
+        edge.source_handle || '',
+        edge.target ?? edge.target_node_id,
+        edge.target_handle || '',
+        edge.type || 'ethernet',
+      ].join('|'),
+    )
+    .sort();
+  return JSON.stringify({ kind: payload.kind || 'homelab', nodes, edges });
+}
+
+/** The parts of a loaded node React Flow needs to keep showing it without measuring again. */
+function keepMeasured(next: Node, previous: Node | undefined): Node {
+  if (!previous) return next;
+  return {
+    ...next,
+    ...(previous.measured ? { measured: previous.measured } : {}),
+    ...(previous.width !== undefined ? { width: previous.width } : {}),
+    ...(previous.height !== undefined ? { height: previous.height } : {}),
+    ...(previous.selected ? { selected: true } : {}),
+  };
+}
+
+/**
+ * A proposal opened for review. While it is set the builder's canvas draws this
+ * graph, read-only, instead of the live `nodes` and `edges`.
+ */
 export type ProposalPreviewState = ProposalPreviewGraph & {
   proposal: Proposal;
-  /** Nodes the preview canvas should bring into view; nonce re-triggers the same ids. */
+  /** Nodes the canvas should bring into view; nonce re-triggers the same ids. */
   focus: { ids: string[]; nonce: number } | null;
 };
 
@@ -109,6 +256,18 @@ interface BuilderState {
   autoAssignIP: (nodeId?: string) => string | null;
   reassignAllIPs: () => Promise<void>;
 
+  // What the open build is planned for, and its gaming plan as loaded. The plan
+  // object is replaced only by a user edit: it is part of the autosave
+  // fingerprint, and rebuilding it elsewhere would look like an unsaved change.
+  buildKind: BuildKind;
+  gamingPlan: Partial<GamingPlan>;
+  setBuildKind: (kind: BuildKind) => void;
+  setGamingPlan: (plan: GamingPlan) => void;
+
+  // Build settings as loaded from the server. Keys this store does not manage
+  // itself are sent back unchanged, because a save replaces the whole object.
+  buildSettings: Record<string, unknown>;
+
   // Purchase Tracking
   boughtItems: string[];
   markAsBought: (itemName: string) => void;
@@ -138,8 +297,36 @@ interface BuilderState {
   // ── API Persistence ────────────────────────────────────────────────
   currentBuildId: string | null;
   currentRevision: number;
+  /** "ready" once the graph below is the one of `currentBuildId`. Nothing is saved before that. */
+  buildStatus: BuildStatus;
   setCurrentBuildId: (id: string | null) => void;
   clearCurrentBuild: () => void;
+
+  // Save state, shared by the canvas header and the sidebar's project card.
+  saveState: SaveState;
+  lastSavedAt: number | null;
+  saveError: string | null;
+  /** False after the sync poll failed several times in a row. */
+  serverReachable: boolean;
+  setServerReachable: (reachable: boolean) => void;
+  /** Compares the canvas with the last synced copy and updates `saveState`. */
+  refreshSaveState: () => boolean;
+
+  /** Nodes the canvas should bring into view (null: everything); nonce re-triggers. */
+  canvasFocus: { ids: string[] | null; nonce: number } | null;
+  requestCanvasFocus: (ids?: string[] | null) => void;
+
+  // ── Layout ─────────────────────────────────────────────────────────
+  /**
+   * Arranges the canvas ("Polish"). The new positions are written at once and
+   * are one undo step; the glide to them is only drawn. Returns what was done,
+   * or null when nothing may be moved now (no build open, a proposal in review).
+   */
+  polishLayout: (style: LayoutStyle) => (LayoutResult & { moved: number }) | null;
+  /** Moves top-level nodes to the given places. Returns how many moved. */
+  applyLayout: (positions: LayoutResult['positions']) => number;
+  /** Counts arrangements, so the canvas can animate each one once. */
+  layoutMotion: number;
 
   projectName: string;
   projectThumbnail: string;
@@ -160,7 +347,15 @@ interface BuilderState {
   startProposalPreview: (proposal: Proposal) => void;
   endProposalPreview: () => void;
   focusProposalNodes: (ids: string[]) => void;
+  /**
+   * While a proposal is reviewed the canvas shows the preview graph. React Flow
+   * still has to store what it measures for the cards it draws; nothing else
+   * about a preview can change.
+   */
+  applyPreviewNodeChanges: OnNodesChange;
   applyProposal: (proposalId: string) => Promise<void>;
+  /** The devices of the proposal applied last, so the canvas can light them up once. */
+  appliedGlow: { ids: string[]; nonce: number } | null;
 
   // Computed getters
   totalCpu: () => number;
@@ -202,6 +397,11 @@ export const useBuilderStore = create<BuilderState>()(
       nodes: [],
       edges: [],
       selectedNodeId: null,
+      buildKind: 'homelab',
+      gamingPlan: {},
+      setBuildKind: kind => set({ buildKind: kind }),
+      setGamingPlan: plan => set({ gamingPlan: plan }),
+      buildSettings: {},
       boughtItems: [],
       showBought: false,
       historyPast: [],
@@ -236,27 +436,130 @@ export const useBuilderStore = create<BuilderState>()(
       projectThumbnail: '',
       currentBuildId: null,
       currentRevision: 0,
+      buildStatus: 'idle',
+      saveState: 'saved',
+      lastSavedAt: null,
+      saveError: null,
+      serverReachable: true,
+      setServerReachable: reachable => {
+        if (get().serverReachable !== reachable) set({ serverReachable: reachable });
+      },
+      refreshSaveState: () => {
+        const state = get();
+        const dirty = state.hasUnsavedChanges();
+        // A running save reports its own outcome; a failed one stays failed
+        // until the canvas is in sync again.
+        if (state.saveState !== 'saving') {
+          const next: SaveState = !dirty ? 'saved' : state.saveState === 'error' ? 'error' : 'unsaved';
+          if (next !== state.saveState) {
+            set({ saveState: next, ...(next === 'saved' ? { saveError: null } : {}) });
+          }
+        }
+        return dirty;
+      },
+      canvasFocus: null,
+      requestCanvasFocus: (ids = null) =>
+        set(state => ({ canvasFocus: { ids, nonce: (state.canvasFocus?.nonce ?? 0) + 1 } })),
+
+      layoutMotion: 0,
+      polishLayout: style => {
+        const state = get();
+        if (state.proposalPreview || state.buildStatus !== 'ready') return null;
+        const result = computeLayout(
+          layoutGraphFromFlow(state.nodes, state.edges, state.hardwareNodes),
+          { style },
+        );
+        return { ...result, moved: get().applyLayout(result.positions) };
+      },
+      applyLayout: positions => {
+        const state = get();
+        if (state.proposalPreview || state.buildStatus !== 'ready') return 0;
+        const target = new Map(positions.map(position => [position.id, position]));
+        let moved = 0;
+        // Node objects are kept and only given a new position: React Flow hides
+        // a node that comes back without its measured size. A device in a rack
+        // stays where it is in the rack.
+        const nodes = state.nodes.map(node => {
+          const to = target.get(node.id);
+          if (!to || node.parentId) return node;
+          if (Math.abs(node.position.x - to.x) < 0.5 && Math.abs(node.position.y - to.y) < 0.5) {
+            return node;
+          }
+          moved += 1;
+          return { ...node, position: { x: to.x, y: to.y } };
+        });
+        if (moved === 0) return 0;
+
+        const placed = new Map(nodes.map(node => [node.id, node.position]));
+        set({
+          historyPast: [
+            ...state.historyPast,
+            { nodes: state.nodes, edges: state.edges, hardwareNodes: state.hardwareNodes },
+          ].slice(-50),
+          historyFuture: [],
+          nodes,
+          hardwareNodes: state.hardwareNodes.map(node => {
+            const position = placed.get(node.id);
+            return position && (position.x !== node.x || position.y !== node.y)
+              ? { ...node, x: position.x, y: position.y }
+              : node;
+          }),
+          layoutMotion: state.layoutMotion + 1,
+        });
+        get().requestCanvasFocus(null);
+        return moved;
+      },
       lastSyncedFingerprint: '',
       proposalPreview: null,
 
       onNodesChange: changes => {
+        const state = get();
         const dragEnds = changes.filter(c => c.type === 'position' && !(c as any).dragging);
         const removals = changes.filter(c => c.type === 'remove');
-        if (dragEnds.length > 0 || removals.length > 0) {
-          const state = get();
-          const snap: Snapshot = {
-            nodes: state.nodes,
-            edges: state.edges,
-            hardwareNodes: state.hardwareNodes,
-          };
-          set({
-            historyPast: [...state.historyPast, snap].slice(-50),
-            historyFuture: [],
-            nodes: applyNodeChanges(changes, state.nodes),
-          });
-        } else {
-          set({ nodes: applyNodeChanges(changes, get().nodes) });
+        if (dragEnds.length === 0 && removals.length === 0) {
+          set({ nodes: applyNodeChanges(changes, state.nodes) });
+          return;
         }
+
+        const snap: Snapshot = {
+          nodes: state.nodes,
+          edges: state.edges,
+          hardwareNodes: state.hardwareNodes,
+        };
+        let nodes = applyNodeChanges(changes, state.nodes);
+        let hardwareNodes = state.hardwareNodes;
+        let edges = state.edges;
+        let selectedNodeId = state.selectedNodeId;
+
+        if (removals.length > 0) {
+          // React Flow deletes what is selected on the canvas; the device list
+          // has to follow, together with whatever sat in a deleted rack.
+          const gone = new Set(removals.map(change => (change as { id: string }).id));
+          for (const node of state.hardwareNodes) {
+            if (node.parent_id && gone.has(node.parent_id)) gone.add(node.id);
+          }
+          nodes = nodes.filter(node => !gone.has(node.id));
+          hardwareNodes = hardwareNodes.filter(node => !gone.has(node.id));
+          edges = edges.filter(edge => !gone.has(edge.source) && !gone.has(edge.target));
+          if (selectedNodeId && gone.has(selectedNodeId)) selectedNodeId = null;
+        }
+        if (dragEnds.length > 0) {
+          const moved = new Map(nodes.map(node => [node.id, node.position]));
+          hardwareNodes = hardwareNodes.map(node => {
+            const position = moved.get(node.id);
+            return position && (position.x !== node.x || position.y !== node.y)
+              ? { ...node, x: position.x, y: position.y }
+              : node;
+          });
+        }
+        set({
+          historyPast: [...state.historyPast, snap].slice(-50),
+          historyFuture: [],
+          nodes,
+          hardwareNodes,
+          edges,
+          selectedNodeId,
+        });
       },
       onEdgesChange: changes => {
         const removals = changes.filter(c => c.type === 'remove');
@@ -277,9 +580,26 @@ export const useBuilderStore = create<BuilderState>()(
         }
       },
       updateEdge: (id, updates) => {
-        set(state => ({
-          edges: state.edges.map(e => (e.id === id ? { ...e, ...updates } : e)),
-        }));
+        set(state => {
+          const types = new Map(state.hardwareNodes.map(node => [node.id, node.type]));
+          return {
+            edges: state.edges.map(e => {
+              if (e.id !== id) return e;
+              const next = { ...e, ...updates };
+              // Some links have only one valid medium: keep it whatever was picked.
+              const required = requiredConnectionType(types.get(next.source), types.get(next.target));
+              if (required && next.data && next.data.connection_type !== required) {
+                next.data = {
+                  ...next.data,
+                  connection_type: required,
+                  wireless_standard:
+                    required === 'wireless' ? next.data.wireless_standard || 'Wi-Fi 6' : '',
+                };
+              }
+              return next;
+            }),
+          };
+        });
       },
       onConnect: (connection: Connection) => {
         const state = get();
@@ -291,8 +611,11 @@ export const useBuilderStore = create<BuilderState>()(
         const hardwareById = new Map(state.hardwareNodes.map(n => [n.id, n]));
         const sourceHardware = connection.source ? hardwareById.get(connection.source) : undefined;
         const targetHardware = connection.target ? hardwareById.get(connection.target) : undefined;
+        // A LAN table is always cabled, also when a wireless default would apply.
+        const required = requiredConnectionType(sourceHardware?.type, targetHardware?.type);
         const isAccessPointLink =
-          sourceHardware?.type === 'access_point' || targetHardware?.type === 'access_point';
+          required !== 'ethernet' &&
+          (sourceHardware?.type === 'access_point' || targetHardware?.type === 'access_point');
 
         // Default new edges to custom type
         const newEdges = addEdge(
@@ -326,7 +649,17 @@ export const useBuilderStore = create<BuilderState>()(
 
       selectNode: nodeId => set({ selectedNodeId: nodeId }),
 
-      addHardware: hardwareNode => {
+      addHardware: rawNode => {
+        // A LAN table always has its seats, switch and power figure, wherever it comes from.
+        const hardwareNode =
+          rawNode.type === 'lan_table' && rawNode.details?.seats === undefined
+            ? {
+                ...rawNode,
+                name: rawNode.name === 'New lan_table' ? 'LAN Table' : rawNode.name,
+                details: { ...newTableDetails().details, ...(rawNode.details ?? {}) },
+                power_draw: rawNode.power_draw || newTableDetails().power_draw,
+              }
+            : rawNode;
         set(state => {
           const snap: Snapshot = {
             nodes: state.nodes,
@@ -560,7 +893,23 @@ export const useBuilderStore = create<BuilderState>()(
       },
 
       // ── VM Management ──────────────────────────────────────────────────
-      addVM: (nodeId, vm) => {
+      addVM: (nodeId, rawVM) => {
+        // A game from the catalog becomes a game server: LAN-only, for the usual
+        // group, with the memory and cores that group needs.
+        const game = get().availableServices.find(
+          service => service.id === rawVM.details?.catalog_service_id,
+        )?.game;
+        let vm = rawVM;
+        if (game && !rawVM.details?.game) {
+          const instance = newGameInstance(game);
+          const sizing = sizeServer(game, instance.players);
+          vm = {
+            ...rawVM,
+            cpu_cores: sizing.cpu_cores,
+            ram_mb: sizing.ram_mb,
+            details: { ...(rawVM.details ?? {}), game: instance },
+          };
+        }
         set(state => {
           const snap: Snapshot = {
             nodes: state.nodes,
@@ -696,10 +1045,13 @@ export const useBuilderStore = create<BuilderState>()(
         if (state.proposalPreview || state.historyPast.length === 0) return;
         const past = [...state.historyPast];
         const snap = past.pop()!;
+        // A step that changed the name, kind or plan takes them back as well;
+        // the step for redo then has to remember what they are now.
         const current: Snapshot = {
           nodes: state.nodes,
           edges: state.edges,
           hardwareNodes: state.hardwareNodes,
+          ...(snap.meta ? { meta: currentMeta(snap.meta, state) } : {}),
         };
         set({
           historyPast: past,
@@ -712,6 +1064,10 @@ export const useBuilderStore = create<BuilderState>()(
           nodes: snap.nodes,
           edges: snap.edges,
           hardwareNodes: snap.hardwareNodes,
+          selectedNodeId: snap.nodes.some(node => node.id === state.selectedNodeId)
+            ? state.selectedNodeId
+            : null,
+          ...(snap.meta ?? {}),
         });
       },
 
@@ -724,6 +1080,7 @@ export const useBuilderStore = create<BuilderState>()(
           nodes: state.nodes,
           edges: state.edges,
           hardwareNodes: state.hardwareNodes,
+          ...(snap.meta ? { meta: currentMeta(snap.meta, state) } : {}),
         };
         set({
           historyPast: [...state.historyPast, current].slice(-50),
@@ -736,21 +1093,29 @@ export const useBuilderStore = create<BuilderState>()(
           nodes: snap.nodes,
           edges: snap.edges,
           hardwareNodes: snap.hardwareNodes,
+          selectedNodeId: snap.nodes.some(node => node.id === state.selectedNodeId)
+            ? state.selectedNodeId
+            : null,
+          ...(snap.meta ?? {}),
         });
       },
 
       reassignAllIPs: () => {
-        const mutation = async () => {
-          const { currentBuildId, currentRevision, projectName, getBuildData } = get();
-          if (!currentBuildId) {
-            console.error('No build ID, cannot calculate network');
+        const mutation = async (retried = false): Promise<void> => {
+          const { currentBuildId, currentRevision, projectName, getBuildData, buildStatus } = get();
+          // An id without its graph (after a reload, or while another build is
+          // being opened) must never be saved: that would store an empty canvas.
+          if (!currentBuildId || buildStatus !== 'ready') {
             throw new Error('No build is open');
           }
 
+          let sentSignature = '';
           try {
             // The backend saves this revision and calculates its network in one transaction.
             const data = getBuildData();
             const sentFingerprint = JSON.stringify(data);
+            sentSignature = graphSignature(data);
+            set({ saveState: 'saving' });
             const response = await buildApi.updateTopology(currentBuildId, {
               name: projectName || 'Untitled Project',
               thumbnail: '',
@@ -758,6 +1123,7 @@ export const useBuilderStore = create<BuilderState>()(
               ...data,
             });
 
+            unconfirmedSave = null;
             if (get().currentBuildId !== currentBuildId) return;
             const build = response.build;
 
@@ -798,10 +1164,10 @@ export const useBuilderStore = create<BuilderState>()(
               return {
                 ...hn,
                 ip: entry.nodeIp,
-                details: {
-                  ...(hn.details ?? {}),
-                  ...entry.details,
-                },
+                details: mergeServerDetails(
+                  hn.details as Record<string, unknown> | undefined,
+                  entry.details,
+                ),
                 vms: hn.vms?.map(vm => ({ ...vm, ip: entry.vmMap.get(vm.id) ?? vm.ip })),
               };
             });
@@ -814,10 +1180,10 @@ export const useBuilderStore = create<BuilderState>()(
                 data: {
                   ...rfn.data,
                   ip: entry.nodeIp,
-                  details: {
-                    ...((rfn.data?.details as Record<string, unknown> | undefined) ?? {}),
-                    ...entry.details,
-                  },
+                  details: mergeServerDetails(
+                    rfn.data?.details as Record<string, unknown> | undefined,
+                    entry.details,
+                  ),
                   vms: (Array.isArray(rfn.data?.vms) ? rfn.data.vms : []).map((vm: any) => ({
                     ...vm,
                     ip: entry.vmMap.get(vm.id) ?? vm.ip,
@@ -836,6 +1202,12 @@ export const useBuilderStore = create<BuilderState>()(
             if (!editedDuringSave) {
               set({ lastSyncedFingerprint: JSON.stringify(get().getBuildData()) });
             }
+            set({
+              saveState: editedDuringSave ? 'unsaved' : 'saved',
+              lastSavedAt: Date.now(),
+              saveError: null,
+              serverReachable: true,
+            });
 
             if (response.validation) {
               const issues: HardwareNodeValidationIssue[] = [
@@ -851,21 +1223,75 @@ export const useBuilderStore = create<BuilderState>()(
               set({ validationIssues: issues });
             }
           } catch (e) {
-            const latest =
-              e instanceof ApiError && e.status === 409
-                ? (e.data as { build?: Build } | undefined)?.build
-                : undefined;
-            if (latest && get().currentBuildId === currentBuildId) {
-              // Every later save would repeat the stale revision, so adopt the
-              // committed one instead of failing until the page is reloaded.
-              get().loadBuild(latest.id, latest.name, latest);
-              throw new BuildConflictError();
+            if (get().currentBuildId !== currentBuildId) throw e;
+
+            if (e instanceof ApiError && e.status === 409) {
+              // Every later save would repeat the stale revision, so the newer
+              // build has to be taken over here instead of failing until reload.
+              let latest = (e.data as { build?: Build | null } | undefined)?.build ?? null;
+              if (!latest) {
+                latest = await buildApi.get(currentBuildId).catch(() => null);
+              }
+              if (latest && get().currentBuildId === currentBuildId) {
+                const ours =
+                  unconfirmedSave !== null &&
+                  unconfirmedSave.buildId === currentBuildId &&
+                  latest.revision === unconfirmedSave.revision + 1 &&
+                  graphSignature({
+                    kind: latest.kind,
+                    nodes: latest.nodes ?? [],
+                    edges: latest.edges ?? [],
+                  }) === unconfirmedSave.signature;
+                unconfirmedSave = null;
+                if (ours && !retried) {
+                  // The server has the save whose answer was lost. Nobody else
+                  // changed the build: continue from its revision with the edits
+                  // made since.
+                  set({ currentRevision: latest.revision });
+                  return mutation(true);
+                }
+
+                // A real change from elsewhere wins, but the canvas as it was
+                // here stays one undo step away.
+                const before = get();
+                // Kind and plan are part of what was being saved; the name is
+                // not edited here, so a rename made elsewhere stays.
+                const mine: Snapshot = {
+                  nodes: before.nodes,
+                  edges: before.edges,
+                  hardwareNodes: before.hardwareNodes,
+                  meta: { buildKind: before.buildKind, gamingPlan: before.gamingPlan },
+                };
+                const past = before.historyPast;
+                get().loadBuild(latest.id, latest.name, latest);
+                set({ historyPast: [...past, mine].slice(-50), historyFuture: [] });
+                void get().validateNetwork();
+                throw new BuildConflictError();
+              }
             }
-            console.error('Failed to reassign IPs', e);
+
+            if (!(e instanceof ApiError)) {
+              // No answer at all: the save may or may not have reached the server.
+              unconfirmedSave = {
+                buildId: currentBuildId,
+                revision: currentRevision,
+                signature: sentSignature,
+              };
+            }
+            set({
+              saveState: 'error',
+              saveError:
+                e instanceof ApiError && e.status === 422 && e.message
+                  ? e.message
+                  : e instanceof ApiError
+                    ? 'The server could not save this project.'
+                    : 'The server could not be reached.',
+            });
+            console.error('Failed to save the build', e);
             throw e;
           }
         };
-        return enqueueTopologyMutation(mutation);
+        return enqueueTopologyMutation(() => mutation());
       },
 
       validateNetwork: async () => {
@@ -874,8 +1300,10 @@ export const useBuilderStore = create<BuilderState>()(
 
         try {
           const response = await buildApi.validateNetwork(currentBuildId);
+          // The build may have been closed or switched while the check ran.
+          if (get().currentBuildId !== currentBuildId) return;
           // Ensure response is the nested JSON from hlbIPAM (it might be wrapped by our API)
-          const data = response.data || response;
+          const data = response?.data || response || {};
 
           const issues: HardwareNodeValidationIssue[] = [];
 
@@ -906,54 +1334,91 @@ export const useBuilderStore = create<BuilderState>()(
 
       // ── API Persistence ────────────────────────────────────────────────
       setCurrentBuildId: id => set({ currentBuildId: id }),
-      clearCurrentBuild: () =>
+      clearCurrentBuild: () => {
+        unconfirmedSave = null;
         set({
           virtualHostId: null,
           currentBuildId: null,
           currentRevision: 0,
+          buildStatus: 'idle',
+          saveState: 'saved',
+          lastSavedAt: null,
+          saveError: null,
           projectName: 'Untitled Project',
           nodes: [],
           edges: [],
           hardwareNodes: [],
+          selectedNodeId: null,
+          validationIssues: [],
+          buildKind: 'homelab',
+          gamingPlan: {},
+          buildSettings: {},
+          boughtItems: [],
+          showBought: false,
           historyPast: [],
           historyFuture: [],
           lastSyncedFingerprint: '',
           proposalPreview: null,
-        }),
+          canvasFocus: null,
+          appliedGlow: null,
+        });
+      },
       setProjectName: name => set({ projectName: name }),
 
       loadBuild: (id, name, build: Build) => {
         const settings = build.settings || {};
+        const previous = get();
+        const sameBuild = previous.currentBuildId === id && previous.buildStatus === 'ready';
 
-        const { hardwareNodes, nodes: rfNodes, edges: rfEdges } = mapBuildToFlow(build);
+        const { hardwareNodes, nodes: loadedNodes, edges: rfEdges } = mapBuildToFlow(build);
+        // React Flow hides a node that has no measured size and forgets where
+        // its handles are. Nodes that stay keep what was measured, so reloading
+        // the same build does not blank the canvas for a frame.
+        const previousNodes = sameBuild
+          ? new Map(previous.nodes.map(node => [node.id, node]))
+          : new Map<string, Node>();
+        const rfNodes = loadedNodes.map(node => keepMeasured(node, previousNodes.get(node.id)));
+        const stillThere = (nodeId: string | null) =>
+          sameBuild && !!nodeId && rfNodes.some(node => node.id === nodeId);
 
         set({
           currentBuildId: id,
+          buildStatus: 'ready',
           virtualHostId: null,
           currentRevision: build.revision,
           projectName: name,
           hardwareNodes,
           nodes: rfNodes,
           edges: rfEdges,
+          buildKind: build.kind || 'homelab',
+          gamingPlan: build.gaming_plan || {},
+          buildSettings: settings,
           boughtItems: settings.boughtItems || [],
           showBought: settings.showBought || false,
           historyPast: [],
           historyFuture: [],
+          selectedNodeId: stillThere(previous.selectedNodeId) ? previous.selectedNodeId : null,
+          // Issues found for another build, or another revision, say nothing here.
+          validationIssues: [],
+          // A preview is drawn against the canvas it was opened on.
+          proposalPreview: null,
+          saveState: 'saved',
+          saveError: null,
         });
         set({ lastSyncedFingerprint: JSON.stringify(get().getBuildData()) });
       },
 
       hasUnsavedChanges: () => {
         const state = get();
-        if (!state.currentBuildId) return false;
+        if (!state.currentBuildId || state.buildStatus !== 'ready') return false;
         return JSON.stringify(state.getBuildData()) !== state.lastSyncedFingerprint;
       },
 
       syncWithServer: serverRevision => {
         let reloaded = false;
         return enqueueTopologyMutation(async () => {
-          const { currentBuildId, currentRevision } = get();
-          if (!currentBuildId || serverRevision <= currentRevision) return;
+          const { currentBuildId, currentRevision, buildStatus } = get();
+          if (!currentBuildId || buildStatus !== 'ready' || serverRevision <= currentRevision) return;
           // A pending local edit is saved first; if that save is stale it adopts
           // the newer build through the conflict path.
           if (get().hasUnsavedChanges()) return;
@@ -961,6 +1426,7 @@ export const useBuilderStore = create<BuilderState>()(
           if (get().currentBuildId !== currentBuildId) return;
           if (build.revision <= get().currentRevision || get().hasUnsavedChanges()) return;
           get().loadBuild(build.id, build.name, build);
+          void get().validateNetwork();
           reloaded = true;
         }).then(() => reloaded);
       },
@@ -984,6 +1450,22 @@ export const useBuilderStore = create<BuilderState>()(
       },
 
       endProposalPreview: () => set({ proposalPreview: null }),
+
+      applyPreviewNodeChanges: changes => {
+        const measured = changes.filter(change => change.type === 'dimensions');
+        if (measured.length === 0) return;
+        set(state =>
+          state.proposalPreview
+            ? {
+                proposalPreview: {
+                  ...state.proposalPreview,
+                  nodes: applyNodeChanges(measured, state.proposalPreview.nodes),
+                },
+              }
+            : state,
+        );
+      },
+      appliedGlow: null,
 
       focusProposalNodes: ids =>
         set(state =>
@@ -1010,12 +1492,20 @@ export const useBuilderStore = create<BuilderState>()(
           if (get().currentBuildId !== currentBuildId) return;
 
           const before = get();
+          // A proposal can also rename the build or change its kind and plan,
+          // so the undo step remembers those too.
           const snapshot: Snapshot = {
             nodes: before.nodes,
             edges: before.edges,
             hardwareNodes: before.hardwareNodes,
+            meta: {
+              projectName: before.projectName,
+              buildKind: before.buildKind,
+              gamingPlan: before.gamingPlan,
+            },
           };
           const past = before.historyPast;
+          const touched = before.proposalPreview?.changedNodeIds ?? [];
           get().loadBuild(result.build.id, result.build.name, result.build);
           // One undo step takes the canvas back to how it was before the proposal.
           set({
@@ -1024,14 +1514,57 @@ export const useBuilderStore = create<BuilderState>()(
             proposalPreview: null,
             validationIssues: validationToIssues(result.validation),
           });
+          // Bring what was applied into view: new devices may be off screen.
+          const applied = new Set(get().nodes.map(node => node.id));
+          const visible = touched.filter(nodeId => applied.has(nodeId));
+          if (visible.length > 0) {
+            set(state => ({ appliedGlow: { ids: visible, nonce: (state.appliedGlow?.nonce ?? 0) + 1 } }));
+            get().requestCanvasFocus(visible);
+          }
         });
       },
 
       openBuild: id =>
         // Queued behind pending saves so the loaded revision already contains them.
         enqueueTopologyMutation(async () => {
-          const build = await buildApi.get(id);
-          get().loadBuild(build.id, build.name, build);
+          const opened = get();
+          if (opened.currentBuildId !== id || opened.buildStatus !== 'ready') {
+            // Another build, or this one after a page reload: there is no graph
+            // for it here yet, and what is left of the previous one must not be
+            // shown or saved under the new id.
+            unconfirmedSave = null;
+            set({
+              currentBuildId: id,
+              buildStatus: 'loading',
+              currentRevision: 0,
+              virtualHostId: null,
+              nodes: [],
+              edges: [],
+              hardwareNodes: [],
+              selectedNodeId: null,
+              validationIssues: [],
+              historyPast: [],
+              historyFuture: [],
+              proposalPreview: null,
+              saveState: 'saved',
+              saveError: null,
+              ...(opened.currentBuildId !== id
+                ? { projectName: '', buildKind: 'homelab' as BuildKind, gamingPlan: {}, buildSettings: {} }
+                : {}),
+            });
+          }
+          try {
+            const build = await buildApi.get(id);
+            // The user may have moved on to another build while this one loaded.
+            if (get().currentBuildId !== id) return;
+            get().loadBuild(build.id, build.name, build);
+            void get().validateNetwork();
+          } catch (error) {
+            if (get().currentBuildId === id && get().buildStatus === 'loading') {
+              set({ buildStatus: 'error' });
+            }
+            throw error;
+          }
         }),
 
       getBuildData: () => {
@@ -1075,10 +1608,14 @@ export const useBuilderStore = create<BuilderState>()(
         );
 
         return {
+          kind: state.buildKind,
+          // An untouched plan is not sent, so the server keeps what it has.
+          ...(Object.keys(state.gamingPlan).length > 0 ? { gaming_plan: state.gamingPlan } : {}),
           nodes: nodesPayload,
           edges: sanitizedEdgesPayload,
           services: [],
           settings: {
+            ...state.buildSettings,
             boughtItems: state.boughtItems,
             showBought: state.showBought,
           },
@@ -1102,15 +1639,22 @@ export const useBuilderStore = create<BuilderState>()(
       totalStorage: () => 0,
     }),
     {
-      name: 'homelab-builder-storage',
+      // Only which project is open survives a reload. Its canvas is read from
+      // the server again: a copy kept here would be shown, and trusted, long
+      // after it stopped being true.
+      name: WORKSPACE_STORAGE_KEY,
       partialize: state => ({
-        hardwareNodes: state.hardwareNodes,
-        nodes: state.nodes,
-        edges: state.edges,
-        boughtItems: state.boughtItems,
-        showBought: state.showBought,
+        currentBuildId: state.currentBuildId,
         projectName: state.projectName,
+        buildKind: state.buildKind,
       }),
     },
   ),
 );
+
+// Earlier versions kept a whole canvas under this key.
+try {
+  localStorage.removeItem(LEGACY_STORAGE_KEY);
+} catch {
+  // Storage can be unavailable (private mode); nothing to clean up then.
+}

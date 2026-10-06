@@ -36,7 +36,65 @@ export interface Service {
   is_active: boolean;
   visibility?: 'public' | 'private' | 'pending';
   requirements: ServiceRequirement | null;
+  /** Set by the backend for game servers and gaming tools. */
+  game?: GameProfile;
   created_at: string;
+}
+
+// ─── Gaming builds ───────────────────────────────────────────────────────────
+// Mirrors backend/internal/gaming.
+
+export type BuildKind = 'homelab' | 'lan_party' | 'game_server';
+
+export interface PowerCircuit {
+  id: string;
+  label: string;
+  breaker_amps: number;
+}
+
+/** What the owner tells us that the canvas cannot show. Zero and '' mean "not filled in". */
+export interface GamingPlan {
+  uplink: { down_mbps: number; up_mbps: number; cgnat: '' | 'yes' | 'no'; public_host: string };
+  power: { mains_voltage: number; circuits: PowerCircuit[] };
+  event: { date: string; hours: number };
+}
+
+export interface GamePort {
+  name: string;
+  port: number;
+  proto: 'tcp' | 'udp';
+  /** A player outside the LAN needs this port to join. */
+  forward: boolean;
+  env?: string;
+}
+
+export interface GameProfile {
+  slug: string;
+  service_id: string;
+  name: string;
+  role: 'game' | 'tool';
+  default_players: number;
+  max_players: number;
+  base_ram_mb: number;
+  ram_mb_per_player: number;
+  base_cpu_cores: number;
+  cpu_cores_per_player: number;
+  storage_gb: number;
+  upload_kbps_per_player: number;
+  single_thread: boolean;
+  ports: GamePort[];
+  image: string;
+  notes: string;
+}
+
+export type GameExposure = 'lan' | 'port_forward' | 'vpn' | 'relay';
+
+/** Stored in a guest's details under `game`. */
+export interface GameInstance {
+  profile: string;
+  players: number;
+  exposure: GameExposure;
+  port_offset: number;
 }
 
 export interface CatalogComponent {
@@ -143,7 +201,9 @@ export type HardwareType =
   | 'minipc'
   | 'iot'
   | 'modem'
-  | 'rack';
+  | 'rack'
+  | 'console'
+  | 'lan_table';
 
 export interface HardwareSpec {
   virtual_network?: VirtualNetwork;
@@ -184,6 +244,16 @@ export interface HardwareSpec {
     subnet?: string;
     dhcp_enabled?: boolean;
   }>;
+  // Gaming builds
+  seats?: number; // LAN table: players seated at it
+  seat_watts?: number; // LAN table: power per seat
+  switch_ports?: number; // LAN table: ports of the switch on the table
+  switch_speed?: string; // LAN table: '1 GbE' | '2.5 GbE' | '10 GbE'
+  platform?: string; // Console: playstation | xbox | switch | handheld | other
+  wifi_clients?: number; // Access point: devices expected on its Wi-Fi
+  circuit?: string; // Id of the power circuit in the gaming plan
+  /** Derived by IPAM on gateways that hand out leases. */
+  dhcp_pool?: { start: string; end: string; size: number; clients: number };
 }
 
 export type VMType = 'vm' | 'container' | 'lxc';
@@ -246,4 +316,6 @@ export type EdgeParams = {
   targetY: number;
   targetPosition: Position;
   borderRadius?: number;
+  /** Where a step path runs sideways; React Flow picks the midpoint when left out. */
+  centerY?: number;
 };

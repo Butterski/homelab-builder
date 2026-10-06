@@ -1,6 +1,7 @@
 package core
 
 import (
+	"math"
 	"net"
 
 	"github.com/Butterski/hlbipam/internal/utils"
@@ -17,7 +18,10 @@ type SubnetAllocator struct {
 	Zones     map[string]ZoneConfig
 }
 
-func NewSubnetAllocator(subnetStr string, gatewayIP string, zones map[string]ZoneConfig, reqDHCPEnabled bool) *SubnetAllocator {
+// NewSubnetAllocator prepares a subnet. With DHCP on it carves the lease pool:
+// a third of the subnet by default, grown to fit dhcpDemand leases plus
+// headroom when the nodes announce more than that.
+func NewSubnetAllocator(subnetStr string, gatewayIP string, zones map[string]ZoneConfig, reqDHCPEnabled bool, dhcpDemand int) *SubnetAllocator {
 	network, capacity, mask, err := utils.ParseCIDR(subnetStr)
 	if err != nil {
 		network, capacity, mask, _ = utils.ParseCIDR(gatewayIP + "/24")
@@ -50,6 +54,10 @@ func NewSubnetAllocator(subnetStr string, gatewayIP string, zones map[string]Zon
 		if poolSize < 10 {
 			poolSize = capacity / 2
 		}
+		// The pool is inclusive at both ends, so it holds poolSize+1 addresses.
+		if needed := uint32(math.Ceil(float64(dhcpDemand) * DHCPHeadroom)); dhcpDemand > 0 && needed > poolSize+1 {
+			poolSize = needed - 1
+		}
 
 		sa.DHCPStart = network + startOffset
 		sa.DHCPEnd = sa.DHCPStart + poolSize
@@ -63,6 +71,14 @@ func NewSubnetAllocator(subnetStr string, gatewayIP string, zones map[string]Zon
 	}
 
 	return sa
+}
+
+// DHCPPoolSize is the number of addresses in the DHCP pool.
+func (sa *SubnetAllocator) DHCPPoolSize() int {
+	if sa.DHCPStart == 0 {
+		return 0
+	}
+	return int(sa.DHCPEnd-sa.DHCPStart) + 1
 }
 
 func (sa *SubnetAllocator) Reserve(ipUint uint32) bool {

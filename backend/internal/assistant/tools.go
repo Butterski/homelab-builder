@@ -11,6 +11,7 @@ import (
 	"log"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/Butterski/homelab-builder/backend/internal/services"
 	"github.com/google/jsonschema-go/jsonschema"
@@ -68,6 +69,13 @@ func toolErrorf(format string, args ...any) *ToolError {
 type Result struct {
 	Data       any
 	ProposalID *uuid.UUID
+	// Summary is the outcome in a few words, for the chat's list of steps
+	// ("14 devices", "1 error, 2 warnings"). MCP clients get Data only.
+	Summary string
+	// Focus lists nodes of the build the call was about, so the canvas can
+	// point at them while the assistant works. Ids come from the server's own
+	// data, never from the arguments.
+	Focus []string
 }
 
 // Text renders the result as the JSON text handed to the model.
@@ -97,7 +105,9 @@ type Tool struct {
 	AccountWide bool
 
 	handler toolHandler
-	schema  *jsonschema.Resolved
+	// describe says what a call is about from its arguments; see Registry.Describe.
+	describe func(args json.RawMessage) string
+	schema   *jsonschema.Resolved
 }
 
 // Deps are the services the tools are built on.
@@ -110,6 +120,7 @@ type Deps struct {
 	Services        *services.ServiceService
 	Recommendations *services.RecommendationService
 	Config          *services.ConfigService
+	Gaming          *services.GamingService
 }
 
 // Registry owns the tool set and enforces access on every call.
@@ -139,6 +150,60 @@ func NewRegistry(deps Deps) *Registry {
 		}
 	}
 	return r
+}
+
+// maxStepText bounds the short texts the chat shows next to a step.
+const maxStepText = 80
+
+// Describe says in a few words what a call is about, from its arguments alone:
+// "2.5G switch" for a catalog search, "5 operations" for a proposal. The words
+// are the model's, so the text is cut short, kept on one line, and has to be
+// shown as plain text.
+func (r *Registry) Describe(name string, args json.RawMessage) string {
+	tool, ok := r.byName[name]
+	if !ok || tool.describe == nil || !json.Valid(args) {
+		return ""
+	}
+	return brief(tool.describe(args))
+}
+
+// brief turns a text into a short one-line label.
+func brief(text string) string {
+	text = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return ' '
+		}
+		return r
+	}, text)
+	return truncate(strings.Join(strings.Fields(text), " "), maxStepText)
+}
+
+// count renders "1 device" or "3 devices".
+func count(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return fmt.Sprintf("%d %s", n, many)
+}
+
+// maxFocusNodes bounds how many nodes one step can point at.
+const maxFocusNodes = 40
+
+// focusOn collects node ids for Result.Focus: valid ids only, each once.
+func focusOn(ids ...string) []string {
+	seen := map[string]bool{}
+	focus := []string{}
+	for _, id := range ids {
+		if len(focus) == maxFocusNodes {
+			break
+		}
+		if _, err := uuid.Parse(id); err != nil || seen[id] {
+			continue
+		}
+		seen[id] = true
+		focus = append(focus, id)
+	}
+	return focus
 }
 
 func (t *Tool) offeredIn(toolContext string) bool {
@@ -186,6 +251,10 @@ func (r *Registry) Call(ctx context.Context, actor Actor, toolContext, name stri
 	if err := json.Unmarshal(args, &instance); err != nil {
 		return nil, toolErrorf("arguments must be a JSON object: %v", err)
 	}
+	// The database cannot hold a NUL character, in a query or in a name.
+	if hasNUL(instance) {
+		return nil, toolErrorf("arguments must not contain NUL characters")
+	}
 	if err := tool.schema.Validate(instance); err != nil {
 		return nil, toolErrorf("invalid arguments for %s: %v", name, err)
 	}
@@ -204,6 +273,27 @@ func (r *Registry) Call(ctx context.Context, actor Actor, toolContext, name stri
 		return nil, err
 	}
 	return result, nil
+}
+
+// hasNUL reports whether any string in a decoded JSON value holds a NUL.
+func hasNUL(value any) bool {
+	switch typed := value.(type) {
+	case string:
+		return strings.ContainsRune(typed, 0)
+	case []any:
+		for _, child := range typed {
+			if hasNUL(child) {
+				return true
+			}
+		}
+	case map[string]any:
+		for key, child := range typed {
+			if strings.ContainsRune(key, 0) || hasNUL(child) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // classifyError turns domain errors into messages the model can act on.

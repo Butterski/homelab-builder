@@ -160,6 +160,8 @@ export function PowerUsagePanel() {
     pcie: [0, 20],
     pdu: [10, 50],
     rack: [0, 0],
+    console: [10, 220],
+    lan_table: [800, 8000],
   };
 
   return (

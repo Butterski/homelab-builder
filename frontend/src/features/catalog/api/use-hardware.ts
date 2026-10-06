@@ -7,6 +7,7 @@ export interface HardwareComponent {
   brand: string;
   model: string;
   spec: Record<string, string | number | boolean>;
+  power_draw?: number;
   price_est: number;
   currency: string;
   buy_urls: Array<{ store: string; url: string; condition: string }>;

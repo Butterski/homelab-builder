@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
 import { ExternalLink, KeyRound, Plug, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -8,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { getAuthConfig } from '@/features/auth/lib/auth-config';
-import { buildApi } from '@/features/builder/api/builds';
+import { useBuilds } from '@/features/builder/api/use-builds';
 import { useApiTokens, useRevokeApiToken, type ApiToken } from '../api/api-tokens';
 import { mcpEndpointUrl } from '../lib/mcp-snippets';
 import { SOURCE_PATHS, sourceUrl } from '../lib/source-links';
@@ -46,7 +45,7 @@ export function McpAccessCard() {
   const endpoint = mcpEndpointUrl();
   const { data, isLoading, isError } = useApiTokens();
   const revokeToken = useRevokeApiToken();
-  const { data: builds } = useQuery({ queryKey: ['builds-list'], queryFn: () => buildApi.list() });
+  const { data: builds } = useBuilds();
   const [createOpen, setCreateOpen] = useState(false);
   const [revoking, setRevoking] = useState<ApiToken | null>(null);
   const [mcpEnabled, setMcpEnabled] = useState(true);

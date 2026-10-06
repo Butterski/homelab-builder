@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Butterski/homelab-builder/backend/internal/gaming"
 	"github.com/Butterski/homelab-builder/backend/internal/models"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -34,6 +35,9 @@ func (s *BuildService) Create(userID uuid.UUID, input SyncGraphInput) (*models.B
 		Name:      input.Name,
 		Thumbnail: input.Thumbnail,
 		Settings:  settingsJSON,
+	}
+	if err := applyKindAndPlan(build, input); err != nil {
+		return nil, err
 	}
 
 	err := s.db.Transaction(func(tx *gorm.DB) error {
@@ -126,6 +130,9 @@ func (s *BuildService) updateGraphTx(tx *gorm.DB, buildID, userID uuid.UUID, inp
 	if input.Thumbnail != "" {
 		build.Thumbnail = input.Thumbnail
 	}
+	if err := applyKindAndPlan(&build, input); err != nil {
+		return err
+	}
 	if err := tx.Save(&build).Error; err != nil {
 		return err
 	}
@@ -134,6 +141,32 @@ func (s *BuildService) updateGraphTx(tx *gorm.DB, buildID, userID uuid.UUID, inp
 	}
 	if afterSync != nil {
 		return afterSync()
+	}
+	return nil
+}
+
+// applyKindAndPlan copies the build kind and the gaming plan from a save onto
+// the build row. Both are optional in the DTO: an empty kind and a nil plan
+// leave the stored values alone, so a client that does not know about them
+// cannot wipe them.
+func applyKindAndPlan(build *models.Build, input SyncGraphInput) error {
+	if input.Kind != "" {
+		kind, err := gaming.ParseKind(input.Kind)
+		if err != nil {
+			return fmt.Errorf("%w: %v", ErrInvalidTopology, err)
+		}
+		build.Kind = string(kind)
+	}
+	if input.GamingPlan != nil {
+		plan, err := input.GamingPlan.Normalize()
+		if err != nil {
+			return fmt.Errorf("%w: gaming plan: %v", ErrInvalidTopology, err)
+		}
+		planJSON, err := json.Marshal(plan)
+		if err != nil {
+			return err
+		}
+		build.GamingPlan = planJSON
 	}
 	return nil
 }
@@ -312,6 +345,7 @@ func validateEdgeEndpoints(nodes []NodeDTO, edges []EdgeDTO) error {
 		"server": true, "server_v2": true, "vps": true, "pc": true, "minipc": true,
 		"sbc": true, "nas": true, "iot": true, "ups": true, "pdu": true, "rack": true,
 		"disk": true, "gpu": true, "hba": true, "pcie": true,
+		nodeTypeConsole: true, nodeTypeLANTable: true,
 	}
 	vmHostTypes := map[string]bool{"server": true, "server_v2": true, "vps": true, "pc": true, "minipc": true, "sbc": true, "nas": true, "iot": true}
 	vmIDs := make(map[string]struct{})
@@ -330,6 +364,7 @@ func validateEdgeEndpoints(nodes []NodeDTO, edges []EdgeDTO) error {
 		if len(node.VMs) > 0 && !vmHostTypes[node.Type] {
 			issues = append(issues, fmt.Sprintf("%s nodes cannot host virtual machines or services", node.Type))
 		}
+		issues = append(issues, gamingNodeIssues(node)...)
 		for _, vm := range node.VMs {
 			if strings.TrimSpace(vm.ID) == "" {
 				issues = append(issues, fmt.Sprintf("service on %s has an empty id", node.ID))
@@ -363,6 +398,9 @@ func validateEdgeEndpoints(nodes []NodeDTO, edges []EdgeDTO) error {
 		if node.Type == "rack" {
 			issues = append(issues, fmt.Sprintf("rack %s cannot be nested", node.ID))
 		}
+		if floorNodeTypes[node.Type] {
+			issues = append(issues, fmt.Sprintf("%s nodes cannot be mounted in a rack", node.Type))
+		}
 	}
 
 	allowedEdgeTypes := map[string]bool{"": true, "ethernet": true, "wireless": true, "vpn": true}
@@ -373,6 +411,7 @@ func validateEdgeEndpoints(nodes []NodeDTO, edges []EdgeDTO) error {
 	nestedOnly := map[string]bool{"disk": true, "gpu": true, "hba": true, "pcie": true, "pdu": true, "rack": true}
 	seenPairs := make(map[string]struct{}, len(edges))
 	usedPorts := make(map[string]struct{})
+	tableUplinks := make(map[string]int)
 	missingRefs := make([]string, 0)
 
 	for _, edge := range edges {
@@ -409,11 +448,31 @@ func validateEdgeEndpoints(nodes []NodeDTO, edges []EdgeDTO) error {
 
 		isPower := source.Type == "ups" || target.Type == "ups"
 		isLogical := edge.Type == "vpn"
+		// A client on an access point's Wi-Fi: no cable, and the access point's
+		// port stays free for its uplink.
+		isWifiClient := isWifiAssociation(source.Type, target.Type)
 		if !isPower && (nestedOnly[source.Type] || nestedOnly[target.Type]) {
 			issues = append(issues, fmt.Sprintf("%s->%s connects a nested-only component", edge.Source, edge.Target))
 		}
-		if !isPower && !connectsFreely[source.Type] && !connectsFreely[target.Type] {
+		if !isPower && !isWifiClient && !connectsFreely[source.Type] && !connectsFreely[target.Type] {
 			issues = append(issues, fmt.Sprintf("%s and %s must connect through a router, switch, firewall, modem, or gateway", edge.Source, edge.Target))
+		}
+		if isWifiClient && edge.Type != "wireless" {
+			issues = append(issues, fmt.Sprintf("%s->%s joins an access point and must be a wireless connection", edge.Source, edge.Target))
+		}
+		if !isPower {
+			for _, endpoint := range []NodeDTO{source, target} {
+				if endpoint.Type != nodeTypeLANTable {
+					continue
+				}
+				if edge.Type == "wireless" || edge.Type == "vpn" {
+					issues = append(issues, fmt.Sprintf("LAN table %s needs a cabled uplink", endpoint.ID))
+				}
+				tableUplinks[endpoint.ID]++
+				if tableUplinks[endpoint.ID] == 2 {
+					issues = append(issues, fmt.Sprintf("LAN table %s has more than one uplink", endpoint.ID))
+				}
+			}
 		}
 		if edge.Type == "wireless" && source.Type != "access_point" && target.Type != "access_point" && source.Type != "iot" && target.Type != "iot" {
 			issues = append(issues, fmt.Sprintf("wireless connection %s->%s requires an access point or IoT endpoint", edge.Source, edge.Target))
@@ -422,6 +481,9 @@ func validateEdgeEndpoints(nodes []NodeDTO, edges []EdgeDTO) error {
 		if !isPower && !isLogical {
 			for _, endpoint := range []struct{ nodeID, handle string }{{edge.Source, edge.SourceHandle}, {edge.Target, edge.TargetHandle}} {
 				if endpoint.handle == "" {
+					continue
+				}
+				if isWifiClient && nodesByID[endpoint.nodeID].Type == "access_point" {
 					continue
 				}
 				port := endpoint.nodeID + "\x00" + endpoint.handle
@@ -488,6 +550,9 @@ type SyncGraphInput struct {
 	Nodes     []NodeDTO      `json:"nodes"`
 	Edges     []EdgeDTO      `json:"edges"`
 	Services  []ServiceDTO   `json:"services"`
+	// Kind and GamingPlan are optional: "" and nil keep what the build has.
+	Kind       string       `json:"kind,omitempty"`
+	GamingPlan *gaming.Plan `json:"gaming_plan,omitempty"`
 }
 
 type NodeDTO struct {
@@ -641,7 +706,11 @@ func (s *BuildService) UpdateByShareToken(token string, input SyncGraphInput, ip
 	if err != nil {
 		return nil, err
 	}
-	return s.GetByID(buildID)
+	saved, err := s.GetByID(buildID)
+	if err != nil {
+		return nil, err
+	}
+	return asSharedView(saved)
 }
 
 // GetByShareToken fetches a publicly shared build by its token.
@@ -650,7 +719,28 @@ func (s *BuildService) GetByShareToken(token string) (*models.Build, error) {
 	if err := s.db.Where("share_token = ? AND is_shared = true", token).First(&build).Error; err != nil {
 		return nil, ErrBuildNotFound
 	}
-	return s.GetByID(build.ID)
+	shared, err := s.GetByID(build.ID)
+	if err != nil {
+		return nil, err
+	}
+	return asSharedView(shared)
+}
+
+// asSharedView is a build as someone holding its share link gets it, on a read
+// and in the answer to a save. The address friends connect to is the home
+// address of the owner, so it is left out. Only the copy in memory changes.
+func asSharedView(build *models.Build) (*models.Build, error) {
+	plan, err := gaming.ParsePlan(build.GamingPlan)
+	if err != nil {
+		return nil, err
+	}
+	if plan.Uplink.PublicHost != "" {
+		plan.Uplink.PublicHost = ""
+		if build.GamingPlan, err = json.Marshal(plan); err != nil {
+			return nil, err
+		}
+	}
+	return build, nil
 }
 
 func (s *BuildService) ListByUser(userID uuid.UUID) ([]models.Build, error) {
@@ -690,10 +780,12 @@ func (s *BuildService) Duplicate(buildID uuid.UUID, userID uuid.UUID) (*models.B
 
 	// Create a new independent copy with a new UUID
 	newBuild := &models.Build{
-		UserID:    userID,
-		Name:      build.Name + " (Copy)",
-		Thumbnail: build.Thumbnail,
-		Settings:  build.Settings,
+		UserID:     userID,
+		Name:       build.Name + " (Copy)",
+		Kind:       build.Kind,
+		GamingPlan: build.GamingPlan,
+		Thumbnail:  build.Thumbnail,
+		Settings:   build.Settings,
 	}
 
 	// Start a transaction to insert the new build and sync its data
@@ -712,15 +804,16 @@ func (s *BuildService) Duplicate(buildID uuid.UUID, userID uuid.UUID) (*models.B
 			idMap[node.ID] = newUID
 
 			newNode := models.Node{
-				ID:       newUID,
-				BuildID:  newBuild.ID,
-				Type:     node.Type,
-				Name:     node.Name,
-				X:        node.X,
-				Y:        node.Y,
-				IP:       node.IP,
-				Details:  node.Details,
-				ParentID: node.ParentID,
+				ID:         newUID,
+				BuildID:    newBuild.ID,
+				Type:       node.Type,
+				Name:       node.Name,
+				X:          node.X,
+				Y:          node.Y,
+				PowerDraw:  node.PowerDraw,
+				IP:         node.IP,
+				MacAddress: node.MacAddress,
+				Details:    node.Details,
 			}
 			if err := tx.Create(&newNode).Error; err != nil {
 				return err
@@ -766,6 +859,20 @@ func (s *BuildService) Duplicate(buildID uuid.UUID, userID uuid.UUID) (*models.B
 				if err := tx.Create(&newSvc).Error; err != nil {
 					return err
 				}
+			}
+		}
+
+		// 1.4 Point rack-mounted copies at the copied rack, not the original one
+		for _, node := range build.Nodes {
+			if node.ParentID == nil {
+				continue
+			}
+			parentID, ok := idMap[*node.ParentID]
+			if !ok {
+				continue
+			}
+			if err := tx.Model(&models.Node{}).Where("id = ?", idMap[node.ID]).Update("parent_id", parentID).Error; err != nil {
+				return err
 			}
 		}
 

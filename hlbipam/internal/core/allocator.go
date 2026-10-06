@@ -141,6 +141,17 @@ func Allocate(req models.AllocateRequest) models.AllocateResponse {
 		}
 	}
 
+	// Lease demand per subnet: devices that exist only as a count on a node.
+	domainDemand := make(map[string]int)
+	for i := range req.Nodes {
+		if req.Nodes[i].DHCPClients <= 0 {
+			continue
+		}
+		if ri, reachable := ownerRouter[req.Nodes[i].ID]; reachable {
+			domainDemand[routerDomain[ri]] += req.Nodes[i].DHCPClients
+		}
+	}
+
 	domainByKey := make(map[string]*allocationDomain)
 	domainOrder := make([]string, 0, len(req.Routers))
 	for ri := range req.Routers {
@@ -148,7 +159,7 @@ func Allocate(req models.AllocateRequest) models.AllocateResponse {
 		domain, exists := domainByKey[key]
 		if !exists {
 			r := req.Routers[ri]
-			sa := NewSubnetAllocator(r.Subnet, r.GatewayIP, zones, domainDHCP[key])
+			sa := NewSubnetAllocator(r.Subnet, r.GatewayIP, zones, domainDHCP[key], domainDemand[key])
 			domain = &allocationDomain{
 				key:       key,
 				allocator: sa,
@@ -159,8 +170,22 @@ func Allocate(req models.AllocateRequest) models.AllocateResponse {
 			}
 			domainByKey[key] = domain
 			domainOrder = append(domainOrder, key)
+
+			demand := domainDemand[key]
+			switch {
+			case demand > 0 && sa.DHCPStart == 0:
+				resp.Warnings = append(resp.Warnings, models.Issue{NodeID: r.ID, Message: fmt.Sprintf("%d devices expect an address from DHCP, but DHCP is off on this network", demand)})
+			case demand > sa.DHCPPoolSize():
+				resp.Warnings = append(resp.Warnings, models.Issue{NodeID: r.ID, Message: fmt.Sprintf("the DHCP pool holds %d addresses but %d devices expect one; use a larger subnet such as 255.255.254.0", sa.DHCPPoolSize(), demand)})
+			}
 		}
 		domain.routerIDs = append(domain.routerIDs, req.Routers[ri].ID)
+		if sa := domain.allocator; sa.DHCPStart != 0 {
+			resp.Routers[ri].DHCPStart = sa.FormatIP(sa.DHCPStart)
+			resp.Routers[ri].DHCPEnd = sa.FormatIP(sa.DHCPEnd)
+			resp.Routers[ri].DHCPSize = sa.DHCPPoolSize()
+		}
+		resp.Routers[ri].DHCPClients = domainDemand[key]
 		gateway := utils.IPToUint32(net.ParseIP(req.Routers[ri].GatewayIP))
 		if previous, exists := domain.owners[gateway]; exists {
 			resp.Conflicts = append(resp.Conflicts, models.Issue{NodeID: req.Routers[ri].ID, Message: fmt.Sprintf("gateway IP %s conflicts with %s", req.Routers[ri].GatewayIP, previous)})

@@ -15,6 +15,7 @@ Remember - I don't want migrations scripts or Legacy things support. If somethin
 3. [Backend Architecture](#backend-architecture)
 4. [HLBIPAM Microservice](#hlbipam-microservice)
    - [LLM Access: MCP Server and Assistant](#llm-access-mcp-server-and-assistant)
+   - [Gaming Builds](#gaming-builds)
 5. [Frontend Architecture](#frontend-architecture)
 6. [Data Model](#data-model)
 7. [IP Assignment Algorithm](#ip-assignment-algorithm)
@@ -34,6 +35,8 @@ Remember - I don't want migrations scripts or Legacy things support. If somethin
 - **HLBIPAM**: Standalone Go microservice for IP Address Management
 - **Frontend**: React 19, TypeScript, Vite, ReactFlow, Zustand, Vitest
 - **LLM access**: built-in MCP server (`/mcp`) and an opt-in, bring-your-own-key chat assistant; both can only propose changes
+- **Gaming (1.3)**: a build has a kind (`homelab`, `lan_party`, `game_server`); the gaming kinds add a plan (internet line, power circuits, event) and a report computed on the backend
+- **Canvas (1.3)**: Polish arranges the canvas with a layout engine of its own (`features/builder/lib/layout`); an LLM proposal is reviewed on the live canvas, not on a copy
 - **Infrastructure**: Docker Compose (postgres + backend + hlbipam + frontend)
 
 ---
@@ -49,20 +52,21 @@ homelab-builder/
 ├── backend/
 │   ├── cmd/
 │   │   ├── server/main.go      # HTTP server entrypoint
-│   │   └── migrate/main.go     # standalone migration runner
+│   │   └── fakellm/main.go     # scripted stand-in for a model provider (development only, not in the image)
 │   ├── internal/
 │   │   ├── assistant/          # LLM tool registry, chat agent, instructions
 │   │   ├── config/config.go    # env var loading
+│   │   ├── gaming/             # build kinds, gaming plan, game registry, sizing, report, game compose
 │   │   ├── handlers/           # Gin route handlers (one file per domain)
-│   │   ├── llm/                # provider adapters (Anthropic, OpenAI-compatible), SSRF guard
+│   │   ├── llm/                # provider adapters (Anthropic, OpenAI-compatible), SSRF guard; llmtest/ is the scripted provider
 │   │   ├── mcpserver/          # /mcp endpoint: token auth, rate limits
 │   │   ├── middleware/         # auth, admin, rate limiter, security headers
 │   │   ├── models/models.go    # ALL GORM models in one file
 │   │   ├── secrets/            # AES-256-GCM sealing of stored provider keys
 │   │   ├── services/           # business logic; most tests live here
-│   │   └── testutil/           # Postgres transaction helper for packages outside services
-│   ├── migrations/             # raw SQL migrations (applied by postgres init)
-│   ├── pkg/database/database.go
+│   │   ├── testutil/           # Postgres transaction helper for packages outside services
+│   │   └── version/version.go  # release number; a frontend test keeps package.json in step
+│   ├── pkg/database/database.go # connection, AutoMigrate, Models() (every table)
 │   ├── go.mod
 │   ├── Dockerfile              # multi-stage: builder → final scratch image
 │   └── Dockerfile.test         # test runner image
@@ -87,6 +91,7 @@ homelab-builder/
 │   │   │   ├── builder/        # visual network builder (main feature)
 │   │   │   ├── catalog/        # hardware & service catalog browsing
 │   │   │   ├── donate/         # donation page
+│   │   │   ├── gaming/         # game plan dialog and report, game server / LAN table / console fields
 │   │   │   ├── landing/        # landing/login page
 │   │   │   ├── settings/       # settings page: appearance, AI assistant, MCP access
 │   │   │   ├── setup-guide/    # setup checklist
@@ -95,12 +100,13 @@ homelab-builder/
 │   │   ├── components/         # shared UI components
 │   │   │   ├── auth/           # auth guards (RequireAuth)
 │   │   │   ├── icons/          # icon components
-│   │   │   ├── layout/         # sidebar, main layout
+│   │   │   ├── layout/         # sidebar with the project card, main layout
 │   │   │   └── ui/             # design system primitives (button, dialog, etc.)
 │   │   ├── lib/                # shared utilities
 │   │   │   ├── api.ts          # base axios instance
 │   │   │   ├── templates.ts    # config templates
-│   │   │   └── utils.ts        # general utilities
+│   │   │   ├── utils.ts        # general utilities
+│   │   │   └── version.ts      # app version, taken from package.json at build time
 │   │   ├── services/           # shared service layer (api.ts)
 │   │   ├── types/index.ts      # shared TypeScript types
 │   │   ├── App.tsx             # root component with routing
@@ -110,6 +116,7 @@ homelab-builder/
 └── docs/
     ├── ARCHITECTURE.md         # copy of this file
     ├── MCP.md                  # connecting LLM clients over MCP
+    ├── GAMING.md               # user guide: LAN party and game server builds
     └── AI-ASSISTANT-SECURITY.md # how provider keys and chat data are handled
 ```
 
@@ -153,7 +160,8 @@ HTTP Request → Gin Router → Middleware → Handler → Service → GORM → 
 | `catalog_component_handler.go` | Catalog component CRUD |
 | `donate_handler.go` | Donation progress read/update |
 | `survey_handler.go` | Beta survey CRUD |
-| `health.go` | Health check endpoint |
+| `health.go` | Health check endpoint (also reports the version) |
+| `gaming_handler.go` | Gaming report of a build (`GET /builds/:id/gaming-report`) |
 | `proposal_handler.go` | Sync state poll, proposal get / apply / reject |
 | `api_token_handler.go` | Personal access tokens for MCP clients (JWT only) |
 | `assistant_handler.go` | Assistant settings, provider test, chat thread, chat stream (SSE) |
@@ -162,13 +170,16 @@ HTTP Request → Gin Router → Middleware → Handler → Service → GORM → 
 
 | File | Responsibility |
 |---|---|
-| `build_service.go` | CRUD for builds; saves the submitted graph into the relational `nodes`/`edges` tables and recalculates IPs |
+| `build_service.go` | CRUD for builds; saves the submitted graph into the relational `nodes`/`edges` tables and recalculates IPs; stores the build kind and gaming plan |
 | `build_snapshot.go` | `BuildToSyncInput`, `GetOwned`, `PreviewTopology` (dry run) |
 | `proposal_service.go` | LLM proposals: propose, refresh, apply, reject, sync state |
 | `topology_ops*.go`, `topology_ports.go`, `topology_layout.go`, `topology_diff.go` | Change-set engine behind proposals |
 | `api_token_service.go` | Personal access tokens |
 | `assistant_settings_service.go`, `assistant_thread_service.go` | Assistant settings with the encrypted key; stored chat |
-| `ip_service.go` | Graph-aware BFS IP assignment per subnet |
+| `ip_service.go` | Graph-aware BFS IP assignment per subnet; sends DHCP demand to hlbIPAM and stores each gateway's pool |
+| `gaming_service.go` | Turns a build into `gaming.ReportInput`: gaming report, per-host game compose files, the `gaming/` files of the export bundle |
+| `topology_gaming.go` | Rules for `console` and `lan_table`, the Wi-Fi association rule, table defaults, the `set_plan` operation, DHCP demand per node |
+| `hardware_seed.go`, `default_service_seed.go`, `catalog_seed.go` | Startup seed of the hardware catalog (`hardware_seed.json`) and the service catalog; `SeedCatalog` runs both |
 | `auth_service.go` | Google OAuth token verification, JWT issuance |
 | `hardware_service.go` | Hardware catalog queries + admin operations |
 | `recommendation_service.go` | Service/hardware recommendations based on selections |
@@ -189,6 +200,8 @@ Every write goes through one path: `PUT /builds/:id/topology` -> `BuildService.U
 2. `syncGraph` replaces the build's nodes, edges, VMs and components with the submitted `SyncGraphInput`. Node, VM and component UUIDs sent by the client are kept; **edge IDs are regenerated on every save**, so nothing may refer to an edge by ID.
 3. Runs the IP calculation (hlbIPAM) in the same transaction and bumps the revision.
 4. IMPORTANT: `Preload("Nodes.VirtualMachines")` is required on all build fetches or VMs disappear from responses.
+
+The same save carries the build's `kind` and `gaming_plan` (`applyKindAndPlan`). Both are optional in `SyncGraphInput`: an empty kind and a nil plan leave the stored values alone, so a client that does not know about them cannot wipe them. A save through a share link (`UpdateByShareToken`) never changes them, and whatever a share link gets back goes through `asSharedView`, which leaves out `gaming_plan.uplink.public_host`.
 
 `BuildService.PreviewTopology` runs the same steps and then rolls the transaction back (sentinel `errDryRun`). It is how a proposal is checked without touching the build.
 
@@ -217,6 +230,8 @@ hlbipam/
 
 The backend communicates with HLBIPAM via `IPAM_URL` (default: `http://hlbipam:8081`).
 
+A node may announce `dhcp_clients`: devices behind it that will ask for a lease (the seats of a `lan_table`, the Wi-Fi devices of an access point). The allocator adds them up per subnet, sizes the DHCP pool for the sum with a quarter of headroom (`DHCPHeadroom`), and returns the pool with each router result (`dhcp_start`, `dhcp_end`, `dhcp_size`, `dhcp_clients`). It warns when the demand does not fit the subnet or DHCP is off. With no demand the pool is the same as before 1.3.
+
 ---
 
 ## LLM Access: MCP Server and Assistant
@@ -229,18 +244,19 @@ User-facing docs: `docs/MCP.md` (client setup) and `docs/AI-ASSISTANT-SECURITY.m
 
 | Package / file | Responsibility |
 |---|---|
-| `internal/assistant/tools*.go` | Tool registry shared by MCP and the chat: `list_builds`, `get_build`, `validate_build`, `generate_configs`, `search_hardware`, `list_services`, `recommend_hardware`, `get_proposal`, `propose_changes`, `create_build` (MCP only). `Registry.Call` validates arguments against the tool's JSON schema, enforces the actor's scope and build restriction, and audits state-changing calls. |
+| `internal/assistant/tools*.go` | Tool registry shared by MCP and the chat: `list_builds`, `get_build`, `validate_build`, `generate_configs`, `gaming_report`, `search_hardware`, `list_services`, `recommend_hardware`, `get_proposal`, `propose_changes`, `create_build` (MCP only). `Registry.Call` validates arguments against the tool's JSON schema, enforces the actor's scope and build restriction, and audits state-changing calls. |
 | `internal/assistant/instructions.go` | The fixed domain primer: MCP server instructions and the chat system prompt. |
-| `internal/assistant/agent.go` | Chat loop for the in-app assistant: one turn per user at a time, at most 12 model calls per message, history stored append-only. |
+| `internal/assistant/agent.go` | Chat loop for the in-app assistant: one turn per user at a time, at most 12 model calls per message, history stored append-only. Streams what it does as events (see Chat events). |
 | `internal/mcpserver/` | `/mcp` endpoint (official `modelcontextprotocol/go-sdk`, stateless streamable HTTP). Authenticates a personal access token, rate-limits per token, and builds a per-request server exposing only the tools the token's scope allows. |
-| `internal/llm/` | Provider adapters behind one `Provider` interface: Anthropic (official SDK) and OpenAI-compatible (OpenAI, Gemini, OpenRouter, Ollama, custom). `ssrf.go` restricts which addresses the server may call. |
+| `internal/llm/` | Provider adapters behind one `Provider` interface: Anthropic (official SDK) and OpenAI-compatible (OpenAI, Gemini, OpenRouter, Ollama, custom). `Stream` takes `StreamHandlers`: text as it is written, the start of a tool call, and how many bytes of its arguments exist so far. `ssrf.go` restricts which addresses the server may call. |
+| `internal/llm/llmtest/`, `cmd/fakellm/` | A scripted OpenAI-compatible provider. Go tests run the real adapter against it; `go run ./cmd/fakellm` serves it so the chat can be driven in a browser without a key (see Running Tests). |
 | `internal/secrets/` | AES-256-GCM sealing of provider keys, bound to the owner through the AAD. |
 | `services/proposal_service.go` | Propose (dry run + diff), Refresh, Apply (replays the operations on the latest revision), Reject, SyncState. |
-| `services/topology_ops*.go` | Applies a change set (`add_node`, `connect`, `add_vm`, ...) to a `SyncGraphInput` in memory. Mirrors the canvas rules: port handles, port counts, cable orientation, loop rejection, rack slots, auto layout. |
-| `services/topology_diff.go` | Diff between two builds, shown in the review panel. |
+| `services/topology_ops*.go`, `topology_gaming.go` | Applies a change set (`add_node`, `connect`, `add_vm`, `set_plan`, ...) to a `SyncGraphInput` in memory. Mirrors the canvas rules: port handles, port counts, cable orientation, loop rejection, rack slots, Wi-Fi association, auto layout. |
+| `services/topology_diff.go` | Diff between two builds, shown during a review: on the canvas and in the list of changes. Covers the gaming plan and the game settings of a guest, so a proposal that changes only those still counts as a change. |
 | `services/api_token_service.go` | Personal access tokens (`hlb_...`): only the SHA-256 is stored; scopes `read` / `propose`; optional single-build restriction. |
 | `services/assistant_settings_service.go` | Per-user provider, model and encrypted key. `LoadKeyring` picks the master key (`SECRETS_KEY`, or a generated one kept in `system_settings` on instances without login). |
-| `services/assistant_thread_service.go` | Stored chat messages: provider-neutral parts plus the provider's native message for replay. |
+| `services/assistant_thread_service.go` | Stored chat messages: provider-neutral parts plus the provider's native message for replay. A tool result part also keeps `summary` and `duration_ms` for display. NUL characters are taken out before a row is stored (pitfall 27). |
 
 ### Proposal flow
 
@@ -249,13 +265,39 @@ propose_changes (MCP tool or chat tool)
   -> ApplyTopologyOps(current build, ops)      in memory, new entities get their final UUIDs
   -> BuildService.PreviewTopology              dry run: save + IPAM + validation, rolled back
   -> DiffBuilds                                stored with the proposal (status: pending)
-builder polls GET /builds/:id/sync-state every 4s -> banner -> read-only preview canvas
+builder polls GET /builds/:id/sync-state every 4s
+  -> from an MCP client: a banner; from the chat: opens by itself
+  -> reviewed on the live canvas (see Frontend Architecture)
 POST /builds/:id/proposals/:pid/apply          replays the ops on the latest revision, then saves
 ```
 
 - One pending proposal per build: a new one supersedes the older.
 - Apply rebases: edits saved after the proposal was created are kept. If the operations no longer fit, the proposal becomes `conflict` (409).
 - Connections are addressed by their unordered node pair, never by edge ID.
+- New entities keep their UUIDs in the stored operations, but a canvas position the server chose is not stored with them: `placeNodes` runs again on refresh and on apply, against the canvas as it is then. A position the model gave explicitly stays.
+- `set_plan` is a JSON merge patch on the gaming plan (plus an optional kind), so it replays on a newer revision like any other operation. The answer to `propose_changes` carries the gaming report of the dry run (`gaming: {status, issues}`).
+- The tools and `assistant.Instructions` do not vary by build kind: the instructions are byte-stable for prompt caching. The kind reaches the chat model through the per-turn context note in `agent.go`.
+
+### Chat events
+
+`POST /api/assistant/chat` answers with server-sent events (`agent.go`, consumed by `features/assistant/api/chat.ts`):
+
+| Event | Carries |
+|---|---|
+| `turn_start` | thread and message id, provider, model |
+| `text_delta` | a piece of the visible reply |
+| `tool_pending` | `step`, `index`, `name`, `title`, `bytes`: the model has begun a tool call and is still writing it. Sent at the start and then at most every 300 ms. |
+| `tool_call` | `id`, `name`, `title`, `detail`, `step`, `index`: the call is complete and about to run. `step`/`index` match the `tool_pending` before it. |
+| `tool_result` | `id`, `name`, `ok`, `duration_ms`, and `error` or `summary` with `focus` (node ids the call was about) |
+| `proposal` | the proposal summary |
+| `notice` | `text` for the user, for example that the step limit was reached |
+| `error` | `code`, `message`; ends the turn |
+| `done` | `full`: the conversation reached its length limit |
+
+- `detail` comes from `Registry.Describe` (per tool, from the arguments: "2.5G switch", "5 operations"), `summary` and `focus` from the tool's `Result`. MCP clients get `Result.Data` only.
+- A request may carry `selection`: node ids selected on the canvas. `selectedNodes` keeps only nodes of that build, and the context note names them from the build's own data.
+- When a model call fails or is stopped after text was written, that text is stored as an interrupted assistant row, so the transcript and the next turn agree on what was said.
+- `GET /api/assistant/threads/:buildId` returns `running` while a turn on that build is still being worked on.
 
 ### Rules that must not be broken
 
@@ -266,6 +308,55 @@ POST /builds/:id/proposals/:pid/apply          replays the ops on the latest rev
 - `/mcp` always requires a token, also when `AUTH_DISABLED` is on. JWT routes never accept an access token, so a token cannot mint tokens.
 - The SQL logger runs with `ParameterizedQueries: true`: statement values (chat text, ciphertext) never reach the log. Keep it that way.
 - Model output is untrusted: the chat renders Markdown without raw HTML and without images.
+- The short texts next to a step (`detail`, `summary`, a tool name) are built from what the model wrote. The server cuts them to one line of 80 characters (`brief`); the client shows them as plain text, never as Markdown.
+- A proposal under review is drawn from `proposalPreview`. The store's live `nodes` and `edges` are not replaced, so autosave cannot see a proposal (pitfall 23).
+
+---
+
+## Gaming Builds
+
+Since 1.3 a build has a **kind**: `homelab` (the default), `lan_party` or `game_server`. A homelab build behaves as before. The gaming kinds add a plan and a report. User guide: `docs/GAMING.md`.
+
+### Pieces
+
+| Package / file | Responsibility |
+|---|---|
+| `internal/gaming/kind.go`, `plan.go` | `Kind` and `Plan` (uplink, power circuits, event). Stored as `builds.kind` and `builds.gaming_plan` (jsonb). `Plan.Normalize` validates and never adds defaults, so the server returns a plan exactly as it was saved. |
+| `internal/gaming/profiles*.go` | The game registry: one `Profile` per game or tool (ports, image, env, per-player figures). Attached to catalog services as the transient `Service.Game` in `Service.AfterFind`; it is not a column. |
+| `internal/gaming/instance.go`, `sizing.go` | A game server is a guest with `details.game = {profile, players, exposure, port_offset}`. `SizeServer` is base plus per player; `ResolvePorts` adds the offset. |
+| `internal/gaming/report*.go` | `ComputeReport`: pure functions over a flat `ReportInput`. Server checks run for every build; party checks run for `lan_party` and for any build with a `lan_table`. Every `Issue` has a stable `Code`. |
+| `internal/gaming/compose.go` | One compose file and `.env.example` per host for its game servers. |
+| `internal/gaming/merge.go` | `MergePlan` (the merge patch behind `set_plan`) and `DiffPlans`. |
+| `services/gaming_service.go` | Build to `ReportInput`; serves `GET /api/builds/:id/gaming-report`; `GameComposeFiles`; the `gaming/` files of the export bundle. |
+| `services/topology_gaming.go` | Rules for the two gaming node types, shared by the save path and the change-set engine. |
+| `frontend/src/features/gaming/` | Game plan dialog (report and plan details), game server settings on a guest, table / console / circuit fields. `lib/sizing.ts` and `lib/table.ts` repeat the backend's arithmetic for instant feedback; the report always comes from the backend. |
+| `frontend/src/features/builder/lib/planner/` | Pure plan builders behind `/planner`: `homelab-plan.ts`, `lan-party-plan.ts`, `game-server-plan.ts`. |
+| `frontend/src/features/builder/lib/connection-rules.ts` | `checkConnection`: the canvas copy of the connection rules. |
+
+`internal/gaming` imports nothing internal, so `models`, `services` and `assistant` can all use it.
+
+### Node types
+
+- `console`: a leaf with one link, cabled or Wi-Fi. IP zone offset 30. No guests, no components, not rack-mountable.
+- `lan_table`: N seats and their table switch as one node (`details.seats`, `seat_watts`, `switch_ports`, `switch_speed`). It has no address; one cabled uplink to a switch or router. `power_draw` is seats x seat_watts + 10 unless set by hand. A `pc` or `console` drawn on its own counts as one seat.
+- `details.circuit` on any powered node names a circuit of the plan. `details.wifi_clients` on an access point counts devices that are not drawn.
+
+### DHCP demand
+
+Table seats and `wifi_clients` are sent to hlbIPAM as `dhcp_clients`. The pool of a subnet grows to `max(default, ceil(demand x 1.25))`; with no demand it is unchanged, so homelab allocations do not move. The backend stores the result as `details.dhcp_pool {start, end, size, clients}` on the gateway. That key is derived (see pitfall 15).
+
+### Rules that exist in more than one place
+
+Change them together.
+
+| Rule | Backend save | Change-set engine | Canvas |
+|---|---|---|---|
+| Wi-Fi association: `access_point` to `pc` / `minipc` / `sbc` / `console` is always wireless, needs no hub and does not take the access point's port | `build_service.go` (`validateEdgeEndpoints`) | `topology_ops_connections.go`, `topology_ports.go` | `connection-rules.ts` |
+| A `lan_table` has one cabled uplink; `lan_table` and `console` cannot sit in a rack | `build_service.go` | `topology_ops.go`, `topology_ops_connections.go` | `connection-rules.ts`, `visual-builder.tsx` |
+| Table defaults: switch size for the seats, power draw | `topology_gaming.go` | `topology_gaming.go` | `features/gaming/lib/table.ts` |
+| Game server sizing and ports | `gaming/sizing.go` | `topology_ops_guests.go` | `features/gaming/lib/sizing.ts` |
+
+A new node type has to be added in: hlbIPAM `core/types.go`; backend `build_service.go` (known types), `ip_service.go` (`nonNetworkTypes` if it has no address), `topology_ops.go` (addable types, default names), `taxonomy.go`, `testutil/pgtest.go` (the IPAM stub); `assistant/instructions.go` and `tools_proposals.go`; frontend `types/index.ts`, `lib/hardware-config.ts`, `lib/hardware-taxonomy.ts`, and in `features/builder`: `hardware-node.tsx`, `hardware-toolbox.tsx`, `lib/layout/structure.ts` (`UPSTREAM_RANK`, `TYPE_ORDER`) and, if its card is built differently, `lib/layout/from-flow.ts` (`estimateNodeSize`).
 
 ---
 
@@ -275,24 +366,88 @@ POST /builds/:id/proposals/:pid/apply          replays the ops on the latest rev
 
 The builder feature uses a single Zustand store at `features/builder/store/builder-store.ts`.
 
-**Critical ordering rule in `reassignAllIPs`:**
+**One save path.** `reassignAllIPs` is the only action that saves. It sends `getBuildData()` and the revision to `PUT /builds/:id/topology`; the backend saves and calculates the addresses in one transaction, and the answer's addresses and derived details are merged into `nodes` and `hardwareNodes`. Saves, `openBuild`, `syncWithServer` and `applyProposal` run one after another through one queue (`enqueueTopologyMutation`), so a reload never overtakes a save.
+
+**Which build is open:**
+- The browser keeps only `currentBuildId`, `projectName` and `buildKind` (`store/workspace-storage.ts`, key `hlb-workspace`, forgotten when the session ends). The canvas is read from the server again: a copy kept in the browser went stale and was shown by pages that never loaded a build.
+- `buildStatus` (`idle`, `loading`, `ready`, `error`) says whether the graph in the store belongs to `currentBuildId`. After a page reload it is `idle`: the id is known, the graph is not. Nothing is saved, compared with the server or reviewed before it is `ready`.
+- `openBuild(id)` empties the graph before it loads another build, so the previous one is never shown or saved under the new id. The builder and the Config Generator call it. Setup Guide uses `hooks/use-current-project.ts`, which loads the build when only its id is known and clears it on a 404 or 403; the sidebar reads the same hook without loading.
+- `loadBuild` keeps `measured`, `width`, `height` and `selected` of the nodes that stay (pitfall 21), drops the validation issues and an open proposal preview, and sets `lastSyncedFingerprint`.
+
+**Saving:**
+- `saveState` (`saved`, `unsaved`, `saving`, `error`), `lastSavedAt` and `saveError` live in the store. The canvas header (`save-state-chip.tsx`) and the sidebar's project card show the same state.
+- `store/autosave.ts` (`startAutosave`, started by the builder) watches the store, not React renders: comparing means serialising the whole build, which must not happen on every frame of a drag. 300 ms after the last change it compares the canvas with `lastSyncedFingerprint`; 2 s after the last edit it saves.
+- A canvas equal to `lastSyncedFingerprint` is never saved. Without this, two open tabs would save in turns forever, because each reloads when the other's save bumps the revision.
+- A save that got no answer, or a 5xx, is tried again after 2 s, 5 s and 15 s. A save the server refused (4xx) shows the server's reason and is not repeated until the canvas changes. Leaving the builder saves what is pending.
+- A new connection saves at once: `onConnect` calls `reassignAllIPs` via `setTimeout(0)`. `addHardware`, `addVM` and `duplicateHardware` leave it to the autosave.
+
+**A save conflict (409):**
+- If the server already holds the save this session sent without getting an answer (`unconfirmedSave`: the next revision, the same graph), its revision is adopted and the save is repeated with the edits made since.
+- Otherwise the server's build is loaded and the canvas as it was becomes one undo step. `BuildConflictError` tells the caller, and the toast says Undo brings it back.
+
+**Changes from elsewhere:** `useSyncState` polls `GET /builds/:id/sync-state` every 4 s. `hooks/use-proposals.ts` calls `syncWithServer` on every poll result and whenever the save state changes, so a reload that had to wait for unsaved edits is not forgotten. Three failed polls in a row set `serverReachable` to false; a 404 closes the build.
+
+**Camera:** `requestCanvasFocus(ids)` sets `canvasFocus {ids, nonce}`, and one effect in `visual-builder.tsx` fits the view to those nodes (to everything for `null`), clear of the floating panels (`paddingClearOfPanels`). An applied proposal, Polish and "Show" after a reload from another session use it. `minZoom` is 0.15, or a wide build could not be shown whole.
+
+**Reviewing a proposal:**
+- There is one React Flow. While `proposalPreview` is set it draws `proposalPreview.nodes/edges` (built by `lib/proposal-preview.ts`) instead of the live arrays, read-only, with the class `is-reviewing`. The live `nodes` and `edges` are never replaced, so a preview cannot be saved. Undo, redo and Polish do nothing during a review.
+- React Flow still has to store the sizes it measures for the cards it draws: `applyPreviewNodeChanges` keeps those changes and nothing else. Preview nodes start with the `measured` of the live node with the same id.
+- Each changed element carries `--reveal-index`, and `index.css` stages the reveal from it: what goes fades, what changed pulses, what is new scales in, new cables draw themselves. No timers are involved; reduced motion shows the end state.
+- The camera moves to the changes only when they are not on screen already (`proposalPreview.focus`).
+- `applyProposal` saves pending edits first, applies on the server, reloads, pushes one undo step that also restores the name, kind and plan, and sets `appliedGlow` so the canvas lights up what was applied.
+- A proposal the chat made in this session opens by itself. One from an MCP client shows `proposal-banner.tsx`, which leaves a chip when it is put aside. `proposal-review-bar.tsx` steps through the changes; the list of changes (`proposal-review-panel.tsx`) is a second tab of the side panel, next to the chat, which stays mounted.
+
+**Polish:** `polishLayout(style)` asks the layout engine (see below) and `applyLayout(positions)` writes the final positions in one update: one undo step, none when nothing moves, the existing node objects kept so `measured` survives, `hardwareNodes[].x/y` in step. The glide is only drawn (`layoutMotion` and the class `is-arranging`), so a save can never see a half-way position. `lib/polish.ts` adds the toasts and remembers the style used last (`hlb-polish-style`); the command palette calls it too.
+
+**Kind, plan and settings:**
+- `buildKind`, `gamingPlan` and `buildSettings` are loaded by `loadBuild` and are part of the autosave fingerprint. Each object is kept exactly as loaded and replaced only by a user edit (`setBuildKind`, `setGamingPlan`), because Postgres `jsonb` reorders keys and a rebuilt object would look like an unsaved change.
+- `getBuildData` sends `kind` and `gaming_plan` only when they are set, and spreads the whole loaded settings object, so keys the store does not know (for example `settings.planner`) survive a save.
+
+**Around the builder store:**
+- The assistant has its own store (`features/assistant/store/assistant-store.ts`, not persisted). The transcript on screen is the server's: the thread is read again whenever a turn ends other than cleanly and when the panel opens, and a turn that is still running after a page reload is followed (`running`, status `following`). A message sent while a turn is being stopped waits (`queued`) instead of being refused.
+- The list of builds is one query (`api/use-builds.ts`, key `['builds']`) shared by the Projects page, the project switcher, Settings and the profile, so a rename or delete in one place is right in the others. The Config Generator fetches its own list each time it opens.
+- `components/layout/project-card.tsx` is the open project in the sidebar: a miniature of the canvas, name, kind, device count, save state (a failed save can be retried there) and a badge for a waiting proposal. It reads the store through selectors only; a sidebar subscribed to the whole store renders on every frame of a drag. Away from the canvas it asks for a waiting proposal every 20 s; on the canvas it reads what the builder polls anyway.
+
+### Layout Engine (Polish)
+
+`features/builder/lib/layout/` arranges the canvas. It is a pure module: no React, no store, no dependency. A graph library was left out on purpose. The canvas draws every cable itself, as a step line from a port at the bottom of one card to the handle on top of another, so what a library promises about its own routes would not hold here; and a rack whose insides must not move cannot be expressed in one.
+
+| File | Step |
+|---|---|
+| `from-flow.ts` | Canvas to `LayoutGraph`: measured sizes (`estimateNodeSize` for a card that was not measured yet; the result then says `usedEstimates`), port anchors, rack membership, the medium of each cable |
+| `units.ts` | A unit is what moves as one: a card, or a rack with everything in it. Cables inside a rack are left out |
+| `structure.ts` | Units to a forest. A cable is directed by its handles (the end on `ethN` is above, the end on `target-0` below), every unit gets one parent, children are ordered by the parent's port. What only feeds others (a UPS, a second modem) is a feeder beside what it feeds, or a crown above a root. A cable that would close a loop stays out of the tree |
+| `place.ts` | Places bottom-up: each subtree is packed against the cards and the real cable segments of what stands already |
+| `route.ts`, `geometry.ts` | The corner points of a cable exactly as the canvas draws it; segments, rectangles, crossings |
+| `metrics.ts` | `measureLayout`: overlaps, crossings, cards under a cable, wrapped cables, bounds and cable length, all from those routes |
+| `index.ts` | `computeLayout(graph, {style})`, `LAYOUT_STYLES`, `pictureOf` for the thumbnails in the Polish menu and the sidebar |
+
+**What the tests hold it to** (`layout.test.ts`), on fixtures, on the output of the three planners and on random networks of 5 to 120 devices:
+- no two cards or racks overlap;
+- no two cables of the tree cross (`treeCrossings`) and none runs over a card (`treeCableHits`);
+- a second run moves nothing, and the order of the input does not matter;
+- adding one device does not reshuffle the rest;
+- 300 devices are placed within the time budget of the test.
+
+**Not promised.** A secondary link (a UPS feeding several rows, a second uplink, a tunnel, the cable that closes a loop) may cross others: these are counted apart as `otherCrossings` and `otherCableHits`, and a feeder goes on the side where they are fewer. A cable into a racked device passes the devices above it in that rack. A cable between two ports, or between two top handles, is routed by React Flow and counted in `wrappedCables`. All of it holds for the step line style; with bezier or straight lines the result is still free of overlaps.
+
+**The cable rule.** A step cable runs sideways 30 px under its port, or 20 px above its target when there is less room (`stepBusY` in `route.ts`). `custom-edge.tsx` and `proposal-edge.tsx` hand that value to React Flow as `centerY` through `lib/cable-path.ts`, and the engine routes with the same function. `route.test.ts` compares the engine's points with the installed `getSmoothStepPath`, so a React Flow upgrade that changes routing fails a test instead of quietly breaking the layout (pitfall 22). The rule draws every canvas, also one the engine never arranged. Where devices are stacked in a column and fed from the side, which is what Polish and the LAN party planner produced before the engine, the drop to a lower device now passes every card above it instead of about half of them, while cables cross each other less. Measured on 80 such canvases: 72 of 458 cables run over more cards than before and none over fewer; cable crossings fell from 522 to 306. One Polish removes both.
+
+**Styles.** `hierarchy` and `compact` are the same tree with other numbers (`SPACING` in `place.ts`). Compact has narrower gaps, staggers a run of leaves into two rows from 7 instead of 12, and does not line up the children of hubs of similar height.
+
+**Folding.** A row wider than the fold width folds: every second branch moves to a lower tier, under the gap between its neighbours. `chooseFoldWidth` tries `FOLD_WIDTHS` from no folding upwards and takes the first drawing that is narrow enough or not too flat (`ROOM`). A dozen devices stay a plain tree; a 64-seat party does not become a ribbon ten screens wide.
+
+**Around the tree.** Separate networks stand side by side and wrap towards the shape of a screen; devices without a cable go on a grid below, racks without one to the right. Everything is on the 20 px grid. The three planners arrange their output with the same engine and estimated sizes (`lib/planner/arrange.ts`), so a fresh plan opens tidy.
+
+Numbers say a layout has no crossings, not that it looks right. To see every fixture drawn in both styles, and to give the engine a longer random run after a change:
+
+```bash
+docker run --rm -v "$PWD:/repo" -v hlb-frontend-node-modules:/repo/frontend/node_modules -w /repo/frontend \
+  -e LAYOUT_PREVIEW=/repo/layout-preview.html -e LAYOUT_SEEDS=2000 \
+  node:22-alpine npx vitest run src/features/builder/lib/layout
 ```
-1. buildApi.update(currentBuildId, buildPayload)   ← MUST be first
-2. buildApi.calculateNetwork(currentBuildId)        ← reads what was just saved
-3. buildApi.get(currentBuildId)                    ← reload IPs into local state
-```
-If `calculateNetwork` runs before `update`, the backend reads stale/empty relational tables and returns "no router found".
 
-**Trigger rules:**
-- `onConnect` (new edge drawn) → triggers `reassignAllIPs` via `setTimeout(0)`
-- `addHardware`, `addVM`, `duplicateHardware` → do NOT trigger `reassignAllIPs`
-
-**Proposal preview and sync:**
-- `proposalPreview` is a separate slice rendered by a read-only overlay canvas. The live `nodes`/`edges` are never swapped out, so a preview cannot trigger autosave. Undo/redo do nothing during a preview.
-- `lastSyncedFingerprint` records the graph as last saved or loaded. Autosave is skipped while the canvas matches it. Without this, two open tabs would save in turns forever, because each reloads when the other's save bumps the revision (`useSyncState` polls every 4s).
-- `applyProposal` saves pending edits first, applies on the server, reloads, and pushes one undo step.
-
-The assistant has its own store (`features/assistant/store/assistant-store.ts`, not persisted). The side panel in `visual-builder.tsx` shows the proposal review while a proposal is open, otherwise the assistant.
+`LAYOUT_PREVIEW` names the HTML file to write (delete it afterwards, it is not part of the repository); `LAYOUT_SEEDS` is the number of random networks, 60 by default.
 
 ### Feature Structure
 
@@ -312,7 +467,7 @@ feature/
 
 | Feature | Description |
 |---|---|
-| `builder/` | Visual network builder - the main feature (ReactFlow canvas, node management, IP display) |
+| `builder/` | Visual network builder - the main feature (ReactFlow canvas, node management, IP display, Polish, proposal review on the canvas) |
 | `admin/` | Admin dashboard, user management, service/hardware admin, steering rules, catalog components |
 | `auth/` | Login page (Google OAuth), profile page |
 | `catalog/` | Public hardware & service catalog browsing |
@@ -322,7 +477,8 @@ feature/
 | `setup-guide/` | Interactive setup checklist |
 | `survey/` | Beta user survey |
 | `settings/` | Settings page: appearance, AI assistant (provider, key, key-protection panel), MCP access tokens |
-| `assistant/` | Chat panel in the builder: SSE reader, store, message list, proposal cards |
+| `assistant/` | Chat panel in the builder: SSE reader, store, message list, activity timeline, proposal cards with Apply and Reject, status pill on the canvas |
+| `gaming/` | Game plan dialog and report, game server settings, LAN table / console / circuit fields, setup steps for gaming builds |
 
 ### Routing (App.tsx)
 
@@ -331,6 +487,7 @@ feature/
 | `/` | `ProjectsPage` (logged in) / `LoginPage` (guest) | No |
 | `/builder/:id` | `VisualBuilderPage` | Yes |
 | `/generate` | `ConfigGeneratorPage` | Yes |
+| `/planner` | `GuidedPlannerPage` (`?kind=lan_party` or `?kind=game_server` starts on that plan) | Yes |
 | `/admin` | `AdminPage` | Yes |
 | `/profile` | `ProfilePage` | Yes |
 | `/settings` | `SettingsPage` | Yes |
@@ -358,6 +515,8 @@ User + Build ──1 AssistantThread ──< AssistantMessage
 SystemSetting                      (key/value, instance-wide)
 ```
 
+`Build.kind` is `homelab`, `lan_party` or `game_server`; `Build.gaming_plan` (jsonb) holds the plan of a gaming build. A game server is a `VirtualMachine` whose `details.game` names a profile from the registry in `internal/gaming`.
+
 ### Node Types and IP Zones
 
 Each node type maps to a fixed IP offset block within a `/24` subnet:
@@ -367,6 +526,7 @@ Each node type maps to a fixed IP offset block within a `/24` subnet:
 | router | 1 | 1 | No |
 | switch | 10 | 1 | No |
 | access_point | 20 | 1 | No |
+| console | 30 | 1 | No |
 | ups | 80 | 1 | No |
 | pdu | 85 | 1 | No |
 | nas | 100 | 10 | Yes (.101–.109) |
@@ -377,19 +537,20 @@ Each node type maps to a fixed IP offset block within a `/24` subnet:
 | gpu | 190 | 1 | No (non-network) |
 | hba | 195 | 1 | No (non-network) |
 | pcie | 198 | 1 | No (non-network) |
+| lan_table | - | - | No (non-network; its seats take DHCP leases) |
 
-Non-network types (`disk`, `gpu`, `hba`, `pcie`, `pdu`, `ups`) are never assigned IPs even when connected to a router.
+Non-network types (`disk`, `gpu`, `hba`, `pcie`, `pdu`, `ups`, `lan_table`) are never assigned IPs even when connected to a router.
 
 ### GORM Tag Requirements
 
 All primary keys use PostgreSQL-native UUID generation:
 
 ```go
-ID uuid.UUID `gorm:"type:uuid;default:uuid_generate_v4();primaryKey"`
+ID uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
 ```
 
-This requires the `uuid-ossp` extension. **SQLite cannot be used for tests** because:
-- `uuid_generate_v4()` does not exist in SQLite
+The server and the test helpers enable the `pgcrypto` extension for it. **SQLite cannot be used for tests** because:
+- `gen_random_uuid()` does not exist in SQLite
 - `jsonb` type does not exist in SQLite
 - AutoMigrate fails on both
 
@@ -409,6 +570,10 @@ This requires the `uuid-ossp` extension. **SQLite cannot be used for tests** bec
    - **Shared offset map per `/24` prefix**: two routers in the same `/24` (e.g. both `192.168.1.x`) share a `usedOffsets` map so their connected nodes never get the same IP.
    - VM IPs are assigned *before* the host's full block is sealed: only the host's base octet is reserved first, VMs claim offsets `.base+1` through `.base+step-1`, then the remaining block slots are sealed.
 6. Persist all nodes and VMs.
+
+Nodes, guests and edges are read in a fixed order (`loadTopology`). `syncGraph` rewrites every row on a save, and without the order two saves of the same graph could hand the same addresses to different nodes.
+
+DHCP demand: a `lan_table` sends its seats and an access point its `wifi_clients` as `dhcp_clients`. hlbIPAM sizes the pool of the subnet for them and returns it; the backend stores it as `details.dhcp_pool` on the gateway. See [Gaming Builds](#gaming-builds).
 
 ---
 
@@ -442,7 +607,7 @@ func TestSomething(t *testing.T) {
 ```go
 testTx(t)                          // *gorm.DB transaction, auto-rolled back
 connectTestDB()                    // connects to homelab_builder_test PG DB
-migrateTestDB(db)                  // CREATE EXTENSION uuid-ossp + AutoMigrate
+migrateTestDB(db)                  // CREATE EXTENSION pgcrypto + AutoMigrate(database.Models()...)
 ```
 
 ### Helper Functions (`internal/testutil/pgtest.go`)
@@ -479,28 +644,47 @@ hasPrefix(s, prefix string) bool
 | `internal/services/shopping_service_test.go` | `services` | Shopping list tests |
 | `internal/services/steering_service_test.go` | `services` | Steering rules tests |
 | `internal/handlers/health_test.go` | `handlers` | Health endpoint test |
-| `internal/handlers/assistant_handler_test.go` | `handlers` | Settings API never returns the key; chat SSE stream |
-| `internal/services/topology_ops_test.go` | `services` | Change-set engine: refs, ports, loops, racks, VMs |
+| `internal/handlers/assistant_handler_test.go` | `handlers` | Settings API never returns the key; chat SSE stream; the selection sent with a message |
+| `internal/services/topology_ops_test.go` | `services` | Change-set engine: refs, ports, loops, racks, VMs; a replay places new nodes on the canvas as it is then |
 | `internal/services/proposal_service_test.go` | `services` | Dry run, supersede, apply with rebase, conflict, reject |
 | `internal/services/api_token_service_test.go` | `services` | Token hashing, scopes, expiry, limits |
 | `internal/services/assistant_settings_service_test.go` | `services` | Key encryption, owner binding, key wipe on destination change, audit |
-| `internal/assistant/tools_test.go`, `agent_test.go` | `assistant` | Tool scopes and schemas; chat loop with a fake provider |
+| `internal/assistant/tools_test.go`, `agent_test.go` | `assistant` | Tool scopes and schemas; chat loop with a fake provider: event order, step texts, a stopped reply is kept, selection, `running` |
 | `internal/mcpserver/server_test.go` | `mcpserver` | End to end with the go-sdk client: auth, scopes, origin check, rate limits |
-| `internal/llm/provider_test.go`, `ssrf_test.go` | `llm` | Provider adapters against `httptest`; blocked-address table |
+| `internal/llm/provider_test.go`, `ssrf_test.go` | `llm` | Provider adapters against `httptest`, including the start and growth of a tool call; blocked-address table |
+| `internal/llm/llmtest/server_test.go` | `llmtest` | The scripted provider, driven through the real OpenAI-compatible adapter |
 | `internal/secrets/aesgcm_test.go` | `secrets` | Round trip, tampering, wrong owner |
+| `internal/gaming/*_test.go` | `gaming` | Registry consistency, plan validation, sizing, every report check, compose files, plan merge and diff |
+| `internal/services/build_kind_test.go` | `services` | Kind and plan round trip; an unaware client cannot wipe them; share links hide the public host |
+| `internal/services/topology_gaming_test.go` | `services` | Console and LAN table rules, Wi-Fi association, DHCP demand and the stored pool |
+| `internal/services/gaming_service_test.go` | `services` | Game server sizing in the change-set engine; report, compose and export files end to end |
+| `internal/services/proposal_gaming_test.go` | `services` | `set_plan` alone is a change and is validated; game settings are diffed |
+| `internal/services/hardware_seed_test.go`, `default_service_seed_test.go` | `services` | Catalog seeds: idempotent, approved, game profiles attached; `Models()` covers every table |
+| `internal/assistant/tools_gaming_test.go` | `assistant` | Planning a game server through the tools; a homelab gets no gaming output |
+| `hlbipam/internal/core/dhcp_demand_test.go` | `core` | Pool grows with demand, no demand keeps the default, console zone, tables get no address |
 | `hlbipam/internal/core/allocator_test.go` | `core` | IPAM allocator tests |
 | `hlbipam/internal/core/validator_test.go` | `core` | IPAM validator tests |
-| `frontend/src/features/builder/store/builder-store.test.ts` | - | Vitest tests |
-| `frontend/src/features/builder/store/builder-store.proposals.test.ts` | - | Preview, apply as one undo step, sync |
-| `frontend/src/features/builder/components/proposal-review-panel.test.tsx` | - | Review panel |
+| `frontend/src/features/builder/store/builder-store.test.ts` | - | The save path, both kinds of conflict, a reload that keeps what was measured, what the browser remembers, deleting devices and racks |
+| `frontend/src/features/builder/store/autosave.test.ts` | - | Fake timers: the wait, retries, no save when in sync, during a review or before the canvas is loaded |
+| `frontend/src/features/builder/store/builder-store.layout.test.ts` | - | Polish as one undo step; `measured` and rack contents kept; nothing moves during a review |
+| `frontend/src/features/builder/store/builder-store.proposals.test.ts` | - | A review leaves the live graph alone, apply as one undo step, glow, sync |
+| `frontend/src/features/builder/lib/layout/*.test.ts` | - | Layout engine: every promise on fixtures, planner output and random networks; the route against React Flow's own; the canvas adapter |
+| `frontend/src/features/builder/lib/polish.test.ts` | - | What Polish says and remembers |
+| `frontend/src/features/builder/components/proposal-review-panel.test.tsx`, `proposal-review-bar.test.tsx` | - | List of changes; review bar and the banner of a waiting proposal |
+| `frontend/src/features/builder/pages/__tests__/projects-page.test.tsx` | - | Projects page, with rename and delete of the open project |
+| `frontend/src/components/layout/project-card.test.tsx`, `sidebar.test.tsx` | - | Project card after a reload, save states, proposal badge, switcher; order of the sidebar, collapsed state |
 | `frontend/src/features/settings/**/*.test.ts(x)` | - | MCP snippets and source links, token card, assistant settings card |
-| `frontend/src/features/assistant/**/*.test.ts(x)` | - | SSE reader, chat store, chat panel |
+| `frontend/src/features/assistant/**/*.test.ts(x)` | - | SSE reader; chat store (every event, reading the thread again, a queued message); chat panel; activity timeline |
+| `frontend/src/features/gaming/**/*.test.ts(x)` | - | Sizing, tables, kinds, setup steps, game compose text, plan dialog, node fields |
+| `frontend/src/features/builder/lib/planner/planner.test.ts`, `lib/connection-rules.test.ts` | - | Plan builders for the three kinds; canvas connection rules |
+| `frontend/src/lib/version.test.ts` | - | `package.json` and `backend/internal/version` carry the same version |
 
 ### Test Database
 
-- Name: `homelab_builder_test` (separate from the production `homelab_builder`)
+- Name: `homelab_builder_test` (separate from the production `homelab_builder`). Packages outside `services` share a second one, `homelab_builder_pkg_test`.
 - Created automatically by `TestMain` if it does not exist.
-- Migrated via GORM `AutoMigrate` (not the raw SQL migration files in `migrations/`).
+- Migrated via GORM `AutoMigrate` of `database.Models()`, the same list the server migrates at startup. There are no SQL migration files: catalog data is seeded in Go at startup (`SeedCatalog`).
+- The shared package database is migrated once per schema: `testutil` keeps a fingerprint of the models in `test_schema_state` and skips `AutoMigrate` when it matches (pitfall 17).
 
 ---
 
@@ -551,10 +735,34 @@ docker run --rm -v "$PWD:/repo" -v hlb-frontend-node-modules:/repo/frontend/node
 
 The whole repository is mounted because one test checks that the source files the settings page links to exist.
 
+CI runs this suite on Node 20 (`.github/workflows/test.yml`), which is slower on it than Node 22. Use `node:20-alpine` in the command above before trusting a timing (pitfall 31).
+
 ### Watching frontend tests
 
 ```bash
 cd frontend && npm run test:watch
+```
+
+### The assistant in a browser, without a key
+
+`backend/cmd/fakellm` serves the scripted provider from `internal/llm/llmtest` (`go test` uses the same handler). It is a development tool without authentication and is not built into the image. Run it on a stack of its own, so the database of the usual local stack is not touched. Both publish port 8080: stop the usual one first with `docker compose -f docker-compose.local.yml down`, never with `-v`, because its volume holds the projects built locally.
+
+```bash
+docker compose -p hlb-verify -f docker-compose.local.yml up -d --build
+docker run -d --name hlb-verify-fakellm --network hlb-verify_default -v "$PWD/backend:/app" -w /app \
+  golang:1.25-alpine go run ./cmd/fakellm -delay 140ms
+# the frontend with hot reload; on Windows a bind mount needs polling (pitfall 30)
+docker run -d --name hlb-verify-vite -p 127.0.0.1:5173:5173 -e CHOKIDAR_USEPOLLING=true \
+  -v "$PWD:/repo" -v hlb-frontend-node-modules:/repo/frontend/node_modules -w /repo/frontend \
+  node:22-alpine sh -c "npm install --legacy-peer-deps && npm run dev -- --host 0.0.0.0 --port 5173"
+```
+
+In Settings choose "Other OpenAI-compatible endpoint", address `http://hlb-verify-fakellm:8089/v1`, model `scripted-1`, any key. A private address is accepted because the local stack runs without login unless `GOOGLE_CLIENT_ID` is set (`ASSISTANT_ALLOW_PRIVATE_ENDPOINTS`). The script answers to words in the message: "nas" reads the build and proposes a NAS, "validate" checks the build, "search X" searches the catalog, "slow" writes a long reply to try Stop on, "fail" is a provider error.
+
+```bash
+docker rm -f hlb-verify-vite hlb-verify-fakellm
+docker compose -p hlb-verify -f docker-compose.local.yml down
+docker volume rm hlb-verify_local_postgres
 ```
 
 ---
@@ -571,11 +779,11 @@ cd frontend && npm run test:watch
 
 ### 2. Tests cannot use SQLite
 
-`models.go` uses `gorm:"type:uuid;default:uuid_generate_v4()"` and `gorm:"type:jsonb"`. These are PostgreSQL-specific. GORM AutoMigrate will fail on SQLite with both types. Tests must always run against a real PostgreSQL instance via Docker.
+`models.go` uses `gorm:"type:uuid;default:gen_random_uuid()"` and `gorm:"type:jsonb"`. These are PostgreSQL-specific. GORM AutoMigrate will fail on SQLite with both types. Tests must always run against a real PostgreSQL instance via Docker.
 
 ### 3. "no router found to establish gateway" from calculateNetwork
 
-**Cause A** (frontend bug, fixed): `reassignAllIPs` was calling `calculateNetwork` before `buildApi.update`. The backend read stale/empty `nodes` and found no router.
+**Cause A** (frontend bug, fixed): `reassignAllIPs` was calling `calculateNetwork` before `buildApi.update`. The backend read stale/empty `nodes` and found no router. A save is one request now (`PUT /builds/:id/topology`): the backend saves and calculates in one transaction, so the order cannot be wrong any more.
 
 **Cause B** (real): The build genuinely has no node with `type = "router"`. `CalculateNetwork` returns this as an error - the caller should handle it gracefully.
 
@@ -601,15 +809,15 @@ cd frontend && npm run test:watch
 
 **Root cause** (fixed): The store updated `nodes` (ReactFlow nodes) but `hardwareNodes` (the richer internal representation) was not refreshed. The canvas reads from `hardwareNodes`.
 
-**Fix**: After `buildApi.get`, the store now overlays backend `node.ip` values onto matching `hardwareNodes` entries by `node.id`.
+**Fix**: The answer to a save carries the calculated addresses, and the store overlays them onto the matching `hardwareNodes` and `nodes` entries by id.
 
 ### 7. Docker network name
 
 The docker-compose default network is `homelab-builder_default` (derived from the project folder name). Commands that attach a one-off container to the test stack name it explicitly. If you rename the project folder, adjust them.
 
-### 8. uuid-ossp extension
+### 8. pgcrypto extension
 
-`migrateTestDB` runs `CREATE EXTENSION IF NOT EXISTS "uuid-ossp"` before AutoMigrate. If this step is skipped (e.g. in a fresh DB), insert of any model will fail because `uuid_generate_v4()` is undefined.
+`migrateTestDB` runs `CREATE EXTENSION IF NOT EXISTS "pgcrypto"` before AutoMigrate, and the server does the same at startup. Primary keys default to `gen_random_uuid()`.
 
 ### 9. Missing `Preload("Nodes.VirtualMachines")`
 
@@ -631,6 +839,80 @@ Loading a build must not be followed by a save of the same data. `loadBuild` set
 
 With login enabled and `GIN_MODE=release`, a missing `SECRETS_KEY` does not stop the server: the assistant is switched off and the log says `AI assistant disabled`. The settings page then shows it as unavailable.
 
+### 14. Kind, plan and settings are part of the autosave fingerprint
+
+`loadBuild` must set `buildKind`, `gamingPlan` and `buildSettings` before it computes `lastSyncedFingerprint`, and the server must return the plan exactly as stored (`Plan.Normalize` adds no defaults). Otherwise every load looks like an unsaved change and two tabs save in turns (pitfall 12). `completePlan()` is for display: do not write its result back unless the user edited something.
+
+### 15. `details.dhcp_pool` is derived
+
+The pool on a gateway is written by the IP calculation, like `wan_ip` and `interfaces`. It must stay in `reservedDetailKeys` (`topology_ops.go`), `derivedDetailKeys` (`topology_diff.go`) and `DERIVED_DETAIL_KEYS` (`builder-store.ts`). Leave one out and a proposal shows a pool change the user did not make, or a removed pool lingers on the canvas.
+
+### 16. The Wi-Fi association rule lives in three places
+
+`access_point` to `pc` / `minipc` / `sbc` / `console` is a Wi-Fi association: forced wireless, no hub needed, and it does not use the access point's port. The rule is keyed on the two device types, not on the connection type, because an access point's own uplink is also drawn as wireless. It is implemented in `build_service.go` (`validateEdgeEndpoints`), in the change-set engine (`topology_ops_connections.go`, `topology_ports.go`) and on the canvas (`connection-rules.ts`). Changed in one place only, the canvas draws links the server rejects, or the other way round.
+
+### 17. AutoMigrate is not a no-op, and test binaries share a database
+
+`go test ./...` runs the test binaries of several packages at the same time against `homelab_builder_pkg_test`. `AutoMigrate` re-issues `ALTER TABLE ... SET DEFAULT` for every `jsonb` default even when nothing changed, and each one needs an exclusive lock on its table. A binary that migrates while another runs a test holding two transactions deadlocks, and the suite hangs instead of failing. `testutil.migrateOnce` migrates only when the fingerprint of the models changed. Use `testutil.Tx` in new packages and do not call `AutoMigrate` on the shared database yourself.
+
+### 18. Read a topology in a fixed order
+
+`syncGraph` deletes and recreates every node, guest and edge row on each save. Anything that depends on the order of nodes or edges, the hlbIPAM request above all, must read through `loadTopology` (`ip_service.go`), which orders by `created_at` and then by ids that survive a save. Without it, saving an unchanged graph twice could swap the addresses of two equal devices.
+
+### 19. Share links and the gaming plan
+
+`gaming_plan.uplink.public_host` is the owner's home address on the internet. Everything returned to a share link, the read and the answer to a save, goes through `asSharedView` in `build_service.go`. A new endpoint that serves a shared build must use it too. A save through a share link never changes the kind or the plan.
+
+### 20. Game facts come from the registry, not from the database
+
+`Service.Game` is filled from `internal/gaming` in `AfterFind`; the `services` row only holds the name, category and requirements. Changing a port or an image is a code change in `profiles_data.go`, and the registry test checks slugs, service ids and port ranges (a port plus the largest offset must stay below 65536). Game servers get their own compose file per host (`gaming/compose.go`) because they publish ports on the host; the homelab compose file skips them.
+
+### 21. A controlled React Flow node needs `measured`
+
+React Flow hides a controlled node that has no `measured` size, forgets where its handles are, and leaves it out of `fitView`. Whoever builds new node objects for nodes that are on screen must carry `measured`, `width` and `height` over: `loadBuild` (`keepMeasured`), `buildProposalPreview`, `applyLayout`. Otherwise the canvas goes blank for a frame and cables jump. Code that moves the camera to new nodes has to wait until they are measured (`previewFocusMeasured` in `visual-builder.tsx`).
+
+### 22. The layout engine routes cables like the canvas, or its promises are worth nothing
+
+"No crossings" is computed from `cableRoute`. It only holds while the canvas draws the same line, so the bend of a step cable comes from one function (`stepBusY`) used by `custom-edge.tsx`, `proposal-edge.tsx` and the engine. Do not change the path in an edge component alone. `route.test.ts` fails when React Flow's own routing changes.
+
+### 23. A review never touches the live graph
+
+During a review the canvas draws `proposalPreview`, and `nodes` / `edges` in the store stay as they are. That is what keeps a proposal from being saved before Apply: the autosave fingerprint is built from the live arrays. Do not write preview nodes into them, and guard every canvas handler that changes something (drag, connect, delete, drop) with the review mode. `applyPreviewNodeChanges` accepts measured sizes only.
+
+### 24. Step texts in the chat are plain text
+
+`detail` and `summary` of a step and the name of a tool come from what the model wrote. They are cut by `brief` on the server and must be rendered as text. Putting them through the Markdown renderer would hand the model a way to draw links and markup outside its reply.
+
+### 25. `sr-only` inside a scroll container
+
+Tailwind's `sr-only` is `position: absolute`. In a scrolling list without a positioned ancestor of its own, such a label is laid out against a container further up and can make that one scrollable: labels in the chat's message list made the whole builder scroll. The scroller that holds them must be `relative`.
+
+### 26. Radix `asChild` and a `className` function
+
+`Slot` merges class names as strings. A `NavLink` under `TooltipTrigger asChild` with `className={({isActive}) => ...}` ends up with the source text of the function as its class. Use `Link`, compute the class and set `aria-current` yourself (`project-card.tsx`, collapsed variant).
+
+### 27. Postgres cannot store NUL
+
+`jsonb` rejects `\u0000` (SQLSTATE 22P05) and `text` rejects the byte 0x00. A model can write either into tool arguments. `Registry.Call` refuses such arguments with a reason the model can read, and `storableJSON` in `assistant_thread_service.go` strips NUL from what is stored; the provider's native message is dropped when it contains one. Without this the reply cannot be stored and the turn fails after the work was done.
+
+### 28. React Flow's default edge options reach every edge
+
+`defaultEdgeOptions={{ animated: true }}` is merged into controlled edges too, and its dash animation overrides a stroke style set on the path. Edges of a preview set `animated: false`, and the rules that draw a new cable are more specific than `.react-flow__edge.animated path`.
+
+### 29. Motion is decoration
+
+The reveal of a proposal, the glide after Polish and the glow after Apply are CSS inside `@media (prefers-reduced-motion: no-preference)`. The state without them must be complete and right: final positions are in the store before anything glides, and a removed device is a ghost whether or not it fades. An automated browser often reports `reduce`; seeing no animation there is not a bug.
+
+### 30. Vite in Docker on Windows needs polling
+
+A bind mount from Windows delivers no file events to the container, so Vite keeps serving old modules and a fix seems not to work. Start the dev server with `CHOKIDAR_USEPOLLING=true` (see Running Tests).
+
+### 31. A test that passes alone can time out in the full run
+
+The frontend suite runs every file at once, and CI uses Node 20. Under that load a component test that clicks and types through a dialog took over 5 s, and the random-network test of the layout engine 16 s, with no assertion failing. `testTimeout` is 15 s for that reason (`vite.config.ts`), and the random-network test has a budget of its own. Judge a timing by the whole suite on `node:20-alpine`, not by one file on a newer Node.
+
+`clearance` in `layout/place.ts` is the engine's hot loop: every subtree that is appended to a row is compared with what stands there. It walks the placed items newest first and skips those that cannot matter. When you change it, compare the drawings before and after (`LAYOUT_PREVIEW` with a few hundred seeds gives a file to diff; the planner drawings differ in order only, their ids are random).
+
 ---
 
 ## Fixed Bugs (Historical)
@@ -649,6 +931,27 @@ These bugs were diagnosed and fixed; tests guard against regression.
 | 8 | `catalog-mapper.ts`, `hardware-instance.ts` | Blueprint VMs (`vm-<serviceId>`) and copied VMs/components reused non-UUID or duplicate IDs; the backend replaced them, so assigned VM IPs never reached the canvas until reload | Placed and duplicated nodes get fresh UUIDs via `withFreshChildIds` |
 | 9 | `build_service.go` | Deleting a build with nodes failed with `fk_builds_nodes` (500) | `Delete` clears the topology first, in one transaction |
 | 10 | `builder-store.ts` | `power_draw` was neither saved nor loaded, so a value set elsewhere vanished on the next save | Included in `getBuildData` and restored by `mapBuildToFlow` |
+| 11 | `builder-store.ts` | Every save replaced `settings` with `boughtItems`/`showBought` only, wiping other keys such as `settings.planner` | The store keeps the loaded settings object and spreads it in `getBuildData` |
+| 12 | `build_service.go` | `Duplicate` dropped `power_draw` and `mac_address` and left rack children pointing at the original rack | Copies both fields and remaps `parent_id` |
+| 13 | `ip_service.go` | Nodes and edges were read without `ORDER BY`, so two saves of the same graph could swap addresses between equal devices | `loadTopology` reads in a fixed order |
+| 14 | `testutil/pgtest.go` | The backend suite could hang: `AutoMigrate` in one test binary waited on a test of another that held two transactions | `migrateOnce` skips the migration when the fingerprint of the models is unchanged |
+| 15 | `pkg/database/database.go`, `services/` | `SteeringRule` and `CatalogComponent` were not migrated at startup, and the hardware catalog was empty on a fresh database: its rows only existed in SQL files nothing applied | Both models are in `Models()`; `SeedCatalog` seeds hardware and services in Go; the SQL files and `cmd/migrate` are removed |
+| 16 | `shared-build-page.tsx` | A save from a shared editable build did not send the connection type, so a wireless link came back as a cable | Sends the full edge payload |
+| 17 | `build_service.go` | The answer to a save through an editable share link was the full build, including `gaming_plan.uplink.public_host` that the shared read hides | Both paths return through `asSharedView` |
+| 18 | `builder-store.ts`, `sidebar.tsx` | The browser kept the last canvas but not which build it was: the sidebar's project link vanished on reload and Setup Guide showed whatever was open last | Only id, name and kind are kept; `buildStatus`; the canvas is read from the server |
+| 19 | `builder-store.ts` | A save conflict loaded the server's build and threw the local edit away | The local canvas becomes an undo step; a save whose answer was lost is recognised and continued |
+| 20 | `visual-builder.tsx` | "Saved" was shown while changes were pending, and a failed save was never tried again | `saveState` in the store; `autosave.ts` retries and reports |
+| 21 | `use-proposals.ts` | A newer revision on the server was loaded only when the poll result changed, so a reload skipped because of unsaved edits never happened | The effect runs on every poll and when the save state changes |
+| 22 | `builder-store.ts` | Deleting several selected devices left them in `hardwareNodes`, so the panels and Setup Guide still listed them | `onNodesChange` removes them, with the contents of a deleted rack |
+| 23 | `builder-store.ts` | Validation issues of an earlier revision, or of another build, stayed after a reload | `loadBuild` drops them; they are fetched again |
+| 24 | `use-projects-page.ts` | Deleting or renaming the open project on the Projects page left the old one open everywhere else | The store follows; a rename with an outdated revision is retried on the current one |
+| 25 | `topology_ops.go` | A proposal kept the position the server chose for a new device, so applied after the canvas was rearranged it could land on other cards | The position is chosen again on refresh and apply |
+| 26 | `visual-builder.tsx` | Zone outlines used rack-relative positions for devices in a rack and were drawn in the wrong place | Absolute positions |
+| 27 | `command-palette.tsx` | The two groups were split by list position, which put Settings under the builder's actions | Each action names its group |
+| 28 | `agent.go`, `assistant-store.ts` | After Stop or a lost connection the screen and the server disagreed about the conversation until the page was reloaded | A stopped reply is stored as written; the client reads the thread again after anything but a clean end |
+| 29 | `assistant_thread_service.go`, `tools.go` | A NUL character in tool arguments made storing the reply fail (22P05) | Refused as an argument, stripped before storing |
+| 30 | `activity-timeline.tsx`, `assistant-panel.tsx` | Screen-reader labels in the message list made the whole builder scrollable | The scroller is `relative` |
+| 31 | `layout/place.ts`, `layout/index.ts`, `vite.config.ts` | The frontend suite failed on Node 20 under load: the layout engine's random-network test and one dialog test ran out of time | The engine no longer places the chosen drawing twice and skips placed items that cannot matter (the same drawings, in a third of the time on Node 20); `testTimeout` is 15 s |
 
 ---
 

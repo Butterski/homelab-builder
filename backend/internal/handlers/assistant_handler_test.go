@@ -29,10 +29,10 @@ func (p *replyProvider) ID() string { return "anthropic/claude-opus-5" }
 func (p *replyProvider) ListModels(context.Context) ([]string, error) {
 	return []string{"claude-opus-5"}, nil
 }
-func (p *replyProvider) Stream(_ context.Context, _ llm.TurnRequest, onText func(string)) (*llm.TurnResult, error) {
+func (p *replyProvider) Stream(_ context.Context, _ llm.TurnRequest, stream llm.StreamHandlers) (*llm.TurnResult, error) {
 	p.calls++
-	onText("Your lab has ")
-	onText("two devices.")
+	stream.Text("Your lab has ")
+	stream.Text("two devices.")
 	return &llm.TurnResult{Text: "Your lab has two devices.", StopReason: llm.StopEnd}, nil
 }
 
@@ -65,6 +65,7 @@ func newAssistantAPI(t *testing.T) *assistantAPI {
 		DB: tx, Builds: builds, IP: ip, Proposals: proposals,
 		Hardware: services.NewHardwareService(tx), Services: services.NewServiceService(tx),
 		Recommendations: services.NewRecommendationService(tx), Config: services.NewConfigService(tx),
+		Gaming: services.NewGamingService(builds),
 	})
 	api := &assistantAPI{tx: tx, provider: &replyProvider{}, tokens: services.NewAPITokenService(tx)}
 	agent := assistant.NewAgent(assistant.AgentDeps{
@@ -217,7 +218,11 @@ func TestAssistantAPI_ChatStreamsServerSentEvents(t *testing.T) {
 	api := newAssistantAPI(t)
 	api.configure(t)
 
-	response := api.do(http.MethodPost, "/api/assistant/chat", `{"build_id":"`+api.buildID.String()+`","message":"What is in my lab?"}`)
+	// The selection comes from the browser: whatever it holds, and however
+	// much of it, the request is served. Only devices of the build are used.
+	selection := strings.Repeat(`"not-a-device",`, 80) + `"` + uuid.NewString() + `"`
+	response := api.do(http.MethodPost, "/api/assistant/chat",
+		`{"build_id":"`+api.buildID.String()+`","message":"What is in my lab?","selection":[`+selection+`]}`)
 	if response.Code != http.StatusOK {
 		t.Fatalf("chat: %d %s", response.Code, response.Body.String())
 	}
@@ -244,6 +249,9 @@ func TestAssistantAPI_ChatStreamsServerSentEvents(t *testing.T) {
 	if start := frames[0].Data; start["provider"] != "anthropic" || start["model"] != "claude-opus-5" || start["thread_id"] == "" {
 		t.Fatalf("turn_start: %v", start)
 	}
+	if done := frames[len(frames)-1].Data; done["full"] != false {
+		t.Fatalf("done should say whether the conversation is full: %v", done)
+	}
 	if strings.Contains(response.Body.String(), handlerTestKey) {
 		t.Fatal("the stream contains the key")
 	}
@@ -253,6 +261,9 @@ func TestAssistantAPI_ChatStreamsServerSentEvents(t *testing.T) {
 	messages := thread["messages"].([]any)
 	if len(messages) != 2 || messages[0].(map[string]any)["role"] != "user" || messages[1].(map[string]any)["role"] != "assistant" {
 		t.Fatalf("stored thread: %v", thread)
+	}
+	if thread["running"] != false || thread["full"] != false {
+		t.Fatalf("thread state: running=%v full=%v", thread["running"], thread["full"])
 	}
 	if cleared := api.do(http.MethodDelete, "/api/assistant/threads/"+api.buildID.String(), ""); cleared.Code != http.StatusNoContent {
 		t.Fatalf("clear: %d", cleared.Code)

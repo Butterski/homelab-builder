@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sort"
 
+	"github.com/Butterski/homelab-builder/backend/internal/gaming"
 	"github.com/Butterski/homelab-builder/backend/internal/models"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -74,10 +75,16 @@ func BuildToSyncInput(build *models.Build) (SyncGraphInput, error) {
 	input := SyncGraphInput{
 		Name:     build.Name,
 		Revision: build.Revision,
+		Kind:     build.Kind,
 		Settings: map[string]any{},
 		Nodes:    make([]NodeDTO, 0, len(build.Nodes)),
 		Edges:    make([]EdgeDTO, 0, len(build.Edges)),
 	}
+	plan, err := gaming.ParsePlan(build.GamingPlan)
+	if err != nil {
+		return input, err
+	}
+	input.GamingPlan = &plan
 	if len(build.Settings) > 0 {
 		if err := json.Unmarshal(build.Settings, &input.Settings); err != nil {
 			return input, err

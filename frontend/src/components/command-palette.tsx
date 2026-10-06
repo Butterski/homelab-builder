@@ -5,9 +5,11 @@ import {
   BookOpen,
   CheckSquare,
   FileCode,
+  Gamepad2,
   HardDrive,
   Heart,
   LayoutDashboard,
+  LayoutGrid,
   LayoutTemplate,
   Network,
   Search,
@@ -25,9 +27,13 @@ import {
 import { cn } from '../lib/utils';
 import { useAuth } from '../features/admin/hooks/use-auth';
 import { useBuilderStore } from '../features/builder/store/builder-store';
+import { LAYOUT_STYLES } from '../features/builder/lib/layout';
+import { polishCanvas } from '../features/builder/lib/polish';
 
 type CommandAction = {
   id: string;
+  /** Actions on the open project are listed apart from the places one can go. */
+  group?: 'builder';
   label: string;
   hint: string;
   icon: React.ComponentType<{ className?: string }>;
@@ -55,8 +61,13 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const { user } = useAuth();
   const currentBuildId = useBuilderStore(s => s.currentBuildId);
   const projectName = useBuilderStore(s => s.projectName);
+  // Which project is open survives a reload; its canvas has to be loaded before
+  // anything can be calculated or saved for it.
+  const canvasLoaded = useBuilderStore(s => !!s.currentBuildId && s.buildStatus === 'ready');
   const reassignAllIPs = useBuilderStore(s => s.reassignAllIPs);
   const validateNetwork = useBuilderStore(s => s.validateNetwork);
+  // Arranging the canvas is only offered where it can be watched.
+  const onCanvas = canvasLoaded && location.pathname.startsWith('/builder/');
 
   const commands = useMemo<CommandAction[]>(() => {
     const go = (path: string) => () => {
@@ -105,6 +116,24 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         icon: FileCode,
         keywords: ['router', 'configuration', 'export'],
         run: go('/generate'),
+      },
+      {
+        id: 'plan-lan-party',
+        label: 'Plan a LAN party',
+        hint: 'Seats, switches and power',
+        icon: Gamepad2,
+        keywords: ['gaming', 'lan', 'party', 'tables', 'planner', 'event'],
+        disabled: !user,
+        run: go('/planner?kind=lan_party'),
+      },
+      {
+        id: 'plan-game-server',
+        label: 'Plan a game server',
+        hint: 'Sizing and port forwards',
+        icon: Gamepad2,
+        keywords: ['gaming', 'minecraft', 'valheim', 'server', 'planner', 'friends'],
+        disabled: !user,
+        run: go('/planner?kind=game_server'),
       },
       {
         id: 'guide',
@@ -164,13 +193,18 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     items.push(
       {
         id: 'network-calculate',
+        group: 'builder',
         label: 'Recalculate network IPs',
-        hint: currentBuildId ? 'Save, calculate, reload' : 'Requires an active project',
+        hint: canvasLoaded
+          ? 'Save, calculate, reload'
+          : currentBuildId
+            ? 'Open the project first'
+            : 'Requires an active project',
         icon: Network,
         keywords: ['ip', 'assign', 'calculate', 'router'],
-        disabled: !currentBuildId,
+        disabled: !canvasLoaded,
         run: async () => {
-          if (!currentBuildId) return;
+          if (!canvasLoaded) return;
           onOpenChange(false);
           await toast.promise(reassignAllIPs(), {
             loading: 'Recalculating network IPs...',
@@ -182,13 +216,18 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       },
       {
         id: 'network-validate',
+        group: 'builder',
         label: 'Validate network',
-        hint: currentBuildId ? 'Check topology issues' : 'Requires an active project',
+        hint: canvasLoaded
+          ? 'Check topology issues'
+          : currentBuildId
+            ? 'Open the project first'
+            : 'Requires an active project',
         icon: Search,
         keywords: ['issues', 'topology', 'warnings'],
-        disabled: !currentBuildId,
+        disabled: !canvasLoaded,
         run: async () => {
-          if (!currentBuildId) return;
+          if (!canvasLoaded) return;
           onOpenChange(false);
           await toast.promise(validateNetwork(), {
             loading: 'Validating network...',
@@ -197,10 +236,26 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           });
         },
       },
+      ...LAYOUT_STYLES.map(
+        (style): CommandAction => ({
+          id: `polish-${style.id}`,
+          group: 'builder',
+          label: `Polish layout: ${style.label}`,
+          hint: onCanvas ? style.description : 'Open the canvas first',
+          icon: LayoutGrid,
+          keywords: ['arrange', 'tidy', 'organize', 'organise', 'auto layout', 'clean up'],
+          disabled: !onCanvas,
+          run: () => {
+            if (!onCanvas) return;
+            onOpenChange(false);
+            polishCanvas(style.id);
+          },
+        }),
+      ),
     );
 
     return items;
-  }, [currentBuildId, location.pathname, navigate, onOpenChange, projectName, reassignAllIPs, user, validateNetwork]);
+  }, [canvasLoaded, currentBuildId, location.pathname, navigate, onCanvas, onOpenChange, projectName, reassignAllIPs, user, validateNetwork]);
 
   const runCommand = (action: CommandAction) => {
     if (action.disabled) return;
@@ -232,51 +287,37 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             <Command.Empty className="px-3 py-8 text-center text-sm text-muted-foreground">
               No command found.
             </Command.Empty>
-            <Command.Group heading="Navigation" className="command-group">
-              {commands.slice(0, user?.is_admin ? 11 : 10).map(action => (
-                <Command.Item
-                  key={action.id}
-                  value={`${action.label} ${action.keywords.join(' ')}`}
-                  disabled={action.disabled}
-                  onSelect={() => runCommand(action)}
-                  className={cn(
-                    'flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-sm outline-none transition-colors data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground',
-                    action.disabled && 'cursor-not-allowed opacity-45',
-                  )}
-                >
-                  <span className="flex size-8 items-center justify-center rounded-md border bg-background text-muted-foreground">
-                    <action.icon className="size-4" aria-hidden="true" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-medium">{action.label}</span>
-                    <span className="block truncate text-xs text-muted-foreground">{action.hint}</span>
-                  </span>
-                </Command.Item>
-              ))}
-            </Command.Group>
-
-            <Command.Group heading="Builder actions" className="command-group">
-              {commands.slice(user?.is_admin ? 11 : 10).map(action => (
-                <Command.Item
-                  key={action.id}
-                  value={`${action.label} ${action.keywords.join(' ')}`}
-                  disabled={action.disabled}
-                  onSelect={() => runCommand(action)}
-                  className={cn(
-                    'flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-sm outline-none transition-colors data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground',
-                    action.disabled && 'cursor-not-allowed opacity-45',
-                  )}
-                >
-                  <span className="flex size-8 items-center justify-center rounded-md border bg-background text-muted-foreground">
-                    <action.icon className="size-4" aria-hidden="true" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-medium">{action.label}</span>
-                    <span className="block truncate text-xs text-muted-foreground">{action.hint}</span>
-                  </span>
-                </Command.Item>
-              ))}
-            </Command.Group>
+            {(
+              [
+                ['Navigation', commands.filter(action => !action.group)],
+                ['Builder actions', commands.filter(action => action.group === 'builder')],
+              ] as const
+            ).map(([heading, actions]) => (
+              <Command.Group key={heading} heading={heading} className="command-group">
+                {actions.map(action => (
+                  <Command.Item
+                    key={action.id}
+                    value={`${action.label} ${action.keywords.join(' ')}`}
+                    disabled={action.disabled}
+                    onSelect={() => runCommand(action)}
+                    className={cn(
+                      'flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-sm outline-none transition-colors data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground',
+                      action.disabled && 'cursor-not-allowed opacity-45',
+                    )}
+                  >
+                    <span className="flex size-8 items-center justify-center rounded-md border bg-background text-muted-foreground">
+                      <action.icon className="size-4" aria-hidden="true" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium">{action.label}</span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {action.hint}
+                      </span>
+                    </span>
+                  </Command.Item>
+                ))}
+              </Command.Group>
+            ))}
           </Command.List>
 
           <div className="flex items-center justify-between border-t px-4 py-2 text-xs text-muted-foreground">

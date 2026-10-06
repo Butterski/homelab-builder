@@ -26,6 +26,8 @@ import {
   Shield,
   Cloud,
   Plus,
+  Gamepad2,
+  Armchair,
 } from 'lucide-react';
 import type { HardwareType } from '../../../types';
 import { Card } from '../../../components/ui/card';
@@ -39,6 +41,7 @@ import { PowerUsagePanel } from './power-usage-panel';
 import { HardwareBlueprintCreator } from '../../catalog/components/hardware-blueprint-creator';
 import { hardwareBlueprintToDragData, hardwareComponentToDragData } from '../lib/catalog-mapper';
 import { withFreshChildIds } from '../lib/hardware-instance';
+import { newTableDetails } from '../../gaming/lib/table';
 
 // ─── Basic component types ─────────────────────────────────────────────────────
 const HARDWARE_TOOLS: {
@@ -64,6 +67,8 @@ const HARDWARE_TOOLS: {
   { type: 'iot', label: 'IoT', icon: Printer, color: 'text-yellow-600' },
   { type: 'modem', label: 'Modem', icon: Globe, color: 'text-blue-600' },
   { type: 'rack', label: 'Rack', icon: BoxSelect, color: 'text-violet-500' },
+  { type: 'console', label: 'Console', icon: Gamepad2, color: 'text-fuchsia-500' },
+  { type: 'lan_table', label: 'LAN Table', icon: Armchair, color: 'text-amber-500' },
 ];
 
 // ─── Preset library ────────────────────────────────────────────────────────────
@@ -504,11 +509,103 @@ const PRESETS: {
       },
     ],
   },
+  {
+    category: 'Gaming',
+    items: [
+      {
+        label: 'Gaming PC (mid range)',
+        type: 'pc',
+        icon: Monitor,
+        sub: 'Ryzen 5 · RTX 4060 · ~300 W',
+        data: {
+          name: 'Gaming PC',
+          power_draw: 300,
+          details: { model: 'Ryzen 5 7600 + RTX 4060', cpu: 6, ram: 32, storage: 1000 },
+        },
+      },
+      {
+        label: 'Gaming PC (high end)',
+        type: 'pc',
+        icon: Monitor,
+        sub: 'Ryzen 7 X3D · RTX 4070 Super · ~420 W',
+        data: {
+          name: 'Gaming PC',
+          power_draw: 420,
+          details: { model: 'Ryzen 7 7800X3D + RTX 4070 Super', cpu: 8, ram: 32, storage: 2000 },
+        },
+      },
+      {
+        label: 'PlayStation 5',
+        type: 'console',
+        icon: Gamepad2,
+        sub: 'Wired or Wi-Fi 6 · ~200 W',
+        data: {
+          name: 'PlayStation 5',
+          power_draw: 200,
+          details: { model: 'PlayStation 5 (Slim)', platform: 'playstation' },
+        },
+      },
+      {
+        label: 'Xbox Series X',
+        type: 'console',
+        icon: Gamepad2,
+        sub: 'Wired or Wi-Fi 5 · ~180 W',
+        data: {
+          name: 'Xbox Series X',
+          power_draw: 180,
+          details: { model: 'Xbox Series X', platform: 'xbox' },
+        },
+      },
+      {
+        label: 'Nintendo Switch 2',
+        type: 'console',
+        icon: Gamepad2,
+        sub: 'Dock with LAN port · ~25 W',
+        data: {
+          name: 'Switch 2',
+          power_draw: 25,
+          details: { model: 'Nintendo Switch 2', platform: 'switch' },
+        },
+      },
+      {
+        label: 'Steam Deck',
+        type: 'console',
+        icon: Gamepad2,
+        sub: 'Handheld · Wi-Fi 6E · ~25 W',
+        data: {
+          name: 'Steam Deck',
+          power_draw: 25,
+          details: { model: 'Steam Deck OLED', platform: 'handheld' },
+        },
+      },
+      {
+        label: 'LAN Table, 6 seats',
+        type: 'lan_table',
+        icon: Armchair,
+        sub: '8-port switch · 2110 W',
+        data: { name: 'LAN Table', ...newTableDetails(6) },
+      },
+      {
+        label: 'LAN Table, 8 seats',
+        type: 'lan_table',
+        icon: Armchair,
+        sub: '16-port switch · 2810 W',
+        data: { name: 'LAN Table', ...newTableDetails(8) },
+      },
+    ],
+  },
 ];
 
 export const HardwareToolbox = React.memo(function HardwareToolbox() {
-  const { availableServices, fetchServices, addHardware, addVM, selectedNodeId, hardwareNodes } =
-    useBuilderStore();
+  const {
+    availableServices,
+    fetchServices,
+    addHardware,
+    addVM,
+    selectedNodeId,
+    hardwareNodes,
+    buildKind,
+  } = useBuilderStore();
   const { data: selectionsData } = useUserSelections();
   const { data: favoritesData } = useHardwareFavorites();
   const { data: blueprintsData } = useHardwareBlueprints();
@@ -541,6 +638,8 @@ export const HardwareToolbox = React.memo(function HardwareToolbox() {
         'iot',
         'modem',
         'rack',
+        'console',
+        'lan_table',
       ]),
     [],
   );
@@ -627,6 +726,7 @@ export const HardwareToolbox = React.memo(function HardwareToolbox() {
       else if (type === 'iot') icon = Printer;
       else if (type === 'modem') icon = Globe;
       else if (type === 'rack') icon = BoxSelect;
+      else if (type === 'console') icon = Gamepad2;
 
       let sub = `${comp.brand} · ~${comp.price_est} ${comp.currency}`;
       if (comp.category === 'server' || comp.category === 'minipc' || comp.category === 'sbc') {
@@ -868,7 +968,10 @@ export const HardwareToolbox = React.memo(function HardwareToolbox() {
                     Drag any component onto the canvas
                   </p>
                   <div className="grid grid-cols-3 gap-2">
-                    {HARDWARE_TOOLS.map(tool => {
+                    {HARDWARE_TOOLS.filter(
+                      // A LAN table only means something in a LAN party plan.
+                      tool => tool.type !== 'lan_table' || buildKind === 'lan_party',
+                    ).map(tool => {
                       const Icon = tool.icon;
                       return (
                         <button

@@ -3,6 +3,7 @@ import { api } from "../../../lib/api";
 import { toast } from "sonner";
 import type { ThemeSettings } from "../../../lib/theme-registry";
 import { getAuthConfig } from "../../auth/lib/auth-config";
+import { forgetWorkspace } from "../../builder/store/workspace-storage";
 interface User {
     id: string;
     name: string;
@@ -141,6 +142,8 @@ export function useAuth() {
         updateThemeSettings,
         logout: () => {
              localStorage.removeItem('auth_token');
+             // The next account on this browser starts without this one's open project.
+             forgetWorkspace();
              setUser(null);
              window.location.reload();
         }

@@ -28,6 +28,10 @@ func NormalizeHardwareCategory(category string) string {
 		return "switch"
 	case "single_board_computer", "single_board_computers":
 		return "sbc"
+	case "pcs", "desktop", "desktops", "workstation", "workstations", "gaming_pc", "gaming_pcs":
+		return "pc"
+	case "consoles", "game_console", "game_consoles", "handheld", "handhelds":
+		return "console"
 	default:
 		return c
 	}

@@ -59,6 +59,7 @@ func newEnv(t *testing.T, allowedOrigins ...string) *env {
 		DB: tx, Builds: e.builds, IP: e.ip, Proposals: proposals,
 		Hardware: services.NewHardwareService(tx), Services: services.NewServiceService(tx),
 		Recommendations: services.NewRecommendationService(tx), Config: services.NewConfigService(tx),
+		Gaming: services.NewGamingService(e.builds),
 	})
 	handler := NewHandler(Deps{Registry: registry, Tokens: e.tokens, PublicAppURL: "https://lab.example", AllowedOrigins: allowedOrigins})
 
@@ -284,7 +285,7 @@ func TestMCP_ReadTokenOnlySeesReadTools(t *testing.T) {
 	session := e.connect(t, e.token(t, e.owner.ID, services.TokenScopeRead, nil))
 
 	tools := toolNames(t, session)
-	for _, name := range []string{"list_builds", "get_build", "validate_build", "generate_configs", "search_hardware", "list_services", "recommend_hardware", "get_proposal"} {
+	for _, name := range []string{"list_builds", "get_build", "validate_build", "generate_configs", "gaming_report", "search_hardware", "list_services", "recommend_hardware", "get_proposal"} {
 		tool, ok := tools[name]
 		if !ok {
 			t.Errorf("read token should see %s", name)

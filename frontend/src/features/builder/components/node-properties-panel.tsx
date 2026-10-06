@@ -19,6 +19,7 @@ import { toast } from 'sonner';
 import type { HardwareSpec, HardwareType } from '../../../types';
 import { VMManager } from './vm-manager';
 import { InternalComponentManager } from './internal-component-manager';
+import { GamingNodeFields } from '../../gaming/components/gaming-node-fields';
 import {
   canNodeHostVMs,
   nodeHasCPU,
@@ -26,6 +27,7 @@ import {
   nodeHasRAM,
   nodeHasStorage,
   isNetworkNode,
+  isFloorNode,
 } from '../../../lib/hardware-config';
 import { getVmResourceUsage } from '../lib/resource-usage';
 import { getNodePortCount, parsePortCount } from '../lib/port-count';
@@ -276,7 +278,10 @@ export function NodePropertiesPanel() {
           subnet_mask: mask,
           gateway,
           details: {
-            ...selectedNode.details,
+            // Fields saved outside this form (rack slot, seats, circuit) may have
+            // changed while this write was waiting: build on the latest details.
+            ...(useBuilderStore.getState().hardwareNodes.find(node => node.id === selectedNode.id)
+              ?.details ?? selectedNode.details),
             model,
             dhcp_enabled: canProvideDHCP ? dhcpEnabled : undefined,
             dhcp_locked: dhcpLocked,
@@ -492,6 +497,8 @@ export function NodePropertiesPanel() {
               </div>
             </div>
           )}
+
+          <GamingNodeFields node={selectedNode} />
 
           {/* ── Rack-specific properties ── */}
           {isRack && (
@@ -1086,7 +1093,9 @@ export function NodePropertiesPanel() {
           </div>
 
           {/* Component Manager (GPUs, Disks, etc) */}
-          <InternalComponentManager nodeId={selectedNode.id} />
+          {!isFloorNode(selectedNode.type) && (
+            <InternalComponentManager nodeId={selectedNode.id} />
+          )}
 
           {/* VM Manager (servers, PCs, NAS) */}
           {supportsVMs && (

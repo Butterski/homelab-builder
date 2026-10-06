@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/Butterski/homelab-builder/backend/internal/gaming"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -37,8 +38,18 @@ type Service struct {
 	Visibility      string              `gorm:"not null;default:'public';index" json:"visibility"`
 	User            *User               `gorm:"foreignKey:UserID" json:"-"`
 	Requirements    *ServiceRequirement `gorm:"foreignKey:ServiceID" json:"requirements,omitempty"`
+	Game            *gaming.Profile     `gorm:"-" json:"game,omitempty"` // Transient, set for game servers and gaming tools
 	CreatedAt       time.Time           `json:"created_at"`
 	UpdatedAt       time.Time           `json:"updated_at"`
+}
+
+// AfterFind attaches the game profile to catalog entries that have one. The
+// profile lives in code, so it is never stale and never user-supplied.
+func (s *Service) AfterFind(*gorm.DB) error {
+	if profile, ok := gaming.ProfileByServiceID(s.ID.String()); ok {
+		s.Game = &profile
+	}
+	return nil
 }
 
 type ServiceRequirement struct {
@@ -253,10 +264,12 @@ type Build struct {
 	ID             uuid.UUID       `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
 	UserID         uuid.UUID       `gorm:"type:uuid;not null;index" json:"user_id"` // Owner
 	Name           string          `gorm:"not null" json:"name"`
-	Settings       json.RawMessage `gorm:"type:jsonb;default:'{}'" json:"settings"` // UI state e.g. boughtItems
-	Thumbnail      string          `gorm:"default:''" json:"thumbnail"`             // Base64 or URL
-	TotalPower     float64         `gorm:"-" json:"total_power"`                    // Transient, calculated on fetch
-	Revision       uint64          `gorm:"not null;default:1" json:"revision"`      // Optimistic topology version
+	Kind           string          `gorm:"not null;default:'homelab';index" json:"kind"`        // homelab, lan_party, game_server
+	GamingPlan     json.RawMessage `gorm:"type:jsonb;not null;default:'{}'" json:"gaming_plan"` // gaming.Plan: uplink, power circuits, event
+	Settings       json.RawMessage `gorm:"type:jsonb;default:'{}'" json:"settings"`             // UI state e.g. boughtItems
+	Thumbnail      string          `gorm:"default:''" json:"thumbnail"`                         // Base64 or URL
+	TotalPower     float64         `gorm:"-" json:"total_power"`                                // Transient, calculated on fetch
+	Revision       uint64          `gorm:"not null;default:1" json:"revision"`                  // Optimistic topology version
 	ShareToken     *string         `gorm:"uniqueIndex;default:null" json:"share_token,omitempty"`
 	IsShared       bool            `gorm:"default:false" json:"is_shared"`
 	SharedEditable bool            `gorm:"default:false" json:"shared_editable"`

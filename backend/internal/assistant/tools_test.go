@@ -24,6 +24,7 @@ func newRegistry(t *testing.T) (*Registry, *gorm.DB, *services.BuildService) {
 		DB: tx, Builds: builds, IP: ip, Proposals: services.NewProposalService(tx, builds, ip),
 		Hardware: services.NewHardwareService(tx), Services: services.NewServiceService(tx),
 		Recommendations: services.NewRecommendationService(tx), Config: services.NewConfigService(tx),
+		Gaming: services.NewGamingService(builds),
 	})
 	return registry, tx, builds
 }
@@ -44,6 +45,10 @@ func TestRegistry_ToolsFollowScopeContextAndRestriction(t *testing.T) {
 	read := names(registry.For(Actor{UserID: user, Scope: ScopeRead}, ContextMCP))
 	if strings.Contains(read, "propose_changes") || strings.Contains(read, "create_build") || !strings.Contains(read, "get_build") {
 		t.Fatalf("read scope tools: %s", read)
+	}
+	// The gaming report only reads, so a read token and the chat both get it.
+	if !strings.Contains(read, "gaming_report") {
+		t.Fatalf("read scope should include gaming_report: %s", read)
 	}
 	propose := names(registry.For(Actor{UserID: user, Scope: ScopePropose}, ContextMCP))
 	if !strings.Contains(propose, "propose_changes") || !strings.Contains(propose, "create_build") {

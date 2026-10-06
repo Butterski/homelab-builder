@@ -56,6 +56,10 @@ func (s *ConfigService) GenerateCompleteExport(buildID, userID uuid.UUID) ([]byt
 				warnings = append(warnings, fmt.Sprintf("%s on %s has no assigned IP", vm.Name, node.Name))
 			}
 			_, known := getServiceConfig(vm.Name)
+			if isGameGuest(vm) {
+				// Game servers get their own compose file per host under gaming/.
+				continue
+			}
 			if vm.Type != "container" && vm.Type != "lxc" {
 				warnings = append(warnings, fmt.Sprintf("%s is a VM and was intentionally omitted from Docker Compose", vm.Name))
 			} else if !known {
@@ -96,6 +100,13 @@ func (s *ConfigService) GenerateCompleteExport(buildID, userID uuid.UUID) ([]byt
 		"automation/ansible-inventory.ini": []byte(configs.AnsibleInventory),
 		"proxy/nginx.conf":                 []byte(configs.Nginx),
 		"implementation-checklist.md":      []byte(exportChecklist(build)),
+	}
+	gamingFiles, err := gamingExportFiles(build)
+	if err != nil {
+		return nil, "", err
+	}
+	for path, contents := range gamingFiles {
+		files[path] = contents
 	}
 
 	var archive bytes.Buffer

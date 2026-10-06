@@ -1,25 +1,51 @@
+import { useState } from 'react';
 import { Loader2, Sparkles, X } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import type { ProposalSummary } from '../api/proposals';
+import { proposerName } from '../lib/proposal-text';
 
 type ProposalBannerProps = {
   proposal: ProposalSummary;
   loading: boolean;
   onReview: () => void;
-  onDismiss: () => void;
 };
 
-function proposer(proposal: ProposalSummary): string {
-  if (proposal.source === 'chat') return 'The assistant';
-  return proposal.source_label || 'An MCP client';
-}
-
-/** Tells the owner that an LLM client is waiting for a decision on a proposal. */
-export function ProposalBanner({ proposal, loading, onReview, onDismiss }: ProposalBannerProps) {
+/**
+ * Tells the owner that an LLM client is waiting for a decision on a proposal.
+ * Put aside, it shrinks to a chip in the corner: the proposal is still waiting,
+ * and a page reload should not be the only way to get back to it.
+ */
+export function ProposalBanner({ proposal, loading, onReview }: ProposalBannerProps) {
+  // Which proposal was put aside; a newer one shows the banner again.
+  const [asideId, setAsideId] = useState<string | null>(null);
   const total = proposal.counts?.total ?? 0;
+
+  if (asideId === proposal.id) {
+    return (
+      <div className="pointer-events-none absolute bottom-16 left-4 z-20" data-hide-export="true">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onReview}
+          disabled={loading}
+          className="builder-control-button pointer-events-auto h-9 gap-2 px-3"
+          title={proposal.summary || 'Review the waiting proposal'}
+        >
+          {loading ? (
+            <Loader2 className="animate-spin" aria-hidden="true" />
+          ) : (
+            <Sparkles className="text-primary" aria-hidden="true" />
+          )}
+          1 proposal waiting
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div
-      className="pointer-events-none absolute inset-x-0 bottom-14 z-20 flex justify-center px-4"
+      // Above the library, which floats over the same corner of the canvas.
+      className="pointer-events-none absolute inset-x-0 bottom-14 z-[55] flex justify-center px-4"
       data-hide-export="true"
     >
       <div
@@ -31,7 +57,7 @@ export function ProposalBanner({ proposal, loading, onReview, onDismiss }: Propo
         </span>
         <div className="min-w-0">
           <p className="truncate text-sm font-medium">
-            {proposer(proposal)} proposed {total} {total === 1 ? 'change' : 'changes'}
+            {proposerName(proposal)} proposed {total} {total === 1 ? 'change' : 'changes'}
           </p>
           {proposal.summary && (
             <p className="truncate text-xs text-muted-foreground">{proposal.summary}</p>
@@ -45,9 +71,9 @@ export function ProposalBanner({ proposal, loading, onReview, onDismiss }: Propo
           variant="ghost"
           size="icon"
           className="size-8 shrink-0"
-          onClick={onDismiss}
-          aria-label="Hide this proposal for now"
-          title="Hide for now"
+          onClick={() => setAsideId(proposal.id)}
+          aria-label="Put this proposal aside for now"
+          title="Not now"
         >
           <X />
         </Button>
