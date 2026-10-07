@@ -1,121 +1,310 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useBuilderStore } from '../../builder/store/builder-store';
-import { useCurrentProject } from '../../builder/hooks/use-current-project';
-import { LoadingScreen } from '../../../components/ui/loading-screen';
+import { TriangleAlert } from 'lucide-react';
+import { toast } from 'sonner';
+import { Page, PageHeader } from '../../../components/layout/page';
 import { SeoMeta } from '../../../components/seo/seo-meta';
-import { Card, CardContent, CardTitle, CardDescription } from '../../../components/ui/card';
-import { Badge } from '../../../components/ui/badge';
 import { Button } from '../../../components/ui/button';
+import { LoadingScreen } from '../../../components/ui/loading-screen';
+import { TickBox } from '../../../components/ui/tick-box';
+import { cn } from '../../../lib/utils';
+import { useCurrentProject } from '../../builder/hooks/use-current-project';
+import { startAutosave } from '../../builder/store/autosave';
+import { useBuilderStore } from '../../builder/store/builder-store';
 import {
-  ClipboardList,
-  CheckCircle2,
-  ChevronDown,
-  Server,
-  Globe,
-  Download,
-  Terminal,
-  Network,
-  Shield,
-  Gamepad2,
-  Armchair,
-} from 'lucide-react';
-import { gamingSetupSteps } from '../../gaming/lib/setup-steps';
+  buildSetupPlan,
+  linksFromEdges,
+  readSetupDone,
+  sectionStepIds,
+  setupProgress,
+  type SetupSection,
+  type SetupStep,
+  type SetupTable,
+} from '../lib/setup-plan';
 
-interface SetupStep {
-  id: string;
-  title: string;
-  description: string;
-  icon: React.ElementType;
-  items: { text: string; code?: string }[];
-}
+const SEO = (
+  <SeoMeta
+    title="Setup Guide | HLBuilder"
+    description="The setup steps of your build: cables, addresses and what to install on each host."
+    path="/checklist"
+  />
+);
 
-// ─── Sub-components ────────────────────────────────────────────────────────────
+/** How many cells the text meter is wide. */
+const METER_CELLS = 24;
 
-/** Shown when there is nothing to build a guide from: no project, or an empty one. */
-function EmptyChecklist({ projectId }: { projectId: string | null }) {
+/** An id that can be used as an anchor: section ids hold colons and uuids. */
+const anchorOf = (sectionId: string) => `setup-${sectionId.replace(/[^a-zA-Z0-9]+/g, '-')}`;
+
+/** Shown when there is nothing to write a guide from: no project, or an empty one. */
+function EmptyGuide({ projectId }: { projectId: string | null }) {
   return (
-    <>
-      <SeoMeta
-        title="Custom Setup Guide | HLBuilder"
-        description="Step-by-step setup checklist generated from your homelab design in HLBuilder."
-        path="/checklist"
+    <Page width="narrow">
+      {SEO}
+      <PageHeader
+        title="Setup Guide"
+        lede={
+          projectId
+            ? 'The guide is written from the devices and services on the canvas. This project has none yet.'
+            : 'The guide is written for one project. Open or create one, then come back here.'
+        }
       />
-      <div className="flex flex-col items-center justify-center p-12 text-center border rounded-lg bg-muted/20 min-h-100">
-        <ClipboardList className="size-16 mb-6 text-muted-foreground/50" />
-        <h3 className="text-xl font-bold mb-2">
-          {projectId ? 'Build your lab first' : 'Open a project first'}
-        </h3>
-        <p className="text-muted-foreground mb-6 max-w-md">
-          {projectId
-            ? 'Your setup instructions are generated here from the hardware and services you add in the Visual Builder.'
-            : 'The setup guide is written for one project. Open or create one, then come back here.'}
-        </p>
+      <div className="pt-6">
         <Button asChild>
           <Link to={projectId ? `/builder/${projectId}` : '/'}>
-            {projectId ? 'Go to Visual Builder' : 'Go to Projects'}
+            {projectId ? 'Open the canvas' : 'Go to Projects'}
           </Link>
         </Button>
       </div>
+    </Page>
+  );
+}
+
+/** Progress the way a terminal shows it: a row of cells filling up. */
+function Meter({ done, total }: { done: number; total: number }) {
+  const filled = total > 0 ? Math.round((done / total) * METER_CELLS) : 0;
+  return (
+    <div
+      role="progressbar"
+      aria-label="Setup progress"
+      aria-valuemin={0}
+      aria-valuemax={total}
+      aria-valuenow={done}
+      aria-valuetext={`${done} of ${total} done`}
+    >
+      <p className="text-sm">
+        <span className="font-semibold">{done}</span>
+        <span className="text-muted-foreground"> of {total} done</span>
+      </p>
+      <p
+        className="mt-1 select-none whitespace-nowrap font-mono text-[0.8125rem] leading-none text-muted-foreground"
+        aria-hidden="true"
+      >
+        [<span className="text-foreground">{'#'.repeat(filled)}</span>
+        {'.'.repeat(METER_CELLS - filled)}]
+      </p>
+    </div>
+  );
+}
+
+/** A command as it is typed, with a way to take it along. */
+function Command({ code }: { code: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      toast.error('Could not copy. Select the text instead.');
+    }
+  };
+  return (
+    <div className="relative mt-2.5">
+      <pre className="app-code pr-16">{code}</pre>
+      <button
+        type="button"
+        onClick={copy}
+        className="absolute right-1.5 top-1.5 rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:cursor-pointer hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring print:hidden"
+      >
+        {copied ? 'Copied' : 'Copy'}
+      </button>
+    </div>
+  );
+}
+
+/** Addresses, with or without a network length or a port, as they stand in a sentence. */
+const ADDRESS = /(\b\d{1,3}(?:\.\d{1,3}){3}(?:\/\d{1,2})?(?::\d{1,5})?\b)/;
+
+/** A sentence with its addresses set in the monospace face, where they are compared by eye. */
+function Sentence({ text }: { text: string }) {
+  return (
+    <>
+      {text.split(ADDRESS).map((part, index) =>
+        index % 2 === 1 ? (
+          <span key={index} className="app-figure">
+            {part}
+          </span>
+        ) : (
+          part
+        ),
+      )}
     </>
   );
 }
 
-function StepCard({ step, isExpanded, onToggle }: { step: SetupStep; isExpanded: boolean; onToggle: () => void }) {
-  const Icon = step.icon;
+function Steps({
+  steps,
+  done,
+  onToggle,
+}: {
+  steps: SetupStep[];
+  done: Set<string>;
+  onToggle: (id: string) => void;
+}) {
+  const prefix = useId();
   return (
-    <Card
-      className={`overflow-hidden transition-all duration-200 ${isExpanded ? 'border-primary/50' : 'hover:border-primary/30'}`}
-    >
-      <div
-        className="flex items-center justify-between p-5 cursor-pointer select-none bg-card hover:bg-muted/30 transition-colors"
-        onClick={onToggle}
-      >
-        <div className="flex items-center gap-4">
-          <div
-            className={`p-2 rounded-lg ${isExpanded ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}
+    <ul className="mt-4 grid">
+      {steps.map(step => {
+        const ticked = done.has(step.id);
+        const inputId = `${prefix}-${step.id}`;
+        return (
+          <li
+            key={step.id}
+            className="grid grid-cols-[1.75rem_minmax(0,1fr)] border-t py-3 first:border-t-0 first:pt-0 print:break-inside-avoid"
           >
-            <Icon className="size-5" />
-          </div>
-          <div>
-            <CardTitle className="text-lg flex items-center gap-2">{step.title}</CardTitle>
-            <CardDescription className="mt-1">{step.description}</CardDescription>
-          </div>
-        </div>
-        <div className="text-muted-foreground">
-          <ChevronDown
-            className={`size-5 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
-          />
-        </div>
-      </div>
+            <TickBox
+              id={inputId}
+              className="mt-[0.25rem]"
+              checked={ticked}
+              onChange={() => onToggle(step.id)}
+            />
+            <div className="min-w-0">
+              <label
+                htmlFor={inputId}
+                className={cn('block hover:cursor-pointer', ticked && 'text-muted-foreground')}
+              >
+                <Sentence text={step.text} />
+              </label>
+              {step.action && (
+                <Link
+                  to={step.action.to}
+                  className="app-link mt-1 inline-block text-sm print:hidden"
+                >
+                  {step.action.label}
+                </Link>
+              )}
+              {step.code && <Command code={step.code} />}
+            </div>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
 
-      <div
-        className="grid transition-all duration-300 ease-in-out"
-        style={{ gridTemplateRows: isExpanded ? '1fr' : '0fr' }}
+function Rows({
+  table,
+  done,
+  onToggle,
+}: {
+  table: SetupTable;
+  done: Set<string>;
+  onToggle: (id: string) => void;
+}) {
+  return (
+    <div className="app-table-scroll mt-4">
+      {/* A wide table scrolls sideways on a phone instead of breaking every name into three lines. */}
+      <table
+        className={cn(
+          'app-table [&_:is(td,th)]:align-middle',
+          table.columns.length >= 4 && 'min-w-[32rem] print:min-w-0',
+        )}
       >
-        <div className="overflow-hidden">
-          <CardContent className="pt-0 pb-6 px-5 sm:px-14 border-t bg-muted/10">
-            <ul className="space-y-4 pt-6">
-              {step.items.map((item, itemIndex) => (
-                <li key={itemIndex} className="flex items-start gap-3">
-                  <CheckCircle2 className="size-5 text-primary/60 shrink-0 mt-0.5" />
-                  <div className="space-y-2 flex-1">
-                    <p className="text-sm leading-relaxed">{item.text}</p>
-                    {item.code && (
-                      <div className="bg-neutral-950 dark:bg-neutral-950 rounded-md p-3 overflow-x-auto border border-primary/20">
-                        <pre className="text-xs text-green-400 font-mono leading-relaxed">
-                          <code>{item.code}</code>
-                        </pre>
-                      </div>
+        <caption className="sr-only">{table.caption}</caption>
+        <thead>
+          <tr>
+            <th scope="col" className="w-7">
+              <span className="sr-only">Done</span>
+            </th>
+            {table.columns.map(column => (
+              <th key={column.label} scope="col">
+                {column.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {table.rows.map(row => {
+            const ticked = done.has(row.id);
+            return (
+              <tr
+                key={row.id}
+                className={cn('print:break-inside-avoid', ticked && 'text-muted-foreground')}
+              >
+                <td>
+                  <TickBox
+                    aria-label={row.label}
+                    checked={ticked}
+                    onChange={() => onToggle(row.id)}
+                  />
+                </td>
+                {row.cells.map((cell, index) => (
+                  <td key={index} className={cn(cell.figure && 'is-figure')}>
+                    {cell.href ? (
+                      <a href={cell.href} target="_blank" rel="noreferrer" className="app-link">
+                        {cell.text}
+                      </a>
+                    ) : (
+                      cell.text
                     )}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
+                  </td>
+                ))}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function SectionBlock({
+  section,
+  number,
+  done,
+  onToggle,
+}: {
+  section: SetupSection;
+  number: number;
+  done: Set<string>;
+  onToggle: (id: string) => void;
+}) {
+  const ids = sectionStepIds(section);
+  const count = ids.filter(id => done.has(id)).length;
+  const anchor = anchorOf(section.id);
+  return (
+    <section
+      id={anchor}
+      aria-labelledby={`${anchor}-title`}
+      className="scroll-mt-6 border-t py-8 first:border-t-0 first:pt-0"
+    >
+      <header className="flex items-baseline justify-between gap-4">
+        <div className="flex min-w-0 items-baseline gap-3">
+          <span className="app-figure text-sm text-muted-foreground" aria-hidden="true">
+            {number}
+          </span>
+          <h2 id={`${anchor}-title`} className="text-lg font-semibold">
+            {section.title}
+          </h2>
         </div>
-      </div>
-    </Card>
+        {ids.length > 0 && (
+          <span className="app-figure shrink-0 text-xs text-muted-foreground">
+            {count}/{ids.length}
+          </span>
+        )}
+      </header>
+      {section.intro && (
+        <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">
+          <Sentence text={section.intro} />
+        </p>
+      )}
+      {section.warning && (
+        <p role="note" className="mt-4 flex max-w-2xl gap-2.5 text-sm">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-status-warn" aria-hidden="true" />
+          <span>
+            <Sentence text={section.warning} />
+          </span>
+        </p>
+      )}
+      {section.steps.length > 0 && <Steps steps={section.steps} done={done} onToggle={onToggle} />}
+      {section.table && <Rows table={section.table} done={done} onToggle={onToggle} />}
+      {section.note && (
+        <p className="mt-3 max-w-2xl text-sm text-muted-foreground">
+          <Sentence text={section.note} />
+        </p>
+      )}
+    </section>
   );
 }
 
@@ -123,264 +312,158 @@ export default function ChecklistPage() {
   // The guide is about the open project; after a reload its canvas is fetched again.
   const project = useCurrentProject();
   const hardwareNodes = useBuilderStore(state => state.hardwareNodes);
+  const edges = useBuilderStore(state => state.edges);
   const gamingPlan = useBuilderStore(state => state.gamingPlan);
   const availableServices = useBuilderStore(state => state.availableServices);
-  const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set(['prep', 'os']));
+  const fetchServices = useBuilderStore(state => state.fetchServices);
+  const buildSettings = useBuilderStore(state => state.buildSettings);
+  const setSetupDone = useBuilderStore(state => state.setSetupDone);
 
-  // Calculate dynamic data based on the builder state
-  const hasHardware = hardwareNodes.length > 0;
-  const hasServer = hardwareNodes.some(
-    n => n.type === 'server' || n.type === 'pc' || n.type === 'minipc' || n.type === 'sbc',
+  // Game servers and links to a service's own documentation come from the catalog.
+  useEffect(() => {
+    if (useBuilderStore.getState().availableServices.length === 0) void fetchServices();
+  }, [fetchServices]);
+
+  // What is ticked off is part of the build: it is saved the way an edit on the canvas is.
+  useEffect(
+    () =>
+      startAutosave({
+        onConflict: () =>
+          toast.info('This project was changed elsewhere and has been loaded again.'),
+        onFailure: message => toast.error(message),
+      }),
+    [],
   );
-  const hasRouter = hardwareNodes.some(n => n.type === 'router');
-  const hasSwitch = hardwareNodes.some(n => n.type === 'switch');
 
-  // Collect all unique service names deployed
-  const deployedServices = new Set<string>();
-  hardwareNodes.forEach(node => {
-    if (
-      node.type === 'server' ||
-      node.type === 'pc' ||
-      node.type === 'minipc' ||
-      node.type === 'sbc'
-    ) {
-      node.vms?.forEach(vm => deployedServices.add(vm.name.toLowerCase()));
-    }
-  });
-
-  const hasDockerServices = deployedServices.size > 0;
-  const hasProxy =
-    deployedServices.has('nginx proxy manager') ||
-    deployedServices.has('traefik') ||
-    deployedServices.has('caddy');
-  const hasPihole = deployedServices.has('pi-hole') || deployedServices.has('adguard home');
-
-  // Generate dynamic steps
-  const steps = useMemo(() => {
-    const s: SetupStep[] = [];
-
-    // 1. Hardware Prep (Always relevant if they have any compute nodes)
-    s.push({
-      id: 'prep',
-      title: '1. Hardware Preparation',
-      description: 'Physical assembly and BIOS configuration.',
-      icon: Server,
-      items: [
-        { text: 'Assemble your hardware components according to manuals.' },
-        {
-          text: 'Connect your compute nodes directly to your router or switch via Ethernet. (Wi-Fi is not recommended for home servers).',
-        },
-        { text: 'Boot the machine and enter the BIOS/UEFI.' },
-        { text: 'Update BIOS/UEFI to the latest version if possible.' },
-        { text: 'In BIOS, enable Virtualization features (Intel VT-x or AMD-V).' },
-        {
-          text: 'In BIOS, set "Power On After Power Loss" to ON (often under ACPI or Power settings).',
-        },
-      ],
-    });
-
-    // 1.5 Networking (If router/switch present)
-    if (hasRouter || hasSwitch) {
-      s.push({
-        id: 'networking',
-        title: 'Networking & Topology',
-        description: 'Physical and logical network setup.',
-        icon: Network,
-        items: [
-          ...(hasRouter
-            ? [{ text: 'Configure your primary router/firewall interfaces (WAN/LAN).' }]
-            : []),
-          ...(hasSwitch ? [{ text: 'Connect your switch to the router uplink port.' }] : []),
-          {
-            text: 'Assign static IP addresses (or DHCP reservations) for your main servers in your router settings.',
-          },
-        ],
-      });
-    }
-
-    // 2. OS Installation (Assuming hypervisor path for servers)
-    if (hasServer) {
-      s.push({
-        id: 'os',
-        title: '2. Operating System (Hypervisor)',
-        description: 'Installing the base OS on your main servers.',
-        icon: Download,
-        items: [
-          {
-            text: 'Download the Proxmox VE ISO from the official site (Recommended for servers/PCs).',
-          },
-          { text: 'Flash the ISO to a USB stick using Rufus or BalenaEtcher.' },
-          { text: 'Boot from the USB and follow the Proxmox installer.' },
-          {
-            text: 'Select ZFS (RAIDZ) if you have multiple identical drives and ECC RAM, otherwise select ext4 or xfs.',
-          },
-          { text: 'Set a static IP during installation for the management interface.' },
-        ],
-      });
-    }
-
-    // 3. Security
-    s.push({
-      id: 'security',
-      title: '3. Basic Security Hardening',
-      description: 'Securing the base installation before exposing services.',
-      icon: Shield,
-      items: [
-        { text: 'Log into your hypervisor or Linux server via SSH.' },
-        {
-          text: 'Create a non-root user and add them to the sudo group:',
-          code: 'adduser username\nusermod -aG sudo username',
-        },
-        {
-          text: 'Generate SSH keys on your personal PC and copy them to the server:',
-          code: 'ssh-copy-id username@SERVER_IP',
-        },
-        {
-          text: 'Disable password authentication in SSH:',
-          code: 'sudo nano /etc/ssh/sshd_config\n# Set PasswordAuthentication no\n# Set PermitRootLogin prohibit-password\nsudo systemctl restart ssh',
-        },
-      ],
-    });
-
-    // 4. Docker Environment
-    if (hasDockerServices) {
-      s.push({
-        id: 'docker',
-        title: '4. Container Runtime (Docker)',
-        description: 'Setting up the environment for your homelab services.',
-        icon: Terminal,
-        items: [
-          {
-            text: 'If using Proxmox, create a new Debian/Ubuntu LXC (Linux Container) or VM to host Docker.',
-          },
-          {
-            text: 'Install Docker and Docker Compose:',
-            code: 'curl -fsSL https://get.docker.com -o get-docker.sh\nsudo sh get-docker.sh\nsudo usermod -aG docker $USER',
-          },
-          { text: 'Verify installation:', code: 'docker compose version' },
-        ],
-      });
-    }
-
-    // 5. Specific Service Notes
-    if (hasPihole || hasProxy) {
-      s.push({
-        id: 'services',
-        title: '5. Core Services Configuration',
-        description: 'Specific instructions for critical infrastructure services you selected.',
-        icon: Globe,
-        items: [
-          ...(hasPihole
-            ? [
-                {
-                  text: "DNS Ad-Blocking (Pi-hole / AdGuard): Set your router's primary DHCP DNS to point to the static IP of this service.",
-                },
-                { text: 'Make sure your DNS container starts on boot (restart: unless-stopped).' },
-              ]
-            : []),
-          ...(hasProxy
-            ? [
-                {
-                  text: 'Reverse Proxy (NPM / Traefik / Caddy): Forward ports 80 and 443 on your router to the IP of the machine running this service.',
-                },
-                {
-                  text: "Point your domain's DNS A-records (e.g., in Cloudflare) to your home public IP address.",
-                },
-              ]
-            : []),
-        ],
-      });
-    }
-
-    // 6. Gaming builds: game servers to bring online, a room to prepare
-    for (const step of gamingSetupSteps(hardwareNodes, gamingPlan, availableServices)) {
-      s.push({ ...step, icon: step.id === 'lan-party' ? Armchair : Gamepad2 });
-    }
-
-    return s;
-  }, [
-    hasServer,
-    hasRouter,
-    hasSwitch,
-    hasDockerServices,
-    hasPihole,
-    hasProxy,
-    hardwareNodes,
-    gamingPlan,
-    availableServices,
-  ]);
-
-  const toggleStep = (id: string) => {
-    setExpandedSteps(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const expandAll = () => setExpandedSteps(new Set(steps.map(s => s.id)));
-  const collapseAll = () => setExpandedSteps(new Set());
+  const sections = useMemo(
+    () =>
+      buildSetupPlan({
+        nodes: hardwareNodes,
+        links: linksFromEdges(edges),
+        services: availableServices,
+        gamingPlan,
+      }),
+    [hardwareNodes, edges, availableServices, gamingPlan],
+  );
+  const done = useMemo(() => new Set(readSetupDone(buildSettings)), [buildSettings]);
+  const progress = useMemo(() => setupProgress(sections, done), [sections, done]);
 
   if (project.loading) {
     return <LoadingScreen message="Opening project…" />;
   }
   if (project.failed) {
     return (
-      <div className="flex flex-col items-center justify-center gap-4 p-12 text-center min-h-100">
-        <p className="text-muted-foreground">The project could not be loaded.</p>
-        <Button variant="outline" onClick={project.retry}>
-          Try again
-        </Button>
-      </div>
+      <Page width="narrow">
+        {SEO}
+        <PageHeader title="Setup Guide" lede="The project could not be loaded." />
+        <div className="pt-6">
+          <Button variant="outline" onClick={project.retry}>
+            Try again
+          </Button>
+        </div>
+      </Page>
     );
   }
-  if (!project.id || !hasHardware) {
-    return <EmptyChecklist projectId={project.id} />;
+  if (!project.id || hardwareNodes.length === 0) {
+    return <EmptyGuide projectId={project.id} />;
   }
 
-  return (
-    <div className="max-w-4xl mx-auto space-y-8 py-8 px-6">
-      <SeoMeta
-        title="Custom Setup Guide | HLBuilder"
-        description="Step-by-step setup checklist generated from your homelab design in HLBuilder."
-        path="/checklist"
-      />
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-        <div className="space-y-2">
-          <h1 className="text-3xl font-bold tracking-tight">Custom Setup Guide</h1>
-          <p className="text-muted-foreground max-w-2xl">
-            A personalized step-by-step technical guide based on the{' '}
-            <Badge variant="secondary" className="mx-1">
-              {hardwareNodes.length} devices
-            </Badge>
-            and{' '}
-            <Badge variant="secondary" className="mx-1">
-              {deployedServices.size} services
-            </Badge>{' '}
-            in your current project.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <Button variant="outline" size="sm" onClick={expandAll}>
-            Expand All
-          </Button>
-          <Button variant="outline" size="sm" onClick={collapseAll}>
-            Collapse All
-          </Button>
-        </div>
-      </div>
+  /** Ticks are kept in the order of the guide, and only for steps it still has. */
+  const store = (ticked: Set<string>) =>
+    setSetupDone(sections.flatMap(sectionStepIds).filter(id => ticked.has(id)));
+  const toggle = (id: string) => {
+    const next = new Set(done);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    store(next);
+  };
 
-      <div className="space-y-4">
-        {steps.map(step => (
-          <StepCard
-            key={step.id}
-            step={step}
-            isExpanded={expandedSteps.has(step.id)}
-            onToggle={() => toggleStep(step.id)}
-          />
-        ))}
+  const services = hardwareNodes.reduce((sum, node) => sum + (node.vms?.length ?? 0), 0);
+  const devices = hardwareNodes.filter(node => node.type !== 'rack').length;
+
+  return (
+    <Page width="article" className="pb-24">
+      {SEO}
+      <PageHeader
+        title="Setup Guide"
+        lede={
+          <>
+            Written from <span className="text-foreground">{project.name || 'this project'}</span>:{' '}
+            {devices} {devices === 1 ? 'device' : 'devices'}
+            {services > 0 && ` and ${services} ${services === 1 ? 'service' : 'services'}`}. It
+            changes when the canvas does. What you tick off is saved with the project.
+          </>
+        }
+        actions={
+          <>
+            <Button variant="outline" onClick={() => window.print()} className="print:hidden">
+              Print
+            </Button>
+            <Button variant="outline" asChild className="print:hidden">
+              <Link to={`/builder/${project.id}`}>Open the canvas</Link>
+            </Button>
+          </>
+        }
+      />
+
+      <div className="grid gap-x-12 gap-y-8 pt-6 lg:grid-cols-[15rem_minmax(0,1fr)]">
+        <aside
+          aria-label="Progress and sections"
+          className="grid h-fit gap-5 lg:sticky lg:top-6 print:hidden"
+        >
+          <Meter done={progress.done} total={progress.total} />
+          <nav aria-label="Sections of the guide">
+            <ol className="grid gap-0.5 text-sm">
+              {sections.map((section, index) => {
+                const count = progress.sections.get(section.id);
+                const complete = !!count && count.total > 0 && count.done === count.total;
+                return (
+                  <li key={section.id}>
+                    <a
+                      href={`#${anchorOf(section.id)}`}
+                      className={cn(
+                        '-mx-2 flex items-baseline gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-muted/60 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring',
+                        complete && 'text-muted-foreground',
+                      )}
+                    >
+                      <span className="app-figure w-4 shrink-0 text-xs text-muted-foreground">
+                        {index + 1}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate">{section.title}</span>
+                      {count && count.total > 0 && (
+                        <span className="app-figure shrink-0 text-xs text-muted-foreground">
+                          {count.done}/{count.total}
+                        </span>
+                      )}
+                    </a>
+                  </li>
+                );
+              })}
+            </ol>
+          </nav>
+          {progress.done > 0 && (
+            <button
+              type="button"
+              onClick={() => store(new Set())}
+              className="app-link w-fit text-sm text-muted-foreground hover:cursor-pointer hover:text-foreground"
+            >
+              Untick everything
+            </button>
+          )}
+        </aside>
+
+        <div className="min-w-0">
+          {sections.map((section, index) => (
+            <SectionBlock
+              key={section.id}
+              section={section}
+              number={index + 1}
+              done={done}
+              onToggle={toggle}
+            />
+          ))}
+        </div>
       </div>
-    </div>
+    </Page>
   );
 }
