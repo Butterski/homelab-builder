@@ -45,7 +45,7 @@ Remember - I don't want migrations scripts or Legacy things support. If somethin
 
 ```
 homelab-builder/
-├── docker-compose.yml          # postgres + backend + hlbipam + frontend services
+├── docker-compose.yml          # running your own copy: postgres + hlbipam + backend + frontend, from the published images or built from the checkout
 ├── docker-compose.test.yml     # test-specific compose overrides
 ├── Makefile                    # dev and test commands
 ├── AGENTS.md                   # this file
@@ -92,7 +92,7 @@ homelab-builder/
 │   │   │   ├── catalog/        # hardware & service catalog browsing
 │   │   │   ├── donate/         # donation page
 │   │   │   ├── gaming/         # game plan dialog and report, game server / LAN table / console fields
-│   │   │   ├── landing/        # landing/login page
+│   │   │   ├── landing/        # landing page for guests: demo on the real planners, prerendered into index.html
 │   │   │   ├── settings/       # settings page: appearance, AI assistant, MCP access
 │   │   │   ├── setup-guide/    # setup checklist
 │   │   │   ├── shopping/       # shopping list generation
@@ -105,12 +105,17 @@ homelab-builder/
 │   │   ├── lib/                # shared utilities
 │   │   │   ├── api.ts          # base axios instance
 │   │   │   ├── templates.ts    # config templates
+│   │   │   ├── prerender.ts    # the landing page copy in index.html: release, shared keys
+│   │   │   ├── site.ts         # public site or somebody's own instance (decides landing page vs welcome screen)
 │   │   │   ├── utils.ts        # general utilities
 │   │   │   └── version.ts      # app version, taken from package.json at build time
 │   │   ├── services/           # shared service layer (api.ts)
 │   │   ├── types/index.ts      # shared TypeScript types
 │   │   ├── App.tsx             # root component with routing
-│   │   └── main.tsx            # React entry point
+│   │   ├── main.tsx            # React entry point
+│   │   └── prerender.tsx       # landing page as HTML, built with `vite build --ssr`
+│   ├── scripts/prerender.mjs   # last build step: writes that HTML into dist/index.html
+│   ├── nginx.conf              # "/" is index.html, app routes are app.html, the rest is 404
 │   ├── vite.config.ts
 │   └── package.json
 └── docs/
@@ -449,6 +454,19 @@ docker run --rm -v "$PWD:/repo" -v hlb-frontend-node-modules:/repo/frontend/node
 
 `LAYOUT_PREVIEW` names the HTML file to write (delete it afterwards, it is not part of the repository); `LAYOUT_SEEDS` is the number of random networks, 60 by default.
 
+### Landing Page
+
+`features/landing/` is what a guest sees at `/` on the public site. It replaced the login card.
+
+- **Who gets it** (`lib/site.ts`). The landing page is for the public site only: `isPublicSite()` is true on `hlbldr.com` and nowhere else. Somebody who runs their own copy has no use for a page that explains the product and how to host it, so a guest there gets `features/auth/pages/welcome-page.tsx`: the way in, what this instance has switched on (version, sign-in, MCP, assistant, read from `/auth/config`) and the rack. It is `noindex`, and the tab title is plain "HLBuilder". An instance without login never shows either: its owner is signed in at once and lands on the projects page, which asks "What do you want to plan?" while there is no project (`features/builder/components/first-project.tsx`: three ways into the guided planner, an empty canvas, an import). To work on the landing page on another host, open any page with `?landing=on` (`?landing=off` ends it); the script in `index.html` stores that, and it makes the same host decision as `site.ts` before the app starts.
+- **Design.** Built from the app's own tokens and faces, so it reads as the same product. The header of `landing.css` states the rules: no accent colour, no gradients, no glow; every heading in a left rail, the thing itself beside it. Colour belongs to the plan: the device cards in the demo, and two status colours in the tables. The monospace face is for addresses, figures and code. The one picture in `public/landing/` is shown in greyscale and blended into the ground. The scanner of [avoid-ai-design](https://github.com/funboy322/avoid-ai-design) (`scripts/detect.mjs`) reported nothing on this folder when it was written; run it again after a redesign.
+- **ASCII rack** (`lib/ascii-rack.ts`, `components/ascii-rack.tsx`). The picture in the opening is a server rack in 3D drawn with ASCII characters, turning slowly; its lights blink and the fans on its back spin. It is our own renderer, about 300 lines and no dependency: one ray per character cell against a handful of boxes, the angle to the light picks a character from a ramp, and each face of a device adds its detail (`front`, `back`, `flank`). The result is three strings on one grid (shading, green lights, amber lights). `renderRack(angle, time, cols, rows)` is pure, so React renders one still frame (that is what the prerendered page and a browser without JavaScript show) and a loop at 30 frames a second rewrites the text while the rack is on screen. A frame takes about 1.5 ms. It can be paused and dragged round. When the system asks for reduced motion (on Windows: "Animation effects" off, which many people set for speed) the rack stands still with its lights blinking slowly, and the same button starts it. The cell shape in `landing.css` (`.lp-rack`: 0.6 em wide, line height 1.1) and `CELL_ASPECT` in the renderer belong together. Detail on a face must stay coarse: a rack unit is about three characters high.
+- **Motion** (`components/use-live.ts`, the last block of `landing.css`). Besides the rack, three things move, each once, when its block is first seen, and each shows something being worked out: the addresses in the table are handed out from the router outward, the load bars fill to their value, Compose reports its containers. There are no fade-up reveals. `useLive` arms a block only when motion is welcome, so with reduced motion, without JavaScript and in the prerendered copy these blocks show their final state.
+- **Demo** (`components/landing-demo.tsx`, `lib/demo-plan.ts`). The guided planners (`buildHomelabPlan`, `buildLanPartyPlan`), `mapBuildToFlow`, the builder's `HardwareNode` and `CustomEdge`, and `computeLayout` run in the browser; nothing is saved. A plan is arranged once more after its cards have been measured, since the planner works from estimated sizes. Addresses come from `lib/demo-addresses.ts`, a copy of the role zones, because no server calculates anything for a guest. A rack is not offered: `RackNode` draws its contents from the builder store, which the demo does not fill. The demo is loaded when it scrolls near (it brings React Flow). "Keep this plan" stores the planner's path in `sessionStorage` (`AFTER_LOGIN_KEY`), and `AppContent` opens it after sign-in.
+- **Prerender.** `npm run build` ends with `vite build --ssr src/prerender.tsx` and `scripts/prerender.mjs`. The script writes the page into `dist/index.html` as `#prerender` next to the empty `#root`, adds the canonical link and the FAQ structured data, and keeps the untouched shell as `dist/app.html`. A crawler that runs no JavaScript (most AI crawlers) reads the whole page. In the browser `#root` stays hidden until `LandingPage` has drawn itself; `releasePrerender` then removes the copy and carries the scroll position over. A script in `index.html` hides the copy at once on any host but the public site, and for a browser that holds a token or has seen an instance without login (`LOCAL_INSTANCE_KEY`), so signed-in users and self-hosters never see the landing page flash by.
+- **nginx** (`frontend/nginx.conf`). `/` serves `index.html`, the known routes of the app serve `app.html`, and anything else is a real 404 (`public/404.html`).
+- `useAuth` starts with `loading` false when the auth config is known, login is on and there is no token: a guest gets the landing page without a loading screen in between.
+
 ### Feature Structure
 
 Each feature under `src/features/` follows this general pattern (not all subdirs are present in every feature):
@@ -469,11 +487,11 @@ feature/
 |---|---|
 | `builder/` | Visual network builder - the main feature (ReactFlow canvas, node management, IP display, Polish, proposal review on the canvas) |
 | `admin/` | Admin dashboard, user management, service/hardware admin, steering rules, catalog components |
-| `auth/` | Login page (Google OAuth), profile page |
+| `auth/` | Welcome and sign-in screen of an own instance, profile page |
 | `catalog/` | Public hardware & service catalog browsing |
 | `shopping/` | Shopping list generation from build data |
 | `donate/` | Donation page with progress tracking |
-| `landing/` | Landing page shown to unauthenticated users |
+| `landing/` | Landing page of the public site: ASCII rack, live demo, the plan's tables and files, FAQ, sign-in |
 | `setup-guide/` | Interactive setup checklist |
 | `survey/` | Beta user survey |
 | `settings/` | Settings page: appearance, AI assistant (provider, key, key-protection panel), MCP access tokens |
@@ -484,7 +502,7 @@ feature/
 
 | Path | Component | Auth Required |
 |---|---|---|
-| `/` | `ProjectsPage` (logged in) / `LoginPage` (guest) | No |
+| `/` | `ProjectsPage` (logged in) / `LandingPage` (guest on the public site) / `WelcomePage` (guest on an own instance) | No |
 | `/builder/:id` | `VisualBuilderPage` | Yes |
 | `/generate` | `ConfigGeneratorPage` | Yes |
 | `/planner` | `GuidedPlannerPage` (`?kind=lan_party` or `?kind=game_server` starts on that plan) | Yes |
@@ -540,6 +558,8 @@ Each node type maps to a fixed IP offset block within a `/24` subnet:
 | lan_table | - | - | No (non-network; its seats take DHCP leases) |
 
 Non-network types (`disk`, `gpu`, `hba`, `pcie`, `pdu`, `ups`, `lan_table`) are never assigned IPs even when connected to a router.
+
+The demo on the landing page repeats these zones in `frontend/src/features/landing/lib/demo-addresses.ts`. Change them together.
 
 ### GORM Tag Requirements
 
@@ -671,12 +691,16 @@ hasPrefix(s, prefix string) bool
 | `frontend/src/features/builder/lib/layout/*.test.ts` | - | Layout engine: every promise on fixtures, planner output and random networks; the route against React Flow's own; the canvas adapter |
 | `frontend/src/features/builder/lib/polish.test.ts` | - | What Polish says and remembers |
 | `frontend/src/features/builder/components/proposal-review-panel.test.tsx`, `proposal-review-bar.test.tsx` | - | List of changes; review bar and the banner of a waiting proposal |
-| `frontend/src/features/builder/pages/__tests__/projects-page.test.tsx` | - | Projects page, with rename and delete of the open project |
+| `frontend/src/features/builder/pages/__tests__/projects-page.test.tsx` | - | Projects page, with rename and delete of the open project; the first-project screen and an empty search |
 | `frontend/src/components/layout/project-card.test.tsx`, `sidebar.test.tsx` | - | Project card after a reload, save states, proposal badge, switcher; order of the sidebar, collapsed state |
 | `frontend/src/features/settings/**/*.test.ts(x)` | - | MCP snippets and source links, token card, assistant settings card |
 | `frontend/src/features/assistant/**/*.test.ts(x)` | - | SSE reader; chat store (every event, reading the thread again, a queued message); chat panel; activity timeline |
 | `frontend/src/features/gaming/**/*.test.ts(x)` | - | Sizing, tables, kinds, setup steps, game compose text, plan dialog, node fields |
 | `frontend/src/features/builder/lib/planner/planner.test.ts`, `lib/connection-rules.test.ts` | - | Plan builders for the three kinds; canvas connection rules |
+| `frontend/src/features/landing/lib/demo-plan.test.ts` | - | Demo addresses by role; the demo plans from the real planners |
+| `frontend/src/features/landing/lib/ascii-rack.test.ts`, `components/ascii-rack.test.tsx` | - | The ASCII rack: grid, characters, framing, lights from the front only, fans from behind; pause, and standing still under reduced motion until started |
+| `frontend/src/lib/site.test.ts`, `features/auth/pages/welcome-page.test.tsx` | - | Which hosts get the landing page; the welcome screen of an own instance and what it reports |
+| `frontend/src/features/landing/pages/landing-page.test.tsx` | - | Heading, answers, tables, sign-in; the copy in index.html is released; the prerender entry |
 | `frontend/src/lib/version.test.ts` | - | `package.json` and `backend/internal/version` carry the same version |
 
 ### Test Database
@@ -912,6 +936,14 @@ A bind mount from Windows delivers no file events to the container, so Vite keep
 The frontend suite runs every file at once, and CI uses Node 20. Under that load a component test that clicks and types through a dialog took over 5 s, and the random-network test of the layout engine 16 s, with no assertion failing. `testTimeout` is 15 s for that reason (`vite.config.ts`), and the random-network test has a budget of its own. Judge a timing by the whole suite on `node:20-alpine`, not by one file on a newer Node.
 
 `clearance` in `layout/place.ts` is the engine's hot loop: every subtree that is appended to a row is compared with what stands there. It walks the placed items newest first and skips those that cannot matter. When you change it, compare the drawings before and after (`LAYOUT_PREVIEW` with a few hundred seeds gives a file to diff; the planner drawings differ in order only, their ids are random).
+
+### 32. The landing page is drawn twice
+
+Once as HTML when the app is built, once by React in the browser, and the swap must not be seen. Whatever differs between the two (the sign-in button, the demo, the star count) is mounted after the first paint (`useMounted`, `DemoSlot`, `useStars`). `LandingPage` has to stay importable without a browser: nothing it imports at the top may touch `window` or pull in the API client, which is why `GoogleLoginButton` is loaded lazily. The frame around the page is `APP_SHELL_CLASS`, shared by `App.tsx` and `src/prerender.tsx`. `landing-page.test.tsx` renders the prerender entry.
+
+### 33. A new route needs a line in nginx.conf
+
+nginx no longer falls back to the app for an unknown path. A route added to `App.tsx` must be added to the matching `location` in `frontend/nginx.conf` (public, or behind the login), or it is a 404 in the image while it works in `vite dev`.
 
 ---
 
