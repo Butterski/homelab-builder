@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Butterski/homelab-builder/backend/internal/inventory"
 	"github.com/Butterski/homelab-builder/backend/internal/models"
 	"github.com/google/uuid"
 )
@@ -269,6 +270,18 @@ func checkRange(field string, value, low, high float64) error {
 		return fmt.Errorf("%s must be between %v and %v", field, low, high)
 	}
 	return nil
+}
+
+// cleanMAC returns a hardware address the way it is stored, or "" to clear it.
+func cleanMAC(value string) (string, error) {
+	if strings.TrimSpace(value) == "" {
+		return "", nil
+	}
+	mac, ok := inventory.NormalizeMAC(value)
+	if !ok {
+		return "", fmt.Errorf("mac_address %q is not a hardware address (AA:BB:CC:DD:EE:FF)", strings.TrimSpace(value))
+	}
+	return mac, nil
 }
 
 func isIPv4(value string) bool {

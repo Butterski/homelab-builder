@@ -87,6 +87,13 @@ type TopologyOp struct {
 	StaticIP         *string  `json:"static_ip,omitempty"`
 	CatalogServiceID string   `json:"catalog_service_id,omitempty"`
 
+	// What an import knows about a machine or a guest and the plan keeps: the
+	// hardware address, the size of a guest's disk, and the id the guest has on
+	// the system it was read from, so the next comparison finds it again.
+	MacAddress *string  `json:"mac_address,omitempty"`
+	DiskGB     *float64 `json:"disk_gb,omitempty"`
+	VMID       *float64 `json:"vmid,omitempty"`
+
 	// Game server settings of a service added from a game in the catalog.
 	Players    *float64 `json:"players,omitempty"`
 	Exposure   *string  `json:"exposure,omitempty"`
@@ -509,6 +516,11 @@ func (ed *topologyEditor) addNode(op TopologyOp) (TopologyOp, error) {
 			return op, err
 		}
 	}
+	if op.MacAddress != nil {
+		if node.MacAddress, err = cleanMAC(*op.MacAddress); err != nil {
+			return op, err
+		}
+	}
 	ed.graph.Nodes = append(ed.graph.Nodes, node)
 	nodeIdx := len(ed.graph.Nodes) - 1
 
@@ -600,6 +612,11 @@ func (ed *topologyEditor) updateNode(op TopologyOp) (TopologyOp, error) {
 	}
 	if op.IP != nil {
 		if err := setNodeIP(node, *op.IP); err != nil {
+			return op, err
+		}
+	}
+	if op.MacAddress != nil {
+		if node.MacAddress, err = cleanMAC(*op.MacAddress); err != nil {
 			return op, err
 		}
 	}

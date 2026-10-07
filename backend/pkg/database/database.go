@@ -104,6 +104,8 @@ func Models() []any {
 		&models.AssistantSettings{},
 		&models.AssistantThread{},
 		&models.AssistantMessage{},
+		&models.InventoryItem{},
+		&models.Integration{},
 		&models.SystemSetting{},
 	}
 }
