@@ -1,6 +1,5 @@
-import type { HardwareNode, HardwareSpec } from '../../../types';
+import type { HardwareNode, HardwareSpec, PowerCircuit } from '../../../types';
 import { useBuilderStore } from '../../builder/store/builder-store';
-import { completePlan } from '../lib/kind';
 import { NumberInput } from './number-input';
 import {
   CONSOLE_PLATFORMS,
@@ -21,13 +20,20 @@ const inputClass =
 const labelClass = 'text-xs text-muted-foreground';
 
 /**
+ * What a build without circuits has. One array for all of them: a store
+ * selector that hands out a new array on every call never settles, and the
+ * panel would render until React gives up (pitfall 37).
+ */
+const NO_CIRCUITS: PowerCircuit[] = [];
+
+/**
  * The fields gaming builds add to a device: seats and switch of a LAN table,
  * the platform of a console, the Wi-Fi clients of an access point, and the
  * power circuit any device is plugged into.
  */
 export function GamingNodeFields({ node }: { node: HardwareNode }) {
   const updateHardware = useBuilderStore(state => state.updateHardware);
-  const circuits = useBuilderStore(state => completePlan(state.gamingPlan).power.circuits);
+  const circuits = useBuilderStore(state => state.gamingPlan?.power?.circuits ?? NO_CIRCUITS);
 
   // Read the latest details at write time: other fields of the panel save on a delay.
   const patchDetails = (patch: Partial<HardwareSpec>, extra: Partial<HardwareNode> = {}) => {
