@@ -138,7 +138,7 @@ describe('ProjectCard', () => {
     renderCard();
     const card = screen.getByRole('region', { name: 'Current project' });
 
-    expect(card).toHaveTextContent('Game server · 2 devices');
+    expect(card).toHaveTextContent('Game server, 2 devices');
     // The miniature is a second way to the canvas for a mouse; it is not announced twice.
     expect(card.querySelector('svg[aria-label="Basement Lab: the canvas in miniature"]')).not.toBeNull();
     expect(within(card).getByRole('status')).toHaveTextContent('Saved');
