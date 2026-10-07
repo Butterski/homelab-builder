@@ -758,6 +758,23 @@
   border-color: rgba(251, 191, 36, 0.24);
 }
 
+/* A device that is one of the owner's machines: nothing to buy. */
+.node-owned-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1rem;
+  border-radius: 4px;
+  padding: 0 0.3rem;
+  color: var(--foreground);
+  background: var(--background);
+  border: 1px solid color-mix(in srgb, var(--foreground) 34%, var(--border));
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
 .node-status-led {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--background) 70%, transparent);
 }

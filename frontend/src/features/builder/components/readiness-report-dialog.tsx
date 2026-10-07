@@ -38,6 +38,8 @@ type ReadinessReportDialogProps = {
   validationIssues: HardwareNodeValidationIssue[];
   onGenerateConfig: () => void;
   onReassignIPs: () => void | Promise<void>;
+  /** What the owner's own spare hardware would fix, each in a sentence. */
+  hints?: string[];
 };
 
 type ReportSection = {
@@ -464,6 +466,7 @@ export function ReadinessReportDialog({
   validationIssues,
   onGenerateConfig,
   onReassignIPs,
+  hints = [],
 }: ReadinessReportDialogProps) {
   const report = useMemo(
     () => computeReadinessReport(hardwareNodes, edges, validationIssues),
@@ -563,6 +566,11 @@ export function ReadinessReportDialog({
                     className={cn('rounded-md border px-3 py-2 text-sm', actionToneClass(action.tone))}
                   >
                     {action.label}
+                  </div>
+                ))}
+                {hints.map(hint => (
+                  <div key={hint} className={cn('rounded-md border px-3 py-2 text-sm', actionToneClass('info'))}>
+                    {hint}
                   </div>
                 ))}
               </div>

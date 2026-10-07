@@ -26,6 +26,9 @@ const STATUS_TEXT: Record<Exclude<ProposalStatus, 'pending'>, string> = {
 
 function sourceText(proposal: Proposal): string {
   if (proposal.source === 'chat') return 'In-app assistant';
+  if (proposal.source === 'import') {
+    return proposal.source_label ? `${proposal.source_label} · import` : 'Import';
+  }
   return proposal.source_label ? `${proposal.source_label} · MCP` : 'MCP client';
 }
 
@@ -41,8 +44,28 @@ const PLAN_LABELS: Record<string, string> = {
   'event.hours': 'Length (hours)',
 };
 
+/** Details that say which physical machine a device is. */
+const ASSET_LABELS: Record<string, string> = {
+  'details.inventory_label': 'Machine from your inventory',
+  'details.inventory_item_id': 'Inventory item',
+  'details.proxmox_node': 'Proxmox host',
+};
+
 function fieldLabel(field: string): string {
-  return PLAN_LABELS[field] ?? field.replace(/^details\./, '').replace(/_/g, ' ');
+  return (
+    PLAN_LABELS[field] ??
+    ASSET_LABELS[field] ??
+    field.replace(/^details\./, '').replace(/_/g, ' ')
+  );
+}
+
+/**
+ * What a row lists of a change. The id of an inventory item says nothing to a
+ * reader; its name stands beside it and is what is shown.
+ */
+function shownChanges(changes: FieldChange[] | undefined): FieldChange[] {
+  if (!changes?.some(change => change.field === 'details.inventory_label')) return changes ?? [];
+  return changes.filter(change => change.field !== 'details.inventory_item_id');
 }
 
 /** Says a plan value the way the Game plan dialog shows it. */
@@ -104,7 +127,7 @@ function Row({
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm">{title}</span>
         {detail && <span className="block truncate text-xs text-muted-foreground">{detail}</span>}
-        {changes?.map(change => (
+        {shownChanges(changes).map(change => (
           <span key={change.field} className="block text-xs text-muted-foreground">
             <span className="text-foreground/80">{fieldLabel(change.field)}:</span>{' '}
             <span className="line-through opacity-70">{formatValue(change.before)}</span>

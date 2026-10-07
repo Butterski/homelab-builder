@@ -9,14 +9,14 @@ import {
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { Label } from '../../../components/ui/label';
-import type { HardwareType, HardwareSpec } from '../../../types';
+import type { ComponentType, HardwareSpec } from '../../../types';
 import { nodeHasCPU, nodeHasRAM, nodeHasStorage } from '../../../lib/hardware-config';
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: (data: { name: string; details: HardwareSpec }) => void;
-  initialType: HardwareType;
+  initialType: ComponentType;
   initialName?: string;
   initialDetails?: HardwareSpec;
   title?: string; // Added optional title prop as it's used in VisualBuilder
@@ -97,6 +97,12 @@ export function ComponentDetailsDialog({
     storage: { value: formatStorageForDisplay(initialDetails?.storage)[0], unit: formatStorageForDisplay(initialDetails?.storage)[1] || 'GB' },
   });
 
+  // A memory module is a component only: it has memory and nothing else.
+  const isMemory = initialType === 'ram';
+  const showCPU = !isMemory && nodeHasCPU(initialType);
+  const showRAM = isMemory || nodeHasRAM(initialType);
+  const showStorage = !isMemory && nodeHasStorage(initialType);
+
   const handleConfirm = () => {
     const spec: HardwareSpec = {};
     const finalSpec: HardwareSpec = { ...spec, model: form.model };
@@ -165,7 +171,7 @@ export function ComponentDetailsDialog({
           </div>
 
           {/* CPU - Compute types */}
-          {nodeHasCPU(initialType) && (
+          {showCPU && (
             <>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="cpu_cores" className="text-right">
@@ -184,7 +190,7 @@ export function ComponentDetailsDialog({
           )}
 
           {/* RAM - Compute + GPU */}
-          {nodeHasRAM(initialType) && (
+          {showRAM && (
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="ram" className="text-right">
                 {initialType === 'gpu' ? 'VRAM' : 'RAM'}
@@ -211,7 +217,7 @@ export function ComponentDetailsDialog({
           )}
 
           {/* Storage - Compute + Disk + NAS */}
-          {nodeHasStorage(initialType) && (
+          {showStorage && (
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="storage" className="text-right">
                 Storage

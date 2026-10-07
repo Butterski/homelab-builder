@@ -20,6 +20,7 @@ import type { HardwareSpec, HardwareType } from '../../../types';
 import { VMManager } from './vm-manager';
 import { InternalComponentManager } from './internal-component-manager';
 import { GamingNodeFields } from '../../gaming/components/gaming-node-fields';
+import { NodeAssetField } from '../../inventory/components/node-asset-field';
 import {
   canNodeHostVMs,
   nodeHasCPU,
@@ -497,6 +498,8 @@ export function NodePropertiesPanel() {
               </div>
             </div>
           )}
+
+          <NodeAssetField node={selectedNode} />
 
           <GamingNodeFields node={selectedNode} />
 

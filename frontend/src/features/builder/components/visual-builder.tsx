@@ -62,6 +62,9 @@ import { getNodePortCount } from '../lib/port-count';
 import { polishCanvas } from '../lib/polish';
 import { isNatDownstreamEdge } from '../lib/network-zone';
 import { withFreshChildIds } from '../lib/hardware-instance';
+import { installComponent, placeDevice } from '../../inventory/lib/place';
+import { useUpgradeHints } from '../../inventory/hooks/use-upgrade-hints';
+import { upgradeHintText } from '../../inventory/lib/upgrade-hints';
 import { useAuth } from '../../admin/hooks/use-auth';
 import {
   DropdownMenu,
@@ -763,6 +766,19 @@ const Flow = React.memo(function Flow() {
 
   const reviewBusy = proposals.busy === 'apply' || proposals.busy === 'reject' ? proposals.busy : null;
 
+  // An import from an integration ends in a proposal: it is shown at once,
+  // like one the assistant made in this session.
+  const { refreshSyncState, openReview } = proposals;
+  const reviewImported = useCallback(
+    (proposalId: string) => {
+      void refreshSyncState();
+      void openReview(proposalId);
+    },
+    [refreshSyncState, openReview],
+  );
+  // Hosts short of memory that the owner's own spare memory would fix.
+  const upgradeHints = useUpgradeHints();
+
   const saveErrorText = (err: unknown, fallback: string) =>
     err instanceof BuildConflictError || (err instanceof ApiError && err.status === 422)
       ? err.message
@@ -1040,6 +1056,43 @@ const Flow = React.memo(function Flow() {
 
       const rackTarget = intersecting.find((n: any) => n.type === 'rack');
 
+      // Something the owner has. A component goes into the machine it is
+      // dropped on; a device becomes a node that is that machine, once.
+      if (data.inventory) {
+        if (data.inventory.kind !== 'device') {
+          const host = intersecting.find((n: any) => n.type === 'hardware');
+          const result = installComponent(host?.id ?? '', {
+            id: crypto.randomUUID(),
+            type: data.type,
+            name: data.name,
+            power_draw: data.power_draw,
+            details: data.details || {},
+          });
+          (result.ok ? toast.success : toast.error)(result.message);
+          return;
+        }
+        const racked = rackTarget && data.type !== 'rack' && !isFloorNode(data.type);
+        const uSlot = racked
+          ? Math.max(0, Math.round((position.y - rackTarget.position.y - RACK_HEADER_PX) / RACK_U_HEIGHT_PX))
+          : 0;
+        const result = racked
+          ? placeDevice(
+              data,
+              { x: RACK_RAIL_WIDTH, y: RACK_HEADER_PX + uSlot * RACK_U_HEIGHT_PX },
+              {
+                parent_id: rackTarget.id,
+                details: {
+                  ...(data.details || {}),
+                  rack_units: data.details?.rack_units || DEFAULT_DEVICE_U[data.type] || 1,
+                  rack_position: uSlot,
+                },
+              },
+            )
+          : placeDevice(data, position);
+        if (!result.ok) toast.info(result.message);
+        return;
+      }
+
       if (rackTarget && data.type !== 'rack' && !isFloorNode(data.type) && !isServiceDrag) {
         // Calculate the U-slot position based on drop position within the rack
         const relY = position.y - rackTarget.position.y - RACK_HEADER_PX;
@@ -1262,7 +1315,7 @@ const Flow = React.memo(function Flow() {
 
         {/* The library adds to the build; a review only looks at it. */}
         <div className={reviewingProposal ? 'hidden' : 'contents'}>
-          <HardwareToolbox />
+          <HardwareToolbox buildId={id} onProposal={reviewImported} />
         </div>
         <ReadinessReportDialog
           open={readinessOpen}
@@ -1272,6 +1325,7 @@ const Flow = React.memo(function Flow() {
           validationIssues={validationIssues}
           onGenerateConfig={() => navigate('/generate')}
           onReassignIPs={handleReassignIPs}
+          hints={upgradeHints.map(upgradeHintText)}
         />
         <GamingPlanDialog
           open={gamePlanOpen}

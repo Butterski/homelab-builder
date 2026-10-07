@@ -33,6 +33,7 @@ import {
   fitTone,
   formatMetric,
 } from '../lib/blueprint-fit';
+import { withoutAssetLink } from '../../../lib/asset-link';
 
 type Props = {
   open: boolean;
@@ -223,7 +224,7 @@ export function HardwareBlueprintCreator({ open, onClose, initialNode }: Props) 
     }
 
     const details = {
-      ...(initialNode?.details || {}),
+      ...withoutAssetLink(initialNode?.details || {}),
       model: name.trim(),
       cpu: numberOrUndefined(cpu),
       ram: numberOrUndefined(ram),
@@ -246,7 +247,10 @@ export function HardwareBlueprintCreator({ open, onClose, initialNode }: Props) 
           name: name.trim(),
           details,
           power_draw: numberOrUndefined(power),
-          internal_components: internalComponents,
+          internal_components: internalComponents.map(component => ({
+            ...component,
+            details: component.details ? withoutAssetLink(component.details) : component.details,
+          })),
           vms: initialNode?.vms || [],
         },
       });

@@ -37,6 +37,7 @@ import {
 import { api } from '../../../services/api';
 import { ApiError } from '../../../lib/api';
 import { WORKSPACE_STORAGE_KEY } from './workspace-storage';
+import { withoutAssetLink } from '../../../lib/asset-link';
 import { computeLayout, type LayoutResult, type LayoutStyle } from '../lib/layout';
 import { layoutGraphFromFlow } from '../lib/layout/from-flow';
 import {
@@ -772,15 +773,22 @@ export const useBuilderStore = create<BuilderState>()(
         // Don't duplicate racks (too complex with children)
         if (orig.type === 'rack') return;
         const newId = crypto.randomUUID();
+        // A copy cannot be the same physical machine, nor hold the same parts:
+        // the links to the owner's inventory stay with the original.
         const dup = withFreshChildIds({
           ...orig,
           id: newId,
           name: `${orig.name} (copy)`,
           ip: '',
+          mac_address: '',
           x: orig.x + 40,
           y: orig.y + 40,
           vms: [],
-          details: { ...orig.details, virtual_network: undefined },
+          details: withoutAssetLink({ ...orig.details, virtual_network: undefined }),
+          internal_components: (orig.internal_components ?? []).map(component => ({
+            ...component,
+            details: component.details ? withoutAssetLink(component.details) : component.details,
+          })),
           parent_id: orig.parent_id,
         });
 

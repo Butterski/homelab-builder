@@ -2,12 +2,14 @@ import { useState } from "react"
 import { useBuilderStore } from "../store/builder-store"
 import { Button } from "../../../components/ui/button"
 import { Badge } from "../../../components/ui/badge"
-import { Trash2, HardDrive, Cpu, ScanLine, CircuitBoard, Component, Zap, Archive, Pencil } from "lucide-react"
-import type { HardwareType, HardwareComponent } from "../../../types"
+import { Trash2, HardDrive, Cpu, ScanLine, CircuitBoard, Component, Zap, Archive, Pencil, Layers } from "lucide-react"
+import type { ComponentType, HardwareComponent } from "../../../types"
+import { assetLinkOf } from "../../../lib/asset-link"
 import { ComponentDetailsDialog } from "./component-details-dialog"
 import { ConfirmDialog } from "../../../components/ui/confirm-dialog"
 
-const COMPONENT_ICONS: Partial<Record<HardwareType, React.ElementType>> = {
+const COMPONENT_ICONS: Partial<Record<ComponentType, React.ElementType>> = {
+    ram: Layers,
     disk: HardDrive,
     gpu: ScanLine,
     hba: CircuitBoard,
@@ -110,7 +112,9 @@ export function InternalComponentManager({ nodeId }: Props) {
                     onConfirm={(data) => {
                         updateInternalComponent(nodeId, editingComponent.id, {
                             name: data.name,
-                            details: data.details
+                            // The form rewrites the figures; which item of the
+                            // owner's inventory the component is stays.
+                            details: { ...assetLinkOf(editingComponent.details), ...data.details }
                         })
                         setEditingComponent(null)
                     }}

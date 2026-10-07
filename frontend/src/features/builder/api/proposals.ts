@@ -96,7 +96,8 @@ export type ProposalSummary = {
   id: string;
   build_id: string;
   summary: string;
-  source: 'mcp' | 'chat';
+  /** An LLM client, the in-app assistant, or an import from an integration. */
+  source: 'mcp' | 'chat' | 'import';
   source_label: string;
   status: ProposalStatus;
   status_reason?: string;
@@ -112,7 +113,7 @@ export type Proposal = {
   id: string;
   build_id: string;
   summary: string;
-  source: 'mcp' | 'chat';
+  source: 'mcp' | 'chat' | 'import';
   source_label: string;
   status: ProposalStatus;
   status_reason: string;

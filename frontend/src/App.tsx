@@ -14,6 +14,7 @@ const AdminPage = lazy(() => import('./features/admin/pages/admin-page'));
 const HardwareCatalogPage = lazy(() => import('./features/catalog/pages/hardware-catalog-page'));
 const ServiceCatalogPage = lazy(() => import('./features/catalog/pages/service-catalog-page'));
 const ChecklistPage = lazy(() => import('./features/setup-guide/pages/checklist-page'));
+const InventoryPage = lazy(() => import('./features/inventory/pages/inventory-page'));
 const HomelabGuidePage = lazy(() => import('./features/guides/pages/homelab-guide-page'));
 const ArticleVisualPage = lazy(() => import('./features/guides/pages/article-visual-page'));
 const ConfigGeneratorPage = lazy(() => import('./features/builder/pages/config-generator-page'));
@@ -222,6 +223,14 @@ function AppContent() {
               element={
                 <RequireAuth>
                   <ChecklistPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/inventory"
+              element={
+                <RequireAuth>
+                  <InventoryPage />
                 </RequireAuth>
               }
             />

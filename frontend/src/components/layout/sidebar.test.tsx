@@ -78,6 +78,8 @@ describe('Sidebar', () => {
       'Canvas',
       'Config Generator',
       'Setup Guide',
+      // What the user owns comes before what is only looked up.
+      'Inventory',
       'Hardware Catalog',
       'Service Library',
       'Homelab Guide',

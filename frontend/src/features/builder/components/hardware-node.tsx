@@ -320,8 +320,11 @@ function VmChip({ vm }: { vm: VirtualMachine }) {
   );
 }
 
+/** A memory module is a component only, so it has no entry among the node types. */
+const RAM_CONFIG = { ...FALLBACK_CONFIG, icon: Layers };
+
 function ComponentChip({ component }: { component: HardwareComponent }) {
-  const cfg = TYPE_CONFIG[component.type] ?? FALLBACK_CONFIG;
+  const cfg = component.type === 'ram' ? RAM_CONFIG : (TYPE_CONFIG[component.type] ?? FALLBACK_CONFIG);
   const Icon = cfg.icon;
 
   return (
@@ -570,6 +573,18 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
             <div className="flex items-center gap-1.5 pt-0.5">
               <span className="node-type-pill">{TYPE_LABEL[nodeData.type] ?? nodeData.type}</span>
               {isLegacyServer && <span className="node-legacy-pill">Legacy</span>}
+              {details.inventory_item_id && (
+                <span
+                  className="node-owned-pill"
+                  title={
+                    details.inventory_label
+                      ? `From the inventory: ${details.inventory_label}`
+                      : 'A machine from the inventory'
+                  }
+                >
+                  Owned
+                </span>
+              )}
               {nodeHasDynamicPorts(nodeData.type) && (
                 <span className="node-port-count">{numPorts} ports</span>
               )}
