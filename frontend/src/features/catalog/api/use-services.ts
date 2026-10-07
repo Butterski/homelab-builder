@@ -9,10 +9,12 @@ export interface UserSelection {
     created_at: string
 }
 
-export function useUserSelections() {
+/** A visitor without an account has no favorites: pass `enabled: false` to not ask for them. */
+export function useUserSelections(options?: { enabled?: boolean }) {
     return useQuery<{ data: UserSelection[] }>({
         queryKey: ["user-selections"],
         queryFn: () => api.get<{ data: UserSelection[] }>("/api/selections"),
+        enabled: options?.enabled ?? true,
     })
 }
 
