@@ -1,25 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import {
-  ArrowLeft,
-  ArrowRight,
-  Check,
-  Cloud,
-  Gauge,
-  HardDrive,
-  Home,
-  Loader2,
-  Network,
-  Play,
-  Server,
-  ShieldCheck,
-  Sparkles,
-  Wallet,
-  type LucideIcon,
-} from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { Page, PageHeader } from '../../../components/layout/page';
 import { Button } from '../../../components/ui/button';
-import { Card } from '../../../components/ui/card';
+import { hardwareTypeName } from '../../../lib/hardware-taxonomy';
+import { cn } from '../../../lib/utils';
 import type { BuildKind, GameExposure, Service } from '../../../types';
 import { buildApi, type CreateBuildParams } from '../api/builds';
 import { useBuilderStore } from '../store/builder-store';
@@ -47,13 +33,13 @@ import {
   type PlannerAnswers,
 } from '../lib/planner/types';
 
-const GOALS: Array<{ id: Goal; description: string; icon: LucideIcon }> = [
-  { id: 'backup', description: 'Protect family files and device backups.', icon: HardDrive },
-  { id: 'media', description: 'Run a private movie and music library.', icon: Play },
-  { id: 'home', description: 'Keep automations local and dependable.', icon: Home },
-  { id: 'network', description: 'DNS filtering, Wi-Fi, and visibility.', icon: Network },
-  { id: 'development', description: 'Git, CI, containers, and test services.', icon: Server },
-  { id: 'security', description: 'A safer VPN entry point to your lab.', icon: ShieldCheck },
+const GOALS: Array<{ id: Goal; description: string }> = [
+  { id: 'backup', description: 'Protect family files and device backups.' },
+  { id: 'media', description: 'Run a private movie and music library.' },
+  { id: 'home', description: 'Keep automations local and dependable.' },
+  { id: 'network', description: 'DNS filtering, Wi-Fi, and visibility.' },
+  { id: 'development', description: 'Git, CI, containers, and test services.' },
+  { id: 'security', description: 'A safer VPN entry point to your lab.' },
 ];
 
 const FOOTPRINTS: Array<{ id: Footprint; label: string; description: string }> = [
@@ -122,6 +108,10 @@ const isKind = (value: string | null): value is BuildKind =>
 
 const games = (services: Service[]) => services.filter(service => service.game?.role === 'game');
 
+/** The question a step asks, and a sentence on what the answer changes. */
+const QUESTION = 'text-xl font-semibold tracking-[-0.01em]';
+const QUESTION_NOTE = 'mt-1.5 max-w-2xl text-sm text-muted-foreground';
+
 export default function GuidedPlannerPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -183,7 +173,8 @@ export default function GuidedPlannerPage() {
 
   const steps = kind ? STEPS[kind] : [];
   const lastStep = steps.length - 1;
-  const name = kind === 'lan_party' ? party.name : kind === 'game_server' ? server.name : answers.name;
+  const name =
+    kind === 'lan_party' ? party.name : kind === 'game_server' ? server.name : answers.name;
   const setName = (value: string) => {
     if (kind === 'lan_party') setParty(current => ({ ...current, name: value }));
     else if (kind === 'game_server') setServer(current => ({ ...current, name: value }));
@@ -291,47 +282,40 @@ export default function GuidedPlannerPage() {
   );
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
-      <header className="relative overflow-hidden rounded-3xl border bg-card p-6 sm:p-9">
-        <div className="pointer-events-none absolute -right-24 -top-24 size-72 rounded-full bg-primary/15 blur-3xl" />
-        <div className="relative max-w-3xl">
-          <div className="mb-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-primary">
-            <Sparkles className="size-4" />
-            Guided Planner
-          </div>
-          <h1 className="text-3xl font-semibold tracking-tight sm:text-5xl">{intro.title}</h1>
-          <p className="mt-4 max-w-2xl text-sm leading-7 text-muted-foreground sm:text-base">
-            {intro.text}
-          </p>
-        </div>
-      </header>
+    <Page width="article" className="pb-20">
+      <PageHeader title={intro.title} lede={intro.text} />
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
-        <Card className="overflow-hidden">
+      <div className="grid gap-x-12 gap-y-8 pt-6 lg:grid-cols-[minmax(0,1fr)_17rem]">
+        <div className="min-w-0">
           {kind && (
-            <div className="flex items-center gap-2 border-b px-5 py-4 sm:px-7">
+            <ol className="flex flex-wrap gap-x-7 border-b text-sm" aria-label="Steps of the plan">
               {steps.map((label, index) => (
-                <div key={label} className="flex min-w-0 flex-1 items-center gap-2">
-                  <span
-                    className={`grid size-7 shrink-0 place-items-center rounded-full text-xs font-semibold ${index <= step ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
-                  >
-                    {index < step ? <Check className="size-3.5" /> : index + 1}
-                  </span>
-                  <span className="hidden truncate text-xs font-medium sm:block">{label}</span>
-                  {index < lastStep && <span className="h-px flex-1 bg-border" />}
-                </div>
+                <li
+                  key={label}
+                  aria-current={index === step ? 'step' : undefined}
+                  className={cn(
+                    '-mb-px flex items-baseline gap-2 border-b-2 pb-3',
+                    index === step
+                      ? 'border-foreground font-medium text-foreground'
+                      : 'border-transparent text-muted-foreground',
+                  )}
+                >
+                  <span className="app-figure text-xs">{index + 1}</span>
+                  {label}
+                  {index < step && <span className="sr-only"> (answered)</span>}
+                </li>
               ))}
-            </div>
+            </ol>
           )}
 
-          <section className="p-5 sm:p-7" aria-live="polite">
+          <section className={cn('pb-8', kind && 'pt-7')} aria-live="polite">
             {!kind && (
               <fieldset>
-                <legend className="text-2xl font-semibold">What are you planning?</legend>
-                <p className="mt-2 text-sm text-muted-foreground">
+                <legend className={QUESTION}>What are you planning?</legend>
+                <p className={QUESTION_NOTE}>
                   Each plan asks different questions and adds its own checks.
                 </p>
-                <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                <div className="mt-5 grid gap-3 sm:grid-cols-3">
                   {BUILD_KINDS.map(entry => (
                     <ChoiceCard
                       key={entry.kind}
@@ -339,7 +323,6 @@ export default function GuidedPlannerPage() {
                       onClick={() => setPicked(entry.kind)}
                       title={entry.label}
                       description={entry.description}
-                      icon={entry.icon}
                     />
                   ))}
                 </div>
@@ -349,19 +332,19 @@ export default function GuidedPlannerPage() {
             {/* ── Homelab ─────────────────────────────────────────────── */}
             {kind === 'homelab' && step === 0 && (
               <fieldset>
-                <legend className="text-2xl font-semibold">What should your lab do?</legend>
-                <p className="mt-2 text-sm text-muted-foreground">
+                <legend className={QUESTION}>What should your lab do?</legend>
+                <p className={QUESTION_NOTE}>
                   Pick every goal that matters. Services stay editable after creation.
                 </p>
-                <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                   {GOALS.map(goal => (
                     <ChoiceCard
                       key={goal.id}
+                      multiple
                       selected={answers.goals.includes(goal.id)}
                       onClick={() => toggleGoal(goal.id)}
                       title={GOAL_LABELS[goal.id]}
                       description={goal.description}
-                      icon={goal.icon}
                     />
                   ))}
                 </div>
@@ -370,11 +353,11 @@ export default function GuidedPlannerPage() {
 
             {kind === 'homelab' && step === 1 && (
               <fieldset>
-                <legend className="text-2xl font-semibold">Where will it live?</legend>
-                <p className="mt-2 text-sm text-muted-foreground">
+                <legend className={QUESTION}>Where will it live?</legend>
+                <p className={QUESTION_NOTE}>
                   This changes the compute, storage, rack, and cloud layout.
                 </p>
-                <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
                   {FOOTPRINTS.map(item => (
                     <ChoiceCard
                       key={item.id}
@@ -382,7 +365,6 @@ export default function GuidedPlannerPage() {
                       onClick={() => setAnswers(current => ({ ...current, footprint: item.id }))}
                       title={item.label}
                       description={item.description}
-                      icon={item.id === 'cloud' ? Cloud : Server}
                     />
                   ))}
                 </div>
@@ -390,9 +372,9 @@ export default function GuidedPlannerPage() {
             )}
 
             {kind === 'homelab' && step === 2 && (
-              <div className="space-y-8">
+              <div className="space-y-9">
                 <fieldset>
-                  <legend className="text-2xl font-semibold">Set the spending lane</legend>
+                  <legend className={QUESTION}>Set the spending lane</legend>
                   <div className="mt-5 grid gap-3 sm:grid-cols-3">
                     {BUDGETS.map(item => (
                       <ChoiceCard
@@ -402,20 +384,18 @@ export default function GuidedPlannerPage() {
                         title={item.label}
                         description={item.description}
                         meta={item.range}
-                        icon={Wallet}
                       />
                     ))}
                   </div>
                 </fieldset>
                 <fieldset>
-                  <legend className="text-lg font-semibold">Failure tolerance</legend>
+                  <legend className="text-base font-semibold">Failure tolerance</legend>
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
                     <ChoiceCard
                       selected={answers.reliability === 'simple'}
                       onClick={() => setAnswers(current => ({ ...current, reliability: 'simple' }))}
                       title="Keep it simple"
                       description="One compute path and fewer devices to maintain."
-                      icon={Gauge}
                     />
                     <ChoiceCard
                       selected={answers.reliability === 'resilient'}
@@ -424,7 +404,6 @@ export default function GuidedPlannerPage() {
                       }
                       title="Add recovery capacity"
                       description="A second compute target plus protected power where useful."
-                      icon={ShieldCheck}
                     />
                   </div>
                 </fieldset>
@@ -434,11 +413,11 @@ export default function GuidedPlannerPage() {
             {/* ── LAN party ───────────────────────────────────────────── */}
             {kind === 'lan_party' && step === 0 && (
               <fieldset>
-                <legend className="text-2xl font-semibold">Who is coming?</legend>
-                <p className="mt-2 text-sm text-muted-foreground">
+                <legend className={QUESTION}>Who is coming?</legend>
+                <p className={QUESTION_NOTE}>
                   Seats are grouped into tables, each with its own small switch.
                 </p>
-                <div className="mt-6 grid gap-5 sm:grid-cols-2">
+                <div className="mt-5 grid gap-5 sm:grid-cols-2">
                   <NumberField
                     id="party-seats"
                     label="Players with a PC"
@@ -457,7 +436,7 @@ export default function GuidedPlannerPage() {
                     onChange={consoles => setParty(current => ({ ...current, consoles }))}
                   />
                 </div>
-                <div className="mt-5">
+                <div className="mt-6">
                   <ToggleRow
                     checked={party.wifi}
                     onChange={wifi => setParty(current => ({ ...current, wifi }))}
@@ -470,12 +449,12 @@ export default function GuidedPlannerPage() {
 
             {kind === 'lan_party' && step === 1 && (
               <fieldset>
-                <legend className="text-2xl font-semibold">What does the venue offer?</legend>
-                <p className="mt-2 text-sm text-muted-foreground">
+                <legend className={QUESTION}>What does the venue offer?</legend>
+                <p className={QUESTION_NOTE}>
                   Power is what ends LAN parties early. A gaming PC with a monitor is planned at 350
                   W.
                 </p>
-                <div className="mt-6 grid gap-5 sm:grid-cols-3">
+                <div className="mt-5 grid gap-5 sm:grid-cols-3">
                   <NumberField
                     id="party-voltage"
                     label="Mains voltage"
@@ -504,11 +483,10 @@ export default function GuidedPlannerPage() {
                   />
                 </div>
                 <p
-                  className={`mt-4 rounded-xl border px-4 py-3 text-sm ${
-                    circuitCount > party.circuits
-                      ? 'border-destructive/40 bg-destructive/10 text-destructive'
-                      : 'bg-muted/25 text-muted-foreground'
-                  }`}
+                  className={cn(
+                    'mt-5 border-y py-3 text-sm',
+                    circuitCount > party.circuits ? 'text-destructive' : 'text-muted-foreground',
+                  )}
                 >
                   One circuit safely carries a table of {perTable}. {party.seats} players need{' '}
                   {tableCount} {tableCount === 1 ? 'table' : 'tables'}
@@ -546,11 +524,11 @@ export default function GuidedPlannerPage() {
 
             {kind === 'lan_party' && step === 2 && (
               <fieldset>
-                <legend className="text-2xl font-semibold">Anything to host on site?</legend>
-                <p className="mt-2 text-sm text-muted-foreground">
+                <legend className={QUESTION}>Anything to host on site?</legend>
+                <p className={QUESTION_NOTE}>
                   A local server keeps matches inside the room. Skip this to play on public servers.
                 </p>
-                <div className="mt-6">
+                <div className="mt-5">
                   <ToggleRow
                     checked={party.lancache}
                     onChange={lancache => setParty(current => ({ ...current, lancache }))}
@@ -569,8 +547,8 @@ export default function GuidedPlannerPage() {
             {/* ── Game server ─────────────────────────────────────────── */}
             {kind === 'game_server' && step === 0 && (
               <fieldset>
-                <legend className="text-2xl font-semibold">Which games, for how many?</legend>
-                <p className="mt-2 text-sm text-muted-foreground">
+                <legend className={QUESTION}>Which games, for how many?</legend>
+                <p className={QUESTION_NOTE}>
                   Memory and upload scale with the number of players online at once.
                 </p>
                 <GamePicker
@@ -579,7 +557,7 @@ export default function GuidedPlannerPage() {
                   onToggle={toggleServerGame}
                 />
                 {server.games.length > 0 && (
-                  <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                  <div className="mt-6 grid gap-5 sm:grid-cols-2">
                     {server.games.map(game => {
                       const service = gameCatalog.find(item => item.game?.slug === game.slug);
                       if (!service?.game) return null;
@@ -603,29 +581,27 @@ export default function GuidedPlannerPage() {
             )}
 
             {kind === 'game_server' && step === 1 && (
-              <div className="space-y-8">
+              <div className="space-y-9">
                 <fieldset>
-                  <legend className="text-2xl font-semibold">Where does it run?</legend>
+                  <legend className={QUESTION}>Where does it run?</legend>
                   <div className="mt-5 grid gap-3 sm:grid-cols-2">
                     <ChoiceCard
                       selected={server.location === 'home'}
                       onClick={() => setServer(current => ({ ...current, location: 'home' }))}
                       title="At home"
                       description="A mini PC or server behind your own router."
-                      icon={Home}
                     />
                     <ChoiceCard
                       selected={server.location === 'vps'}
                       onClick={() => setServer(current => ({ ...current, location: 'vps' }))}
                       title="Rented VPS"
                       description="A server in a data centre with a public address and its own line."
-                      icon={Cloud}
                     />
                   </div>
                 </fieldset>
                 {server.location === 'home' && (
                   <fieldset>
-                    <legend className="text-lg font-semibold">How do friends reach it?</legend>
+                    <legend className="text-base font-semibold">How do friends reach it?</legend>
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
                       {EXPOSURES.map(option => (
                         <ChoiceCard
@@ -660,7 +636,7 @@ export default function GuidedPlannerPage() {
                       />
                     </div>
                     <div className="mt-5">
-                      <label htmlFor="server-cgnat" className="text-sm font-semibold">
+                      <label htmlFor="server-cgnat" className="text-sm font-medium">
                         Does your provider give you a public IPv4 address?
                       </label>
                       <select
@@ -672,7 +648,7 @@ export default function GuidedPlannerPage() {
                             cgnat: event.target.value as GameServerAnswers['cgnat'],
                           }))
                         }
-                        className="mt-2 h-11 w-full rounded-xl border bg-background px-3 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                        className="mt-1.5 h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                       >
                         <option value="">I do not know</option>
                         <option value="no">Yes, a public address</option>
@@ -693,65 +669,70 @@ export default function GuidedPlannerPage() {
             {/* ── Review, shared ──────────────────────────────────────── */}
             {kind && step === lastStep && (
               <div>
-                <label htmlFor="planner-name" className="text-sm font-semibold">
+                <label htmlFor="planner-name" className="block text-sm font-medium">
                   Project name
                 </label>
                 <input
                   id="planner-name"
                   value={name}
                   onChange={event => setName(event.target.value)}
-                  className="mt-2 h-12 w-full rounded-xl border bg-background px-4 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  className="mt-1.5 h-10 w-full max-w-md rounded-md border border-input bg-transparent px-3 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 />
-                <div className="mt-6 rounded-2xl border bg-muted/25 p-5">
-                  <h2 className="text-xl font-semibold">
-                    {kind === 'homelab' ? 'Your editable starter lab' : 'Your editable plan'}
-                  </h2>
-                  <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                    {[
+
+                <h2 className={cn(QUESTION, 'mt-8')}>
+                  {kind === 'homelab' ? 'Your editable starter lab' : 'Your editable plan'}
+                </h2>
+                <dl className="mt-4 grid grid-cols-2 gap-y-3 border-y py-3 sm:grid-cols-4">
+                  {(
+                    [
                       ['Devices', previewNodes.length],
                       ['Connections', preview.edges.length],
                       ['Services', serviceCount],
                       ['Estimated draw', `${estimatedWatts} W`],
-                    ].map(([label, value]) => (
-                      <div key={label} className="rounded-xl border bg-card p-3">
-                        <p className="text-2xl font-semibold">{value}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">{label}</p>
-                      </div>
-                    ))}
-                  </div>
-                  <ul className="mt-5 space-y-2 text-sm text-muted-foreground">
-                    {previewNodes
-                      .filter(node => node.type !== 'rack' && node.type !== 'ups')
-                      .map(node => (
-                        <li
-                          key={node.id}
-                          className="flex items-center justify-between gap-3 border-b border-border/60 pb-2 last:border-0"
-                        >
-                          <span>
-                            {node.name}
-                            {node.vms.length > 0 && (
-                              <span className="text-xs">
-                                {' '}
-                                · {node.vms.map(vm => vm.name).join(', ')}
-                              </span>
-                            )}
-                          </span>
-                          <span className="shrink-0 text-xs uppercase tracking-wider">
-                            {node.type === 'lan_table'
-                              ? `${node.details.seats} seats`
-                              : node.type.replace('_', ' ')}
-                          </span>
-                        </li>
-                      ))}
-                  </ul>
+                    ] as const
+                  ).map(([label, value]) => (
+                    <div key={label}>
+                      <dt className="text-sm text-muted-foreground">{label}</dt>
+                      <dd className="app-figure text-xl">{value}</dd>
+                    </div>
+                  ))}
+                </dl>
+                <div className="app-table-scroll mt-2">
+                  <table className="app-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Device</th>
+                        <th scope="col">Runs</th>
+                        <th scope="col" className="is-end">
+                          Type
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {previewNodes
+                        .filter(node => node.type !== 'rack' && node.type !== 'ups')
+                        .map(node => (
+                          <tr key={node.id}>
+                            <th scope="row">{node.name}</th>
+                            <td className="text-muted-foreground">
+                              {node.vms.map(vm => vm.name).join(', ')}
+                            </td>
+                            <td className="is-end whitespace-nowrap text-muted-foreground">
+                              {node.type === 'lan_table'
+                                ? `${node.details.seats} seats`
+                                : hardwareTypeName(node.type)}
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}
           </section>
 
-          <footer className="flex flex-col-reverse gap-3 border-t bg-muted/20 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-7">
+          <footer className="flex flex-col-reverse gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between">
             <Button variant="ghost" onClick={goBack}>
-              <ArrowLeft className="size-4" />
               {!kind || (step === 0 && isKind(presetKind)) ? 'Back to projects' : 'Previous'}
             </Button>
             {!kind ? (
@@ -762,20 +743,14 @@ export default function GuidedPlannerPage() {
                 }}
               >
                 Continue
-                <ArrowRight className="size-4" />
               </Button>
             ) : step < lastStep ? (
               <Button disabled={!canContinue} onClick={() => setStep(current => current + 1)}>
                 Continue
-                <ArrowRight className="size-4" />
               </Button>
             ) : (
               <Button disabled={creating || !name.trim()} onClick={createLab}>
-                {creating ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Sparkles className="size-4" />
-                )}
+                {creating && <Loader2 className="animate-spin" aria-hidden="true" />}
                 {creating
                   ? 'Building topology...'
                   : kind === 'homelab'
@@ -784,37 +759,31 @@ export default function GuidedPlannerPage() {
               </Button>
             )}
           </footer>
-        </Card>
+        </div>
 
-        <aside className="h-fit rounded-2xl border bg-card p-5 lg:sticky lg:top-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            Live plan
-          </p>
-          <div className="mt-4 space-y-4">
+        <aside className="h-fit lg:sticky lg:top-6 lg:border-l lg:pl-8">
+          <h2 className="text-sm text-muted-foreground">The plan so far</h2>
+          <div className="mt-3 space-y-4">
             {!kind && (
               <p className="text-sm leading-6 text-muted-foreground">
                 {buildKindInfo(picked).description}
               </p>
             )}
             {kind && (
-              <div>
-                <p className="text-3xl font-semibold">{previewNodes.length}</p>
-                <p className="text-sm text-muted-foreground">planned devices</p>
-              </div>
+              <p>
+                <span className="app-figure text-3xl">{previewNodes.length}</span>{' '}
+                <span className="text-sm text-muted-foreground">planned devices</span>
+              </p>
             )}
             {kind === 'homelab' && (
               <>
-                <div className="h-px bg-border" />
-                <div className="flex flex-wrap gap-2">
+                <ul className="grid border-t text-sm">
                   {answers.goals.map(goal => (
-                    <span
-                      key={goal}
-                      className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary"
-                    >
+                    <li key={goal} className="border-b py-2">
                       {GOAL_LABELS[goal]}
-                    </span>
+                    </li>
                   ))}
-                </div>
+                </ul>
                 <p className="text-xs leading-5 text-muted-foreground">
                   The planner uses real catalog services when a match exists. Missing catalog
                   matches remain clearly labeled placeholders in the editable design.
@@ -823,8 +792,7 @@ export default function GuidedPlannerPage() {
             )}
             {kind === 'lan_party' && (
               <>
-                <div className="h-px bg-border" />
-                <dl className="space-y-2 text-sm">
+                <dl className="grid border-t text-sm">
                   <PlanFact label="Tables" value={`${tableCount} × up to ${perTable} seats`} />
                   <PlanFact label="Power" value={`${estimatedWatts} W`} />
                   <PlanFact
@@ -840,8 +808,7 @@ export default function GuidedPlannerPage() {
             )}
             {kind === 'game_server' && (
               <>
-                <div className="h-px bg-border" />
-                <dl className="space-y-2 text-sm">
+                <dl className="grid border-t text-sm">
                   <PlanFact label="Memory needed" value={formatMemory(serverTotals.ram)} />
                   <PlanFact label="Cores needed" value={`${serverTotals.cpu}`} />
                   <PlanFact
@@ -858,15 +825,15 @@ export default function GuidedPlannerPage() {
           </div>
         </aside>
       </div>
-    </main>
+    </Page>
   );
 }
 
 function PlanFact({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-baseline justify-between gap-3">
+    <div className="flex items-baseline justify-between gap-3 border-b py-2">
       <dt className="text-muted-foreground">{label}</dt>
-      <dd className="font-medium">{value}</dd>
+      <dd className="text-right">{value}</dd>
     </div>
   );
 }
@@ -882,7 +849,7 @@ function GamePicker({
 }) {
   if (catalog.length === 0) {
     return (
-      <p className="mt-6 rounded-xl border bg-muted/25 px-4 py-3 text-sm text-muted-foreground">
+      <p className="mt-6 text-sm text-muted-foreground">
         The game catalog is not loaded. You can add game servers later from the Services tab in the
         builder.
       </p>
@@ -890,24 +857,17 @@ function GamePicker({
   }
   return (
     <div className="mt-6 flex flex-wrap gap-2" role="group" aria-label="Games">
-      {catalog.map(service => {
-        const selected = isSelected(service.game!.slug);
-        return (
-          <button
-            key={service.id}
-            type="button"
-            aria-pressed={selected}
-            onClick={() => onToggle(service)}
-            className={`rounded-full border px-3 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
-              selected
-                ? 'border-primary bg-primary/10 font-medium text-primary'
-                : 'border-border hover:border-primary/40'
-            }`}
-          >
-            {service.name.replace(/ Server$/, '')}
-          </button>
-        );
-      })}
+      {catalog.map(service => (
+        <button
+          key={service.id}
+          type="button"
+          aria-pressed={isSelected(service.game!.slug)}
+          onClick={() => onToggle(service)}
+          className="app-filter"
+        >
+          {service.name.replace(/ Server$/, '')}
+        </button>
+      ))}
     </div>
   );
 }

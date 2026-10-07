@@ -19,7 +19,7 @@ that cannot be forwarded, not enough addresses or switch ports, a breaker that t
 - **Guided Planner** (`/planner`): the first question is what you are planning. Pick *LAN party*
   or *Game server*, answer a few questions and you get a wired, addressed build to refine.
   `/planner?kind=lan_party` and `/planner?kind=game_server` go straight to that plan.
-- **New Project**: the dialog asks what the project is for.
+- **New project** on the Projects page: the dialog asks what the project is for.
 - **An existing homelab**: open *Game Plan* from the project menu and change the kind under
   *Plan details*. Game servers you place in a homelab are checked in the report even if you leave
   the kind alone, and the *Game plan* button appears in the toolbar once there is one.

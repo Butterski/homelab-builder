@@ -10,24 +10,10 @@ import {
 } from '../lib/config-generator';
 // allocateIPs removed
 import type { IpAllocatorOptions } from '../lib/config-generator'; // Use type from lib
+import { Page, PageHeader } from '../../../components/layout/page';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
-import {
-  Download,
-  Copy,
-  Check,
-  FileCode,
-  Server,
-  Settings,
-  Globe,
-  Package,
-  AlertCircle,
-  ChevronDown,
-  Network,
-  Home,
-  Gamepad2,
-} from 'lucide-react';
-import { Logo } from '../../../components/ui/logo';
+import { ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 
 type Tab =
@@ -40,15 +26,15 @@ type Tab =
   | 'ip-plan'
   | 'game-servers';
 
-const TABS: { id: Tab; label: string; icon: React.ElementType; ext: string }[] = [
-  { id: 'docker-compose', label: 'Docker Compose', icon: Package, ext: 'docker-compose.yml' },
-  { id: 'env', label: '.env', icon: Settings, ext: '.env' },
-  { id: 'ansible-inventory', label: 'Ansible Inventory', icon: Server, ext: 'inventory.ini' },
-  { id: 'ansible-playbook', label: 'Ansible Playbook', icon: FileCode, ext: 'playbook.yml' },
-  { id: 'nginx', label: 'Nginx Config', icon: Globe, ext: 'nginx.conf' },
-  { id: 'traefik', label: 'Traefik Labels', icon: Globe, ext: 'traefik-labels.yml' },
-  { id: 'ip-plan', label: 'IP Address Plan', icon: Network, ext: 'ip-plan.txt' },
-  { id: 'game-servers', label: 'Game Servers', icon: Gamepad2, ext: 'game-servers.yml' },
+const TABS: { id: Tab; label: string; ext: string }[] = [
+  { id: 'docker-compose', label: 'Docker Compose', ext: 'docker-compose.yml' },
+  { id: 'env', label: '.env', ext: '.env' },
+  { id: 'ansible-inventory', label: 'Ansible Inventory', ext: 'inventory.ini' },
+  { id: 'ansible-playbook', label: 'Ansible Playbook', ext: 'playbook.yml' },
+  { id: 'nginx', label: 'Nginx Config', ext: 'nginx.conf' },
+  { id: 'traefik', label: 'Traefik Labels', ext: 'traefik-labels.yml' },
+  { id: 'ip-plan', label: 'IP Address Plan', ext: 'ip-plan.txt' },
+  { id: 'game-servers', label: 'Game Servers', ext: 'game-servers.yml' },
 ];
 
 // IpLegend removed as it relied on client-side calculation
@@ -74,20 +60,19 @@ function CodeBlock({ content, filename }: { content: string; filename: string })
   };
 
   return (
-    <div className="rounded-xl border overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-2 bg-muted/60 border-b">
-        <span className="text-xs font-mono text-muted-foreground">{filename}</span>
-        <div className="flex gap-2">
+    <div className="overflow-hidden rounded-lg border">
+      <div className="flex items-center justify-between border-b px-4 py-1.5">
+        <span className="font-mono text-xs text-muted-foreground">{filename}</span>
+        <div className="flex gap-1">
           <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={copy}>
-            {copied ? <Check className="size-3.5 text-green-500" /> : <Copy className="size-3.5" />}
-            {copied ? 'Copied!' : 'Copy'}
+            {copied ? 'Copied' : 'Copy'}
           </Button>
           <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={download}>
-            <Download className="size-3.5 mr-1" /> Download
+            Download
           </Button>
         </div>
       </div>
-      <pre className="overflow-auto p-4 text-xs font-mono bg-[#0d1117] text-[#e6edf3] max-h-125 leading-relaxed">
+      <pre className="max-h-125 overflow-auto bg-muted/50 p-4 font-mono text-xs leading-relaxed text-foreground">
         <code>{content}</code>
       </pre>
     </div>
@@ -106,33 +91,28 @@ function StatsBar({
   ipOpts: IpAllocatorOptions;
 }) {
   return (
-    <div className="flex flex-wrap gap-3">
-      <div className="flex items-center gap-2 rounded-lg border bg-card px-4 py-2 text-sm">
-        <Package className="size-4 text-primary" />
-        <span className="font-medium">{servicesCount}</span>
-        <span className="text-muted-foreground">containers/VMs</span>
+    <dl className="flex flex-wrap gap-x-10 gap-y-2 border-b pb-4 text-sm">
+      <div>
+        <dt className="text-muted-foreground">Containers and VMs</dt>
+        <dd className="app-figure text-lg">{servicesCount}</dd>
       </div>
-      <div className="flex items-center gap-2 rounded-lg border bg-card px-4 py-2 text-sm">
-        <Server className="size-4 text-primary" />
-        <span className="font-medium">{hardwareNodesCount}</span>
-        <span className="text-muted-foreground">hardware nodes</span>
+      <div>
+        <dt className="text-muted-foreground">Hardware nodes</dt>
+        <dd className="app-figure text-lg">{hardwareNodesCount}</dd>
       </div>
-      <div className="flex items-center gap-2 rounded-lg border bg-card px-4 py-2 text-sm">
-        <Network className="size-4 text-primary" />
-        <span className="font-medium font-mono">
+      <div>
+        <dt className="text-muted-foreground">Subnet</dt>
+        <dd className="app-figure text-lg">
           {ipOpts.baseIp}/{ipOpts.cidr}
-        </span>
-        <span className="text-muted-foreground">subnet</span>
+        </dd>
       </div>
       {ipOpts.homeRouterMode && (
-        <div className="flex items-center gap-2 rounded-lg border border-amber-300/50 bg-amber-500/10 px-4 py-2 text-sm">
-          <Home className="size-4 text-amber-500" />
-          <span className="text-amber-600 dark:text-amber-400">
-            {ipOpts.homeReserve} IPs reserved for home devices
-          </span>
+        <div>
+          <dt className="text-muted-foreground">Reserved for home devices</dt>
+          <dd className="app-figure text-lg">{ipOpts.homeReserve}</dd>
         </div>
       )}
-    </div>
+    </dl>
   );
 }
 
@@ -152,16 +132,14 @@ function SettingsPanel({
   onDomainChange: (value: string) => void;
 }) {
   return (
-    <div className="rounded-xl border bg-card overflow-hidden">
+    <div className="overflow-hidden rounded-lg border">
       <button
         type="button"
-        className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium hover:bg-muted/50 transition-colors"
+        aria-expanded={showSettings}
+        className="flex w-full items-center justify-between px-4 py-2.5 text-sm font-medium transition-colors hover:cursor-pointer hover:bg-muted/50"
         onClick={onToggle}
       >
-        <span className="flex items-center gap-2">
-          <Settings className="size-4 text-muted-foreground" />
-          Generator Settings
-        </span>
+        <span>Generator settings</span>
         {showSettings ? (
           <ChevronDown className="size-4 hover:cursor-pointer rotate-180 transition-transform duration-200" />
         ) : (
@@ -428,78 +406,62 @@ export default function ConfigGeneratorPage() {
   const content = getContent(activeTabMeta.id);
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
-      {/* Header */}
-      <div className="flex items-start justify-between flex-wrap gap-4">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Config Generator</h1>
-          <p className="text-muted-foreground mt-1">
-            Generate deployment configs from your Visual Builder design
-          </p>
-        </div>
-
-        <div className="flex w-full items-center gap-2 sm:w-auto sm:gap-3">
-          {loadingBuild && (
-            <span className="text-xs text-muted-foreground animate-pulse flex items-center gap-1.5">
-              <Logo variant="loading" className="size-3" /> Loading&hellip;
-            </span>
-          )}
-          <select
-            className="h-11 min-w-0 flex-1 rounded-md border border-input bg-background px-3 py-1 text-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring sm:h-9 sm:w-50"
-            value={selectedBuildId}
-            onChange={e => handleSelectBuild(e.target.value)}
-          >
-            <option value="" disabled>
-              Select Project
-            </option>
-            {builds.map(b => (
-              <option key={b.id} value={b.id}>
-                {b.name}
+    <Page className="space-y-6">
+      <PageHeader
+        title="Config Generator"
+        lede="Deployment files written from your design on the canvas."
+        actions={
+          <>
+            {loadingBuild && <span className="text-sm text-muted-foreground">Loading&hellip;</span>}
+            <select
+              aria-label="Project"
+              className="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring sm:w-56 sm:flex-none"
+              value={selectedBuildId}
+              onChange={e => handleSelectBuild(e.target.value)}
+            >
+              <option value="" disabled>
+                Select Project
               </option>
-            ))}
-          </select>
-          <Button
-            onClick={downloadCompleteBundle}
-            disabled={!selectedBuildId || downloadingBundle}
-            className="min-h-10"
-          >
-            <Download className="size-4" />
-            {downloadingBundle ? 'Building bundle...' : 'Complete bundle'}
-          </Button>
-        </div>
-
-        <div className="flex gap-2 flex-wrap mr-16">
-          {/* Import and Export moved to Projects Dashboard */}
-        </div>
-      </div>
+              {builds.map(b => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+            <Button
+              onClick={downloadCompleteBundle}
+              disabled={!selectedBuildId || downloadingBundle}
+            >
+              {downloadingBundle ? 'Building bundle...' : 'Download the complete bundle'}
+            </Button>
+          </>
+        }
+      />
 
       {/* Empty states */}
       {!selectedBuildId && (
-        <div className="rounded-xl border border-dashed p-12 text-center">
-          <AlertCircle className="size-10 text-muted-foreground/40 mx-auto mb-4" />
-          <h3 className="font-semibold text-lg mb-2">Choose a project</h3>
-          <p className="text-muted-foreground text-sm mb-4">
+        <div className="app-empty-state px-6 py-10">
+          <h2 className="font-semibold">Choose a project</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
             {builds.length > 0
               ? 'Pick a project above to generate its configs.'
               : 'Create a project first, then come back here to generate its configs.'}
           </p>
           {builds.length === 0 && (
-            <Button variant="outline" size="sm" asChild>
+            <Button variant="outline" className="mt-4" asChild>
               <Link to="/">Go to Projects</Link>
             </Button>
           )}
         </div>
       )}
       {selectedBuildId && !hasContent && !loadingBuild && (
-        <div className="rounded-xl border border-dashed p-12 text-center">
-          <AlertCircle className="size-10 text-muted-foreground/40 mx-auto mb-4" />
-          <h3 className="font-semibold text-lg mb-2">No lab design yet</h3>
-          <p className="text-muted-foreground text-sm mb-4">
-            Go to the <strong>Visual Builder</strong> and add services and hardware nodes, then come
-            back here to generate configs.
+        <div className="app-empty-state px-6 py-10">
+          <h2 className="font-semibold">No lab design yet</h2>
+          <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+            Add services and hardware on the canvas, then come back here to generate configs.
           </p>
-          <Button variant="outline" size="sm" asChild>
-            <Link to={`/builder/${selectedBuildId}`}>Open Visual Builder →</Link>
+          <Button variant="outline" className="mt-4" asChild>
+            <Link to={`/builder/${selectedBuildId}`}>Open the canvas</Link>
           </Button>
         </div>
       )}
@@ -524,22 +486,27 @@ export default function ConfigGeneratorPage() {
 
           {/* IP Zone Legend removed */}
 
-          {/* Tab bar */}
-          <div className="flex flex-wrap gap-2">
+          {/* The files, one tab each */}
+          <div
+            className="flex gap-x-6 overflow-x-auto border-b text-sm"
+            role="tablist"
+            aria-label="Files"
+          >
             {tabs.map(tab => {
-              const Icon = tab.icon;
+              const selected = activeTabMeta.id === tab.id;
               return (
                 <button
                   key={tab.id}
                   type="button"
+                  role="tab"
+                  aria-selected={selected}
                   onClick={() => dispatch({ activeTab: tab.id })}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-colors hover:cursor-pointer ${
-                    activeTabMeta.id === tab.id
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : 'border-border hover:bg-muted'
+                  className={`-mb-px shrink-0 whitespace-nowrap border-b-2 pb-2.5 transition-colors hover:cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${
+                    selected
+                      ? 'border-foreground font-medium text-foreground'
+                      : 'border-transparent text-muted-foreground hover:text-foreground'
                   }`}
                 >
-                  <Icon className="size-4" />
                   {tab.label}
                 </button>
               );
@@ -572,7 +539,6 @@ export default function ConfigGeneratorPage() {
                     URL.revokeObjectURL(url);
                   }}
                 >
-                  <Download className="size-3 mr-1" />
                   {tab.ext}
                 </Button>
               ))}
@@ -580,6 +546,6 @@ export default function ConfigGeneratorPage() {
           </div>
         </>
       )}
-    </div>
+    </Page>
   );
 }

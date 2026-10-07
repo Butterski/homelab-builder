@@ -5,42 +5,24 @@ import {
   useReducer,
   useState,
   type ChangeEvent,
-  type ElementType,
   type FormEvent,
   type ReactNode,
 } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  Check,
   ChevronDown,
   Clipboard,
-  Cpu,
   Download,
-  Gamepad2,
-  Gauge,
-  HardDrive,
   Heart,
-  Layers,
   Loader2,
-  Network,
-  Package,
-  Plus,
   Search,
-  Server,
-  ShoppingCart,
-  SlidersHorizontal,
-  Sparkles,
-  Upload,
-  Wifi,
   X,
-  Zap,
 } from 'lucide-react';
-import { Badge } from '../../../components/ui/badge';
+import { Page, PageHeader } from '../../../components/layout/page';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { SeoMeta } from '../../../components/seo/seo-meta';
 import { api } from '../../../lib/api';
-import { cn } from '../../../lib/utils';
 import { hardwareCategoryLabel, normalizeHardwareCategory } from '../../../lib/hardware-taxonomy';
 import {
   useAddHardwareFavorite,
@@ -84,28 +66,28 @@ const hardwareStructuredData = {
   },
 };
 
-const CATEGORY_META: Record<string, { label: string; icon: ElementType; color: string }> = {
-  router: { label: 'Routers', icon: Network, color: 'text-blue-500 bg-blue-500/10' },
-  switch: { label: 'Switches', icon: Layers, color: 'text-indigo-500 bg-indigo-500/10' },
-  nas: { label: 'NAS', icon: HardDrive, color: 'text-orange-500 bg-orange-500/10' },
-  server: { label: 'Servers', icon: Server, color: 'text-red-500 bg-red-500/10' },
-  minipc: { label: 'Mini PCs', icon: Cpu, color: 'text-green-500 bg-green-500/10' },
-  sbc: { label: 'SBCs', icon: Cpu, color: 'text-pink-500 bg-pink-500/10' },
-  access_point: { label: 'Access Points', icon: Wifi, color: 'text-cyan-500 bg-cyan-500/10' },
-  ups: { label: 'UPS', icon: Zap, color: 'text-yellow-500 bg-yellow-500/10' },
-  storage: { label: 'Storage', icon: HardDrive, color: 'text-purple-500 bg-purple-500/10' },
-  disk: { label: 'Storage', icon: HardDrive, color: 'text-purple-500 bg-purple-500/10' },
-  ram: { label: 'RAM', icon: Package, color: 'text-teal-500 bg-teal-500/10' },
-  gpu: { label: 'GPUs', icon: Cpu, color: 'text-violet-500 bg-violet-500/10' },
-  hba: { label: 'HBA Cards', icon: Package, color: 'text-slate-500 bg-slate-500/10' },
-  nic: { label: 'NICs', icon: Network, color: 'text-sky-500 bg-sky-500/10' },
-  accessory: { label: 'Accessories', icon: Package, color: 'text-gray-500 bg-gray-500/10' },
-  rack: { label: 'Racks', icon: Server, color: 'text-amber-500 bg-amber-500/10' },
-  pdu: { label: 'PDUs', icon: Zap, color: 'text-lime-500 bg-lime-500/10' },
-  iot: { label: 'IoT', icon: Package, color: 'text-yellow-600 bg-yellow-600/10' },
-  modem: { label: 'Modems', icon: Network, color: 'text-blue-600 bg-blue-600/10' },
-  pc: { label: 'PCs', icon: Cpu, color: 'text-cyan-500 bg-cyan-500/10' },
-  console: { label: 'Consoles', icon: Gamepad2, color: 'text-fuchsia-500 bg-fuchsia-500/10' },
+const CATEGORY_META: Record<string, { label: string }> = {
+  router: { label: 'Routers' },
+  switch: { label: 'Switches' },
+  nas: { label: 'NAS' },
+  server: { label: 'Servers' },
+  minipc: { label: 'Mini PCs' },
+  sbc: { label: 'SBCs' },
+  access_point: { label: 'Access Points' },
+  ups: { label: 'UPS' },
+  storage: { label: 'Storage' },
+  disk: { label: 'Storage' },
+  ram: { label: 'RAM' },
+  gpu: { label: 'GPUs' },
+  hba: { label: 'HBA Cards' },
+  nic: { label: 'NICs' },
+  accessory: { label: 'Accessories' },
+  rack: { label: 'Racks' },
+  pdu: { label: 'PDUs' },
+  iot: { label: 'IoT' },
+  modem: { label: 'Modems' },
+  pc: { label: 'PCs' },
+  console: { label: 'Consoles' },
 };
 
 type CatalogSource = 'all' | 'blueprints' | 'components' | 'favorites';
@@ -227,12 +209,9 @@ function SubmitHardwareModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {state.success ? (
-          <div className="flex flex-col items-center justify-center px-6 py-12 text-center">
-            <div className="mb-4 flex size-14 items-center justify-center rounded-full bg-green-500/10">
-              <Check className="size-7 text-green-500" />
-            </div>
-            <h3 className="mb-1 text-lg font-semibold">Submitted</h3>
-            <p className="text-sm text-muted-foreground">The component is waiting for review.</p>
+          <div className="px-6 py-10" role="status">
+            <h3 className="font-semibold">Submitted</h3>
+            <p className="mt-1 text-sm text-muted-foreground">The component is waiting for review.</p>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4 p-6">
@@ -298,7 +277,7 @@ function SubmitHardwareModal({ onClose }: { onClose: () => void }) {
                 Cancel
               </Button>
               <Button type="submit" className="flex-1" disabled={state.loading}>
-                {state.loading ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
+                {state.loading && <Loader2 className="size-4 animate-spin" />}
                 Submit
               </Button>
             </div>
@@ -361,7 +340,7 @@ function ImportBlueprintModal({ onClose }: { onClose: () => void }) {
               Cancel
             </Button>
             <Button onClick={handleImport} disabled={importBlueprint.isPending}>
-              {importBlueprint.isPending ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+              {importBlueprint.isPending && <Loader2 className="size-4 animate-spin" />}
               Import
             </Button>
           </div>
@@ -386,13 +365,14 @@ function SpecBadges({ spec }: { spec: Record<string, string | number | boolean> 
     .slice(0, 4);
 
   return (
-    <div className="mt-2 flex flex-wrap gap-1">
+    <dl className="mt-2 flex flex-wrap gap-x-4 gap-y-0.5 text-xs">
       {entries.map(([key, value]) => (
-        <span key={key} className="rounded border bg-muted/60 px-1.5 py-0.5 text-[10px] text-muted-foreground">
-          {key.replace(/_/g, ' ').toUpperCase()}: <span className="font-medium text-foreground">{String(value)}</span>
-        </span>
+        <div key={key} className="flex gap-1.5">
+          <dt className="text-muted-foreground">{key.replace(/_/g, ' ')}</dt>
+          <dd>{String(value)}</dd>
+        </div>
       ))}
-    </div>
+    </dl>
   );
 }
 
@@ -407,34 +387,27 @@ const HardwareCard = memo(function HardwareCard({
 }) {
   const [expanded, setExpanded] = useState(false);
   const category = normalizeHardwareCategory(item.category);
-  const meta = CATEGORY_META[category] ?? { label: hardwareCategoryLabel(category), icon: Package, color: 'text-gray-500 bg-gray-500/10' };
-  const Icon = meta.icon;
+  const meta = CATEGORY_META[category] ?? { label: hardwareCategoryLabel(category) };
   const urls = Array.isArray(item.buy_urls) ? item.buy_urls : [];
   const newOffer = urls.find(url => url.condition === 'new') ?? urls[0];
   const usedOffer = urls.find(url => url.condition === 'used');
 
   return (
-    <article className="app-card group flex min-h-56 flex-col overflow-hidden transition-[border-color,transform] hover:-translate-y-0.5 hover:border-primary/40">
-      <div className="flex items-start gap-3 p-4">
-        <div className={`flex size-11 shrink-0 items-center justify-center rounded-md ${meta.color}`}>
-          <Icon className="size-5" aria-hidden="true" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="truncate text-xs font-medium text-muted-foreground">{item.brand}</p>
-              <h3 className="line-clamp-2 text-sm font-semibold leading-tight">{item.model}</h3>
-            </div>
-            <div className="shrink-0 text-right">
-              <p className="text-base font-bold text-primary">
-                {Math.round(item.price_est).toLocaleString()}
-                <span className="ml-1 text-xs font-normal text-muted-foreground">{item.currency}</span>
-              </p>
-              <p className="text-[10px] text-muted-foreground">{meta.label}</p>
-            </div>
+    <article className="app-card group flex min-h-44 flex-col overflow-hidden">
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="truncate text-xs text-muted-foreground">
+              {item.brand}, {meta.label}
+            </p>
+            <h3 className="mt-0.5 line-clamp-2 text-sm font-medium leading-snug">{item.model}</h3>
           </div>
-          <SpecBadges spec={item.spec} />
+          <p className="app-figure shrink-0 text-right text-sm">
+            {Math.round(item.price_est).toLocaleString()}
+            <span className="ml-1 text-xs text-muted-foreground">{item.currency}</span>
+          </p>
         </div>
+        <SpecBadges spec={item.spec} />
       </div>
 
       <div className="grid transition-[grid-template-rows] duration-200" style={{ gridTemplateRows: expanded ? '1fr' : '0fr' }}>
@@ -452,7 +425,7 @@ const HardwareCard = memo(function HardwareCard({
         </div>
       </div>
 
-      <div className="mt-auto flex items-center gap-2 border-t bg-muted/20 px-4 py-3">
+      <div className="mt-auto flex items-center gap-2 border-t px-4 py-2.5">
         <button
           type="button"
           onClick={() => setExpanded(current => !current)}
@@ -466,10 +439,10 @@ const HardwareCard = memo(function HardwareCard({
         <button
           type="button"
           onClick={() => onToggleFavorite(item.id)}
-          className={`flex items-center gap-1 rounded-md text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${isFavorite ? 'text-red-500' : 'text-muted-foreground hover:text-red-400'}`}
+          className={`flex items-center gap-1 rounded-md text-xs transition-colors hover:cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${isFavorite ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
           aria-label={isFavorite ? `Remove ${item.brand} ${item.model} From Favorites` : `Favorite ${item.brand} ${item.model}`}
         >
-          <Heart className={`size-3.5 ${isFavorite ? 'fill-red-500' : ''}`} />
+          <Heart className={`size-3.5 ${isFavorite ? 'fill-current' : ''}`} />
           {item.likes}
         </button>
         {usedOffer && (
@@ -480,10 +453,9 @@ const HardwareCard = memo(function HardwareCard({
           </Button>
         )}
         {newOffer && (
-          <Button size="sm" className="h-7 px-2 text-xs" asChild>
+          <Button size="sm" variant="outline" className="h-7 px-2 text-xs" asChild>
             <a href={newOffer.url} target="_blank" rel="noreferrer">
-              <ShoppingCart className="size-3" />
-              <span className="sr-only">Buy New</span>
+              Buy<span className="sr-only"> new</span>
             </a>
           </Button>
         )}
@@ -520,25 +492,24 @@ function BlueprintCard({
   const internalComponents = Array.isArray(nodeData.internal_components) ? nodeData.internal_components : [];
   const components = componentSummary(internalComponents);
   const category = normalizeHardwareCategory(blueprint.category);
-  const meta = CATEGORY_META[category] ?? { label: hardwareCategoryLabel(category), icon: Sparkles, color: 'text-primary bg-primary/10' };
-  const Icon = meta.icon;
+  const meta = CATEGORY_META[category] ?? { label: hardwareCategoryLabel(category) };
 
   return (
-    <article className="app-card flex min-h-76 flex-col overflow-hidden transition-[border-color,transform] hover:-translate-y-0.5 hover:border-primary/40">
-      <div className="border-b bg-muted/20 p-4">
+    <article className="app-card flex min-h-76 flex-col overflow-hidden">
+      <div className="border-b p-4">
         <div className="flex items-start gap-3">
-          <div className={`flex size-11 shrink-0 items-center justify-center rounded-md ${meta.color}`}>
-            <Icon className="size-5" aria-hidden="true" />
-          </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold">{blueprint.name}</p>
                 <p className="text-xs text-muted-foreground">
-                  {meta.label} / {blueprint.visibility}
+                  {meta.label}, {blueprint.visibility}
                 </p>
               </div>
-              <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${fitTone(blueprint.fit?.grade)}`}>
+              <span
+                title="Fit score"
+                className={`app-figure shrink-0 rounded-md border px-2 py-0.5 text-xs ${fitTone(blueprint.fit?.grade)}`}
+              >
                 {blueprint.fit?.score ?? 0}
               </span>
             </div>
@@ -548,11 +519,11 @@ function BlueprintCard({
       </div>
 
       <div className="space-y-4 p-4">
-        <div className="grid grid-cols-3 gap-2 text-xs">
-          <MiniStat icon={Gauge} label="Fit" value={blueprint.fit?.label ?? 'Draft'} />
-          <MiniStat icon={HardDrive} label="Disks" value={String(components.disks)} />
-          <MiniStat icon={Cpu} label="GPUs" value={String(components.gpus)} />
-        </div>
+        <dl className="grid grid-cols-3 border-y py-2 text-xs">
+          <MiniStat label="Fit" value={blueprint.fit?.label ?? 'Draft'} />
+          <MiniStat label="Disks" value={String(components.disks)} />
+          <MiniStat label="GPUs" value={String(components.gpus)} />
+        </dl>
 
         <div className="space-y-2">
           {bars.map(bar => (
@@ -590,8 +561,8 @@ function BlueprintCard({
         )}
       </div>
 
-      <div className="mt-auto flex items-center gap-2 border-t bg-muted/20 px-4 py-3">
-        <span className="rounded-md bg-background px-2 py-0.5 text-[10px] text-muted-foreground">
+      <div className="mt-auto flex items-center gap-2 border-t px-4 py-2.5">
+        <span className="app-figure text-xs text-muted-foreground">
           {shareCode || `${blueprint.upvotes - blueprint.downvotes} score`}
         </span>
         <div className="flex-1" />
@@ -603,7 +574,7 @@ function BlueprintCard({
         </Button>
         {blueprint.visibility === 'private' && (
           <Button size="sm" variant="outline" className="h-7 text-xs" onClick={onSubmit} disabled={submitting}>
-            Submit
+            Submit for review
           </Button>
         )}
       </div>
@@ -611,12 +582,11 @@ function BlueprintCard({
   );
 }
 
-function MiniStat({ icon: Icon, label, value }: { icon: ElementType; label: string; value: string }) {
+function MiniStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border bg-background p-2">
-      <Icon className="mb-1 size-3.5 text-primary" />
-      <p className="text-[10px] text-muted-foreground">{label}</p>
-      <p className="truncate text-xs font-semibold">{value}</p>
+    <div className="min-w-0">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="truncate font-medium">{value}</dd>
     </div>
   );
 }
@@ -792,7 +762,6 @@ export default function HardwareCatalogPage() {
 
   const showBlueprints = source === 'all' || source === 'blueprints';
   const showComponents = source === 'all' || source === 'components' || source === 'favorites';
-  const activeCount = (showBlueprints ? filteredBlueprints.length : 0) + (showComponents ? displayedItems.length : 0);
 
   const handleToggleFavorite = (componentId: string) => {
     if (favSet.has(componentId)) {
@@ -832,7 +801,7 @@ export default function HardwareCatalogPage() {
   };
 
   return (
-    <div className="app-page mx-auto max-w-7xl space-y-6 px-6 py-8">
+    <Page className="space-y-6">
       <SeoMeta
         title="Homelab Hardware Catalog | HLBuilder"
         description="Browse homelab routers, switches, NAS devices, servers, mini PCs, SBCs, UPS units, and reusable hardware blueprints."
@@ -850,43 +819,33 @@ export default function HardwareCatalogPage() {
       <HardwareBlueprintCreator open={showCreator} onClose={() => dispatch({ type: 'SET_SHOW_CREATOR', value: false })} />
       {showImport && <ImportBlueprintModal onClose={() => dispatch({ type: 'SET_SHOW_IMPORT', value: false })} />}
 
-      <div className="app-hero flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div className="min-w-0">
-          <div className="mb-2 flex items-center gap-2">
-            <span className="app-chip">Catalog</span>
-            <span className="text-xs text-muted-foreground">{activeCount} visible</span>
-          </div>
-          <h1 className="text-3xl font-bold tracking-tight text-balance">Hardware Catalog</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Routers, switches, NAS, servers, Mini PCs, and reusable builds.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" onClick={() => dispatch({ type: 'SET_SHOW_CREATOR', value: true })}>
-            <Plus className="size-4" />
-            Create Blueprint
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => dispatch({ type: 'SET_SHOW_IMPORT', value: true })}>
-            <Upload className="size-4" />
-            Import
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => dispatch({ type: 'SET_SHOW_SUBMIT', value: true })}>
-            Submit Component
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Hardware Catalog"
+        lede="Routers, switches, NAS, servers, Mini PCs, and reusable builds."
+        actions={
+          <>
+            <Button variant="outline" onClick={() => dispatch({ type: 'SET_SHOW_SUBMIT', value: true })}>
+              Submit a component
+            </Button>
+            <Button variant="outline" onClick={() => dispatch({ type: 'SET_SHOW_IMPORT', value: true })}>
+              Import
+            </Button>
+            <Button onClick={() => dispatch({ type: 'SET_SHOW_CREATOR', value: true })}>
+              Create a blueprint
+            </Button>
+          </>
+        }
+      />
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <SummaryTile icon={Sparkles} label="Blueprints" value={blueprints.length} active={source === 'blueprints'} onClick={() => dispatch({ type: 'SET_SOURCE', value: 'blueprints' })} />
-        <SummaryTile icon={Package} label="Components" value={total} active={source === 'components'} onClick={() => dispatch({ type: 'SET_SOURCE', value: 'components' })} />
-        <SummaryTile icon={Heart} label="Favorites" value={favorites.length} active={source === 'favorites'} onClick={() => dispatch({ type: 'SET_SOURCE', value: 'favorites' })} />
-        <SummaryTile icon={SlidersHorizontal} label="Categories" value={categories.length} active={source === 'all'} onClick={() => dispatch({ type: 'SET_SOURCE', value: 'all' })} />
-      </div>
-
-      <div className="app-surface flex flex-col gap-3 rounded-lg p-3 lg:flex-row lg:items-center">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
         <div className="relative min-w-60 flex-1">
-          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Search
+            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+            aria-hidden="true"
+          />
           <Input
+            type="search"
+            aria-label="Search the catalog"
             placeholder="Search hardware, blueprints, services..."
             className="pl-9"
             value={search}
@@ -895,21 +854,7 @@ export default function HardwareCatalogPage() {
         </div>
 
         <select
-          className="h-9 rounded-md border bg-background px-3 text-sm text-foreground"
-          value={category}
-          onChange={event => dispatch({ type: 'SET_CATEGORY', value: event.target.value })}
-          aria-label="Filter category"
-        >
-          <option value="">All categories</option>
-          {categories.map(cat => (
-            <option key={cat} value={cat}>
-              {CATEGORY_META[cat]?.label ?? hardwareCategoryLabel(cat)}
-            </option>
-          ))}
-        </select>
-
-        <select
-          className="h-9 rounded-md border bg-background px-3 text-sm text-foreground"
+          className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground"
           value={maxPrice}
           onChange={event => dispatch({ type: 'SET_MAX_PRICE', value: Number(event.target.value) })}
           aria-label="Filter price"
@@ -923,7 +868,7 @@ export default function HardwareCatalogPage() {
         </select>
 
         <select
-          className="h-9 rounded-md border bg-background px-3 text-sm text-foreground"
+          className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground"
           value={sort}
           onChange={event => dispatch({ type: 'SET_SORT', value: event.target.value as SortMode })}
           aria-label="Sort catalog"
@@ -942,41 +887,41 @@ export default function HardwareCatalogPage() {
         )}
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        {(['all', 'blueprints', 'components', 'favorites'] as CatalogSource[]).map(item => (
-          <button
-            key={item}
-            type="button"
-            onClick={() => dispatch({ type: 'SET_SOURCE', value: item })}
-            className={cn(
-              'app-pill capitalize',
-              source === item && 'border-primary bg-primary text-primary-foreground',
-            )}
-          >
-            {item}
-          </button>
-        ))}
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        {categories.map(cat => {
-          const meta = CATEGORY_META[cat];
-          const Icon = meta?.icon ?? Package;
-          return (
+      <div className="grid gap-2">
+        <div className="flex flex-wrap gap-2" role="group" aria-label="What to show">
+          {(
+            [
+              ['all', 'Everything', null],
+              ['blueprints', 'Blueprints', blueprints.length],
+              ['components', 'Components', total],
+              ['favorites', 'Favorites', favorites.length],
+            ] as Array<[CatalogSource, string, number | null]>
+          ).map(([item, label, count]) => (
+            <button
+              key={item}
+              type="button"
+              aria-pressed={source === item}
+              onClick={() => dispatch({ type: 'SET_SOURCE', value: item })}
+              className="app-filter"
+            >
+              {label}
+              {count !== null && <span className="app-count">{count.toLocaleString()}</span>}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Category">
+          {categories.map(cat => (
             <button
               key={cat}
               type="button"
+              aria-pressed={cat === category}
               onClick={() => dispatch({ type: 'SET_CATEGORY', value: cat === category ? '' : cat })}
-              className={cn(
-                'app-pill flex items-center gap-1.5',
-                cat === category && 'border-primary bg-primary text-primary-foreground',
-              )}
+              className="app-filter"
             >
-              <Icon className="size-3" />
-              {meta?.label ?? hardwareCategoryLabel(cat)}
+              {CATEGORY_META[cat]?.label ?? hardwareCategoryLabel(cat)}
             </button>
-          );
-        })}
+          ))}
+        </div>
       </div>
 
       {showBlueprints && (
@@ -986,7 +931,7 @@ export default function HardwareCatalogPage() {
             <span className="text-xs text-muted-foreground">{filteredBlueprints.length} matches</span>
           </div>
           {filteredBlueprints.length === 0 ? (
-            <EmptyState icon={Sparkles} title="No blueprints found" />
+            <EmptyState title="No blueprints found" />
           ) : (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               {filteredBlueprints.map(blueprint => (
@@ -1021,7 +966,7 @@ export default function HardwareCatalogPage() {
               ))}
             </div>
           ) : displayedItems.length === 0 ? (
-            <EmptyState icon={Package} title={source === 'favorites' ? 'No favorites yet' : 'No components found'} />
+            <EmptyState title={source === 'favorites' ? 'No favorites yet' : 'No components found'} />
           ) : (
             <>
               <div
@@ -1066,61 +1011,15 @@ export default function HardwareCatalogPage() {
         </section>
       )}
 
-      {!category && !search && categories.length > 0 && (
-        <div className="border-t pt-6">
-          <p className="mb-3 text-sm font-medium text-muted-foreground">Browse by category</p>
-          <div className="flex flex-wrap gap-2">
-            {categories.map(cat => (
-              <Badge key={cat} variant="outline" className="cursor-pointer hover:bg-muted" onClick={() => dispatch({ type: 'SET_CATEGORY', value: cat })}>
-                {CATEGORY_META[cat]?.label ?? hardwareCategoryLabel(cat)}
-              </Badge>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
+    </Page>
   );
 }
 
-function SummaryTile({
-  icon: Icon,
-  label,
-  value,
-  active,
-  onClick,
-}: {
-  icon: ElementType;
-  label: string;
-  value: number;
-  active: boolean;
-  onClick: () => void;
-}) {
+function EmptyState({ title }: { title: string }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'app-surface flex items-center gap-3 rounded-lg p-3 text-left transition-[background-color,border-color,transform] hover:-translate-y-0.5 hover:bg-muted/35 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-        active && 'border-primary bg-primary/10',
-      )}
-    >
-      <span className="flex size-10 items-center justify-center rounded-md bg-background text-primary">
-        <Icon className="size-5" />
-      </span>
-      <span>
-        <span className="block text-xs text-muted-foreground">{label}</span>
-        <span className="text-lg font-semibold">{value.toLocaleString()}</span>
-      </span>
-    </button>
-  );
-}
-
-function EmptyState({ icon: Icon, title }: { icon: ElementType; title: string }) {
-  return (
-    <div className="app-empty-state flex flex-col items-center justify-center py-16 text-center">
-      <Icon className="mb-3 size-10 text-muted-foreground/50" />
+    <div className="app-empty-state px-6 py-10">
       <h3 className="text-sm font-semibold">{title}</h3>
-      <p className="mt-1 text-xs text-muted-foreground">No matching entries in this view.</p>
+      <p className="mt-1 text-sm text-muted-foreground">No matching entries in this view.</p>
     </div>
   );
 }

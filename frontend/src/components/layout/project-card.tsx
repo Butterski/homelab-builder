@@ -7,6 +7,7 @@ import {
   FolderOpen,
   LayoutTemplate,
   Plus,
+  Route,
   Sparkles,
   type LucideIcon,
 } from 'lucide-react';
@@ -33,9 +34,8 @@ const THUMBNAIL_DELAY_MS = 500;
 const RECENT_PROJECTS = 5;
 
 const NAV_LINK =
-  'group flex min-h-9 items-center rounded-lg px-3 py-1.5 text-sm font-medium text-sidebar-foreground/68 transition-[background-color,color,box-shadow] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sidebar-ring';
-const NAV_LINK_ACTIVE =
-  'bg-sidebar-accent text-sidebar-accent-foreground shadow-[0_0_0_1px_color-mix(in_oklab,var(--sidebar-primary)_28%,transparent)] [&>svg]:rounded-md [&>svg]:bg-sidebar-primary [&>svg]:p-0.5 [&>svg]:text-sidebar-primary-foreground';
+  'group flex min-h-9 items-center rounded-lg px-3 py-1.5 text-sm font-medium text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sidebar-ring';
+const NAV_LINK_ACTIVE = 'bg-sidebar-accent text-sidebar-accent-foreground';
 
 function drawCanvas(): LayoutPicture | null {
   const state = useBuilderStore.getState();
@@ -108,9 +108,7 @@ function ProjectSwitcher({ currentId, onNavigate }: { currentId: string; onNavig
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" side="right" className="w-64 p-1.5">
-        <p className="px-2 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Recent projects
-        </p>
+        <p className="px-2 pb-1 pt-1.5 text-xs text-muted-foreground">Recent projects</p>
         {isPending ? (
           <p className="px-2 py-2 text-xs text-muted-foreground">Loading…</p>
         ) : others.length === 0 ? (
@@ -156,7 +154,7 @@ function ProjectSwitcher({ currentId, onNavigate }: { currentId: string; onNavig
             onClick={() => go('/planner')}
             className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:cursor-pointer hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"
           >
-            <Sparkles className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <Route className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
             Plan one with the guided planner
           </button>
         </div>
@@ -173,9 +171,9 @@ type ProjectCardProps = {
 };
 
 const STATE_DOT: Record<string, string> = {
-  saved: 'bg-emerald-500',
-  unsaved: 'bg-amber-500',
-  saving: 'bg-amber-500',
+  saved: 'bg-status-ok',
+  unsaved: 'bg-status-warn',
+  saving: 'bg-status-warn',
   error: 'bg-destructive',
 };
 
@@ -256,7 +254,7 @@ export function ProjectCard({ collapsed = false, onNavigate }: ProjectCardProps)
             <p className="font-medium">{name}</p>
             <p className="text-muted-foreground">
               {status}
-              {waiting ? ' · a proposal is waiting' : ''}
+              {waiting ? ', a proposal is waiting' : ''}
             </p>
           </TooltipContent>
         </Tooltip>
@@ -278,7 +276,7 @@ export function ProjectCard({ collapsed = false, onNavigate }: ProjectCardProps)
   return (
     <section
       aria-label="Current project"
-      className="rounded-xl border border-sidebar-border bg-sidebar-accent/35 p-2"
+      className="rounded-lg border border-sidebar-border bg-sidebar-accent/35 p-2"
     >
       {project.ready && (
         // The name below is the link for keyboards and screen readers; the
@@ -300,7 +298,7 @@ export function ProjectCard({ collapsed = false, onNavigate }: ProjectCardProps)
             <kind.icon className="size-3 shrink-0" aria-hidden="true" />
             <span className="truncate">
               {kind.label}
-              {project.ready && ` · ${devices} ${devices === 1 ? 'device' : 'devices'}`}
+              {project.ready && `, ${devices} ${devices === 1 ? 'device' : 'devices'}`}
             </span>
           </span>
         </Link>

@@ -72,6 +72,8 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-status-ok: var(--status-ok);
+  --color-status-warn: var(--status-warn);
 
   --radius: 0.5rem;
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
@@ -147,6 +149,21 @@
   --sidebar-ring: #3f3f46;
 }
 
+/*
+ * State, said in colour: fine and saved, or needing a look. A theme sets the
+ * tokens above; these two follow only whether it is a light or a dark one, so
+ * that "saved" is the same green in every theme.
+ */
+:root {
+  --status-ok: oklch(0.5 0.13 155);
+  --status-warn: oklch(0.56 0.13 70);
+}
+
+.dark {
+  --status-ok: oklch(0.76 0.15 155);
+  --status-warn: oklch(0.82 0.14 82);
+}
+
 :root {
   --scrollbar-track: color-mix(in srgb, var(--background) 84%, var(--card));
   --scrollbar-thumb: color-mix(in srgb, var(--primary) 46%, var(--ring));
@@ -184,107 +201,173 @@
   background: transparent;
 }
 
-/* ─── Micro-Animations ──────────────────────────────────────────────────────── */
-
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes scaleIn {
-  from {
-    opacity: 0;
-    transform: scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes shimmer {
-  0% {
-    background-position: -200% 0;
-  }
-  100% {
-    background-position: 200% 0;
-  }
-}
-
+/*
+ * ─── App pages ───────────────────────────────────────────────────────────────
+ * Every screen outside the canvas is a document on the page ground: a title on
+ * a hairline, then a table (what is scanned) or an article beside a rail (what
+ * is read). The rules are in frontend/DESIGN.md; in short:
+ *   - theme tokens only, so every theme a user picks is drawn right;
+ *   - no washes, no glow, no shadow under anything that does not float;
+ *   - the monospace face for addresses, ports, figures and commands;
+ *   - colour for state (saved, failed, done), never for decoration.
+ */
 @layer components {
   .app-page {
     position: relative;
     min-height: 100%;
-    background:
-      radial-gradient(circle at 8% -8%, color-mix(in srgb, var(--primary) 10%, transparent), transparent 26rem),
-      radial-gradient(circle at 88% 0%, color-mix(in srgb, var(--chart-2) 8%, transparent), transparent 24rem);
   }
 
   .app-hero {
-    border-bottom: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+    border-bottom: 1px solid var(--border);
     padding-bottom: 1.25rem;
   }
 
   .app-surface,
   .app-card {
+    border: 1px solid var(--border);
+    background: var(--card);
+  }
+
+  .app-card {
+    border-radius: var(--radius-lg);
+  }
+
+  /* A filter the reader switches on and off: a category, a source. */
+  .app-filter {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-height: 2rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 0 0.7rem;
+    color: var(--muted-foreground);
+    font-size: 0.8125rem;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+      border-color 0.15s ease,
+      color 0.15s ease;
+  }
+
+  .app-filter:hover {
+    color: var(--foreground);
+  }
+
+  .app-filter:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  .app-filter[aria-pressed='true'] {
+    border-color: var(--foreground);
+    color: var(--foreground);
+  }
+
+  .app-filter > .app-count {
+    color: var(--muted-foreground);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+  }
+
+  /* Rows a reader scans and compares: hairlines, figures in the monospace face. */
+  .app-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+  }
+
+  .app-table :is(th, td) {
+    padding: 0.6rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+    vertical-align: baseline;
+  }
+
+  .app-table :is(th, td):first-child {
+    padding-left: 0;
+  }
+
+  .app-table :is(th, td):last-child {
+    padding-right: 0;
+  }
+
+  .app-table thead th {
+    color: var(--muted-foreground);
+    font-size: 0.8125rem;
+    font-weight: 400;
+    white-space: nowrap;
+  }
+
+  .app-table tbody th {
+    font-weight: 500;
+  }
+
+  .app-table .is-figure {
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .app-table .is-end {
+    text-align: right;
+  }
+
+  .app-table-scroll {
+    overflow-x: auto;
+  }
+
+  /* A command or a file, as typed. */
+  .app-code {
+    margin: 0;
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--muted);
+    padding: 0.7rem 0.85rem;
+    color: var(--foreground);
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    line-height: 1.65;
+  }
+
+  .app-figure {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .app-link {
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, currentColor 35%, transparent);
+    text-underline-offset: 0.22em;
+    transition: text-decoration-color 0.15s ease;
+  }
+
+  .app-link:hover {
+    text-decoration-color: currentColor;
+  }
+
+  .app-link:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  .app-empty-state {
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-lg);
+  }
+
+  /* The category blocks of the canvas library keep the look they had. */
+  .builder-surface {
     border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
     background:
       linear-gradient(180deg, color-mix(in srgb, var(--card) 94%, var(--muted)), var(--card));
     box-shadow:
       0 1px 0 color-mix(in srgb, var(--foreground) 5%, transparent) inset,
       0 18px 60px color-mix(in srgb, #000 18%, transparent);
-  }
-
-  .app-card {
-    border-radius: var(--radius-xl);
-  }
-
-  .app-chip,
-  .app-pill {
-    display: inline-flex;
-    align-items: center;
-    min-height: 1.75rem;
-    border: 1px solid color-mix(in srgb, var(--primary) 24%, var(--border));
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--primary) 9%, transparent);
-    color: color-mix(in srgb, var(--primary) 84%, var(--foreground));
-    padding: 0.2rem 0.65rem;
-    font-size: 0.75rem;
-    font-weight: 700;
-    letter-spacing: 0;
-  }
-
-  .app-pill {
-    color: var(--muted-foreground);
-    background: color-mix(in srgb, var(--muted) 34%, transparent);
-    transition:
-      background-color 0.18s ease,
-      border-color 0.18s ease,
-      color 0.18s ease;
-  }
-
-  .app-pill:hover {
-    border-color: color-mix(in srgb, var(--primary) 42%, var(--border));
-    background: color-mix(in srgb, var(--primary) 8%, var(--muted));
-    color: var(--foreground);
-  }
-
-  .app-empty-state {
-    border: 1px dashed color-mix(in srgb, var(--border) 92%, transparent);
-    border-radius: var(--radius-xl);
-    background: color-mix(in srgb, var(--card) 62%, transparent);
-  }
-
-  .app-sidebar {
-    box-shadow:
-      1px 0 0 color-mix(in srgb, var(--foreground) 3%, transparent) inset,
-      18px 0 80px color-mix(in srgb, #000 18%, transparent);
   }
 
   .builder-glass-panel,
@@ -323,59 +406,6 @@
     background: color-mix(in srgb, var(--primary) 8%, var(--card));
     transform: translateY(-1px);
   }
-}
-
-/* Entrance animations for cards and panels */
-.animate-fade-in-up {
-  animation: fadeInUp 0.3s ease-out both;
-}
-
-.animate-scale-in {
-  animation: scaleIn 0.2s ease-out both;
-}
-
-/* Staggered children animation */
-.stagger-children > * {
-  animation: fadeInUp 0.3s ease-out both;
-}
-.stagger-children > *:nth-child(1) {
-  animation-delay: 0ms;
-}
-.stagger-children > *:nth-child(2) {
-  animation-delay: 40ms;
-}
-.stagger-children > *:nth-child(3) {
-  animation-delay: 80ms;
-}
-.stagger-children > *:nth-child(4) {
-  animation-delay: 120ms;
-}
-.stagger-children > *:nth-child(5) {
-  animation-delay: 160ms;
-}
-.stagger-children > *:nth-child(6) {
-  animation-delay: 200ms;
-}
-.stagger-children > *:nth-child(7) {
-  animation-delay: 240ms;
-}
-.stagger-children > *:nth-child(8) {
-  animation-delay: 280ms;
-}
-
-/* Interactive hover lift for cards */
-.hover-lift {
-  transition:
-    transform 0.2s ease,
-    border-color 0.2s ease;
-}
-.hover-lift:hover {
-  transform: translateY(-1px);
-}
-
-/* Smooth focus ring animation */
-.focus-ring-animate:focus-visible {
-  transition: box-shadow 0.15s ease;
 }
 
 /* Node selection ring - animated accent border */
@@ -1463,5 +1493,56 @@
   .assistant-working-dot,
   .activity-step.is-active {
     animation: none;
+  }
+}
+
+/*
+ * ─── Paper ───────────────────────────────────────────────────────────────────
+ * A printed page (the setup guide is made to be printed and taken to the rack)
+ * goes out as dark ink on white whatever theme is on screen, and whole: on
+ * screen the app scrolls inside <main>, which a printer would cut off after
+ * one sheet. The sidebar and everything that is only for a screen carry
+ * `print:hidden`.
+ */
+@media print {
+  :root {
+    color-scheme: light;
+    --background: #fff !important;
+    --foreground: #111 !important;
+    --card: #fff !important;
+    --card-foreground: #111 !important;
+    --muted: #f2f2f2 !important;
+    --muted-foreground: #555 !important;
+    --border: #c9c9c9 !important;
+    --primary: #111 !important;
+    --primary-foreground: #fff !important;
+    --status-ok: #1d6b43 !important;
+    --status-warn: #8a5a00 !important;
+  }
+
+  html,
+  body,
+  #root,
+  #root > div,
+  #root main {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  .app-page {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+
+  .app-code {
+    overflow: visible;
+    white-space: pre-wrap;
+  }
+
+  [data-sonner-toaster] {
+    display: none !important;
   }
 }

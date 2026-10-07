@@ -43,6 +43,7 @@ Remember - I don't want migrations scripts or Legacy things support. If somethin
 - **LLM access**: built-in MCP server (`/mcp`) and an opt-in, bring-your-own-key chat assistant; both can only propose changes
 - **Gaming (1.3)**: a build has a kind (`homelab`, `lan_party`, `game_server`); the gaming kinds add a plan (internet line, power circuits, event) and a report computed on the backend
 - **Canvas (1.3)**: Polish arranges the canvas with a layout engine of its own (`features/builder/lib/layout`); an LLM proposal is reviewed on the live canvas, not on a copy
+- **App pages**: every screen outside the canvas follows one design contract, `frontend/DESIGN.md` (see [App Pages](#app-pages))
 - **Infrastructure**: Docker Compose (postgres + backend + hlbipam + frontend)
 
 ---
@@ -98,16 +99,18 @@ homelab-builder/
 │   │   │   ├── catalog/        # hardware & service catalog browsing
 │   │   │   ├── donate/         # donation page
 │   │   │   ├── gaming/         # game plan dialog and report, game server / LAN table / console fields
+│   │   │   ├── guides/         # the homelab guide (an article) and the diagrams of the static docs
 │   │   │   ├── landing/        # landing page for guests: demo on the real planners, prerendered into index.html
+│   │   │   ├── legal/          # privacy policy, terms of service
 │   │   │   ├── settings/       # settings page: appearance, AI assistant, MCP access
-│   │   │   ├── setup-guide/    # setup checklist
+│   │   │   ├── setup-guide/    # the setup guide of a build: cables, addresses, hosts; ticked off and printed
 │   │   │   ├── shopping/       # shopping list generation
 │   │   │   └── survey/         # beta survey
 │   │   ├── components/         # shared UI components
 │   │   │   ├── auth/           # auth guards (RequireAuth)
 │   │   │   ├── icons/          # icon components
-│   │   │   ├── layout/         # sidebar with the project card, main layout
-│   │   │   └── ui/             # design system primitives (button, dialog, etc.)
+│   │   │   ├── layout/         # sidebar with the project card; page.tsx is the frame of every page
+│   │   │   └── ui/             # design system primitives (button, dialog, tick box, avatar, etc.)
 │   │   ├── lib/                # shared utilities
 │   │   │   ├── api.ts          # base axios instance
 │   │   │   ├── templates.ts    # config templates
@@ -121,6 +124,7 @@ homelab-builder/
 │   │   ├── main.tsx            # React entry point
 │   │   └── prerender.tsx       # landing page as HTML, built with `vite build --ssr`
 │   ├── scripts/prerender.mjs   # last build step: writes that HTML into dist/index.html
+│   ├── DESIGN.md               # the design contract of every screen outside the canvas
 │   ├── nginx.conf              # "/" is index.html, app routes are app.html, the rest is 404
 │   ├── vite.config.ts
 │   └── package.json
@@ -215,6 +219,8 @@ Every write goes through one path: `PUT /builds/:id/topology` -> `BuildService.U
 The same save carries the build's `kind` and `gaming_plan` (`applyKindAndPlan`). Both are optional in `SyncGraphInput`: an empty kind and a nil plan leave the stored values alone, so a client that does not know about them cannot wipe them. A save through a share link (`UpdateByShareToken`) never changes them, and whatever a share link gets back goes through `asSharedView`, which leaves out `gaming_plan.uplink.public_host`.
 
 `BuildService.PreviewTopology` runs the same steps and then rolls the transaction back (sentinel `errDryRun`). It is how a proposal is checked without touching the build.
+
+`BuildService.ListByUser` returns each build with its nodes and its edges, and without guests: that is what the projects page needs to draw every build in miniature.
 
 ---
 
@@ -417,6 +423,7 @@ The builder feature uses a single Zustand store at `features/builder/store/build
 **Around the builder store:**
 - The assistant has its own store (`features/assistant/store/assistant-store.ts`, not persisted). The transcript on screen is the server's: the thread is read again whenever a turn ends other than cleanly and when the panel opens, and a turn that is still running after a page reload is followed (`running`, status `following`). A message sent while a turn is being stopped waits (`queued`) instead of being refused.
 - The list of builds is one query (`api/use-builds.ts`, key `['builds']`) shared by the Projects page, the project switcher, Settings and the profile, so a rename or delete in one place is right in the others. The Config Generator fetches its own list each time it opens.
+- `buildSettings.setupDone` holds the steps ticked off in the Setup Guide. `setSetupDone` replaces the settings object, which is in the autosave fingerprint, so a tick is saved like an edit (see [App Pages](#app-pages) and pitfall 34).
 - `components/layout/project-card.tsx` is the open project in the sidebar: a miniature of the canvas, name, kind, device count, save state (a failed save can be retried there) and a badge for a waiting proposal. It reads the store through selectors only; a sidebar subscribed to the whole store renders on every frame of a drag. Away from the canvas it asks for a waiting proposal every 20 s; on the canvas it reads what the builder polls anyway.
 
 ### Layout Engine (Polish)
@@ -473,6 +480,35 @@ docker run --rm -v "$PWD:/repo" -v hlb-frontend-node-modules:/repo/frontend/node
 - **nginx** (`frontend/nginx.conf`). `/` serves `index.html`, the known routes of the app serve `app.html`, and anything else is a real 404 (`public/404.html`).
 - `useAuth` starts with `loading` false when the auth config is known, login is on and there is no token: a guest gets the landing page without a loading screen in between.
 
+### App Pages
+
+Every screen outside the canvas is built to one contract, `frontend/DESIGN.md`. Read it before adding or changing a page. In short: a page is a document on the page ground; theme tokens only; no washes, glow or shadow under anything that does not float; the monospace face for addresses, ports, figures and commands; colour for state only.
+
+| Piece | Where | What it is |
+|---|---|---|
+| `Page`, `PageHeader`, `PageRow` | `components/layout/page.tsx` | The frame of every page. It starts at the same left edge everywhere and is not centred; `PageRow` is a section whose heading stays in a rail at the left (the homelab guide; the landing page is built the same way). |
+| `.app-table`, `.app-filter`, `.app-code`, `.app-link`, `.app-card`, `.app-empty-state` | `index.css`, `@layer components` | Rows that are scanned, a filter that is switched on and off (`aria-pressed`), a command as typed, a link in running text, a bordered object, a box that says what is missing. |
+| `--status-ok`, `--status-warn` | `index.css` | State colours. A theme sets the 31 tokens of `theme-registry.ts`; these two follow only `.dark`, so "saved" is the same green in every theme. Utilities: `text-status-ok`, `bg-status-warn`. |
+| `TickBox` | `components/ui/tick-box.tsx` | The checkbox, drawn from the theme; a real `input` underneath. |
+| `UserAvatar` | `components/ui/user-avatar.tsx`, `lib/avatar.ts` | A picture or initials. The backend gives accounts made without Google the address of a generated cartoon (DiceBear); it is not fetched. |
+| `@media print` | end of `index.css` | Dark ink on white whatever the theme, the page at its full length (on screen the app scrolls inside `<main>`), and `print:hidden` on what is only for a screen. |
+
+**Sidebar** (`components/layout/sidebar.tsx`). The work is at the top: Projects, the open project as a card with its pages (Canvas, Config Generator, Setup Guide), then what is looked up (Hardware Catalog, Service Library, Homelab Guide). The app itself is at the foot: the command menu, Settings, Admin for an admin, the usage survey until it is answered, Support. Under that the account, whose menu holds what is rarely needed: profile, docs, GitHub, Discord, privacy, terms. The guided planner is not a place in the sidebar: it is reached from the Projects page, the project switcher and the command menu. The mobile menu is a sheet with the same places.
+
+**Setup Guide** (`features/setup-guide/`, route `/checklist`). The guide is worked out from the open build by a pure function, `buildSetupPlan` in `lib/setup-plan.ts`, so it always says what the canvas says:
+- sections in the order the work is done: mount the rack, run the cables (a schedule: from, port, to, link), set up the network (the router's LAN address and DHCP range, then the address of every device), one section per host (BIOS, system, static address and gateway, SSH, Docker, and a table of what runs on it), start the services, and the steps of a gaming build (`gaming/lib/setup-steps.ts`);
+- every step and every table row has an id made from node and guest ids. A cable is named by its two ends in a fixed order (`cable:<a>~<b>`), never by its edge id (pitfall 10) or its place in a list;
+- an access point's uplink is drawn as a wireless link and still takes a port of the switch, so it is listed as a cable; a client joined to an access point (`isWifiAssociation`) is a step, not a cable;
+- a container answers on its host (the generated Compose file publishes its ports there and gives it its planned address on a bridge network of its own), a VM on its own address. The DNS and reverse-proxy steps use that rule, like `setup-steps.ts`;
+- what is ticked is `buildSettings.setupDone`. The page starts `startAutosave` itself, so a tick is saved with the build through the one save path, and shows in the project card's save state. Ticks for steps the plan no longer has are not counted and are dropped at the next tick;
+- the page prints as a runbook: the rail, the buttons and the sidebar are left out.
+
+**Service Library** (`features/catalog/pages/service-catalog-page.tsx`). A table, not a grid of cards: one line per service with the least it needs (RAM, cores, disk), sortable by column, with the categories as a rail of filters and their counts. A row opens to the rest: recommended figures, how it runs, players and ports of a game server, tags, links. `lib/service-catalog.ts` holds the filtering, sorting and formatting. A visitor without an account sees the library without favorites and without "Add a service"; the favorites query is not sent for them.
+
+**Projects page**. Each card shows the build in miniature (`LayoutThumbnail` over `pictureOf`, the same drawing as in the sidebar), from the nodes and edges of the list. Card sizes are estimated there, since the list carries no guests.
+
+**Homelab Guide** (`features/guides/pages/homelab-guide-page.tsx`, public, `/how-to-build-a-homelab`). One article in `PageRow` sections. The part about Google sign-in is for whoever runs the instance: it is folded away in a `<details>` and opens when a link points at `#google-sso` or `#sso-env`.
+
 ### Feature Structure
 
 Each feature under `src/features/` follows this general pattern (not all subdirs are present in every feature):
@@ -494,11 +530,13 @@ feature/
 | `builder/` | Visual network builder - the main feature (ReactFlow canvas, node management, IP display, Polish, proposal review on the canvas) |
 | `admin/` | Admin dashboard, user management, service/hardware admin, steering rules, catalog components |
 | `auth/` | Welcome and sign-in screen of an own instance, profile page |
-| `catalog/` | Public hardware & service catalog browsing |
+| `catalog/` | Public hardware catalog (cards) and service library (a sortable table), adding a service of one's own |
 | `shopping/` | Shopping list generation from build data |
 | `donate/` | Donation page with progress tracking |
 | `landing/` | Landing page of the public site: ASCII rack, live demo, the plan's tables and files, FAQ, sign-in |
-| `setup-guide/` | Interactive setup checklist |
+| `setup-guide/` | The setup guide of the open build: cable schedule, address plan, steps per host; ticked off, saved with the build, printable |
+| `guides/` | The homelab guide, a public article; diagrams for the static docs under `/docs/visuals/` |
+| `legal/` | Privacy policy and terms of service |
 | `survey/` | Beta user survey |
 | `settings/` | Settings page: appearance, AI assistant (provider, key, key-protection panel), MCP access tokens |
 | `assistant/` | Chat panel in the builder: SSE reader, store, message list, activity timeline, proposal cards with Apply and Reject, status pill on the canvas |
@@ -519,6 +557,9 @@ feature/
 | `/checklist` | `ChecklistPage` | Yes |
 | `/hardware` | `HardwareCatalogPage` | No |
 | `/services` | `ServiceCatalogPage` | No |
+| `/how-to-build-a-homelab` | `HomelabGuidePage` | No |
+| `/privacy`, `/terms` | `PrivacyPolicyPage`, `TermsOfServicePage` | No |
+| `/shared/:token` | `SharedBuildPage` (no sidebar) | No |
 
 ---
 
@@ -661,7 +702,7 @@ hasPrefix(s, prefix string) bool
 | File | Package | Tests |
 |---|---|---|
 | `internal/services/testhelpers_test.go` | `services` | Infrastructure (TestMain, helpers) |
-| `internal/services/build_service_test.go` | `services` | Build CRUD tests |
+| `internal/services/build_service_test.go` | `services` | Build CRUD tests; the list carries nodes and edges |
 | `internal/services/ip_service_test.go` | `services` | DB tests + pure unit tests |
 | `internal/services/auth_service_test.go` | `services` | Auth service tests |
 | `internal/services/hardware_service_test.go` | `services` | Hardware catalog tests |
@@ -698,7 +739,11 @@ hasPrefix(s, prefix string) bool
 | `frontend/src/features/builder/lib/polish.test.ts` | - | What Polish says and remembers |
 | `frontend/src/features/builder/components/proposal-review-panel.test.tsx`, `proposal-review-bar.test.tsx` | - | List of changes; review bar and the banner of a waiting proposal |
 | `frontend/src/features/builder/pages/__tests__/projects-page.test.tsx` | - | Projects page, with rename and delete of the open project; the first-project screen and an empty search |
-| `frontend/src/components/layout/project-card.test.tsx`, `sidebar.test.tsx` | - | Project card after a reload, save states, proposal badge, switcher; order of the sidebar, collapsed state |
+| `frontend/src/components/layout/project-card.test.tsx`, `sidebar.test.tsx` | - | Project card after a reload, save states, proposal badge, switcher; what the sidebar lists and where, the account menu, the survey row, a visitor, collapsed state |
+| `frontend/src/features/setup-guide/lib/setup-plan.test.ts`, `pages/checklist-page.test.tsx` | - | The guide from a build: cable schedule and its order, ids that survive a redraw, Wi-Fi clients, addresses, hosts with and without a hypervisor, a NAS, services, a rack; progress; a tick lands in the build's settings and an untouched build stays untouched |
+| `frontend/src/features/catalog/lib/service-catalog.test.ts`, `pages/service-catalog-page.test.tsx` | - | Filtering, sorting with ties, category counts, tags, figures; the table, a row opened, favorites, a visitor without an account |
+| `frontend/src/features/guides/pages/homelab-guide-page.test.tsx` | - | The article's sections, the patterns as a table, the sign-in setup folded away and opened by a link |
+| `frontend/src/components/ui/user-avatar.test.tsx` | - | Picture, initials, a generated avatar that is not fetched |
 | `frontend/src/features/settings/**/*.test.ts(x)` | - | MCP snippets and source links, token card, assistant settings card |
 | `frontend/src/features/assistant/**/*.test.ts(x)` | - | SSE reader; chat store (every event, reading the thread again, a queued message); chat panel; activity timeline |
 | `frontend/src/features/gaming/**/*.test.ts(x)` | - | Sizing, tables, kinds, setup steps, game compose text, plan dialog, node fields |
@@ -951,6 +996,18 @@ Once as HTML when the app is built, once by React in the browser, and the swap m
 
 nginx no longer falls back to the app for an unknown path. A route added to `App.tsx` must be added to the matching `location` in `frontend/nginx.conf` (public, or behind the login), or it is a 404 in the image while it works in `vite dev`.
 
+### 34. Setup progress is part of the build
+
+The ticks of the Setup Guide are `settings.setupDone`, saved through the one save path. Two things follow. `setSetupDone` must leave the settings object alone when nothing is ticked and nothing is stored, or opening the guide would look like an unsaved change (pitfalls 12 and 14). And the id of a step must survive a save: build it from node and guest ids, never from an edge id (pitfall 10) or an index, or every tick is lost when the build is saved.
+
+### 35. `dark:` follows the operating system, not the theme
+
+The app's theme is a class on `<html>` (`dark` or `light`) plus tokens set inline by `ThemeProvider`. Tailwind's `dark:` variant is not tied to that class here: it follows `prefers-color-scheme`. A `dark:text-amber-400` is therefore wrong for a user on a dark system with a light theme. Outside the canvas use tokens (`text-status-warn`, `text-muted-foreground`), which are right in every theme; `frontend/DESIGN.md` has the list.
+
+### 36. A page outside the canvas is a document, not a card grid
+
+Before adding a page or a section, read `frontend/DESIGN.md`. The things that crept in before and were taken out again: gradient washes behind a page, a tinted square around every icon, the same icon on every card, pill badges above titles, all-caps tracked labels, hard-coded palette colours, a hero banner on a tool page. `scripts/detect.mjs` of avoid-ai-design finds most of them in source.
+
 ---
 
 ## Fixed Bugs (Historical)
@@ -990,6 +1047,10 @@ These bugs were diagnosed and fixed; tests guard against regression.
 | 29 | `assistant_thread_service.go`, `tools.go` | A NUL character in tool arguments made storing the reply fail (22P05) | Refused as an argument, stripped before storing |
 | 30 | `activity-timeline.tsx`, `assistant-panel.tsx` | Screen-reader labels in the message list made the whole builder scrollable | The scroller is `relative` |
 | 31 | `layout/place.ts`, `layout/index.ts`, `vite.config.ts` | The frontend suite failed on Node 20 under load: the layout engine's random-network test and one dialog test ran out of time | The engine no longer places the chosen drawing twice and skips placed items that cannot matter (the same drawings, in a third of the time on Node 20); `testTimeout` is 15 s |
+| 32 | `sidebar.tsx` | The links of the mobile menu had no styling: `NavLink` with a class function sat under `SheetClose asChild` (pitfall 26) | Plain `Link`s with the class and `aria-current` worked out in place |
+| 33 | `sidebar.tsx`, `profile-page.tsx` | An account without a picture was shown with one fetched from an avatar service, with the user's e-mail address in the request | `UserAvatar` draws initials; a generated avatar address is never fetched |
+| 34 | `checklist-page.tsx` | The setup guide called itself personalised and used nothing of the build but the presence of device types; its numbering skipped; its check marks could not be ticked | Rewritten as a guide generated from the build (`setup-plan.ts`), with progress saved in the build |
+| 35 | `sidebar.tsx`, `checklist-page.tsx` | Invalid HTML: the sign-in button sat inside a button, and a `<div>` badge inside a `<p>` | Both rewritten; the account row is one button, the sign-in button stands alone |
 
 ---
 

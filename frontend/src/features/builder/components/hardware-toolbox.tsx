@@ -1008,7 +1008,7 @@ export const HardwareToolbox = React.memo(function HardwareToolbox() {
                   {dynamicPresets.map(cat => {
                     const isOpen = expandedCategories.has(cat.category);
                     return (
-                      <div key={cat.category} className="app-surface overflow-hidden rounded-lg">
+                      <div key={cat.category} className="builder-surface overflow-hidden rounded-lg">
                         <button
                           type="button"
                           className="flex w-full items-center justify-between bg-muted/35 px-2.5 py-2 text-[10px] font-bold uppercase tracking-wide transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -1094,7 +1094,7 @@ export const HardwareToolbox = React.memo(function HardwareToolbox() {
                         searchQuery !== '' ? true : !collapsedServiceCats.has(catName);
 
                       return (
-                        <div key={catName} className="app-surface overflow-hidden rounded-lg">
+                        <div key={catName} className="builder-surface overflow-hidden rounded-lg">
                           <button
                             type="button"
                             className="flex w-full items-center justify-between bg-muted/35 px-2.5 py-2 text-[10px] font-bold uppercase tracking-wide transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"

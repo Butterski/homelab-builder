@@ -1,29 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  Plus,
-  Folder,
-  Clock,
-  MoreVertical,
-  Trash2,
-  Edit2,
-  Play,
-  HardDrive,
-  Search,
-  Download,
-  Upload,
-  Share2,
-  Copy,
-  Check,
-  Globe,
-  Lock,
-  Pencil,
-  Sparkles,
-} from 'lucide-react';
+import { Copy, Check, Globe, Lock, MoreVertical, Pencil, Search } from 'lucide-react';
+import { Page, PageHeader } from '../../../components/layout/page';
 import { Button } from '../../../components/ui/button';
-import { Card } from '../../../components/ui/card';
-import { Badge } from '../../../components/ui/badge';
-import { APP_VERSION_LABEL } from '../../../lib/version';
 import { BUILD_KINDS, buildKindInfo, isGamingKind } from '../../gaming/lib/kind';
 import type { BuildKind } from '../../../types';
 import {
@@ -46,6 +25,10 @@ import type { Build } from '../api/builds';
 import { formatDistanceToNow } from 'date-fns';
 import { useProjectsPage } from '../hooks/use-projects-page';
 import { FirstProject } from '../components/first-project';
+import { LayoutThumbnail } from '../components/layout-thumbnail';
+import { mapBuildToFlow } from '../lib/build-mapper';
+import { pictureOf } from '../lib/layout';
+import { layoutGraphFromFlow } from '../lib/layout/from-flow';
 
 // ─── ProjectsPage ─────────────────────────────────────────────────────────────
 function ProjectsPage() {
@@ -77,78 +60,77 @@ function ProjectsPage() {
   } = useProjectsPage();
 
   return (
-    <div className="app-page mx-auto max-w-7xl px-4 py-8">
-      <div className="app-hero mb-8 flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
-        <div className="min-w-0">
-          <span className="app-chip mb-3">Workspace</span>
-          <h1 className="text-3xl font-bold tracking-tight text-balance">My Projects</h1>
-          <p className="mt-1 text-muted-foreground">
-            Manage your homelab designs and configurations.
-          </p>
-        </div>
-        <div className="flex w-full flex-wrap items-center gap-2 md:w-auto md:justify-end">
-          <div className="relative min-w-0 flex-1 basis-full sm:basis-64 md:w-64">
-            <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-            <Input
-              placeholder="Search projects..."
-              className="h-10 pl-9"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
+    <Page>
+      <PageHeader
+        title="Projects"
+        lede="Your homelab designs, LAN parties and game servers."
+        actions={
+          <>
+            <div className="relative min-w-0 flex-1 basis-full sm:basis-56">
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <Input
+                type="search"
+                aria-label="Search projects"
+                placeholder="Search projects..."
+                className="pl-9"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+              />
+            </div>
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept=".json,.homelab.json"
+              className="hidden"
+              onChange={handleFileChange}
             />
-          </div>
-          <input
-            type="file"
-            ref={fileInputRef}
-            accept=".json,.homelab.json"
-            className="hidden"
-            onChange={handleFileChange}
-          />
-          <Button variant="outline" onClick={handleImportClick} className="flex-1 sm:flex-none">
-            <Upload className="mr-2 size-4" /> Import
-          </Button>
-          <Button asChild className="flex-1 sm:flex-none">
-            <Link to="/planner">
-              <Sparkles className="mr-2 size-4" />
-              Guided Planner
-            </Link>
-          </Button>
-          <Button onClick={handleCreateNew} className="flex-1 sm:flex-none">
-            <Plus className="mr-2 size-4" /> New Project
-          </Button>
-        </div>
-      </div>
+            <Button variant="outline" onClick={handleImportClick}>
+              Import
+            </Button>
+            <Button variant="outline" asChild>
+              <Link to="/planner">Guided Planner</Link>
+            </Button>
+            <Button onClick={handleCreateNew}>New project</Button>
+          </>
+        }
+      />
 
-      {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="app-card h-64 animate-pulse" />
-          ))}
-        </div>
-      ) : builds.length === 0 ? (
-        <FirstProject onCreateEmpty={handleCreateNew} onImport={handleImportClick} />
-      ) : filteredBuilds.length === 0 ? (
-        <div className="app-empty-state py-16 text-center">
-          <h3 className="mb-2 text-lg font-semibold">No project matches &ldquo;{search}&rdquo;</h3>
-          <Button variant="outline" onClick={() => setSearch('')}>
-            Clear search
-          </Button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredBuilds.map(build => (
-            <BuildCard
-              key={build.id}
-              build={build}
-              onOpen={handleOpen}
-              onRenameClick={handleRenameClick}
-              onDuplicate={handleDuplicate}
-              onExport={handleExport}
-              onShareClick={handleShareClick}
-              onDelete={handleDelete}
-            />
-          ))}
-        </div>
-      )}
+      <div className="pt-6">
+        {loading ? (
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="app-card h-56 animate-pulse" />
+            ))}
+          </div>
+        ) : builds.length === 0 ? (
+          <FirstProject onCreateEmpty={handleCreateNew} onImport={handleImportClick} />
+        ) : filteredBuilds.length === 0 ? (
+          <div className="app-empty-state px-6 py-12">
+            <h2 className="font-semibold">No project matches &ldquo;{search}&rdquo;</h2>
+            <Button variant="outline" className="mt-4" onClick={() => setSearch('')}>
+              Clear search
+            </Button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+            {filteredBuilds.map(build => (
+              <BuildCard
+                key={build.id}
+                build={build}
+                onOpen={handleOpen}
+                onRenameClick={handleRenameClick}
+                onDuplicate={handleDuplicate}
+                onExport={handleExport}
+                onShareClick={handleShareClick}
+                onDelete={handleDelete}
+              />
+            ))}
+          </div>
+        )}
+      </div>
 
       <ProjectModals
         modal={modal as any}
@@ -172,8 +154,7 @@ function ProjectsPage() {
         onToggleEditable={handleToggleEditable}
         onCopyLink={handleCopyShareLink}
       />
-
-    </div>
+    </Page>
   );
 }
 
@@ -289,7 +270,9 @@ function ProjectModals({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Rename Project</DialogTitle>
-            <DialogDescription>The new name is used everywhere this project is shown.</DialogDescription>
+            <DialogDescription>
+              The new name is used everywhere this project is shown.
+            </DialogDescription>
           </DialogHeader>
           <div className="py-4">
             <Label htmlFor="rename-project" className="mb-2 block">
@@ -428,6 +411,30 @@ function ShareModal({
 }
 
 // ─── BuildCard ────────────────────────────────────────────────────────────────
+
+/** The build in miniature, drawn from what the list of projects knows about it. */
+const ProjectPicture = React.memo(function ProjectPicture({ build }: { build: Build }) {
+  const picture = useMemo(() => {
+    const flow = mapBuildToFlow(build);
+    if (flow.nodes.length === 0) return null;
+    return pictureOf(layoutGraphFromFlow(flow.nodes, flow.edges, flow.hardwareNodes));
+  }, [build]);
+
+  if (build.thumbnail) {
+    return <img src={build.thumbnail} alt="" className="size-full object-cover" />;
+  }
+  if (!picture) {
+    return <p className="text-sm text-muted-foreground">Nothing on the canvas yet</p>;
+  }
+  return (
+    <LayoutThumbnail
+      picture={picture}
+      label={`${build.name}: the canvas in miniature`}
+      className="size-full"
+    />
+  );
+});
+
 const BuildCard = React.memo(function BuildCard({
   build,
   onOpen,
@@ -447,112 +454,80 @@ const BuildCard = React.memo(function BuildCard({
 }) {
   const nodeCount = build.nodes && Array.isArray(build.nodes) ? build.nodes.length : 0;
   const kindInfo = buildKindInfo(build.kind);
-  const KindIcon = kindInfo.icon;
 
   return (
-    <Card
-      className="app-card group flex cursor-pointer flex-col overflow-hidden transition-[border-color,transform] hover:-translate-y-0.5 hover:border-primary/50"
+    <article
+      className="app-card group flex cursor-pointer flex-col overflow-hidden transition-colors focus-within:border-muted-foreground/70 hover:border-muted-foreground/70"
       onClick={() => onOpen(build)}
     >
-      <div className="relative flex aspect-video items-center justify-center border-b bg-[radial-gradient(circle_at_50%_35%,color-mix(in_srgb,var(--primary)_12%,transparent),transparent_42%),color-mix(in_srgb,var(--muted)_55%,transparent)] transition-colors group-hover:bg-muted/50">
-        {build.thumbnail ? (
-          <img src={build.thumbnail} alt={build.name} className="w-full h-full object-cover" />
-        ) : (
-          <div className="flex flex-col items-center gap-2 text-muted-foreground/40">
-            <Folder className="size-12" />
-          </div>
-        )}
-
-        <div className="absolute right-2 top-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="secondary"
-                size="icon"
-                className="size-8"
-                onClick={e => e.stopPropagation()}
-                aria-label={`Open Actions For ${build.name}`}
-              >
-                <MoreVertical className="size-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                onClick={e => {
-                  e.stopPropagation();
-                  onOpen(build);
-                }}
-              >
-                <Edit2 className="mr-2 size-4" /> Edit
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={e => onRenameClick(e, build)}>
-                <Edit2 className="mr-2 size-4" /> Rename
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={e => onDuplicate(e, build.id)}>
-                <Folder className="mr-2 size-4" /> Duplicate
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={e => onExport(e, build)}>
-                <Download className="mr-2 size-4" /> Export
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={e => onShareClick(e, build)}>
-                <Share2 className="mr-2 size-4" /> Share
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="text-destructive focus:text-destructive"
-                onClick={e => onDelete(e, build.id)}
-              >
-                <Trash2 className="mr-2 size-4" /> Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+      <div className="grid h-36 place-items-center border-b bg-muted/30 p-3">
+        <ProjectPicture build={build} />
       </div>
 
-      <div className="flex flex-1 flex-col p-4">
-        <div className="mb-2 flex items-start justify-between">
-          <h3 className="font-semibold truncate pr-2" title={build.name}>
-            {build.name}
-          </h3>
-          <div className="flex shrink-0 items-center gap-1">
-            {isGamingKind(build.kind) && (
-              <Badge variant="outline" className="gap-1 text-[10px]">
-                <KindIcon className="size-3" />
-                {kindInfo.label}
-              </Badge>
-            )}
-            <Badge variant="secondary" className="text-[10px]">
-              {APP_VERSION_LABEL}
-            </Badge>
-          </div>
-        </div>
-
-        <div className="mt-auto space-y-3">
-          <div className="flex items-center gap-4 text-xs text-muted-foreground">
-            <div className="flex items-center gap-1.5">
-              <HardDrive className="size-3.5" />
-              {nodeCount} Nodes
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Clock className="size-3.5" />
-              {formatDistanceToNow(new Date(build.updated_at), { addSuffix: true })}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 border-t pt-3">
-            <Button
-              size="sm"
-              className="w-full"
+      <div className="flex items-start gap-2 p-4">
+        <div className="min-w-0 flex-1">
+          <h3 className="truncate font-medium" title={build.name}>
+            <button
+              type="button"
+              className="rounded-sm text-left hover:cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
               onClick={e => {
                 e.stopPropagation();
                 onOpen(build);
               }}
             >
-              <Play className="mr-2 size-3.5" /> Open Editor
-            </Button>
-          </div>
+              {build.name}
+            </button>
+          </h3>
+          <p className="mt-1 flex gap-3 text-sm text-muted-foreground">
+            <span className="shrink-0">
+              {isGamingKind(build.kind) && (
+                <>
+                  <span>{kindInfo.label}</span>,{' '}
+                </>
+              )}
+              {nodeCount} {nodeCount === 1 ? 'device' : 'devices'}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-right">
+              {formatDistanceToNow(new Date(build.updated_at), { addSuffix: true })}
+            </span>
+          </p>
         </div>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="-mr-2 -mt-1 size-8 shrink-0 text-muted-foreground"
+              onClick={e => e.stopPropagation()}
+              aria-label={`Open Actions For ${build.name}`}
+            >
+              <MoreVertical className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              onClick={e => {
+                e.stopPropagation();
+                onOpen(build);
+              }}
+            >
+              Open
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={e => onRenameClick(e, build)}>Rename</DropdownMenuItem>
+            <DropdownMenuItem onClick={e => onDuplicate(e, build.id)}>Duplicate</DropdownMenuItem>
+            <DropdownMenuItem onClick={e => onExport(e, build)}>Export</DropdownMenuItem>
+            <DropdownMenuItem onClick={e => onShareClick(e, build)}>Share</DropdownMenuItem>
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onClick={e => onDelete(e, build.id)}
+            >
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
-    </Card>
+    </article>
   );
 });
 

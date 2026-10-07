@@ -745,7 +745,8 @@ func asSharedView(build *models.Build) (*models.Build, error) {
 
 func (s *BuildService) ListByUser(userID uuid.UUID) ([]models.Build, error) {
 	var builds []models.Build
-	if err := s.db.Preload("Nodes").Where("user_id = ?", userID).Order("updated_at desc").Find(&builds).Error; err != nil {
+	// Nodes and edges are enough to draw each build in miniature; guests are not listed.
+	if err := s.db.Preload("Nodes").Preload("Edges").Where("user_id = ?", userID).Order("updated_at desc").Find(&builds).Error; err != nil {
 		return nil, err
 	}
 	return builds, nil

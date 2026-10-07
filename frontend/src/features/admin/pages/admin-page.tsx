@@ -1,3 +1,4 @@
+import { Page, PageHeader } from "../../../components/layout/page"
 import { useAdminStats, useAdminServices, useAdminUsers } from "../api/use-admin"
 import { AdminStats } from "../components/admin-stats"
 import { ServiceDialog } from "../components/service-dialog"
@@ -125,7 +126,7 @@ function InsightsTab({ stats }: { stats: any }) {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold flex items-baseline gap-2">
-              <Network className="size-5 text-purple-500 shrink-0" />
+              <Network className="size-5 shrink-0 text-muted-foreground" />
               <AnimatedCounter value={stats?.total_builds || 0} />
               <span className="text-xs font-normal text-muted-foreground">layouts planned</span>
             </div>
@@ -137,7 +138,7 @@ function InsightsTab({ stats }: { stats: any }) {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold flex items-baseline gap-2">
-              <Server className="size-5 text-orange-500 shrink-0" />
+              <Server className="size-5 shrink-0 text-muted-foreground" />
               <AnimatedCounter value={stats?.avg_nodes_per_build || 0} decimals={1} />
               <span className="text-xs font-normal text-muted-foreground">devices per build</span>
             </div>
@@ -149,7 +150,7 @@ function InsightsTab({ stats }: { stats: any }) {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold flex items-baseline gap-2">
-              <Cpu className="size-5 text-green-500 shrink-0" />
+              <Cpu className="size-5 shrink-0 text-muted-foreground" />
               <AnimatedCounter value={stats?.avg_vms_per_build || 0} decimals={1} />
               <span className="text-xs font-normal text-muted-foreground">VMs/containers per build</span>
             </div>
@@ -174,7 +175,7 @@ function InsightsTab({ stats }: { stats: any }) {
                       <span className="text-muted-foreground">{item.count} nodes</span>
                     </div>
                     <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
-                      <div className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                      <div className="h-full rounded-full bg-foreground/70 transition-all" style={{ width: `${pct}%` }} />
                     </div>
                   </div>
                 );
@@ -201,7 +202,7 @@ function InsightsTab({ stats }: { stats: any }) {
                       <span className="text-muted-foreground">{item.count} active</span>
                     </div>
                     <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
-                      <div className="h-full bg-gradient-to-r from-purple-500 to-pink-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                      <div className="h-full rounded-full bg-foreground/70 transition-all" style={{ width: `${pct}%` }} />
                     </div>
                   </div>
                 );
@@ -224,7 +225,7 @@ function InsightsTab({ stats }: { stats: any }) {
                     {item.type.slice(0, 2)}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground leading-none">{item.type}</p>
+                    <p className="text-xs font-medium capitalize leading-none text-muted-foreground">{String(item.type).replace(/_/g, ' ')}</p>
                     <p className="text-lg font-bold leading-tight mt-1">{item.count} <span className="text-xs font-normal text-muted-foreground">placed</span></p>
                   </div>
                 </div>
@@ -276,7 +277,7 @@ function UsersTab({ userSearch, onUserSearchChange, userMinBuilds, onUserMinBuil
         </CardHeader>
         <CardContent>
           <p className="text-xs text-muted-foreground leading-relaxed flex items-center gap-2">
-            <Shield className="size-4 shrink-0 text-emerald-500" />
+            <Shield className="size-4 shrink-0 text-status-ok" />
             <span><strong>Absolute Privacy Ensured:</strong> Absolutely no emails, names, user IDs, or specific passwords/IP/MAC addresses are included in this download. It only contains anonymous device groupings and topological connection graphs.</span>
           </p>
         </CardContent>
@@ -324,7 +325,7 @@ function UsersTab({ userSearch, onUserSearchChange, userMinBuilds, onUserMinBuil
           ) : (
             <div className="relative overflow-x-auto border rounded-lg">
               <table className="w-full text-sm text-left text-foreground">
-                <thead className="text-xs uppercase bg-muted text-muted-foreground border-b select-none">
+                <thead className="select-none border-b text-xs text-muted-foreground">
                   <tr>
                     <th className="px-4 py-3">Homelaber</th>
                     <th className="px-4 py-3">Email Address</th>
@@ -346,7 +347,7 @@ function UsersTab({ userSearch, onUserSearchChange, userMinBuilds, onUserMinBuil
                       <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{getAnonymizedEmail(u.id)}</td>
                       <td className="px-4 py-3 text-center font-bold text-primary">{u.builds_count}</td>
                       <td className="px-4 py-3 text-center font-bold">{u.nodes_count}</td>
-                      <td className="px-4 py-3 text-center font-bold text-emerald-500">{u.vms_count}</td>
+                      <td className="app-figure px-4 py-3 text-center">{u.vms_count}</td>
                       <td className="px-4 py-3 text-muted-foreground text-xs">{new Date(u.created_at).toLocaleDateString()}</td>
                     </tr>
                   ))}
@@ -407,14 +408,12 @@ function AdminPage() {
   if (!user?.is_admin) return <Navigate to="/" replace />
 
   return (
-    <div className="flex flex-col gap-8 px-6 py-8 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Admin Dashboard</h1>
-          <p className="text-muted-foreground mt-0.5">Manage the platform, analyze layouts, and view homelaber metrics.</p>
-        </div>
-        {tab === "services" && <ServiceDialog />}
-      </div>
+    <Page className="flex flex-col gap-8">
+      <PageHeader
+        title="Admin"
+        lede="Manage the platform, analyze layouts, and view homelaber metrics."
+        actions={tab === "services" && <ServiceDialog />}
+      />
 
       {statsLoading ? (
           <div className="grid gap-4 md:grid-cols-3">
@@ -455,17 +454,16 @@ function AdminPage() {
       {tab === "hardware" && <AdminHardwareManager />}
       {tab === "blueprints" && <BlueprintModerationManager />}
       {tab === "links" && (
-        <div className="flex flex-col items-center justify-center p-12 border border-dashed rounded-xl bg-muted/10 text-center gap-3">
-          <div className="text-4xl">⏳</div>
-          <h3 className="text-xl font-bold">Coming Soon</h3>
-          <p className="text-muted-foreground max-w-md">
+        <div className="app-empty-state px-6 py-10">
+          <h3 className="font-semibold">Not available in the open beta</h3>
+          <p className="mt-1 max-w-xl text-sm text-muted-foreground">
             Affiliate Links Management is disabled for the Open Beta. This feature is reserved for future implementation to support community funding.
           </p>
         </div>
       )}
       {tab === "steering" && <SteeringRulesManager />}
       {tab === "mass-planner" && <CatalogComponentsManager />}
-    </div>
+    </Page>
   )
 }
 

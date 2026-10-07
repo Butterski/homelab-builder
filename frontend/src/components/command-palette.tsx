@@ -12,6 +12,7 @@ import {
   LayoutGrid,
   LayoutTemplate,
   Network,
+  Route,
   Search,
   Settings,
   User,
@@ -118,6 +119,15 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         run: go('/generate'),
       },
       {
+        id: 'plan-homelab',
+        label: 'Plan a homelab',
+        hint: 'Goals, shape and budget',
+        icon: Route,
+        keywords: ['guided', 'planner', 'wizard', 'new', 'lab', 'start'],
+        disabled: !user,
+        run: go('/planner'),
+      },
+      {
         id: 'plan-lan-party',
         label: 'Plan a LAN party',
         hint: 'Seats, switches and power',
@@ -146,9 +156,9 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       {
         id: 'checklist',
         label: 'Open setup guide',
-        hint: 'Build checklist',
+        hint: 'Cables, addresses and what to install',
         icon: CheckSquare,
-        keywords: ['tasks', 'steps', 'setup'],
+        keywords: ['tasks', 'steps', 'setup', 'checklist', 'cabling', 'runbook', 'print'],
         run: go('/checklist'),
       },
       {
@@ -305,9 +315,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                       action.disabled && 'cursor-not-allowed opacity-45',
                     )}
                   >
-                    <span className="flex size-8 items-center justify-center rounded-md border bg-background text-muted-foreground">
-                      <action.icon className="size-4" aria-hidden="true" />
-                    </span>
+                    <action.icon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-medium">{action.label}</span>
                       <span className="block truncate text-xs text-muted-foreground">

@@ -267,6 +267,8 @@ interface BuilderState {
   // Build settings as loaded from the server. Keys this store does not manage
   // itself are sent back unchanged, because a save replaces the whole object.
   buildSettings: Record<string, unknown>;
+  /** Which steps of the setup guide are ticked off. Kept in the settings, so it is saved with the build. */
+  setSetupDone: (stepIds: string[]) => void;
 
   // Purchase Tracking
   boughtItems: string[];
@@ -402,6 +404,13 @@ export const useBuilderStore = create<BuilderState>()(
       setBuildKind: kind => set({ buildKind: kind }),
       setGamingPlan: plan => set({ gamingPlan: plan }),
       buildSettings: {},
+      setSetupDone: stepIds =>
+        set(state => {
+          // Nothing ticked and nothing stored: leave the object alone, or an
+          // untouched build would look changed.
+          if (stepIds.length === 0 && !('setupDone' in state.buildSettings)) return state;
+          return { buildSettings: { ...state.buildSettings, setupDone: stepIds } };
+        }),
       boughtItems: [],
       showBought: false,
       historyPast: [],
