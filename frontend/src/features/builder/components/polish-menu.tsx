@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { ChevronDown, LayoutGrid } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '../../../components/ui/popover';
@@ -41,7 +41,7 @@ function previewStyles(): Preview[] {
  * the style used last; the caret shows what each style would make of this
  * build before anything moves.
  */
-export function PolishMenu() {
+export const PolishMenu = memo(function PolishMenu() {
   const [open, setOpen] = useState(false);
   const [previews, setPreviews] = useState<Preview[]>([]);
   const [usual, setUsual] = useState<LayoutStyle>(lastPolishStyle);
@@ -129,4 +129,4 @@ export function PolishMenu() {
       </Popover>
     </div>
   );
-}
+});

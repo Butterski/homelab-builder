@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { useBuilderStore } from '../store/builder-store';
+import { useShallow } from 'zustand/react/shallow';
 import {
   connectedVirtualMachines,
   removeVirtualEndpoints,
@@ -54,7 +55,16 @@ function Editor({ hostId }: { hostId: string }) {
   const host = useBuilderStore(state => state.hardwareNodes.find(node => node.id === hostId));
   const projectName = useBuilderStore(state => state.projectName);
   const { openVirtualNetwork, updateVirtualNetwork, updateVM, reassignAllIPs, undo, redo } =
-    useBuilderStore();
+    useBuilderStore(
+      useShallow(state => ({
+        openVirtualNetwork: state.openVirtualNetwork,
+        updateVirtualNetwork: state.updateVirtualNetwork,
+        updateVM: state.updateVM,
+        reassignAllIPs: state.reassignAllIPs,
+        undo: state.undo,
+        redo: state.redo,
+      })),
+    );
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);

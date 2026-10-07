@@ -89,7 +89,8 @@ function PowerPieChart({ stats, colors }: { stats: PieChartStats; colors: string
 }
 
 export function PowerUsagePanel() {
-  const { hardwareNodes, updateHardware } = useBuilderStore();
+  const hardwareNodes = useBuilderStore(state => state.hardwareNodes);
+  const updateHardware = useBuilderStore(state => state.updateHardware);
   const [costPerKwh, setCostPerKwh] = useState<number>(0.15);
   const [expandedNodeId, setExpandedNodeId] = useState<string | null>(null);
   const [showChart, setShowChart] = useState(false);

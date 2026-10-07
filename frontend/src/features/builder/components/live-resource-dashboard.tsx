@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { memo, useState, useMemo } from 'react';
 import { useBuilderStore } from '../store/builder-store';
 import { Card, CardContent } from '../../../components/ui/card';
 import { Progress } from '../../../components/ui/progress';
@@ -16,8 +16,8 @@ const parseSpec = (val?: string | number): number => {
   return matches ? parseInt(matches[0], 10) : 0;
 };
 
-export function LiveResourceDashboard() {
-  const { hardwareNodes } = useBuilderStore();
+export const LiveResourceDashboard = memo(function LiveResourceDashboard() {
+  const hardwareNodes = useBuilderStore(state => state.hardwareNodes);
   const [isExpanded, setIsExpanded] = useState(false);
 
   const stats = useMemo(() => {
@@ -265,4 +265,4 @@ export function LiveResourceDashboard() {
       </Card>
     </div>
   );
-}
+});

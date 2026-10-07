@@ -230,6 +230,16 @@ describe('GamingPlanDialog', () => {
     expect(screen.getByText(/Saving your changes/)).toBeInTheDocument();
   });
 
+  it('does not compare the build with the server while it is closed', () => {
+    // The comparison serialises the whole build, and a store selector runs on
+    // every change of the store: every frame of a drag on the canvas behind.
+    const compare = vi.fn(() => false);
+    store.state.hasUnsavedChanges = compare;
+    render(<GamingPlanDialog open={false} onOpenChange={vi.fn()} />);
+
+    expect(compare).not.toHaveBeenCalled();
+  });
+
   it('edits the plan as one complete object', async () => {
     const user = userEvent.setup();
     render(<GamingPlanDialog open onOpenChange={vi.fn()} />);

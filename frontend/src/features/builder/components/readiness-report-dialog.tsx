@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import type { Edge } from '@xyflow/react';
 import {
   AlertTriangle,
@@ -458,7 +458,7 @@ function StatTile({
   );
 }
 
-export function ReadinessReportDialog({
+export const ReadinessReportDialog = memo(function ReadinessReportDialog({
   open,
   onOpenChange,
   hardwareNodes,
@@ -621,4 +621,4 @@ export function ReadinessReportDialog({
       </DialogContent>
     </Dialog>
   );
-}
+});
