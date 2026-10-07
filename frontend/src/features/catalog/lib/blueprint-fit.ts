@@ -125,13 +125,12 @@ export function formatMetric(value: number, unit: string) {
 export function fitTone(grade?: HardwareBlueprintFit['grade']) {
   switch (grade) {
     case 'excellent':
-      return 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20';
     case 'good':
-      return 'bg-green-500/10 text-green-600 border-green-500/20';
+      return 'bg-status-ok/10 text-status-ok border-status-ok/30';
     case 'tight':
-      return 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20';
+      return 'bg-status-warn/10 text-status-warn border-status-warn/30';
     case 'risky':
-      return 'bg-red-500/10 text-red-600 border-red-500/20';
+      return 'bg-destructive/10 text-destructive border-destructive/30';
     default:
       return 'bg-muted text-muted-foreground border-border';
   }

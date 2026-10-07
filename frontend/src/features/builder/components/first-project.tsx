@@ -31,13 +31,12 @@ export function FirstProject({ onCreateEmpty, onImport }: FirstProjectProps) {
           refine on the canvas.
         </p>
         <div className="mt-6 grid gap-3 sm:grid-cols-3">
-          {BUILD_KINDS.map(({ kind, label, description, icon: Icon }) => (
+          {BUILD_KINDS.map(({ kind, label, description }) => (
             <Link
               key={kind}
               to={PLANNER[kind]}
-              className="app-card flex flex-col gap-2 p-4 transition-[border-color] hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              className="app-card flex flex-col gap-1 p-4 transition-colors hover:border-muted-foreground/70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
             >
-              <Icon className="size-5 text-muted-foreground" aria-hidden="true" />
               <span className="font-medium">{label}</span>
               <span className="text-sm leading-snug text-muted-foreground">{description}</span>
             </Link>
@@ -48,7 +47,7 @@ export function FirstProject({ onCreateEmpty, onImport }: FirstProjectProps) {
           <button
             type="button"
             onClick={onCreateEmpty}
-            className="text-foreground underline underline-offset-4 hover:cursor-pointer"
+            className="app-link text-foreground hover:cursor-pointer"
           >
             start with an empty canvas
           </button>
@@ -56,7 +55,7 @@ export function FirstProject({ onCreateEmpty, onImport }: FirstProjectProps) {
           <button
             type="button"
             onClick={onImport}
-            className="text-foreground underline underline-offset-4 hover:cursor-pointer"
+            className="app-link text-foreground hover:cursor-pointer"
           >
             import a project file
           </button>

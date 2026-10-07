@@ -28,6 +28,36 @@ export const HARDWARE_CATEGORY_LABELS: Record<string, string> = {
   console: 'Consoles',
 };
 
+/** What one device of a type is called in a sentence or a table. */
+const HARDWARE_TYPE_NAMES: Partial<Record<HardwareType, string>> = {
+  router: 'Router',
+  switch: 'Switch',
+  firewall: 'Firewall',
+  modem: 'Modem',
+  access_point: 'Access point',
+  server: 'Server',
+  server_v2: 'Server',
+  minipc: 'Mini PC',
+  sbc: 'SBC',
+  pc: 'PC',
+  nas: 'NAS',
+  vps: 'VPS',
+  iot: 'IoT device',
+  console: 'Console',
+  ups: 'UPS',
+  pdu: 'PDU',
+  lan_table: 'LAN table',
+  rack: 'Rack',
+  disk: 'Disk',
+  gpu: 'GPU',
+  hba: 'HBA card',
+  pcie: 'PCIe card',
+};
+
+export function hardwareTypeName(type: HardwareType | string): string {
+  return HARDWARE_TYPE_NAMES[type as HardwareType] ?? type.replace(/_/g, ' ');
+}
+
 export const CREATOR_HARDWARE_TYPES: Array<{ type: HardwareType; label: string }> = [
   { type: 'router', label: 'Router' },
   { type: 'switch', label: 'Switch' },
