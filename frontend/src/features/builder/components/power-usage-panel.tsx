@@ -168,7 +168,7 @@ export function PowerUsagePanel() {
   return (
     <div className="flex flex-col h-full overflow-y-auto">
       {/* Header */}
-      <div className="sticky top-0 z-10 p-3 border-b border-border/50 bg-background/95 backdrop-blur">
+      <div className="sticky top-0 z-10 p-3 border-b border-border/50 bg-background">
         <div className="flex items-center gap-2">
           <Zap className="size-4 text-primary shrink-0" />
           <div>

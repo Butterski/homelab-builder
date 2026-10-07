@@ -1,8 +1,7 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   ReactFlow,
-  Background,
   Controls,
   MiniMap,
   type Node,
@@ -21,6 +20,8 @@ import { Button } from '../../../components/ui/button';
 import { SeoMeta } from '../../../components/seo/seo-meta';
 import { HardwareNode } from '../components/hardware-node';
 import { RackNode } from '../components/rack-node';
+import { CanvasGrid } from '../components/canvas-grid';
+import { useCanvasMoving } from '../hooks/use-canvas-moving';
 import { CustomEdge } from '../components/custom-edge';
 import {
   RACK_U_HEIGHT_PX,
@@ -92,6 +93,8 @@ export default function SharedBuildPage() {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [error, setError] = useState<string | null>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const canvasMoving = useCanvasMoving(canvasRef);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -228,7 +231,7 @@ export default function SharedBuildPage() {
         </div>
       </header>
 
-      <div className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0" ref={canvasRef}>
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -242,9 +245,11 @@ export default function SharedBuildPage() {
           elementsSelectable={editable}
           deleteKeyCode={editable ? 'Delete' : null}
           fitView
+          onMoveStart={canvasMoving.onMoveStart}
+          onMoveEnd={canvasMoving.onMoveEnd}
           proOptions={{ hideAttribution: false }}
         >
-          <Background />
+          <CanvasGrid color="#91919a" opacity={1} />
           <Controls showInteractive={false} />
           <MiniMap />
         </ReactFlow>

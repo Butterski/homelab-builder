@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Background,
   ReactFlow,
   ReactFlowProvider,
   useNodesInitialized,
@@ -11,6 +10,8 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { cn } from '../../../lib/utils';
+import { CanvasGrid } from '../../builder/components/canvas-grid';
+import { useCanvasMoving } from '../../builder/hooks/use-canvas-moving';
 import { CustomEdge } from '../../builder/components/custom-edge';
 import { HardwareNode } from '../../builder/components/hardware-node';
 import { computeLayout, type LayoutStyle } from '../../builder/lib/layout';
@@ -78,6 +79,8 @@ function DemoCanvas({ plan, onKeep }: DemoCanvasProps) {
 
   // The planner places a plan from estimated card sizes. Once the cards have
   // been measured, arrange each plan once more from the real ones, then fit it.
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const canvasMoving = useCanvasMoving(canvasRef);
   const settled = useRef<DemoPlan | null>(null);
   useEffect(() => {
     if (!initialized) return;
@@ -149,7 +152,7 @@ function DemoCanvas({ plan, onKeep }: DemoCanvasProps) {
         <span className="lp-demo-hint">Drag a device, then press Polish.</span>
       </div>
 
-      <div className="lp-demo-canvas">
+      <div className="lp-demo-canvas" ref={canvasRef}>
         <ReactFlow
           nodes={nodes}
           edges={plan.edges}
@@ -163,10 +166,12 @@ function DemoCanvas({ plan, onKeep }: DemoCanvasProps) {
           zoomOnScroll={false}
           preventScrolling={false}
           minZoom={0.15}
+          onMoveStart={canvasMoving.onMoveStart}
+          onMoveEnd={canvasMoving.onMoveEnd}
           proOptions={{ hideAttribution: true }}
           className={cn('builder-flow-canvas', arranging && 'is-arranging')}
         >
-          <Background gap={20} size={1} color="#a1a1aa" style={{ opacity: 0.16 }} />
+          <CanvasGrid gap={20} opacity={0.16} />
         </ReactFlow>
       </div>
 

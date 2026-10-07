@@ -2,7 +2,6 @@ import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ReactFlow,
-  Background,
   Controls,
   useReactFlow,
   useUpdateNodeInternals,
@@ -78,6 +77,8 @@ import {
   DropdownMenuTrigger,
 } from '../../../components/ui/dropdown-menu';
 
+import { CanvasGrid } from './canvas-grid';
+import { useCanvasMoving } from '../hooks/use-canvas-moving';
 import { CustomEdge } from './custom-edge';
 import { ReadinessReportDialog } from './readiness-report-dialog';
 import { GamingPlanDialog } from '../../gaming/components/gaming-plan-dialog';
@@ -284,6 +285,7 @@ const Flow = React.memo(function Flow() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
+  const canvasMoving = useCanvasMoving(reactFlowWrapper);
   const { logout, updatePreferences } = useAuth();
 
   const downloadImage = (format: 'png' | 'svg') => {
@@ -1388,6 +1390,8 @@ const Flow = React.memo(function Flow() {
               if (node.type === 'hardware' || node.type === 'rack') selectNode(node.id);
             }}
             onPaneClick={() => selectNode(null)}
+            onMoveStart={canvasMoving.onMoveStart}
+            onMoveEnd={canvasMoving.onMoveEnd}
             // A proposal is looked at, not edited: the canvas pans and zooms only.
             nodesDraggable={!reviewingProposal}
             nodesConnectable={!reviewingProposal}
@@ -1408,7 +1412,7 @@ const Flow = React.memo(function Flow() {
             snapToGrid={true}
             snapGrid={[20, 20]}
           >
-            <Background gap={20} size={1} color="#A1A1AA" style={{ opacity: 0.25 }} />
+            <CanvasGrid gap={20} />
             <ViewportPortal>
               <div className="network-zone-viewport-layer">
                 {networkZones.map(zone => (

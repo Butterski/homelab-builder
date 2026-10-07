@@ -380,15 +380,16 @@
     box-shadow:
       0 1px 0 color-mix(in srgb, var(--foreground) 5%, transparent) inset,
       0 16px 44px color-mix(in srgb, #000 20%, transparent);
-    backdrop-filter: blur(12px);
   }
 
   .builder-floating-panel {
     border-radius: var(--radius-xl);
   }
 
+  /* Solid, like the panels: these float over the canvas, and a blur of what is
+     behind them was worked out again for every frame the canvas moved. */
   .builder-control-button {
-    background: color-mix(in srgb, var(--card) 88%, transparent);
+    background: var(--card);
   }
 
   .builder-tool-tile {
@@ -437,6 +438,21 @@
 .builder-workbench {
   border-bottom: 1px solid var(--border);
   background: var(--background);
+}
+
+/* The dot grid (canvas-grid.tsx) is a layer of its own: a pan moves it. */
+.canvas-grid {
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+  will-change: transform;
+}
+
+/* While the view is being moved the canvas is a layer too, so its cards are
+   not painted again for every frame. Only for that time: a layer keeps the
+   sharpness it was drawn with, which is wrong once a zoom has ended. */
+[data-canvas-moving] .react-flow__viewport {
+  will-change: transform;
 }
 
 .builder-top-panel {
