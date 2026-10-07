@@ -34,11 +34,22 @@ type Config struct {
 	AssistantAllowPrivateEndpoints bool
 	// PublicAppURL is the browser-facing origin used in proposal review links.
 	PublicAppURL string
+
+	// IntegrationsEnabled offers connections to systems that report what runs
+	// on the user's hardware (Proxmox VE).
+	IntegrationsEnabled bool
+	// IntegrationsAllowPrivateEndpoints lets an integration call private
+	// addresses, which is where a Proxmox host on a home network is. Unless it
+	// is set, it follows AssistantAllowPrivateEndpoints: whether this instance
+	// may call into private networks for its users is one decision.
+	IntegrationsAllowPrivateEndpoints bool
 }
 
 func Load() *Config {
 	clientId := getEnv("GOOGLE_CLIENT_ID", "")
 	isAuthDisabled := clientId == "" || clientId == "your-client-id" || clientId == "your_client_id_here"
+
+	allowPrivateEndpoints := getEnvBool("ASSISTANT_ALLOW_PRIVATE_ENDPOINTS", isAuthDisabled)
 
 	return &Config{
 		ServerPort:     getEnv("SERVER_PORT", "8080"),
@@ -58,8 +69,11 @@ func Load() *Config {
 		AssistantEnabled:               getEnvBool("ASSISTANT_ENABLED", true),
 		SecretsKey:                     strings.TrimSpace(getEnv("SECRETS_KEY", "")),
 		SecretsKeyVersion:              getEnvInt("SECRETS_KEY_VERSION", 1),
-		AssistantAllowPrivateEndpoints: getEnvBool("ASSISTANT_ALLOW_PRIVATE_ENDPOINTS", isAuthDisabled),
+		AssistantAllowPrivateEndpoints: allowPrivateEndpoints,
 		PublicAppURL:                   strings.TrimRight(strings.TrimSpace(getEnv("PUBLIC_APP_URL", "")), "/"),
+
+		IntegrationsEnabled:               getEnvBool("INTEGRATIONS_ENABLED", true),
+		IntegrationsAllowPrivateEndpoints: getEnvBool("INTEGRATIONS_ALLOW_PRIVATE_ENDPOINTS", allowPrivateEndpoints),
 	}
 }
 

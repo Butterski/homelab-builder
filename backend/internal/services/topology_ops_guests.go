@@ -11,6 +11,13 @@ import (
 
 // ── Virtual machines and services ───────────────────────────────────────────
 
+// Details an import leaves on a guest: the id it has on the system it was read
+// from, and the size of its disk there.
+const (
+	guestVMIDKey = "proxmox_vmid"
+	guestDiskKey = "disk_gb"
+)
+
 func (ed *topologyEditor) addVM(op TopologyOp) (TopologyOp, error) {
 	hostID, err := ed.resolveNode(op.Host, "host")
 	if err != nil {
@@ -197,6 +204,33 @@ func applyVMFields(vm *VMDTO, op TopologyOp) error {
 			return err
 		}
 		vm.Status = status
+	}
+	if op.MacAddress != nil {
+		mac, err := cleanMAC(*op.MacAddress)
+		if err != nil {
+			return err
+		}
+		vm.MacAddress = mac
+	}
+	if op.DiskGB != nil {
+		if err := checkRange("disk_gb", *op.DiskGB, 0, 4_000_000); err != nil {
+			return err
+		}
+		if *op.DiskGB == 0 {
+			delete(vm.Details, guestDiskKey)
+		} else {
+			vm.Details[guestDiskKey] = *op.DiskGB
+		}
+	}
+	if op.VMID != nil {
+		if *op.VMID != math.Trunc(*op.VMID) || *op.VMID < 0 || *op.VMID > 999_999_999 {
+			return errors.New("vmid must be a whole number")
+		}
+		if *op.VMID == 0 {
+			delete(vm.Details, guestVMIDKey)
+		} else {
+			vm.Details[guestVMIDKey] = *op.VMID
+		}
 	}
 	if op.StaticIP != nil {
 		static := strings.TrimSpace(*op.StaticIP)

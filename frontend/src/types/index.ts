@@ -254,6 +254,12 @@ export interface HardwareSpec {
   circuit?: string; // Id of the power circuit in the gaming plan
   /** Derived by IPAM on gateways that hand out leases. */
   dhcp_pool?: { start: string; end: string; size: number; clients: number };
+  // Inventory: the physical asset a node or component stands for
+  inventory_item_id?: string; // Id of the item in the owner's inventory
+  inventory_label?: string; // Its name, kept for where the inventory cannot be read
+  inventory_quantity?: number; // Component: how many units of the item it is
+  ram_type?: string; // What memory the machine takes, e.g. "DDR4 SODIMM"
+  proxmox_node?: string; // The Proxmox host this device is
 }
 
 export type VMType = 'vm' | 'container' | 'lxc';
@@ -277,9 +283,12 @@ export interface VirtualMachine {
   status: 'running' | 'stopped' | 'paused';
 }
 
+/** What can sit inside a host. A memory module is a component only, never a node. */
+export type ComponentType = HardwareType | 'ram';
+
 export interface HardwareComponent {
   id: string;
-  type: HardwareType;
+  type: ComponentType;
   name: string;
   power_draw?: number;
   details?: HardwareSpec;

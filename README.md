@@ -51,6 +51,13 @@ A project can be a homelab, a **LAN party** or a **game server** for friends. Se
 - **Game plan report**: Which ports to forward on which router, whether your upload is enough, carrier-grade NAT, port clashes, free switch ports, the DHCP pool, and the load on every power circuit against its breaker.
 - **Ready-to-use files**: A compose file per game host, the port-forward list, a connect sheet for your players and a party plan.
 
+### 7. Plan With the Hardware You Own
+An inventory of what is on your shelf, and a look at what really runs on it. See [docs/INVENTORY.md](./docs/INVENTORY.md).
+- **Inventory**: List your machines, switches, memory, disks and cables once, with where each is kept. It belongs to your account and sits beside the canvas in every project.
+- **Your machines on the canvas**: Drag an owned device in and it is that machine: its role in the project has one name, the machine another. Owned hardware never lands on the shopping list, and spare memory in the drawer is offered to a host that is short of it.
+- **Proxmox import**: Connect Proxmox VE with a read-only API token (or paste an export) and see which machine of your inventory each host is.
+- **Plan against reality**: Lay a project beside the cluster: guests on both sides, guests only on Proxmox, guests only in the plan, and each host's capacity as planned and as it runs. You tick what to take over, review it on the canvas and apply it. Nothing is imported by itself.
+
 ---
 
 ## 🛠️ Tech Stack

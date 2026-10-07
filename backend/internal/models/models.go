@@ -529,6 +529,66 @@ type AssistantMessage struct {
 
 func (AssistantMessage) TableName() string { return "assistant_messages" }
 
+// InventoryItem is a piece of hardware the user owns: a whole device, a
+// component in a drawer, an accessory. It belongs to the account, not to a
+// build, so the same device can be planned into several builds. A node placed
+// from it carries the item's id in details.inventory_item_id.
+type InventoryItem struct {
+	ID           uuid.UUID       `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	UserID       uuid.UUID       `gorm:"type:uuid;not null;index" json:"user_id"`
+	Kind         string          `gorm:"not null;default:'device';index" json:"kind"` // device | component | accessory
+	Type         string          `gorm:"not null" json:"type"`                        // minipc, switch, ram, disk, dac, ...
+	Name         string          `gorm:"not null" json:"name"`
+	Manufacturer string          `gorm:"default:''" json:"manufacturer"`
+	Model        string          `gorm:"default:''" json:"model"`
+	Quantity     int             `gorm:"not null;default:1" json:"quantity"`
+	Status       string          `gorm:"not null;default:'available';index" json:"status"` // available | in_use | reserved | broken | sold
+	Location     string          `gorm:"not null;default:'other'" json:"location"`         // rack | shelf | drawer | storage | other
+	Specs        json.RawMessage `gorm:"type:jsonb;not null;default:'{}'" json:"specs"`    // inventory.Specs
+	MacAddresses json.RawMessage `gorm:"type:jsonb;not null;default:'[]'" json:"mac_addresses"`
+	PowerDraw    float64         `gorm:"default:0" json:"power_draw"`
+	Notes        string          `gorm:"type:text;default:''" json:"notes"`
+	// Set when the item is the machine behind a host an integration reports
+	// (IntegrationRef is the Proxmox node name).
+	IntegrationID  *uuid.UUID `gorm:"type:uuid;index" json:"integration_id,omitempty"`
+	IntegrationRef string     `gorm:"default:''" json:"integration_ref,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+
+	User *User `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"-"`
+}
+
+func (InventoryItem) TableName() string { return "inventory_items" }
+
+// Integration is a connection to a system that knows what really runs on the
+// user's hardware (a Proxmox VE cluster). The API token secret is AES-256-GCM
+// encrypted and never serialized to JSON; Snapshot is what was read last.
+type Integration struct {
+	ID               uuid.UUID  `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	UserID           uuid.UUID  `gorm:"type:uuid;not null;index" json:"user_id"`
+	Kind             string     `gorm:"not null;default:'proxmox'" json:"kind"`
+	Name             string     `gorm:"not null" json:"name"`
+	Source           string     `gorm:"not null;default:'api'" json:"source"` // api | paste
+	BaseURL          string     `gorm:"default:''" json:"base_url"`
+	TokenID          string     `gorm:"default:''" json:"token_id"` // user@realm!tokenname
+	SecretCiphertext []byte     `gorm:"type:bytea" json:"-"`
+	SecretNonce      []byte     `gorm:"type:bytea" json:"-"`
+	SecretVersion    int        `gorm:"not null;default:0" json:"-"`
+	SecretStoredAt   *time.Time `json:"-"`
+	// TLSFingerprint pins the server certificate (SHA-256, hex) when it is not
+	// signed by a public authority, which is the default on a Proxmox host.
+	TLSFingerprint string          `gorm:"default:''" json:"tls_fingerprint"`
+	Snapshot       json.RawMessage `gorm:"type:jsonb" json:"-"`
+	SyncedAt       *time.Time      `json:"synced_at,omitempty"`
+	LastError      string          `gorm:"type:text;default:''" json:"last_error"`
+	CreatedAt      time.Time       `json:"created_at"`
+	UpdatedAt      time.Time       `json:"updated_at"`
+
+	User *User `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"-"`
+}
+
+func (Integration) TableName() string { return "integrations" }
+
 // SystemSetting stores instance-level values such as a generated secrets key.
 type SystemSetting struct {
 	Key       string    `gorm:"primaryKey" json:"key"`

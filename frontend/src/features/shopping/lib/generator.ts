@@ -2,6 +2,7 @@
 import type { Service, HardwareNode, CatalogComponent } from "../../../types"
 import { HARDWARE_CATALOG } from "../data/hardware-catalog"
 import { linkGenerator, type ShoppingLocale } from "./link-generator"
+import { assetIdOf } from "../../../lib/asset-link"
 
 export interface Offer {
     store: string
@@ -186,6 +187,9 @@ export function generateShoppingList(
 
     // ── Hardware nodes from Visual Builder ─────────────────────────────────────
     hardwareNodes.forEach(node => {
+        // A machine from the owner's inventory is already there: nothing to buy.
+        if (assetIdOf(node.details)) return
+
         let rec: { name: string; spec: string; price: number }
 
         if (node.details?.model) {

@@ -2,68 +2,28 @@ package llm
 
 import (
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
 	"net/url"
 	"strings"
-	"syscall"
 	"time"
+
+	"github.com/Butterski/homelab-builder/backend/internal/netguard"
 )
 
 // A user chooses the endpoint the server calls for them. On a shared instance
-// that must never become a way to reach the server's own network: cloud
-// metadata services, the database, other containers. The checks below run on
-// the address a connection is actually made to, after DNS resolution, so a
-// hostname that resolves to an internal address (or is re-pointed between the
-// check and the request) is refused as well.
+// that must never become a way to reach the server's own network. The rules
+// live in netguard, which the other outbound integrations share; this file is
+// what provider calls use.
 
 // ErrPrivateEndpoint means an endpoint resolved to an address the instance may not call.
-var ErrPrivateEndpoint = errors.New("endpoint address is not allowed on this instance")
-
-var blockedNetworks = mustParseCIDRs(
-	"0.0.0.0/8",     // "this network"
-	"100.64.0.0/10", // carrier-grade NAT, also used by cloud-internal services
-	"192.0.0.0/24",  // IETF protocol assignments
-	"198.18.0.0/15", // benchmarking
-	"240.0.0.0/4",   // reserved
-	"64:ff9b::/96",  // NAT64, maps onto IPv4 space
-	"2001:db8::/32", // documentation
-)
-
-func mustParseCIDRs(cidrs ...string) []*net.IPNet {
-	networks := make([]*net.IPNet, 0, len(cidrs))
-	for _, cidr := range cidrs {
-		_, network, err := net.ParseCIDR(cidr)
-		if err != nil {
-			panic(err)
-		}
-		networks = append(networks, network)
-	}
-	return networks
-}
+var ErrPrivateEndpoint = netguard.ErrPrivateEndpoint
 
 // IsPublicAddress reports whether ip is a routable public address: not
 // loopback, private, link-local (which includes cloud metadata at
 // 169.254.169.254), unique-local, multicast or otherwise reserved.
 func IsPublicAddress(ip net.IP) bool {
-	if ip == nil {
-		return false
-	}
-	if v4 := ip.To4(); v4 != nil {
-		ip = v4
-	}
-	if ip.IsLoopback() || ip.IsPrivate() || ip.IsUnspecified() ||
-		ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
-		ip.IsMulticast() || ip.IsInterfaceLocalMulticast() {
-		return false
-	}
-	for _, network := range blockedNetworks {
-		if network.Contains(ip) {
-			return false
-		}
-	}
-	return true
+	return netguard.IsPublicAddress(ip)
 }
 
 // SafeHTTPClient returns the HTTP client used for provider calls. Unless
@@ -73,19 +33,7 @@ func SafeHTTPClient(allowPrivate bool) *http.Client {
 	dialer := &net.Dialer{
 		Timeout:   15 * time.Second,
 		KeepAlive: 30 * time.Second,
-		Control: func(_, address string, _ syscall.RawConn) error {
-			if allowPrivate {
-				return nil
-			}
-			host, _, err := net.SplitHostPort(address)
-			if err != nil {
-				return err
-			}
-			if !IsPublicAddress(net.ParseIP(host)) {
-				return fmt.Errorf("%w: %s", ErrPrivateEndpoint, host)
-			}
-			return nil
-		},
+		Control:   netguard.DialControl(allowPrivate),
 	}
 	return &http.Client{
 		Transport: &http.Transport{
@@ -139,8 +87,7 @@ func ValidateBaseURL(raw string, allowPrivate bool) (string, error) {
 		if ip := net.ParseIP(host); ip != nil && !IsPublicAddress(ip) {
 			return "", ErrPrivateEndpoint
 		}
-		if lower := strings.ToLower(host); lower == "localhost" || strings.HasSuffix(lower, ".localhost") ||
-			strings.HasSuffix(lower, ".local") || strings.HasSuffix(lower, ".internal") {
+		if netguard.IsInternalHostname(host) {
 			return "", ErrPrivateEndpoint
 		}
 	}

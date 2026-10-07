@@ -152,19 +152,20 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 			Gaming:          gamingService,
 		})
 
-		// In-app assistant. Users bring their own provider key, which is stored
-		// encrypted under the instance's master key. A public instance must be
-		// given that key through SECRETS_KEY; without it the assistant stays off
+		// Secrets users store here (the key of their model provider, the token
+		// of their Proxmox host) are encrypted under the instance's master key.
+		// A public instance must be given that key through SECRETS_KEY; without
+		// it the assistant stays off and integrations take pasted exports only,
 		// rather than the server refusing to start.
 		var keyring *secrets.Keyring
-		if cfg.AssistantEnabled {
+		if cfg.AssistantEnabled || cfg.IntegrationsEnabled {
 			requireEnvKey := gin.Mode() == gin.ReleaseMode && !cfg.AuthDisabled
 			loaded, err := services.LoadKeyring(db, cfg.SecretsKey, cfg.SecretsKeyVersion, requireEnvKey)
 			switch {
 			case err != nil:
-				log.Printf("AI assistant disabled: %v", err)
+				log.Printf("Stored secrets disabled (AI assistant off, integrations read pasted exports only): %v", err)
 			case loaded.Source == secrets.SourceDatabase:
-				log.Printf("AI assistant: SECRETS_KEY is not set, so provider keys are encrypted with a key kept in this database. Set SECRETS_KEY to keep the master key outside the database.")
+				log.Printf("Stored secrets: SECRETS_KEY is not set, so provider keys and integration tokens are encrypted with a key kept in this database. Set SECRETS_KEY to keep the master key outside the database.")
 				keyring = loaded
 			default:
 				keyring = loaded
@@ -180,6 +181,14 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 			PublicAppURL: cfg.PublicAppURL,
 		})
 		assistantHandler := handlers.NewAssistantHandler(assistantSettings, assistantAgent)
+
+		// What the user owns, and what really runs on it. An import only ever
+		// proposes changes to a build that exists; the owner applies them.
+		inventoryService := services.NewInventoryService(db)
+		inventoryHandler := handlers.NewInventoryHandler(inventoryService)
+		integrationService := services.NewIntegrationService(db, keyring, cfg.IntegrationsEnabled, cfg.IntegrationsAllowPrivateEndpoints)
+		importService := services.NewProxmoxImportService(db, integrationService, buildService, ipService, proposalService)
+		integrationHandler := handlers.NewIntegrationHandler(integrationService, inventoryService, importService)
 
 		// MCP endpoint for external LLM clients. It authenticates with personal
 		// access tokens, never with the browser session.
@@ -203,10 +212,11 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 		{
 			auth.GET("/config", func(c *gin.Context) {
 				c.JSON(200, gin.H{
-					"auth_disabled":     cfg.AuthDisabled,
-					"google_client_id":  cfg.GoogleClientID,
-					"mcp_enabled":       cfg.MCPEnabled,
-					"assistant_enabled": cfg.AssistantEnabled,
+					"auth_disabled":        cfg.AuthDisabled,
+					"google_client_id":     cfg.GoogleClientID,
+					"mcp_enabled":          cfg.MCPEnabled,
+					"assistant_enabled":    cfg.AssistantEnabled,
+					"integrations_enabled": cfg.IntegrationsEnabled,
 				})
 			})
 
@@ -309,6 +319,25 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 			protected.GET("/assistant/threads/:buildId", assistantHandler.GetThread)
 			protected.DELETE("/assistant/threads/:buildId", assistantHandler.ClearThread)
 			protected.POST("/assistant/chat", assistantHandler.Chat)
+
+			// Inventory: the hardware the user owns. It belongs to the account.
+			protected.GET("/inventory", inventoryHandler.List)
+			protected.POST("/inventory", inventoryHandler.Create)
+			protected.PUT("/inventory/:id", inventoryHandler.Update)
+			protected.DELETE("/inventory/:id", inventoryHandler.Delete)
+
+			// Integrations: read-only connections to Proxmox. Session auth only,
+			// like the token routes: an access token cannot reach a stored secret.
+			protected.GET("/integrations", integrationHandler.List)
+			protected.POST("/integrations", integrationHandler.Create)
+			protected.POST("/integrations/test", integrationHandler.Test)
+			protected.PUT("/integrations/:id", integrationHandler.Update)
+			protected.DELETE("/integrations/:id", integrationHandler.Delete)
+			protected.POST("/integrations/:id/sync", integrationHandler.Sync)
+			protected.POST("/integrations/:id/reconcile", integrationHandler.Reconcile)
+			protected.POST("/integrations/:id/link", integrationHandler.Link)
+			protected.POST("/integrations/:id/inventory", integrationHandler.CreateItem)
+			protected.POST("/integrations/:id/import", integrationHandler.Import)
 
 			// Public shared build viewer / editor (no auth required)
 			api.GET("/shared/:token", buildHandler.GetShared)

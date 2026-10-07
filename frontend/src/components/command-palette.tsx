@@ -12,6 +12,7 @@ import {
   LayoutGrid,
   LayoutTemplate,
   Network,
+  Package,
   Route,
   Search,
   Settings,
@@ -93,6 +94,15 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         keywords: ['builder', 'canvas', 'current'],
         disabled: !currentBuildId,
         run: go(currentBuildId ? `/builder/${currentBuildId}` : location.pathname),
+      },
+      {
+        id: 'inventory',
+        label: 'Open inventory',
+        hint: user ? 'The hardware you own, and Proxmox' : 'Sign in required',
+        icon: Package,
+        keywords: ['owned', 'hardware', 'assets', 'spare', 'parts', 'proxmox', 'integrations', 'import'],
+        disabled: !user,
+        run: go('/inventory'),
       },
       {
         id: 'hardware',

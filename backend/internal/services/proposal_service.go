@@ -142,7 +142,7 @@ func (s *ProposalService) Propose(in ProposeInput) (*models.BuildProposal, error
 
 	diff := DiffBuilds(build, preview.Build)
 	if diff.Counts.Total == 0 {
-		return nil, &OpError{Index: -1, Message: "the operations do not change the build"}
+		return nil, &OpError{Index: -1, Message: noChangeMessage}
 	}
 	summary := strings.TrimSpace(in.Summary)
 	if summary == "" {
@@ -487,6 +487,16 @@ func (s *ProposalService) userIgnoresLoops(userID uuid.UUID) bool {
 	}
 	_ = json.Unmarshal(user.Preferences, &preferences)
 	return preferences.EdgePreferences.IgnoreNetworkLoops
+}
+
+// noChangeMessage is what a change set is refused with when the build would
+// look the same after it.
+const noChangeMessage = "the operations do not change the build"
+
+// isNoChange reports a change set that was refused because it changes nothing.
+func isNoChange(err error) bool {
+	var opErr *OpError
+	return errors.As(err, &opErr) && opErr.Index < 0 && opErr.Message == noChangeMessage
 }
 
 // isTopologyRejection reports errors caused by the change set itself rather

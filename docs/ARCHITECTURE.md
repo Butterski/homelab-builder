@@ -16,6 +16,7 @@ Remember - I don't want migrations scripts or Legacy things support. If somethin
 4. [HLBIPAM Microservice](#hlbipam-microservice)
    - [LLM Access: MCP Server and Assistant](#llm-access-mcp-server-and-assistant)
    - [Gaming Builds](#gaming-builds)
+   - [Inventory and Proxmox Import](#inventory-and-proxmox-import)
 5. [Frontend Architecture](#frontend-architecture)
 6. [Data Model](#data-model)
 7. [IP Assignment Algorithm](#ip-assignment-algorithm)
@@ -37,6 +38,8 @@ Remember - I don't want migrations scripts or Legacy things support. If somethin
 - **LLM access**: built-in MCP server (`/mcp`) and an opt-in, bring-your-own-key chat assistant; both can only propose changes
 - **Gaming (1.3)**: a build has a kind (`homelab`, `lan_party`, `game_server`); the gaming kinds add a plan (internet line, power circuits, event) and a report computed on the backend
 - **Canvas (1.3)**: Polish arranges the canvas with a layout engine of its own (`features/builder/lib/layout`); an LLM proposal is reviewed on the live canvas, not on a copy
+- **Inventory**: the hardware a user owns belongs to the account, not to a build. An owned device dragged onto the canvas is that machine: it keeps its link to the item, and the shopping list leaves it out
+- **Proxmox import**: a read-only connection to Proxmox VE, or a pasted export, says what really runs on that hardware. What differs from a build becomes a proposal the owner reviews; nothing is imported by itself
 - **App pages**: every screen outside the canvas follows one design contract, `frontend/DESIGN.md` (see [App Pages](#app-pages))
 - **Infrastructure**: Docker Compose (postgres + backend + hlbipam + frontend)
 
@@ -53,16 +56,20 @@ homelab-builder/
 ├── backend/
 │   ├── cmd/
 │   │   ├── server/main.go      # HTTP server entrypoint
-│   │   └── fakellm/main.go     # scripted stand-in for a model provider (development only, not in the image)
+│   │   ├── fakellm/main.go     # scripted stand-in for a model provider (development only, not in the image)
+│   │   └── fakepve/main.go     # made-up Proxmox VE API over TLS (development only, not in the image)
 │   ├── internal/
 │   │   ├── assistant/          # LLM tool registry, chat agent, instructions
 │   │   ├── config/config.go    # env var loading
 │   │   ├── gaming/             # build kinds, gaming plan, game registry, sizing, report, game compose
 │   │   ├── handlers/           # Gin route handlers (one file per domain)
-│   │   ├── llm/                # provider adapters (Anthropic, OpenAI-compatible), SSRF guard; llmtest/ is the scripted provider
+│   │   ├── inventory/          # owned hardware: kinds, figures, how an item reads as in use, an item as a node
+│   │   ├── llm/                # provider adapters (Anthropic, OpenAI-compatible); llmtest/ is the scripted provider
 │   │   ├── mcpserver/          # /mcp endpoint: token auth, rate limits
 │   │   ├── middleware/         # auth, admin, rate limiter, security headers
 │   │   ├── models/models.go    # ALL GORM models in one file
+│   │   ├── netguard/           # which addresses the server may call for a user (the LLM and the Proxmox client)
+│   │   ├── proxmox/            # read-only Proxmox VE client, pasted exports, host matching, plan against reality; pvetest/ is the made-up cluster
 │   │   ├── secrets/            # AES-256-GCM sealing of stored provider keys
 │   │   ├── services/           # business logic; most tests live here
 │   │   ├── testutil/           # Postgres transaction helper for packages outside services
@@ -94,6 +101,8 @@ homelab-builder/
 │   │   │   ├── donate/         # donation page
 │   │   │   ├── gaming/         # game plan dialog and report, game server / LAN table / console fields
 │   │   │   ├── guides/         # the homelab guide (an article) and the diagrams of the static docs
+│   │   │   ├── integrations/   # Proxmox: connection, hosts matched to the inventory, compare and import
+│   │   │   ├── inventory/      # owned hardware: the panel beside the canvas, the inventory page, the item form
 │   │   │   ├── landing/        # landing page for guests: demo on the real planners, prerendered into index.html
 │   │   │   ├── legal/          # privacy policy, terms of service
 │   │   │   ├── settings/       # settings page: appearance, AI assistant, MCP access
@@ -107,6 +116,7 @@ homelab-builder/
 │   │   │   └── ui/             # design system primitives (button, dialog, tick box, avatar, etc.)
 │   │   ├── lib/                # shared utilities
 │   │   │   ├── api.ts          # base axios instance
+│   │   │   ├── asset-link.ts   # which inventory item a node or component stands for
 │   │   │   ├── templates.ts    # config templates
 │   │   │   ├── prerender.ts    # the landing page copy in index.html: release, shared keys
 │   │   │   ├── site.ts         # public site or somebody's own instance (decides landing page vs welcome screen)
@@ -126,6 +136,7 @@ homelab-builder/
     ├── ARCHITECTURE.md         # copy of this file
     ├── MCP.md                  # connecting LLM clients over MCP
     ├── GAMING.md               # user guide: LAN party and game server builds
+    ├── INVENTORY.md            # user guide: inventory and Proxmox import; how the token is handled
     └── AI-ASSISTANT-SECURITY.md # how provider keys and chat data are handled
 ```
 
@@ -174,6 +185,8 @@ HTTP Request → Gin Router → Middleware → Handler → Service → GORM → 
 | `proposal_handler.go` | Sync state poll, proposal get / apply / reject |
 | `api_token_handler.go` | Personal access tokens for MCP clients (JWT only) |
 | `assistant_handler.go` | Assistant settings, provider test, chat thread, chat stream (SSE) |
+| `inventory_handler.go` | Inventory CRUD (`/api/inventory`); session only |
+| `integration_handler.go` | Proxmox integrations (`/api/integrations`): test, save, read again, link hosts to items, compare with a build, import; session only |
 
 ### Key Services
 
@@ -199,6 +212,9 @@ HTTP Request → Gin Router → Middleware → Handler → Service → GORM → 
 | `steering_service.go` | Affiliate steering rules per hardware category |
 | `catalog_component_service.go` | Catalog component CRUD |
 | `analytics_service.go` | Analytics tracking (available for future handler integration) |
+| `inventory_service.go` | Owned hardware per account; where each item is planned (read from the builds) and what its integration reports |
+| `integration_service.go` | Proxmox connections: encrypted token secret, trusted certificate, the last snapshot, host-to-item links, outbound rate limit |
+| `proxmox_import.go` | Compares a snapshot with a build (`Plan`) and turns the owner's choices into a proposal, or into a new build (`Import`) |
 
 ### Build Save Flow
 
@@ -283,6 +299,7 @@ POST /builds/:id/proposals/:pid/apply          replays the ops on the latest rev
 ```
 
 - One pending proposal per build: a new one supersedes the older.
+- A proposal says where it comes from (`source`): `mcp`, `chat` or `import` (a Proxmox import, see [Inventory and Proxmox Import](#inventory-and-proxmox-import)). All three are reviewed and applied the same way.
 - Apply rebases: edits saved after the proposal was created are kept. If the operations no longer fit, the proposal becomes `conflict` (409).
 - Connections are addressed by their unordered node pair, never by edge ID.
 - New entities keep their UUIDs in the stored operations, but a canvas position the server chose is not stored with them: `placeNodes` runs again on refresh and on apply, against the canvas as it is then. A position the model gave explicitly stays.
@@ -371,6 +388,83 @@ A new node type has to be added in: hlbIPAM `core/types.go`; backend `build_serv
 
 ---
 
+## Inventory and Proxmox Import
+
+Two connected things. The **inventory** is what a user owns; a **Proxmox import** is what really runs on it. User guide: `docs/INVENTORY.md`.
+
+### Pieces
+
+| Package / file | Responsibility |
+|---|---|
+| `internal/inventory/` | Pure rules: kinds (`device`, `component`, `accessory`) and their types, `Specs`, `Item.Normalize`, `State` (how an item reads), `Item.NodeDetails` (an item as a node). Imports nothing internal. |
+| `services/inventory_service.go` | `inventory_items` per account. `List` adds to each item its placements (read from `nodes` and `node_components` of the user's builds), what its integration last reported, and the derived `state`. |
+| `internal/netguard/` | Which addresses the server may call for a user. `llm/ssrf.go` and the Proxmox client both use it: one policy. |
+| `internal/proxmox/` | `client.go` reads a cluster (GET only); `payload.go` parses the API's resources and a pasted export; `match.go` suggests which inventory item a host is; `reconcile.go` compares hosts and guests with a plan. Everything but the client is pure. |
+| `internal/proxmox/pvetest/`, `cmd/fakepve/` | A made-up cluster. Go tests run the real client against it; `go run ./cmd/fakepve` serves it over TLS for a browser (see Running Tests). |
+| `services/integration_service.go` | `integrations` per account: address, token id, encrypted secret, trusted certificate, the last snapshot. `Test`, `Sync`, `LinkItem`, `CreateItemFromHost`. |
+| `services/proxmox_import.go` | `Plan` (the comparison; changes nothing) and `Import` (a proposal for an existing build, a new build otherwise). |
+| `frontend/src/features/inventory/` | The panel beside the canvas, the inventory page and dialog, the item form, the "Physical machine" block of a selected device. `lib/place.ts` puts an item on the canvas. |
+| `frontend/src/features/integrations/` | The Proxmox dialog (connection, hosts and inventory, compare and import) and the Integrations section of the panel and of the inventory page. |
+| `frontend/src/lib/asset-link.ts` | Reads and removes the link between a node or component and an inventory item. |
+
+`internal/inventory` and `internal/proxmox` import nothing of `services`, so the rules can be tested without a database.
+
+### An item on the canvas
+
+- The inventory belongs to the account. A build does not own an item, it points at one: `details.inventory_item_id` on a node or an internal component, with `details.inventory_label` (the item's name, so a build still says what the machine is on a share link, or after the item was deleted) and, for a component, `details.inventory_quantity`.
+- The node's name is its role in the build ("proxmox-01"); the item keeps its own ("Lenovo M75q #1"). Renaming one does not touch the other.
+- One device is one node on a canvas: placing it again selects the node it is. The same item may be planned in several builds, which may be variants of each other.
+- Where an item is planned is never stored with the item. `InventoryService.placements` reads it from the builds.
+- `status` is what the owner set; `state` is what lists show. `inventory.State` makes an available item "in use" when a build plans every unit of it, or when it is the machine behind a host an integration reads. Broken and sold stay as set.
+- Owned hardware is left out of the shopping list (`shopping/lib/generator.ts`).
+- Memory is an internal component of type `ram` (`ComponentType = HardwareType | 'ram'`); a host's capacity stays `details.ram`. A kit at least as large as what is fitted takes its place, a smaller one is added (`ramAfterInstall`). `lib/upgrade-hints.ts` offers spare memory to a host that is short of it, in the device's panel and in the readiness report.
+- A copy is not the same machine: duplicating a node, or saving it as a blueprint, drops the link and the MAC address (pitfall 39).
+
+### Proxmox: reading
+
+- A connection is an address, a token id (`user@realm!name`) and the token's secret. Nothing is ever written to a cluster: the client sends GET only.
+- The first calls (`/version`, `/cluster/resources`) must succeed. The rest (`/cluster/status`, each host's `status` and `network`, each guest's `config`, the addresses of running guests) is read where the token may, and left out with a line in `Snapshot.Notes` where it may not.
+- What was read is stored with the integration (`integrations.snapshot`, jsonb). Comparing and importing work on the stored snapshot; only Test, Save and "Read again" call the cluster.
+- An instance that may not call private addresses, or has no master key, reads a pasted export instead: the output of `pvesh get /cluster/resources --output-format json`. It lists hosts, guests and storage with their sizes; processor models and addresses are not in it.
+- `match.go` scores an inventory device against a host (processor model, memory, threads, name; a MAC address or an existing link decides). The owner links; nothing is linked by itself.
+
+### Proxmox: importing
+
+```
+POST /api/integrations/:id/reconcile  {build_id?, hosts?}   -> ImportPlan    (changes nothing)
+POST /api/integrations/:id/import     ImportDecision        -> ImportResult
+  existing build: change set -> ProposalService.Propose (source "import") -> reviewed on the canvas
+  no build:       a router at the hosts' gateway, a switch, the chosen hosts and guests, written directly
+```
+
+- A host is paired with a planned device by the owner's choice, then by `details.proxmox_node`, then by the inventory item both point at, then by name (`PairHosts`). A guest is paired by `details.proxmox_vmid`, then by name.
+- An import into an existing build never writes. It is a proposal like an LLM's, with the same review, Apply and undo, and it is one proposal: at most `MaxTopologyOps` changes.
+- Guests that are stopped are left out unless ticked; a planned guest that is not on the cluster stays unless the owner removes it. Proxmox does not see inside its guests, so "only in the plan" may well be a container inside a virtual machine.
+- Real addresses are taken over only where the address plan keeps them: inside the network of a router of the build, unused, and outside that router's DHCP range (pitfall 38). `ImportResult` says how many were left to the plan.
+- A second import of the same cluster changes nothing: imported guests carry `proxmox_vmid`, imported hosts `proxmox_node`.
+
+### Rules that must not be broken
+
+- The token secret is write-only. The secret fields of `Integration` are `json:"-"`; only `IntegrationService.openSecret` decrypts, for one reading. It is sealed with the same keyring as provider keys (`SECRETS_KEY`) and bound to the owner and the integration through the AAD. Never log, return or store the plaintext.
+- A stored secret is used only for the address and token id it was stored for. Changing either wipes it unless a new secret comes in the same request; a changed address also forgets the trusted certificate.
+- A certificate no public authority signed is not accepted silently. `Client.verify` reports its SHA-256 before anything is sent; the owner trusts it, and from then on only that certificate is accepted (`tls_fingerprint`). There is no switch that ignores certificate errors.
+- Every dial goes through `netguard.DialControl`. The client follows no redirect and takes no proxy from the environment.
+- Inventory and integration routes take a session only, never an access token, and are not LLM tools.
+- The server calls out for one user at most 6 times a minute (burst 12), whichever route asks.
+
+### Rules that exist in more than one place
+
+Change them together.
+
+| Rule | Backend | Frontend |
+|---|---|---|
+| An item as a node: which details it brings | `inventory.Item.NodeDetails` | `inventoryItemToDragData` in `features/inventory/lib/inventory.ts` |
+| Kinds, types, places | `internal/inventory/inventory.go` | `features/inventory/lib/inventory.ts` (`TYPES`, `LOCATIONS`) |
+| The details that name the asset | `inventory.DetailItemID`, `DetailLabel`, `DetailQuantity`; `services.DetailProxmoxNode` | `lib/asset-link.ts` (`ASSET_DETAIL_KEYS`) |
+| What an import counts as one change | `proxmox_import.go` (`buildOps`) | `features/integrations/lib/import-selection.ts` (`countChanges`) |
+
+---
+
 ## Frontend Architecture
 
 ### State Management (Zustand)
@@ -406,7 +500,7 @@ The builder feature uses a single Zustand store at `features/builder/store/build
 - Each changed element carries `--reveal-index`, and `index.css` stages the reveal from it: what goes fades, what changed pulses, what is new scales in, new cables draw themselves. No timers are involved; reduced motion shows the end state.
 - The camera moves to the changes only when they are not on screen already (`proposalPreview.focus`).
 - `applyProposal` saves pending edits first, applies on the server, reloads, pushes one undo step that also restores the name, kind and plan, and sets `appliedGlow` so the canvas lights up what was applied.
-- A proposal the chat made in this session opens by itself. One from an MCP client shows `proposal-banner.tsx`, which leaves a chip when it is put aside. `proposal-review-bar.tsx` steps through the changes; the list of changes (`proposal-review-panel.tsx`) is a second tab of the side panel, next to the chat, which stays mounted.
+- A proposal the chat made in this session opens by itself, and so does one an import just made (`reviewImported`). One from an MCP client shows `proposal-banner.tsx`, which leaves a chip when it is put aside. `proposal-review-bar.tsx` steps through the changes; the list of changes (`proposal-review-panel.tsx`) is a second tab of the side panel, next to the chat, which stays mounted.
 
 **Polish:** `polishLayout(style)` asks the layout engine (see below) and `applyLayout(positions)` writes the final positions in one update: one undo step, none when nothing moves, the existing node objects kept so `measured` survives, `hardwareNodes[].x/y` in step. The glide is only drawn (`layoutMotion` and the class `is-arranging`), so a save can never see a half-way position. `lib/polish.ts` adds the toasts and remembers the style used last (`hlb-polish-style`); the command palette calls it too.
 
@@ -487,7 +581,7 @@ Every screen outside the canvas is built to one contract, `frontend/DESIGN.md`. 
 | `UserAvatar` | `components/ui/user-avatar.tsx`, `lib/avatar.ts` | A picture or initials. The backend gives accounts made without Google the address of a generated cartoon (DiceBear); it is not fetched. |
 | `@media print` | end of `index.css` | Dark ink on white whatever the theme, the page at its full length (on screen the app scrolls inside `<main>`), and `print:hidden` on what is only for a screen. |
 
-**Sidebar** (`components/layout/sidebar.tsx`). The work is at the top: Projects, the open project as a card with its pages (Canvas, Config Generator, Setup Guide), then what is looked up (Hardware Catalog, Service Library, Homelab Guide). The app itself is at the foot: the command menu, Settings, Admin for an admin, the usage survey until it is answered, Support. Under that the account, whose menu holds what is rarely needed: profile, docs, GitHub, Discord, privacy, terms. The guided planner is not a place in the sidebar: it is reached from the Projects page, the project switcher and the command menu. The mobile menu is a sheet with the same places.
+**Sidebar** (`components/layout/sidebar.tsx`). The work is at the top: Projects, the open project as a card with its pages (Canvas, Config Generator, Setup Guide), then Inventory (what the user owns, whichever project is open), then what is looked up (Hardware Catalog, Service Library, Homelab Guide). The app itself is at the foot: the command menu, Settings, Admin for an admin, the usage survey until it is answered, Support. Under that the account, whose menu holds what is rarely needed: profile, docs, GitHub, Discord, privacy, terms. The guided planner is not a place in the sidebar: it is reached from the Projects page, the project switcher and the command menu. The mobile menu is a sheet with the same places.
 
 **Setup Guide** (`features/setup-guide/`, route `/checklist`). The guide is worked out from the open build by a pure function, `buildSetupPlan` in `lib/setup-plan.ts`, so it always says what the canvas says:
 - sections in the order the work is done: mount the rack, run the cables (a schedule: from, port, to, link), set up the network (the router's LAN address and DHCP range, then the address of every device), one section per host (BIOS, system, static address and gateway, SSH, Docker, and a table of what runs on it), start the services, and the steps of a gaming build (`gaming/lib/setup-steps.ts`);
@@ -535,6 +629,8 @@ feature/
 | `settings/` | Settings page: appearance, AI assistant (provider, key, key-protection panel), MCP access tokens |
 | `assistant/` | Chat panel in the builder: SSE reader, store, message list, activity timeline, proposal cards with Apply and Reject, status pill on the canvas |
 | `gaming/` | Game plan dialog and report, game server settings, LAN table / console / circuit fields, setup steps for gaming builds |
+| `inventory/` | What the user owns: the panel beside the canvas, the inventory page (a table grouped by where things are kept), the item form, the "Physical machine" block of a device |
+| `integrations/` | Proxmox: connecting, matching hosts to the inventory, comparing a project with what runs, importing the differences as a proposal |
 
 ### Routing (App.tsx)
 
@@ -549,6 +645,7 @@ feature/
 | `/settings` | `SettingsPage` | Yes |
 | `/donate` | `DonatePage` | Yes |
 | `/checklist` | `ChecklistPage` | Yes |
+| `/inventory` | `InventoryPage` | Yes |
 | `/hardware` | `HardwareCatalogPage` | No |
 | `/services` | `ServiceCatalogPage` | No |
 | `/how-to-build-a-homelab` | `HomelabGuidePage` | No |
@@ -568,6 +665,8 @@ Service ──< ServiceRequirement
 UserSelection >── User
 UserSelection >── Service
 User ──< APIToken                  (optional restriction to one Build)
+User ──< InventoryItem             (owned hardware; a Node points at one through details.inventory_item_id)
+User ──< Integration               (Proxmox: encrypted token secret, trusted certificate, last snapshot)
 Build ──< BuildProposal
 User ──1 AssistantSettings         (encrypted provider key)
 User + Build ──1 AssistantThread ──< AssistantMessage
@@ -722,6 +821,13 @@ hasPrefix(s, prefix string) bool
 | `internal/services/proposal_gaming_test.go` | `services` | `set_plan` alone is a change and is validated; game settings are diffed |
 | `internal/services/hardware_seed_test.go`, `default_service_seed_test.go` | `services` | Catalog seeds: idempotent, approved, game profiles attached; `Models()` covers every table |
 | `internal/assistant/tools_gaming_test.go` | `assistant` | Planning a game server through the tools; a homelab gets no gaming output |
+| `internal/inventory/inventory_test.go` | `inventory` | Item validation, an item as a node, how an item reads as in use |
+| `internal/netguard/netguard_test.go` | `netguard` | Blocked-address table, internal host names |
+| `internal/proxmox/*_test.go` | `proxmox` | The client against the made-up cluster: token, certificate trust and pinning, what a weak token still reads; exports; host matching; plan against reality |
+| `internal/services/inventory_service_test.go` | `services` | Items belong to the account; placements are read from the builds; state |
+| `internal/services/integration_service_test.go` | `services` | Secret encryption and owner binding, the secret wiped with a changed address, certificate trust, links to items, limits |
+| `internal/services/proxmox_import_test.go` | `services` | The comparison; an import is a proposal; a new build; addresses in a DHCP range; size limits; the owner only |
+| `internal/handlers/integration_handler_test.go` | `handlers` | No response contains the secret; a saved connection is read at once; an import through a proposal; the inventory API |
 | `hlbipam/internal/core/dhcp_demand_test.go` | `core` | Pool grows with demand, no demand keeps the default, console zone, tables get no address |
 | `hlbipam/internal/core/allocator_test.go` | `core` | IPAM allocator tests |
 | `hlbipam/internal/core/validator_test.go` | `core` | IPAM validator tests |
@@ -741,6 +847,10 @@ hasPrefix(s, prefix string) bool
 | `frontend/src/features/settings/**/*.test.ts(x)` | - | MCP snippets and source links, token card, assistant settings card |
 | `frontend/src/features/assistant/**/*.test.ts(x)` | - | SSE reader; chat store (every event, reading the thread again, a queued message); chat panel; activity timeline |
 | `frontend/src/features/gaming/**/*.test.ts(x)` | - | Sizing, tables, kinds, setup steps, game compose text, plan dialog, node fields |
+| `frontend/src/features/gaming/components/gaming-node-fields.store.test.tsx` | - | The device fields on the real store, in a build without power circuits (pitfall 37) |
+| `frontend/src/features/inventory/**/*.test.ts(x)` | - | Items as nodes and components, what a canvas uses, state, spare memory for a host; placing; the panel; the inventory page and the item form |
+| `frontend/src/features/integrations/**/*.test.ts(x)` | - | What an import does unless told otherwise, and counts; the Proxmox dialog: connection, certificate trust, hosts, compare, import |
+| `frontend/src/features/shopping/lib/generator.test.ts` | - | Owned hardware is not on the shopping list |
 | `frontend/src/features/builder/lib/planner/planner.test.ts`, `lib/connection-rules.test.ts` | - | Plan builders for the three kinds; canvas connection rules |
 | `frontend/src/features/landing/lib/demo-plan.test.ts` | - | Demo addresses by role; the demo plans from the real planners |
 | `frontend/src/features/landing/lib/ascii-rack.test.ts`, `components/ascii-rack.test.tsx` | - | The ASCII rack: grid, characters, framing, lights from the front only, fans from behind; pause, and standing still under reduced motion until started |
@@ -833,6 +943,18 @@ docker rm -f hlb-verify-vite hlb-verify-fakellm
 docker compose -p hlb-verify -f docker-compose.local.yml down
 docker volume rm hlb-verify_local_postgres
 ```
+
+### Proxmox in a browser, without a cluster
+
+`backend/cmd/fakepve` serves the made-up cluster of `internal/proxmox/pvetest` (three hosts, eleven virtual machines, seven containers) over TLS, with a certificate it makes when it starts, and prints the token and the certificate's SHA-256. Like `fakellm` it is a development tool and is not built into the image. On the same throwaway stack:
+
+```bash
+docker run -d --name hlb-verify-fakepve --network hlb-verify_default -v "$PWD/backend:/app" -w /app \
+  golang:1.25-alpine go run ./cmd/fakepve
+docker logs hlb-verify-fakepve   # token id, secret, SHA-256 of the certificate
+```
+
+In the builder, under Integrations, choose Connect Proxmox: address `https://hlb-verify-fakepve:8006`, token id and secret from the log. The first test shows the certificate: compare the fingerprint with the log and trust it. Restarting the container makes a new certificate, which is how the "the host presents a different certificate" path is tried. Remove it with `docker rm -f hlb-verify-fakepve`.
 
 ---
 
@@ -1002,6 +1124,22 @@ The app's theme is a class on `<html>` (`dark` or `light`) plus tokens set inlin
 
 Before adding a page or a section, read `frontend/DESIGN.md`. The things that crept in before and were taken out again: gradient washes behind a page, a tinted square around every icon, the same icon on every card, pill badges above titles, all-caps tracked labels, hard-coded palette colours, a hero banner on a tool page. `scripts/detect.mjs` of avoid-ai-design finds most of them in source.
 
+### 37. A store selector must hand back the same thing for the same state
+
+Zustand 5 reads a selector through `useSyncExternalStore` and compares what it returns with the call before. A selector that builds a new array or object every time (`state => state.x ?? []`, `state => complete(state.plan).list`) never settles: React renders until it gives up, and the whole builder goes blank. Return something that is in the store, or a constant declared outside the component (`NO_CIRCUITS` in `gaming-node-fields.tsx`). A test whose store double only calls the selector does not notice; `gaming-node-fields.store.test.tsx` runs on the real store for that reason.
+
+### 38. The address plan pins nothing inside a DHCP range
+
+hlbIPAM answers a request for an address inside a gateway's DHCP pool with another address and a conflict note. Whoever sets `ip` on a node or `static_ip` on a guest from outside (an import, a tool) checks `details.dhcp_pool` of the gateway first (`inDHCPPool` in `proxmox_import.go`), or the device asks for one address and shows another. A build that is only being made has no pool yet: the import writes it, reads which addresses were not given, and writes it again without asking for those (`unhonoured`).
+
+### 39. A copy is not the same machine
+
+`details.inventory_item_id`, `inventory_label`, `inventory_quantity` and `proxmox_node` say which physical machine a node is. Whatever makes a second node from a first on one canvas (duplicate, paste, a blueprint, a preset) drops them (`withoutAssetLink` in `lib/asset-link.ts`) and the MAC address, or two devices claim to be one machine and the inventory counts it twice. A duplicated build keeps them: it is a variant that plans the same hardware.
+
+### 40. One policy for calling out
+
+The LLM client and the Proxmox client both dial through `internal/netguard`. A new client that calls an address a user named uses `netguard.DialControl` too, follows no redirects and takes no proxy from the environment. A second copy of the address rules would drift.
+
 ---
 
 ## Fixed Bugs (Historical)
@@ -1045,6 +1183,7 @@ These bugs were diagnosed and fixed; tests guard against regression.
 | 33 | `sidebar.tsx`, `profile-page.tsx` | An account without a picture was shown with one fetched from an avatar service, with the user's e-mail address in the request | `UserAvatar` draws initials; a generated avatar address is never fetched |
 | 34 | `checklist-page.tsx` | The setup guide called itself personalised and used nothing of the build but the presence of device types; its numbering skipped; its check marks could not be ticked | Rewritten as a guide generated from the build (`setup-plan.ts`), with progress saved in the build |
 | 35 | `sidebar.tsx`, `checklist-page.tsx` | Invalid HTML: the sign-in button sat inside a button, and a `<div>` badge inside a `<p>` | Both rewritten; the account row is one button, the sign-in button stands alone |
+| 36 | `gaming-node-fields.tsx` | Selecting a device in a build without power circuits blanked the builder: the selector of the circuits returned a new empty array on every call (pitfall 37) | One constant stands for "no circuits"; a test runs the fields on the real store |
 
 ---
 
@@ -1069,10 +1208,12 @@ These bugs were diagnosed and fixed; tests guard against regression.
 | `MCP_ENABLED` | `true` | Serves the `/mcp` endpoint |
 | `MCP_ALLOWED_ORIGINS` | - | Browser origins allowed to call `/mcp` cross-origin (comma-separated) |
 | `ASSISTANT_ENABLED` | `true` | Makes the in-app assistant available |
-| `SECRETS_KEY` | - | Master key for stored provider keys: base64 of 32 bytes (`openssl rand -base64 32`). Required with login enabled in release mode |
+| `SECRETS_KEY` | - | Master key for stored provider keys and Proxmox token secrets: base64 of 32 bytes (`openssl rand -base64 32`). Required with login enabled in release mode |
 | `SECRETS_KEY_VERSION` | `1` | Version label stored with each ciphertext |
 | `ASSISTANT_ALLOW_PRIVATE_ENDPOINTS` | same as `AUTH_DISABLED` | Whether custom provider endpoints may be private addresses |
 | `PUBLIC_APP_URL` | derived from the request | Browser-facing origin used in proposal review links |
+| `INTEGRATIONS_ENABLED` | `true` | Makes integrations (Proxmox) available. The inventory itself is always there |
+| `INTEGRATIONS_ALLOW_PRIVATE_ENDPOINTS` | same as `ASSISTANT_ALLOW_PRIVATE_ENDPOINTS` | Whether the server may call a Proxmox host at a private address. Where it may not, pasted exports are read instead |
 
 ### HLBIPAM
 

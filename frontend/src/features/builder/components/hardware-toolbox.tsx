@@ -42,6 +42,8 @@ import { HardwareBlueprintCreator } from '../../catalog/components/hardware-blue
 import { hardwareBlueprintToDragData, hardwareComponentToDragData } from '../lib/catalog-mapper';
 import { withFreshChildIds } from '../lib/hardware-instance';
 import { newTableDetails } from '../../gaming/lib/table';
+import { InventoryPanel } from '../../inventory/components/inventory-panel';
+import { IntegrationsPanel } from '../../integrations/components/integrations-panel';
 
 // ─── Basic component types ─────────────────────────────────────────────────────
 const HARDWARE_TOOLS: {
@@ -596,7 +598,17 @@ const PRESETS: {
   },
 ];
 
-export const HardwareToolbox = React.memo(function HardwareToolbox() {
+type HardwareToolboxProps = {
+  /** The project open on the canvas. */
+  buildId?: string;
+  /** Called with a proposal an import made for that project. */
+  onProposal?: (proposalId: string) => void;
+};
+
+export const HardwareToolbox = React.memo(function HardwareToolbox({
+  buildId,
+  onProposal,
+}: HardwareToolboxProps) {
   const {
     availableServices,
     fetchServices,
@@ -899,7 +911,9 @@ export const HardwareToolbox = React.memo(function HardwareToolbox() {
           left: position.x,
           top: position.y,
           width: isMinimized ? 'auto' : 'min(19rem, calc(100vw - 2rem))',
-          maxHeight: isMinimized ? 'auto' : 'calc(100vh - 8rem)',
+          // The panel now holds the inventory too and is as tall as it may be
+          // on most screens: it ends above the zoom buttons of the canvas.
+          maxHeight: isMinimized ? 'auto' : 'calc(100vh - 13.5rem)',
           cursor: isDragging ? 'grabbing' : 'auto',
         }}
       >
@@ -960,7 +974,11 @@ export const HardwareToolbox = React.memo(function HardwareToolbox() {
               })}
             </div>
 
-            <div className="tour-toolbox overflow-y-auto flex-1 p-4">
+            {/* The panel is as tall as its contents, up to its limit. Past
+                that the catalog gives way first (it scrolls anyway), down to
+                three rows of devices, or to a row and a half in a short
+                window; only then does the inventory list below. */}
+            <div className="tour-toolbox min-h-28 shrink-[100] grow basis-auto overflow-y-auto p-4 [@media(min-height:860px)]:min-h-64">
               {/* ── Components tab ── */}
               {activeTab === 'components' && (
                 <div className="space-y-3">
@@ -1240,6 +1258,11 @@ export const HardwareToolbox = React.memo(function HardwareToolbox() {
               {/* ── Power tab ── */}
               {activeTab === 'power' && <PowerUsagePanel />}
             </div>
+
+            {/* What the owner has, and what runs on it: always beside the canvas,
+                whichever tab of the catalog is open above. */}
+            <InventoryPanel />
+            <IntegrationsPanel buildId={buildId} onProposal={onProposal} />
 
             <div className="shrink-0 border-t bg-muted/20 px-4 py-2.5">
               <p className="text-[10px] text-muted-foreground text-center">

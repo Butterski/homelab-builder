@@ -11,6 +11,7 @@ import {
   Heart,
   LayoutDashboard,
   Menu,
+  Package,
   Search,
   Settings,
   ShieldCheck,
@@ -41,6 +42,8 @@ type NavItem = { label: string; href: string; icon: LucideIcon };
 // The open project comes right after "Projects" as a card of its own, with
 // its pages (canvas, config generator, setup guide) under it: see ProjectCard.
 const PROJECTS_ITEM: NavItem = { label: 'Projects', href: '/', icon: LayoutDashboard };
+/** What the user owns: the hardware every project plans with. */
+const INVENTORY_ITEM: NavItem = { label: 'Inventory', href: '/inventory', icon: Package };
 /** What is looked up while planning. */
 const REFERENCE_ITEMS: NavItem[] = [
   { label: 'Hardware Catalog', href: '/hardware', icon: HardDrive },
@@ -73,6 +76,7 @@ export const MobileNavigation = React.memo(function MobileNavigation({
   const [open, setOpen] = useState(false);
   const items = [
     PROJECTS_ITEM,
+    ...(user ? [INVENTORY_ITEM] : []),
     ...REFERENCE_ITEMS,
     ...(user ? [SETTINGS_ITEM] : []),
     ...(user?.is_admin ? [ADMIN_ITEM] : []),
@@ -262,6 +266,7 @@ export const Sidebar = React.memo(function Sidebar({
             <div className="py-1">
               <ProjectCard collapsed={collapsed} />
             </div>
+            {user && navLink(INVENTORY_ITEM)}
             {REFERENCE_ITEMS.map(navLink)}
           </nav>
         </div>
