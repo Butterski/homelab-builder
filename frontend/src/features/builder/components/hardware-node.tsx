@@ -416,29 +416,26 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
 
   const hasWarning = hasResourceWarning || maxResourceUsage >= 0.8 || hasIpError || hasIpWarning;
 
+  // The light says the state by its colour and stands still: a light that
+  // pulses on every loaded host keeps the whole canvas drawing (pitfall 41).
   let lightColor = 'bg-green-500';
-  let pingColor = 'hidden';
 
   if (nodeData.status === 'offline') {
     lightColor = 'bg-gray-500';
-    pingColor = 'hidden';
   } else if (
     maxResourceUsage >= 1 ||
     hasResourceWarning ||
     nodeIssues.some((i: HardwareNodeValidationIssue) => i.type === 'error')
   ) {
     lightColor = 'bg-red-500';
-    pingColor = 'bg-red-400 animate-ping';
   } else if (
     maxResourceUsage >= 0.8 ||
     nodeIssues.some((i: HardwareNodeValidationIssue) => i.type === 'warning') ||
     nodeData.status === 'warning'
   ) {
     lightColor = 'bg-orange-500';
-    pingColor = 'bg-orange-400 animate-ping';
   } else if (maxResourceUsage >= 0.6) {
     lightColor = 'bg-yellow-500';
-    pingColor = 'bg-yellow-400 animate-ping';
   }
 
   let tooltipLabel = '';
@@ -596,28 +593,16 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
               <AlertTriangle
                 className={cn(
                   'size-3.5 shrink-0 cursor-help',
-                  hasResourceWarning || hasIpError
-                    ? 'text-destructive animate-pulse'
-                    : 'text-orange-500',
+                  hasResourceWarning || hasIpError ? 'text-destructive' : 'text-orange-500',
                 )}
               />
             </div>
           )}
 
-          <span className="relative flex size-2.5 shrink-0" title={nodeData.status ?? 'online'}>
-            <span
-              className={cn(
-                'absolute inline-flex h-full w-full rounded-full opacity-75',
-                pingColor,
-              )}
-            />
-            <span
-              className={cn(
-                'relative inline-flex rounded-full size-2.5 node-status-led',
-                lightColor,
-              )}
-            />
-          </span>
+          <span
+            className={cn('inline-flex shrink-0 rounded-full size-2.5 node-status-led', lightColor)}
+            title={nodeData.status ?? 'online'}
+          />
         </div>
 
         {/* Body */}
@@ -902,6 +887,10 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
       )}
     </div>
   );
-});
+  // React Flow also hands a node its position and whether it is being dragged.
+  // The card shows neither, so a card that is only moved is not rendered again.
+}, (previous, next) =>
+  previous.id === next.id && previous.data === next.data && previous.selected === next.selected,
+);
 
 HardwareNode.displayName = 'HardwareNode';

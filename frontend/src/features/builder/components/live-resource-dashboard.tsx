@@ -111,20 +111,16 @@ export const LiveResourceDashboard = memo(function LiveResourceDashboard() {
   const maxPercent = Math.max(stats.cpuPercent, stats.ramPercent, stats.storagePercent);
 
   let lightColor = 'bg-green-500';
-  let pingColor = 'hidden';
   let cardBorder = 'border-border';
 
   if (maxPercent >= 90) {
     lightColor = 'bg-red-500';
-    pingColor = 'bg-red-400 animate-ping';
     cardBorder = 'border-destructive shadow-[0_0_10px_rgba(239,68,68,0.3)]';
   } else if (maxPercent >= 75) {
     lightColor = 'bg-orange-500';
-    pingColor = 'bg-orange-400 animate-ping';
     cardBorder = 'border-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.3)]';
   } else if (maxPercent >= 60) {
     lightColor = 'bg-yellow-500';
-    pingColor = 'bg-yellow-400 animate-ping';
   }
 
   const getProgressColor = (percent: number) => {
@@ -161,15 +157,7 @@ export const LiveResourceDashboard = memo(function LiveResourceDashboard() {
               )}
             />
             <span className="builder-resource-label">Resource Usage</span>
-            <span className="relative flex size-2 shrink-0 ml-1">
-              <span
-                className={cn(
-                  'absolute inline-flex h-full w-full rounded-full opacity-75',
-                  pingColor,
-                )}
-              />
-              <span className={cn('relative inline-flex rounded-full size-2', lightColor)} />
-            </span>
+            <span className={cn('ml-1 inline-flex size-2 shrink-0 rounded-full', lightColor)} />
           </div>
           <span className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground">
             {isExpanded ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}

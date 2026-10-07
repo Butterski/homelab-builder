@@ -278,7 +278,6 @@ export function toReactFlowEdges(spec: VisualSpec): Edge[] {
       sourceHandle: `eth${sourcePort}`,
       targetHandle: 'target-0',
       type: 'custom',
-      animated: true,
       data: {
         speed,
         connection_type: connectionType ?? 'ethernet',

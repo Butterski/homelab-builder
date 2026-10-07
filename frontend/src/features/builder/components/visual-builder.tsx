@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 import '@xyflow/react/dist/style.css';
 import Joyride, { type CallBackProps, STATUS, type Step } from 'react-joyride';
 import { BuildConflictError, useBuilderStore } from '../store/builder-store';
+import { useShallow } from 'zustand/react/shallow';
 import { startAutosave } from '../store/autosave';
 import { ApiError } from '../../../lib/api';
 import { SaveStateChip } from './save-state-chip';
@@ -94,8 +95,6 @@ import { AssistantPanel } from '../../assistant/components/assistant-panel';
 import { useAssistantStore } from '../../assistant/store/assistant-store';
 import { useAssistantSettings } from '../../settings/api/assistant-settings';
 
-type ZoneBlob = { x: number; y: number; width: number; height: number };
-
 function roundedZonePath(width: number, height: number, inset = 14) {
   const x = inset;
   const y = inset;
@@ -118,8 +117,7 @@ function roundedZonePath(width: number, height: number, inset = 14) {
   ].join(' ');
 }
 
-function NetworkZoneNode({ data }: any) {
-  const filterId = `zone-filter-${data.zoneId}`;
+const NetworkZoneNode = React.memo(function NetworkZoneNode({ data }: any) {
   return (
     <div
       className={`network-zone-node network-zone-${data.kind}`}
@@ -137,31 +135,6 @@ function NetworkZoneNode({ data }: any) {
         viewBox={`0 0 ${data.width} ${data.height}`}
         preserveAspectRatio="none"
       >
-        <defs>
-          <filter id={filterId} x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur in="SourceGraphic" stdDeviation="18" result="blur" />
-            <feColorMatrix
-              in="blur"
-              mode="matrix"
-              values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 19 -8"
-              result="goo"
-            />
-            <feBlend in="SourceGraphic" in2="goo" />
-          </filter>
-        </defs>
-        <g filter={`url(#${filterId})`} className="network-zone-blobs">
-          {data.blobs?.map((blob: ZoneBlob, index: number) => (
-            <rect
-              key={index}
-              x={blob.x}
-              y={blob.y}
-              width={blob.width}
-              height={blob.height}
-              rx="48"
-              ry="48"
-            />
-          ))}
-        </g>
         <path className="network-zone-fill" d={data.path} />
         <path className="network-zone-outline" d={data.path} />
       </svg>
@@ -171,12 +144,56 @@ function NetworkZoneNode({ data }: any) {
       </div>
     </div>
   );
-}
+  // The zones are worked out again whenever a card moves; most come out the same.
+}, (previous, next) =>
+  ['kind', 'path', 'width', 'height', 'label', 'subLabel', 'accent', 'opacity'].every(
+    key => previous.data[key] === next.data[key],
+  ),
+);
 
 /** How long cards glide to their new places after a Polish. Matches `.is-arranging` in index.css. */
 const LAYOUT_GLIDE_MS = 450;
 
 const px = (value: number) => `${Math.round(value)}px` as const;
+
+/** No `animated`: a cable that runs for ever is painted for ever (pitfall 41). */
+const DEFAULT_EDGE_OPTIONS = {
+  type: 'custom',
+  style: { stroke: '#3F3F46', strokeWidth: 2 },
+};
+
+const drawnNodes = new WeakMap<ReactFlowNode, { marks: string; node: ReactFlowNode }>();
+const drawnData = new WeakMap<object, ReactFlowNode['data']>();
+
+/**
+ * What React Flow is given for a node of the store, with the classes that mark
+ * it. A node that did not change gets the object it got before, and a node
+ * that only moved keeps its `data`: a drag moves one card, and the cards that
+ * stay must not render (pitfall 42).
+ */
+function drawnNode(node: ReactFlowNode, marks: string): ReactFlowNode {
+  const drawn = drawnNodes.get(node);
+  if (drawn && drawn.marks === marks) return drawn.node;
+
+  let data = drawnData.get(node.data);
+  if (!data) {
+    data = {
+      ...node.data,
+      onOpenVirtualNetwork: () => useBuilderStore.getState().openVirtualNetwork(node.id),
+    };
+    drawnData.set(node.data, data);
+  }
+  // A device a proposal removes stays visible behind what takes its place.
+  const removed = (node.data as { proposalDiff?: string }).proposalDiff === 'removed';
+  const flowNode: ReactFlowNode = {
+    ...node,
+    ...(marks ? { className: marks } : {}),
+    data,
+    zIndex: node.type === 'rack' ? 10 : removed ? 15 : 20,
+  };
+  drawnNodes.set(node, { marks, node: flowNode });
+  return flowNode;
+}
 
 /** One empty list for every "nothing to mark", so memos see the same value. */
 const NO_IDS: string[] = [];
@@ -238,7 +255,7 @@ const shortcuts: Shortcut[] = [
   { combination: 'Esc', name: 'deselect' },
 ];
 
-function ShortcutHints() {
+const ShortcutHints = React.memo(function ShortcutHints() {
   return (
     <div
       id="shortcut-hints"
@@ -260,7 +277,7 @@ function ShortcutHints() {
       )}
     </div>
   );
-}
+});
 
 const Flow = React.memo(function Flow() {
   const virtualHostId = useBuilderStore(state => state.virtualHostId);
@@ -378,7 +395,33 @@ const Flow = React.memo(function Flow() {
     validationIssues,
     undo,
     redo,
-  } = useBuilderStore();
+  } = useBuilderStore(
+    // Named one by one: a component that takes the whole store renders on
+    // every change of anything in it.
+    useShallow(state => ({
+      nodes: state.nodes,
+      edges: state.edges,
+      onNodesChange: state.onNodesChange,
+      onEdgesChange: state.onEdgesChange,
+      onConnect: state.onConnect,
+      addHardware: state.addHardware,
+      removeHardware: state.removeHardware,
+      duplicateHardware: state.duplicateHardware,
+      selectNode: state.selectNode,
+      selectedNodeId: state.selectedNodeId,
+      addInternalComponent: state.addInternalComponent,
+      addVM: state.addVM,
+      reassignAllIPs: state.reassignAllIPs,
+      openBuild: state.openBuild,
+      hardwareNodes: state.hardwareNodes,
+      projectName: state.projectName,
+      edgePreferences: state.edgePreferences,
+      setEdgePreferences: state.setEdgePreferences,
+      validationIssues: state.validationIssues,
+      undo: state.undo,
+      redo: state.redo,
+    })),
+  );
 
   const { screenToFlowPosition, getIntersectingNodes, fitView, getNodesBounds, getViewport } =
     useReactFlow();
@@ -517,7 +560,6 @@ const Flow = React.memo(function Flow() {
     ): ReactFlowNode | null => {
       if (members.length === 0) return null;
 
-      const rawBlobs: Array<ZoneBlob & { absX: number; absY: number }> = [];
       let minX = Infinity;
       let minY = Infinity;
       let maxX = -Infinity;
@@ -532,7 +574,6 @@ const Flow = React.memo(function Flow() {
         const width = size.width + padding * 2;
         const height = size.height + padding * 2;
 
-        rawBlobs.push({ x: 0, y: 0, absX: x, absY: y, width, height });
         minX = Math.min(minX, x);
         minY = Math.min(minY, y);
         maxX = Math.max(maxX, x + width);
@@ -544,19 +585,11 @@ const Flow = React.memo(function Flow() {
       const width = Math.max(240, maxX - minX + gutter * 2);
       const height = Math.max(170, maxY - minY + gutter * 2);
       const path = roundedZonePath(width, height, kind === 'lan' ? 22 : 14);
-      const blobs = rawBlobs.map(blob => ({
-        x: blob.absX - position.x,
-        y: blob.absY - position.y,
-        width: blob.width,
-        height: blob.height,
-      }));
-
       return {
         id,
         type: 'networkZone',
         position,
         data: {
-          zoneId: id.replace(/[^a-zA-Z0-9_-]/g, '-'),
           kind,
           label,
           subLabel,
@@ -565,7 +598,6 @@ const Flow = React.memo(function Flow() {
           accent,
           opacity: visualPreferences.zoneOpacity,
           path,
-          blobs,
         },
         selectable: false,
         draggable: false,
@@ -695,24 +727,18 @@ const Flow = React.memo(function Flow() {
 
   const flowNodes = useMemo<ReactFlowNode[]>(
     () =>
-      canvasNodes.map(node => {
-        // A device a proposal removes stays visible behind what takes its place.
-        const removed = (node.data as { proposalDiff?: string }).proposalDiff === 'removed';
-        const marks = [
-          node.className,
-          glowing.includes(node.id) && 'applied-glow',
-          assistantFocus.includes(node.id) && 'assistant-focus',
-        ].filter(Boolean);
-        return {
-          ...node,
-          ...(marks.length > 0 ? { className: marks.join(' ') } : {}),
-          data: {
-            ...node.data,
-            onOpenVirtualNetwork: () => useBuilderStore.getState().openVirtualNetwork(node.id),
-          },
-          zIndex: node.type === 'rack' ? 10 : removed ? 15 : 20,
-        };
-      }),
+      canvasNodes.map(node =>
+        drawnNode(
+          node,
+          [
+            node.className,
+            glowing.includes(node.id) && 'applied-glow',
+            assistantFocus.includes(node.id) && 'assistant-focus',
+          ]
+            .filter(Boolean)
+            .join(' '),
+        ),
+      ),
     [canvasNodes, glowing, assistantFocus],
   );
 
@@ -778,6 +804,8 @@ const Flow = React.memo(function Flow() {
   );
   // Hosts short of memory that the owner's own spare memory would fix.
   const upgradeHints = useUpgradeHints();
+  const upgradeHintTexts = useMemo(() => upgradeHints.map(upgradeHintText), [upgradeHints]);
+  const openConfigGenerator = useCallback(() => navigate('/generate'), [navigate]);
 
   const saveErrorText = (err: unknown, fallback: string) =>
     err instanceof BuildConflictError || (err instanceof ApiError && err.status === 422)
@@ -1323,9 +1351,9 @@ const Flow = React.memo(function Flow() {
           hardwareNodes={hardwareNodes}
           edges={edges}
           validationIssues={validationIssues}
-          onGenerateConfig={() => navigate('/generate')}
+          onGenerateConfig={openConfigGenerator}
           onReassignIPs={handleReassignIPs}
-          hints={upgradeHints.map(upgradeHintText)}
+          hints={upgradeHintTexts}
         />
         <GamingPlanDialog
           open={gamePlanOpen}
@@ -1376,11 +1404,7 @@ const Flow = React.memo(function Flow() {
             ]
               .filter(Boolean)
               .join(' ')}
-            defaultEdgeOptions={{
-              type: 'custom',
-              animated: true,
-              style: { stroke: '#3F3F46', strokeWidth: 2 },
-            }}
+            defaultEdgeOptions={DEFAULT_EDGE_OPTIONS}
             snapToGrid={true}
             snapGrid={[20, 20]}
           >

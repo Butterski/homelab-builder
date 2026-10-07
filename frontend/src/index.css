@@ -581,16 +581,8 @@
   opacity: var(--network-zone-opacity, 0.7);
 }
 
-.network-zone-blobs rect,
 .network-zone-fill {
   fill: var(--network-zone-accent);
-}
-
-.network-zone-blobs rect {
-  opacity: 0;
-}
-
-.network-zone-fill {
   opacity: 0.045;
 }
 
@@ -602,8 +594,6 @@
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-dasharray: 12 12;
-  filter: drop-shadow(0 0 7px color-mix(in srgb, var(--network-zone-accent) 18%, transparent));
-  animation: zone-outline-flow 22s linear infinite;
 }
 
 .network-zone-lan .network-zone-fill {
@@ -616,21 +606,18 @@
   stroke: #94a3b8;
   stroke-opacity: 0.2;
   stroke-dasharray: none;
-  filter: none;
 }
 
 .network-zone-firewall .network-zone-outline {
   stroke-width: 3;
   stroke-opacity: 0.52;
   stroke-dasharray: 3 9;
-  filter: drop-shadow(0 0 10px color-mix(in srgb, #ef4444 24%, transparent));
 }
 
 .network-zone-nat .network-zone-outline {
   stroke-width: 3;
   stroke-opacity: 0.56;
   stroke-dasharray: 12 9;
-  filter: drop-shadow(0 0 10px color-mix(in srgb, #10b981 22%, transparent));
 }
 
 .network-zone-nat .network-zone-fill,
@@ -671,11 +658,6 @@
   font-weight: 600;
 }
 
-@keyframes zone-outline-flow {
-  to {
-    stroke-dashoffset: -180;
-  }
-}
 
 .hardware-node-danger {
   background: var(--card);
