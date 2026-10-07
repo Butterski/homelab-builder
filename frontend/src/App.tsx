@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useNavigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from './components/theme-provider';
 // import MainLayout from './components/layout/main-layout'; // API: Removed unused layout
@@ -40,11 +40,19 @@ import { useEffect, useRef, useState } from 'react';
 import { themeSettingsFromPreferences } from './lib/theme-registry';
 import { getAuthConfig, type AuthConfig } from './features/auth/lib/auth-config';
 
-const LoginPage = lazy(() => import('./features/auth/pages/login-page'));
+// Not lazy: it replaces the copy of itself that index.html carries, and a
+// loading screen in between would show.
+import LandingPage from './features/landing/pages/landing-page';
+import { AFTER_LOGIN_KEY, APP_SHELL_CLASS, releasePrerender } from './lib/prerender';
+import { isPublicSite } from './lib/site';
+
+// What a guest gets on somebody's own instance, where the landing page has no place.
+const WelcomePage = lazy(() => import('./features/auth/pages/welcome-page'));
 
 function AppContent() {
   const location = useLocation();
-  const { user, getThemeSettings } = useAuth();
+  const navigate = useNavigate();
+  const { user, loading: authLoading, getThemeSettings } = useAuth();
   const { replaceThemeSettings } = useTheme();
   const setEdgePreferences = useBuilderStore(s => s.setEdgePreferences);
   const loadedPrefsFor = useRef<string | null>(null);
@@ -100,6 +108,21 @@ function AppContent() {
     };
   }, [getThemeSettings, replaceThemeSettings, setEdgePreferences, user]);
 
+  // index.html carries the landing page as HTML. The landing page takes that
+  // copy away itself; every other screen does it here.
+  useEffect(() => {
+    if (location.pathname !== '/' || !isPublicSite() || (!authLoading && user)) releasePrerender();
+  }, [authLoading, location.pathname, user]);
+
+  // "Build this for real" in the landing demo: open that planner after signing in.
+  useEffect(() => {
+    if (!user) return;
+    const target = sessionStorage.getItem(AFTER_LOGIN_KEY);
+    if (!target) return;
+    sessionStorage.removeItem(AFTER_LOGIN_KEY);
+    if (target.startsWith('/planner')) navigate(target, { replace: true });
+  }, [navigate, user]);
+
   // Hide sidebar only on the "Landing/Login" page (root path) when not logged in, and on shared views
   const isLandingPage = !user && location.pathname === '/';
   const isSharedRoute = location.pathname.startsWith('/shared/');
@@ -107,7 +130,7 @@ function AppContent() {
   const isArticleVisualRoute = location.pathname.startsWith('/docs/visuals/');
 
   return (
-    <div className="flex h-screen flex-col bg-background text-foreground overflow-hidden md:flex-row">
+    <div className={APP_SHELL_CLASS}>
       {!isLandingPage && !isSharedRoute && !isArticleVisualRoute && (
         <MobileNavigation onOpenCommandPalette={() => setCommandOpen(true)} />
       )}
@@ -122,7 +145,20 @@ function AppContent() {
       >
         <Suspense fallback={<LoadingScreen message="Loading HLBuilder..." />}>
           <Routes>
-            <Route path="/" element={user ? <ProjectsPage /> : <LoginPage />} />
+            <Route
+              path="/"
+              element={
+                authLoading ? (
+                  <LoadingScreen message="Loading HLBuilder..." />
+                ) : user ? (
+                  <ProjectsPage />
+                ) : isPublicSite() ? (
+                  <LandingPage />
+                ) : (
+                  <WelcomePage />
+                )
+              }
+            />
             {/* Protected routes */}
             <Route
               path="/builder/:id"
@@ -207,6 +243,12 @@ function AppContent() {
 
 function App() {
   const [authConfig, setAuthConfig] = useState<AuthConfig | null>(null);
+
+  // index.html carries the public site's title. On somebody's own instance the
+  // tab is just the app; pages that set a title of their own still do.
+  useEffect(() => {
+    if (!isPublicSite()) document.title = 'HLBuilder';
+  }, []);
 
   useEffect(() => {
     let cancelled = false;

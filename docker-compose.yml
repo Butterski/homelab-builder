@@ -1,3 +1,11 @@
+# The whole of HLBuilder for running your own copy:
+#
+#   cp .env.hosted.example .env
+#   docker compose up -d            # the published images
+#   docker compose up -d --build    # built from this checkout
+#
+# Then open http://localhost:3000. With GOOGLE_CLIENT_ID left empty there is no
+# login: the app starts as a local workspace.
 services:
   postgres:
     image: postgres:17
@@ -22,20 +30,22 @@ services:
       start_period: 10s
     restart: unless-stopped
 
-  app:
-    image: ${HLBUILDER_IMAGE:-butterski/homelab-builder}:${HLBUILDER_TAG:-latest}
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-    container_name: homelab-builder-app
-    ports:
-      - ${FRONTEND_PORT:-3000}:80
+  hlbipam:
+    image: ghcr.io/butterski/homelab-builder-ipam:${HLBUILDER_TAG:-latest}
+    build: ./hlbipam
+    container_name: homelab-builder-ipam
+    environment:
+      PORT: "8081"
+      TZ: ${TZ:-Europe/Berlin}
+    restart: unless-stopped
+
+  backend:
+    image: ghcr.io/butterski/homelab-builder-backend:${HLBUILDER_TAG:-latest}
+    build: ./backend
+    container_name: homelab-builder-backend
     environment:
       SERVER_PORT: "8080"
-      PORT: "8081"
-      IPAM_URL: http://127.0.0.1:8081
+      IPAM_URL: http://hlbipam:8081
       GIN_MODE: ${GIN_MODE:-debug}
       DB_HOST: ${DB_HOST:-postgres}
       DB_PORT: ${DB_PORT:-5432}
@@ -46,7 +56,6 @@ services:
       DB_TYPE: postgres
       JWT_SECRET: ${JWT_SECRET:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-      # MCP endpoint and AI assistant. See docs/MCP.md and docs/AI-ASSISTANT-SECURITY.md.
       MCP_ENABLED: ${MCP_ENABLED:-true}
       MCP_ALLOWED_ORIGINS: ${MCP_ALLOWED_ORIGINS:-}
       ASSISTANT_ENABLED: ${ASSISTANT_ENABLED:-true}
@@ -61,6 +70,23 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      hlbipam:
+        condition: service_started
+    restart: unless-stopped
+
+  # The web app. Its nginx also passes /api, /auth and /mcp on to the backend,
+  # so this is the only port that has to be reachable.
+  frontend:
+    image: ghcr.io/butterski/homelab-builder-frontend:${HLBUILDER_TAG:-latest}
+    build:
+      context: ./frontend
+      args:
+        VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+    container_name: homelab-builder-app
+    ports:
+      - ${FRONTEND_PORT:-3000}:80
+    depends_on:
+      - backend
     restart: unless-stopped
 
 volumes:

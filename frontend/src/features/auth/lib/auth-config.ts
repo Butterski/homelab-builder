@@ -24,6 +24,12 @@ function buildTimeFallback(): AuthConfig {
 }
 
 let authConfigPromise: Promise<AuthConfig> | null = null;
+let resolvedAuthConfig: AuthConfig | null = null;
+
+/** The auth config if it has arrived already; never waits. */
+export function peekAuthConfig(): AuthConfig | null {
+  return resolvedAuthConfig;
+}
 
 export function getAuthConfig(): Promise<AuthConfig> {
   if (!authConfigPromise) {
@@ -41,7 +47,11 @@ export function getAuthConfig(): Promise<AuthConfig> {
           assistant_enabled: config.assistant_enabled === true,
         };
       })
-      .catch(() => buildTimeFallback());
+      .catch(() => buildTimeFallback())
+      .then(config => {
+        resolvedAuthConfig = config;
+        return config;
+      });
   }
 
   return authConfigPromise;

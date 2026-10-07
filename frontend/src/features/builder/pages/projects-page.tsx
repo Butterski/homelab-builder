@@ -45,11 +45,13 @@ import { Label } from '../../../components/ui/label';
 import type { Build } from '../api/builds';
 import { formatDistanceToNow } from 'date-fns';
 import { useProjectsPage } from '../hooks/use-projects-page';
+import { FirstProject } from '../components/first-project';
 
 // ─── ProjectsPage ─────────────────────────────────────────────────────────────
 function ProjectsPage() {
   const {
     loading,
+    builds,
     search,
     setSearch,
     modal,
@@ -122,17 +124,14 @@ function ProjectsPage() {
             <div key={i} className="app-card h-64 animate-pulse" />
           ))}
         </div>
+      ) : builds.length === 0 ? (
+        <FirstProject onCreateEmpty={handleCreateNew} onImport={handleImportClick} />
       ) : filteredBuilds.length === 0 ? (
-        <div className="app-empty-state py-20 text-center">
-          <div className="mx-auto mb-4 w-fit rounded-full bg-primary/10 p-4">
-            <Folder className="size-8 text-primary" />
-          </div>
-          <h3 className="text-lg font-semibold mb-2">No projects found</h3>
-          <p className="text-muted-foreground mb-6 max-w-sm mx-auto">
-            Get started by creating your first homelab design. You can visualize your network and
-            generate configs.
-          </p>
-          <Button onClick={handleCreateNew}>Create Project</Button>
+        <div className="app-empty-state py-16 text-center">
+          <h3 className="mb-2 text-lg font-semibold">No project matches &ldquo;{search}&rdquo;</h3>
+          <Button variant="outline" onClick={() => setSearch('')}>
+            Clear search
+          </Button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

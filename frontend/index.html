@@ -1,14 +1,14 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark">
 
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>HLBuilder | Visual Homelab Network Planner</title>
+  <title>HLBuilder | Plan your homelab before you buy it</title>
 
   <!-- Description -->
   <meta name="description"
-    content="Plan a homelab network visually with routers, switches, servers, storage, automatic IP assignments, and self-hosted service planning." />
+    content="HLBuilder is an open-source visual planner for homelabs, LAN parties and game servers. Draw the network and get the IP plan, hardware sizing and config files." />
   <meta name="robots" content="index, follow" />
 
   <!-- Favicons -->
@@ -18,20 +18,20 @@
 
   <!-- Open Graph (Facebook, Discord, LinkedIn, etc.) -->
   <meta property="og:type" content="website" />
-  <meta property="og:title" content="HLBuilder | Visual Homelab Network Planner" />
+  <meta property="og:title" content="HLBuilder | Plan your homelab before you buy it" />
   <meta property="og:description"
-    content="Plan a homelab network visually with routers, switches, servers, storage, automatic IP assignments, and self-hosted service planning." />
+    content="HLBuilder is an open-source visual planner for homelabs, LAN parties and game servers. Draw the network and get the IP plan, hardware sizing and config files." />
   <meta property="og:image" content="https://hlbldr.com/og-image.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
-  <meta property="og:url" content="https://hlbldr.com" />
+  <meta property="og:url" content="https://hlbldr.com/" />
   <meta property="og:site_name" content="HLBuilder" />
 
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="HLBuilder | Visual Homelab Network Planner" />
+  <meta name="twitter:title" content="HLBuilder | Plan your homelab before you buy it" />
   <meta name="twitter:description"
-    content="Plan a homelab network visually with routers, switches, servers, storage, automatic IP assignments, and self-hosted service planning." />
+    content="HLBuilder is an open-source visual planner for homelabs, LAN parties and game servers. Draw the network and get the IP plan, hardware sizing and config files." />
   <meta name="twitter:image" content="https://hlbldr.com/og-image.png" />
 
   <script type="application/ld+json">
@@ -41,16 +41,24 @@
         "@type": "WebSite",
         "name": "HLBuilder",
         "url": "https://hlbldr.com/",
-        "description": "A visual planner for homelab network topology, hardware roles, IP assignments, and self-hosted services."
+        "description": "HLBuilder is an open-source visual planner for homelabs, LAN parties and game servers. Draw the network and get the IP plan, hardware sizing and config files."
       },
       {
         "@context": "https://schema.org",
         "@type": "SoftwareApplication",
         "name": "HLBuilder",
+        "alternateName": "Homelab Builder",
         "applicationCategory": "DeveloperApplication",
-        "operatingSystem": "Web",
+        "operatingSystem": "Web, Docker",
         "url": "https://hlbldr.com/",
-        "description": "Design homelab network layouts, map routers and servers, plan services, and review hardware choices before buying gear.",
+        "image": "https://hlbldr.com/og-image.png",
+        "description": "HLBuilder is an open-source visual planner for homelabs, LAN parties and game servers. Draw the network and get the IP plan, hardware sizing and config files.",
+        "license": "https://www.gnu.org/licenses/agpl-3.0.html",
+        "isAccessibleForFree": true,
+        "sameAs": [
+          "https://github.com/Butterski/homelab-builder",
+          "https://hub.docker.com/r/butterski/homelab-builder"
+        ],
         "offers": {
           "@type": "Offer",
           "price": "0",
@@ -59,6 +67,41 @@
       }
     ]
   </script>
+
+  <!--
+    The landing page is written into this file as HTML when the app is built
+    (scripts/prerender.mjs), in #prerender. #root stays hidden until React has
+    drawn the same page.
+
+    It is skipped at once when it is not what this visitor will get: on any
+    host but the public site (somebody's own instance shows a plain welcome
+    screen, see src/lib/site.ts, which makes the same decision), and for a
+    browser that is signed in or has seen this instance run without login.
+    "?landing=on" shows it on any host, for working on it; "?landing=off" ends that.
+  -->
+  <script>
+    try {
+      var asked = new URLSearchParams(location.search).get('landing');
+      if (asked === 'on') localStorage.setItem('hlb-landing', 'on');
+      if (asked === 'off') localStorage.removeItem('hlb-landing');
+      var publicSite =
+        /^(www\.)?hlbldr\.com$/.test(location.hostname) ||
+        localStorage.getItem('hlb-landing') === 'on';
+      if (
+        !publicSite ||
+        location.pathname !== '/' ||
+        localStorage.getItem('auth_token') ||
+        localStorage.getItem('hlb-local-instance')
+      ) {
+        document.documentElement.classList.add('skip-landing');
+      }
+    } catch (error) { /* storage is blocked: the app decides once it has started */ }
+  </script>
+  <style>
+    html { background: #0b0b0e; }
+    html:not(.skip-landing) #prerender ~ #root { display: none; }
+    html.skip-landing #prerender { display: none; }
+  </style>
 
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />

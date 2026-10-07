@@ -1,17 +1,24 @@
 # HLBuilder
 
-HLBuilder is an open source self-hosted homelab visualization platform for documenting servers, networks, racks, VLANs, containers, and infrastructure.
+HLBuilder is an open-source visual planner for homelabs, LAN parties and game servers. You draw the network and get the IP plan, hardware sizing and config files. It plans a network before it is built; it does not scan or monitor one.
 
 Canonical site: https://hlbldr.com/
 Sitemap: https://hlbldr.com/sitemap.xml
 
 ## What HLBuilder does
 
-HLBuilder lets you drag-and-drop routers, switches, servers, NAS devices, and SBCs onto a visual canvas, automatically assigns IP addresses based on the saved topology, and generates ready configs.
+HLBuilder lets you drag routers, switches, servers, NAS devices and single-board computers onto a canvas and wire them together. It assigns IP addresses from the topology, adds up CPU, memory, storage and power, and generates Docker Compose, Ansible and reverse proxy files.
+
+- Guided planner for three kinds of project: homelab, LAN party, game server.
+- LAN party: tables and seats, DHCP pool sized for the players, load on every power circuit.
+- Game servers: Minecraft, Valheim, Palworld, Counter-Strike 2, Factorio and more, sized per player, with ports and a Compose file per host.
+- Built-in MCP server and an optional bring-your-own-key assistant. An LLM can only propose changes; the owner applies them.
+- Free and open source (AGPL-3.0). Hosted at https://hlbldr.com/ or self-hosted with Docker Compose.
+- Source: https://github.com/Butterski/homelab-builder
 
 ## Public app pages
 
-- Homepage and app entry: https://hlbldr.com/
+- Homepage with an interactive demo and FAQ: https://hlbldr.com/
 - Homelab guide: https://hlbldr.com/how-to-build-a-homelab
 - Hardware catalog: https://hlbldr.com/hardware
 - Service library: https://hlbldr.com/services
@@ -26,7 +33,7 @@ HLBuilder lets you drag-and-drop routers, switches, servers, NAS devices, and SB
 - Self-hosted service planning: https://hlbldr.com/docs/self-hosted-service-planning/
 - Article index: https://hlbldr.com/docs/articles/
 
-## Static SEO articles with visual builder examples
+## Articles with visual builder examples
 
 - Homelab network diagram examples: https://hlbldr.com/docs/articles/homelab-network-diagram-examples/
 - Router and switch homelab topology: https://hlbldr.com/docs/articles/router-switch-homelab-topology/
@@ -44,7 +51,7 @@ HLBuilder lets you drag-and-drop routers, switches, servers, NAS devices, and SB
 - The frontend is a React and Vite app.
 - The backend is a Go API.
 - The IPAM service calculates network assignments from saved topology data.
-- Public docs are static HTML under /docs/ so they can be fetched without running client-side JavaScript.
+- The homepage and the docs under /docs/ are static HTML and can be read without running JavaScript.
 - Shared build URLs are user-generated and should not be indexed.
 
 ## Best URLs to cite

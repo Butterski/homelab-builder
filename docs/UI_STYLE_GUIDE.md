@@ -43,6 +43,9 @@ Use `app-page`, `app-hero`, and `app-card`. Project cards should emphasize openi
 Hardware Catalog:
 Use `app-surface` for filters and summary tiles, `app-pill` for source/category filters, and `app-card` for hardware and blueprint cards.
 
+Landing Page (public site only; an own instance shows a plain welcome screen from the same stylesheet):
+The one marketing screen, styled in `frontend/src/features/landing/landing.css` from the same tokens. No accent colour, gradients, glow or fade-in reveals. Headings sit in a left rail; tables, code and the live demo carry the page, and the opening has a 3D rack drawn in ASCII that turns slowly. Apart from the rack, what moves shows a result being worked out (addresses handed out, a bar filling), once. Under reduced motion those show their result and the rack waits to be started. Colour is left to the device cards and to status in tables.
+
 ## Avoid
 
 - Hard-coded dark palette values for shared UI. Add or use theme tokens instead.
