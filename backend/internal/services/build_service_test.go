@@ -301,6 +301,46 @@ func TestBuildService_PreservesConnectionMetadata(t *testing.T) {
 	}
 }
 
+// The projects page draws every build in miniature: the list has to carry the
+// cables as well as the devices.
+func TestBuildService_ListByUserCarriesNodesAndEdges(t *testing.T) {
+	tx := testTx(t)
+	svc := NewBuildService(tx)
+	user := models.User{Email: uuid.NewString() + "@t.com", Name: "ListTest", GoogleID: uuid.NewString()}
+	tx.Create(&user)
+	other := models.User{Email: uuid.NewString() + "@t.com", Name: "Other", GoogleID: uuid.NewString()}
+	tx.Create(&other)
+
+	graph := SyncGraphInput{
+		Name: "Listed Build",
+		Nodes: []NodeDTO{
+			{ID: "router-1", Type: "router", Name: "Router"},
+			{ID: "switch-1", Type: "switch", Name: "Switch"},
+		},
+		Edges: []EdgeDTO{{Source: "router-1", Target: "switch-1", Type: "ethernet", Speed: "1 GbE"}},
+	}
+	if _, err := svc.Create(user.ID, graph); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+	if _, err := svc.Create(other.ID, graph); err != nil {
+		t.Fatalf("Create for the other user failed: %v", err)
+	}
+
+	builds, err := svc.ListByUser(user.ID)
+	if err != nil {
+		t.Fatalf("ListByUser failed: %v", err)
+	}
+	if len(builds) != 1 {
+		t.Fatalf("expected the user's own build only, got %d", len(builds))
+	}
+	if len(builds[0].Nodes) != 2 {
+		t.Fatalf("expected 2 nodes in the list, got %d", len(builds[0].Nodes))
+	}
+	if len(builds[0].Edges) != 1 {
+		t.Fatalf("expected 1 edge in the list, got %d", len(builds[0].Edges))
+	}
+}
+
 func TestBuildService_TotalPower(t *testing.T) {
 	tx := testTx(t)
 	svc := NewBuildService(tx)
