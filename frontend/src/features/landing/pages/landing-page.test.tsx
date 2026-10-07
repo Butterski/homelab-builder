@@ -27,7 +27,9 @@ async function renderPage() {
       <LandingPage />
     </MemoryRouter>,
   );
-  await screen.findByRole('button', { name: 'Sign in with Google' });
+  // The first load of that module took over a second when the whole suite ran
+  // on Node 20, which is as long as a query waits unless told otherwise.
+  await screen.findByRole('button', { name: 'Sign in with Google' }, { timeout: 5000 });
 }
 
 describe('LandingPage', () => {

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useBuilderStore } from '../store/builder-store';
+import { useShallow } from 'zustand/react/shallow';
 import type { VirtualMachine, VMType } from '../../../types';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
@@ -25,7 +26,14 @@ interface Props {
 }
 
 export const VMManager = React.memo(function VMManager({ nodeId }: Props) {
-  const { hardwareNodes, addVM, removeVM, updateVM } = useBuilderStore();
+  const { hardwareNodes, addVM, removeVM, updateVM } = useBuilderStore(
+    useShallow(state => ({
+      hardwareNodes: state.hardwareNodes,
+      addVM: state.addVM,
+      removeVM: state.removeVM,
+      updateVM: state.updateVM,
+    })),
+  );
   const node = hardwareNodes.find(n => n.id === nodeId);
   const vms = node?.vms || [];
 

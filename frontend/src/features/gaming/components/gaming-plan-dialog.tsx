@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { Loader2, Plus, Trash2 } from 'lucide-react';
 import {
   Dialog,
@@ -53,7 +53,7 @@ function Field({
   );
 }
 
-export function GamingPlanDialog({
+export const GamingPlanDialog = memo(function GamingPlanDialog({
   open,
   onOpenChange,
   onSelectNode,
@@ -68,7 +68,9 @@ export function GamingPlanDialog({
   const storedPlan = useBuilderStore(state => state.gamingPlan);
   const setBuildKind = useBuilderStore(state => state.setBuildKind);
   const setGamingPlan = useBuilderStore(state => state.setGamingPlan);
-  const unsaved = useBuilderStore(state => state.hasUnsavedChanges());
+  // Asked only while the dialog is open: the answer takes serialising the whole
+  // build, and a selector runs on every change of the store, a drag included.
+  const unsaved = useBuilderStore(state => open && state.hasUnsavedChanges());
   const [tab, setTab] = useState<Tab>('report');
 
   const plan = completePlan(storedPlan);
@@ -356,4 +358,4 @@ export function GamingPlanDialog({
       </DialogContent>
     </Dialog>
   );
-}
+});

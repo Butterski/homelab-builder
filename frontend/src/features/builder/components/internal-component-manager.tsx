@@ -29,7 +29,9 @@ interface Props {
 }
 
 export function InternalComponentManager({ nodeId }: Props) {
-    const { hardwareNodes, removeInternalComponent, updateInternalComponent } = useBuilderStore()
+    const hardwareNodes = useBuilderStore(state => state.hardwareNodes)
+    const removeInternalComponent = useBuilderStore(state => state.removeInternalComponent)
+    const updateInternalComponent = useBuilderStore(state => state.updateInternalComponent)
     const node = hardwareNodes.find(n => n.id === nodeId)
     const components = node?.internal_components || []
     

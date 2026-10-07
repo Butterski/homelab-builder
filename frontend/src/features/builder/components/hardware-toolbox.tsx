@@ -36,6 +36,7 @@ import { useUserSelections } from '../../catalog/api/use-services';
 import { useHardwareFavorites } from '../../catalog/api/use-hardware';
 import { useHardwareBlueprints } from '../../catalog/api/use-hardware-blueprints';
 import { useBuilderStore } from '../store/builder-store';
+import { useShallow } from 'zustand/react/shallow';
 import { Github } from '../../../components/icons/github';
 import { PowerUsagePanel } from './power-usage-panel';
 import { HardwareBlueprintCreator } from '../../catalog/components/hardware-blueprint-creator';
@@ -617,7 +618,17 @@ export const HardwareToolbox = React.memo(function HardwareToolbox({
     selectedNodeId,
     hardwareNodes,
     buildKind,
-  } = useBuilderStore();
+  } = useBuilderStore(
+    useShallow(state => ({
+      availableServices: state.availableServices,
+      fetchServices: state.fetchServices,
+      addHardware: state.addHardware,
+      addVM: state.addVM,
+      selectedNodeId: state.selectedNodeId,
+      hardwareNodes: state.hardwareNodes,
+      buildKind: state.buildKind,
+    })),
+  );
   const { data: selectionsData } = useUserSelections();
   const { data: favoritesData } = useHardwareFavorites();
   const { data: blueprintsData } = useHardwareBlueprints();

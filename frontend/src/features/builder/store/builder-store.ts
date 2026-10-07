@@ -36,7 +36,7 @@ import {
 } from '../lib/proposal-preview';
 import { api } from '../../../services/api';
 import { ApiError } from '../../../lib/api';
-import { WORKSPACE_STORAGE_KEY } from './workspace-storage';
+import { WORKSPACE_STORAGE_KEY, workspaceStorage } from './workspace-storage';
 import { withoutAssetLink } from '../../../lib/asset-link';
 import { computeLayout, type LayoutResult, type LayoutStyle } from '../lib/layout';
 import { layoutGraphFromFlow } from '../lib/layout/from-flow';
@@ -1660,6 +1660,7 @@ export const useBuilderStore = create<BuilderState>()(
       // the server again: a copy kept here would be shown, and trusted, long
       // after it stopped being true.
       name: WORKSPACE_STORAGE_KEY,
+      storage: workspaceStorage,
       partialize: state => ({
         currentBuildId: state.currentBuildId,
         projectName: state.projectName,

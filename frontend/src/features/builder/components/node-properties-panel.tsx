@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { useBuilderStore } from '../store/builder-store';
+import { useShallow } from 'zustand/react/shallow';
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
@@ -39,7 +40,7 @@ import { HardwareBlueprintCreator } from '../../catalog/components/hardware-blue
 const IP_REGEX =
   /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
 
-export function NodePropertiesPanel() {
+export const NodePropertiesPanel = memo(function NodePropertiesPanel() {
   const {
     selectedNodeId,
     hardwareNodes,
@@ -47,7 +48,16 @@ export function NodePropertiesPanel() {
     updateHardware,
     removeHardware,
     autoAssignIP,
-  } = useBuilderStore();
+  } = useBuilderStore(
+    useShallow(state => ({
+      selectedNodeId: state.selectedNodeId,
+      hardwareNodes: state.hardwareNodes,
+      selectNode: state.selectNode,
+      updateHardware: state.updateHardware,
+      removeHardware: state.removeHardware,
+      autoAssignIP: state.autoAssignIP,
+    })),
+  );
 
   const [name, setName] = useState('');
   const [ip, setIp] = useState('');
@@ -1124,4 +1134,4 @@ export function NodePropertiesPanel() {
       </Card>
     </>
   );
-}
+});
