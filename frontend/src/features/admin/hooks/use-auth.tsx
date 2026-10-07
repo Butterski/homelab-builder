@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { api } from "../../../lib/api";
 import { toast } from "sonner";
 import type { ThemeSettings } from "../../../lib/theme-registry";
-import { getAuthConfig } from "../../auth/lib/auth-config";
+import { getAuthConfig, peekAuthConfig } from "../../auth/lib/auth-config";
+import { LOCAL_INSTANCE_KEY } from "../../../lib/prerender";
 import { forgetWorkspace } from "../../builder/store/workspace-storage";
 interface User {
     id: string;
@@ -15,7 +16,12 @@ interface User {
 
 export function useAuth() {
     const [user, setUser] = useState<User | null>(null);
-    const [loading, setLoading] = useState(true);
+    // A visitor without a token on an instance with login cannot be signed in:
+    // that is known at once, so the landing page is drawn without a loading screen first.
+    const [loading, setLoading] = useState(() => {
+        const config = peekAuthConfig();
+        return !config || config.auth_disabled || Boolean(localStorage.getItem('auth_token'));
+    });
     useEffect(() => {
         let cancelled = false;
 
@@ -23,6 +29,12 @@ export function useAuth() {
             try {
                 const token = localStorage.getItem('auth_token');
                 const authConfig = await getAuthConfig();
+                // Read by index.html before the app starts, to skip the landing page here next time.
+                if (authConfig.auth_disabled) {
+                    localStorage.setItem(LOCAL_INSTANCE_KEY, '1');
+                } else {
+                    localStorage.removeItem(LOCAL_INSTANCE_KEY);
+                }
 
                 if (token || authConfig.auth_disabled) {
                     // In local mode without a client ID, backend will automatically return the Local Admin.

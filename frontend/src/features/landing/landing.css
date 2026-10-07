@@ -1,0 +1,1176 @@
+/*
+ * The landing page.
+ *
+ * It is built from the app's own tokens and its two faces, so it reads as the
+ * same product: near-black ground, one ink, hairline borders, the app's radius.
+ * The page itself has no accent colour. Colour belongs to the plan: the device
+ * cards on the canvas, and the two status colours in the tables (within limit,
+ * close to it). The monospace face is used for addresses, figures and code,
+ * where a reader compares characters, and nowhere else.
+ *
+ * Layout: a left rail carries every heading, the right column carries the
+ * thing itself. Nothing is centred.
+ *
+ * Motion: the rack in the opening turns, and a few results are shown being
+ * worked out (see the last block), each once. Under reduced motion those show
+ * their final state and the rack stands still until the visitor starts it.
+ * Nothing fades or slides in for effect.
+ */
+
+.landing {
+  --lp-ink: var(--foreground);
+  --lp-ink-2: var(--muted-foreground);
+  --lp-rule: var(--border);
+  --lp-surface: var(--card);
+  --lp-ok: var(--chart-2);
+  --lp-near: var(--chart-3);
+  --lp-gutter: clamp(1.25rem, 4vw, 3rem);
+  --lp-width: 82rem;
+
+  min-height: 100%;
+  overflow-x: clip;
+  background: var(--background);
+  color: var(--lp-ink);
+  font-size: 1.0625rem;
+  line-height: 1.6;
+}
+
+.landing :is(h1, h2, h3, p, ul, ol, dl, dd, figure) {
+  margin: 0;
+}
+
+.landing :is(h1, h2, h3) {
+  font-weight: 600;
+  text-wrap: balance;
+}
+
+.landing h1 {
+  max-width: 12ch;
+  font-size: clamp(2.75rem, 6.4vw, 5.75rem);
+  letter-spacing: -0.045em;
+  line-height: 0.96;
+}
+
+.landing h2 {
+  font-size: clamp(1.5rem, 2.3vw, 2rem);
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+}
+
+.landing h3 {
+  font-size: 1.0625rem;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+}
+
+.landing :is(a, button, summary, input):focus-visible {
+  outline: 2px solid var(--lp-ink);
+  outline-offset: 3px;
+}
+
+.lp-muted {
+  color: var(--lp-ink-2);
+}
+
+.lp-wrap {
+  max-width: var(--lp-width);
+  margin: 0 auto;
+  padding-inline: var(--lp-gutter);
+}
+
+/* ─── Actions ─────────────────────────────────────────────────────────────── */
+
+.lp-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 2.75rem;
+  padding: 0 1.15rem;
+  border: 1px solid var(--lp-rule);
+  border-radius: var(--radius-md);
+  color: var(--lp-ink);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.lp-button:hover {
+  border-color: color-mix(in srgb, var(--lp-ink) 45%, var(--lp-rule));
+}
+
+.lp-button.is-primary {
+  border-color: var(--lp-ink);
+  background: var(--lp-ink);
+  color: var(--background);
+}
+
+.lp-button.is-primary:hover {
+  background: color-mix(in srgb, var(--lp-ink) 86%, var(--background));
+}
+
+.lp-button.is-small {
+  height: 2.125rem;
+  padding: 0 0.8rem;
+  font-size: 0.875rem;
+}
+
+.lp-link {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--lp-ink) 35%, transparent);
+  text-underline-offset: 0.22em;
+  transition: text-decoration-color 0.15s ease;
+}
+
+.lp-link:hover {
+  text-decoration-color: var(--lp-ink);
+}
+
+.lp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.25rem;
+}
+
+/* ─── Navigation ──────────────────────────────────────────────────────────── */
+
+.lp-nav {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  border-bottom: 1px solid var(--lp-rule);
+  background: var(--background);
+}
+
+.lp-nav > div {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  height: 3.5rem;
+}
+
+.lp-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.lp-nav-links {
+  display: none;
+  gap: 1.75rem;
+  white-space: nowrap;
+  color: var(--lp-ink-2);
+  font-size: 0.9375rem;
+}
+
+.lp-nav-links a,
+.lp-footer a {
+  transition: color 0.15s ease;
+}
+
+.lp-nav-links a:hover,
+.lp-footer a:hover {
+  color: var(--lp-ink);
+}
+
+.lp-nav-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+@media (min-width: 1024px) {
+  .lp-nav-links {
+    display: flex;
+  }
+}
+
+/* ─── Opening: the claim, then the product ────────────────────────────────── */
+
+.lp-opening {
+  display: grid;
+  gap: 2.5rem;
+  align-items: center;
+  padding-top: clamp(2.5rem, 6vw, 5rem);
+  padding-bottom: clamp(2.5rem, 5vw, 4rem);
+}
+
+.lp-opening-text {
+  display: grid;
+  gap: 1.5rem;
+  justify-items: start;
+}
+
+.lp-opening-text > h1 {
+  margin-bottom: 0.5rem;
+}
+
+.lp-opening-text > p {
+  max-width: 34rem;
+  font-size: clamp(1.0625rem, 1.4vw, 1.25rem);
+  line-height: 1.5;
+}
+
+.lp-opening-text > p.lp-muted {
+  max-width: 26rem;
+  font-size: 0.9375rem;
+}
+
+/*
+ * The rack is text: 60 characters by 40 lines, three layers on one grid. Its
+ * size follows the slot it stands in. ascii-rack.ts assumes this cell shape
+ * (0.6 of the font size wide, 1.1 high); change them together.
+ *
+ * It is also shown outside this page (the welcome screen, the first project in
+ * the app), so it takes its colours from the theme, not from `.landing`.
+ */
+.lp-rack-slot {
+  container-type: inline-size;
+  min-width: 0;
+}
+
+.lp-rack-figure {
+  display: grid;
+  gap: 0.75rem;
+  justify-items: center;
+  margin: 0;
+}
+
+.lp-rack-figure figcaption {
+  display: flex;
+  gap: 0.6rem;
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+}
+
+.lp-rack-figure button {
+  color: var(--foreground);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--foreground) 35%, transparent);
+  text-underline-offset: 0.22em;
+  cursor: pointer;
+}
+
+.lp-rack-figure button:hover {
+  text-decoration-color: var(--foreground);
+}
+
+.lp-rack {
+  position: relative;
+  width: 60ch;
+  /* Dragging sideways turns the rack; up and down still scrolls the page. */
+  touch-action: pan-y;
+  cursor: grab;
+  color: color-mix(in srgb, var(--foreground) 74%, var(--background));
+  font-family: var(--font-mono);
+  font-size: min(100cqw / 36, 0.875rem);
+  line-height: 1.1;
+  user-select: none;
+}
+
+.lp-rack.is-dragging {
+  cursor: grabbing;
+}
+
+.lp-rack pre {
+  margin: 0;
+  font: inherit;
+}
+
+.lp-rack pre + pre {
+  position: absolute;
+  inset: 0;
+  font-weight: 700;
+}
+
+.lp-rack .is-ok {
+  color: var(--chart-2);
+}
+
+.lp-rack .is-near {
+  color: var(--chart-3);
+}
+
+/*
+ * The welcome screen of somebody's own instance (features/auth/pages/welcome-page.tsx):
+ * the way in, what this instance has switched on, and the rack.
+ */
+.lp-welcome {
+  display: grid;
+  min-height: 100%;
+}
+
+.lp-welcome-body {
+  display: grid;
+  gap: 3rem;
+  align-content: center;
+  align-items: center;
+  width: 100%;
+  padding-block: clamp(2.5rem, 6vw, 5rem);
+}
+
+.lp-welcome-text {
+  display: grid;
+  gap: 1.5rem;
+  justify-items: start;
+}
+
+.landing.lp-welcome h1 {
+  max-width: 14ch;
+  font-size: clamp(2.25rem, 4.6vw, 3.75rem);
+  letter-spacing: -0.035em;
+  line-height: 1.02;
+}
+
+.lp-welcome-text > p:not(.lp-brand, .lp-muted) {
+  max-width: 30rem;
+  font-size: 1.125rem;
+  line-height: 1.5;
+}
+
+.lp-welcome-text > p.lp-muted {
+  font-size: 0.9375rem;
+}
+
+.lp-instance {
+  display: grid;
+  width: min(100%, 26rem);
+  border-top: 1px solid var(--lp-rule);
+  font-size: 0.9375rem;
+}
+
+.lp-instance > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding-block: 0.6rem;
+  border-bottom: 1px solid var(--lp-rule);
+}
+
+.lp-instance dt {
+  color: var(--lp-ink-2);
+}
+
+@media (min-width: 1024px) {
+  .lp-welcome-body {
+    grid-template-columns: minmax(0, 6fr) minmax(0, 5fr);
+    column-gap: clamp(2rem, 5vw, 5rem);
+  }
+}
+
+@media (min-width: 1024px) {
+  .lp-opening {
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+    column-gap: clamp(2rem, 4vw, 4rem);
+  }
+}
+
+/* ─── The demo ────────────────────────────────────────────────────────────── */
+
+.lp-demo-section {
+  padding-bottom: clamp(4rem, 9vw, 8rem);
+  scroll-margin-top: 4.5rem;
+}
+
+.lp-surface {
+  overflow: hidden;
+  border: 1px solid var(--lp-rule);
+  border-radius: var(--radius-xl);
+  background: var(--lp-surface);
+}
+
+.lp-demo-poster {
+  display: grid;
+  min-height: 36rem;
+  padding: 2rem;
+  place-content: center;
+  color: var(--lp-ink-2);
+}
+
+.lp-demo-poster p {
+  max-width: 32rem;
+}
+
+.lp-demo {
+  display: grid;
+}
+
+.lp-demo-controls {
+  display: grid;
+  gap: 1.5rem;
+  align-content: start;
+  padding: 1.25rem;
+  border-bottom: 1px solid var(--lp-rule);
+}
+
+.lp-demo-form {
+  display: grid;
+  gap: 1.35rem;
+}
+
+.lp-demo fieldset {
+  display: grid;
+  gap: 0.55rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.lp-demo legend,
+.lp-range > span {
+  padding: 0;
+  color: var(--lp-ink-2);
+  font-size: 0.8125rem;
+}
+
+.lp-tabs,
+.lp-segment {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  border: 1px solid var(--lp-rule);
+  border-radius: var(--radius-md);
+}
+
+.lp-tabs button,
+.lp-segment button {
+  min-height: 2.125rem;
+  padding: 0 0.7rem;
+  border-right: 1px solid var(--lp-rule);
+  color: var(--lp-ink-2);
+  font-size: 0.875rem;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.lp-tabs button {
+  min-height: 2.5rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+}
+
+:is(.lp-tabs, .lp-segment) button:first-child {
+  border-radius: calc(var(--radius-md) - 1px) 0 0 calc(var(--radius-md) - 1px);
+}
+
+:is(.lp-tabs, .lp-segment) button:last-child {
+  border-right: 0;
+  border-radius: 0 calc(var(--radius-md) - 1px) calc(var(--radius-md) - 1px) 0;
+}
+
+:is(.lp-tabs, .lp-segment) button:hover {
+  color: var(--lp-ink);
+}
+
+.lp-tabs button[aria-selected='true'],
+.lp-segment button[aria-pressed='true'] {
+  background: var(--lp-ink);
+  color: var(--background);
+}
+
+.lp-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.lp-chips button {
+  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--lp-rule);
+  border-radius: var(--radius-md);
+  color: var(--lp-ink-2);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.lp-chips button:hover {
+  color: var(--lp-ink);
+}
+
+.lp-chips button[aria-pressed='true'] {
+  border-color: var(--lp-ink);
+  color: var(--lp-ink);
+}
+
+.lp-range {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.lp-range > span {
+  display: flex;
+  justify-content: space-between;
+}
+
+.lp-range output {
+  color: var(--lp-ink);
+  font-family: var(--font-mono);
+}
+
+.lp-range input,
+.lp-check input {
+  accent-color: var(--lp-ink);
+}
+
+.lp-range input {
+  width: 100%;
+}
+
+.lp-check {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.9375rem;
+  cursor: pointer;
+}
+
+.lp-check input {
+  width: 1rem;
+  height: 1rem;
+}
+
+.lp-demo-note {
+  color: var(--lp-ink-2);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.lp-demo-stage {
+  display: grid;
+  min-width: 0;
+}
+
+.lp-demo-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--lp-rule);
+}
+
+.lp-demo-toolbar .lp-segment button {
+  min-height: 2.125rem;
+}
+
+.lp-demo-hint {
+  margin-left: auto;
+  color: var(--lp-ink-2);
+  font-size: 0.8125rem;
+}
+
+.lp-demo-canvas {
+  height: 26rem;
+}
+
+/* The app's canvas has two soft washes behind it; here it sits on the surface. */
+.lp-demo-canvas .builder-flow-canvas {
+  background: var(--background);
+}
+
+.lp-demo-figures {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-top: 1px solid var(--lp-rule);
+}
+
+.lp-demo-figures > div {
+  padding: 0.85rem 1.1rem;
+  border-right: 1px solid var(--lp-rule);
+  border-bottom: 1px solid var(--lp-rule);
+}
+
+.lp-demo-figures dt {
+  color: var(--lp-ink-2);
+  font-size: 0.8125rem;
+}
+
+.lp-demo-figures dd {
+  display: grid;
+}
+
+.lp-demo-figures b {
+  font-family: var(--font-mono);
+  font-size: 1.25rem;
+  font-weight: 500;
+}
+
+.lp-demo-figures small {
+  overflow: hidden;
+  color: var(--lp-ink-2);
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lp-demo-keep {
+  display: grid;
+  grid-column: 1 / -1;
+  padding: 0.85rem 1.1rem;
+  place-items: center;
+}
+
+@media (min-width: 1000px) {
+  .lp-demo {
+    grid-template-columns: 19.5rem minmax(0, 1fr);
+  }
+
+  .lp-demo-controls {
+    border-right: 1px solid var(--lp-rule);
+    border-bottom: 0;
+  }
+
+  .lp-demo-canvas {
+    height: 32rem;
+  }
+
+  .lp-demo-poster {
+    min-height: 40.5rem;
+  }
+
+  .lp-demo-figures {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+  }
+
+  .lp-demo-figures > div {
+    border-bottom: 0;
+  }
+
+  .lp-demo-keep {
+    grid-column: auto;
+  }
+}
+
+/* ─── Rows: heading in the rail, the thing itself beside it ───────────────── */
+
+.lp-row {
+  display: grid;
+  gap: 2rem;
+  padding-block: clamp(3.5rem, 7vw, 6.5rem);
+  border-top: 1px solid var(--lp-rule);
+  scroll-margin-top: 3.5rem;
+}
+
+.lp-row-head {
+  display: grid;
+  gap: 0.9rem;
+  align-content: start;
+}
+
+.lp-row-head p {
+  max-width: 30rem;
+  color: var(--lp-ink-2);
+}
+
+.lp-row-body {
+  display: grid;
+  gap: 1.75rem;
+  min-width: 0;
+}
+
+@media (min-width: 1024px) {
+  .lp-row {
+    grid-template-columns: minmax(0, 4fr) minmax(0, 7fr);
+    column-gap: clamp(2.5rem, 6vw, 6rem);
+  }
+
+  .lp-row-head {
+    position: sticky;
+    top: 5.5rem;
+    align-self: start;
+  }
+}
+
+/* The one statement set large. */
+.lp-statement {
+  display: grid;
+  gap: 2.5rem;
+  padding-block: clamp(3.5rem, 7vw, 6.5rem);
+  border-top: 1px solid var(--lp-rule);
+}
+
+.lp-statement p {
+  max-width: 30ch;
+  font-size: clamp(1.75rem, 3.6vw, 3.25rem);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1.08;
+  text-wrap: balance;
+}
+
+.lp-statement p span {
+  color: var(--lp-ink-2);
+}
+
+/*
+ * The picture is rendered in colour; the page shows it in its own ink, so it
+ * sits with the type instead of competing with the canvas for colour. Its
+ * background is pushed just below the page's near-black and the picture is
+ * blended with `lighten`, which leaves no edge where the image ends.
+ */
+.lp-picture img {
+  display: block;
+  width: 100%;
+  height: auto;
+  filter: grayscale(1) contrast(1.2) brightness(0.9);
+  mix-blend-mode: lighten;
+}
+
+/* ─── What the canvas knows ───────────────────────────────────────────────── */
+
+.lp-spec {
+  display: grid;
+}
+
+.lp-spec > div {
+  display: grid;
+  gap: 0.3rem 2rem;
+  padding-block: 1.15rem;
+  border-top: 1px solid var(--lp-rule);
+}
+
+.lp-spec > div:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.lp-spec dt {
+  font-weight: 600;
+}
+
+.lp-spec dd {
+  color: var(--lp-ink-2);
+}
+
+@media (min-width: 640px) {
+  .lp-spec > div {
+    grid-template-columns: 11rem minmax(0, 1fr);
+  }
+}
+
+.lp-points {
+  display: grid;
+  padding: 0;
+  list-style: none;
+}
+
+.lp-points li {
+  padding-block: 0.8rem;
+  border-top: 1px solid var(--lp-rule);
+}
+
+.lp-points li:last-child {
+  border-bottom: 1px solid var(--lp-rule);
+}
+
+/* ─── Tables and panels: the plan's own paperwork ─────────────────────────── */
+
+.lp-panel-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1.1rem;
+  border-bottom: 1px solid var(--lp-rule);
+  color: var(--lp-ink-2);
+  font-size: 0.875rem;
+}
+
+.lp-panel-title > :first-child {
+  color: var(--lp-ink);
+  font-weight: 500;
+}
+
+.lp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9375rem;
+}
+
+.lp-table :is(th, td) {
+  padding: 0.7rem 1.1rem;
+  border-bottom: 1px solid var(--lp-rule);
+  text-align: left;
+  vertical-align: baseline;
+}
+
+.lp-table tbody tr:last-child :is(th, td) {
+  border-bottom: 0;
+}
+
+.lp-table thead th {
+  color: var(--lp-ink-2);
+  font-size: 0.8125rem;
+  font-weight: 400;
+}
+
+.lp-table tbody th {
+  font-weight: 400;
+}
+
+.lp-table .is-figure {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+.lp-table .is-end {
+  text-align: right;
+}
+
+.lp-table-scroll {
+  overflow-x: auto;
+}
+
+@media (max-width: 639px) {
+  .lp-table :is(th, td) {
+    padding-inline: 0.8rem;
+  }
+
+  .lp-table .is-optional {
+    display: none;
+  }
+}
+
+/* Power: a bar per circuit, a mark where the breaker's long-run limit is. */
+.lp-load {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-width: 5rem;
+  height: 0.375rem;
+  background: color-mix(in srgb, var(--lp-ink) 12%, transparent);
+}
+
+.lp-load::after {
+  position: absolute;
+  top: -0.3rem;
+  bottom: -0.3rem;
+  left: 80%;
+  width: 1px;
+  background: var(--lp-ink-2);
+  content: '';
+}
+
+.lp-load > span {
+  display: block;
+  width: calc(var(--load) * 1%);
+  height: 100%;
+  background: var(--lp-ok);
+}
+
+.lp-load.is-near > span {
+  background: var(--lp-near);
+}
+
+/* Comparison */
+.lp-compare td {
+  color: var(--lp-ink-2);
+}
+
+.lp-compare .is-ours {
+  background: color-mix(in srgb, var(--lp-ink) 5%, transparent);
+  color: var(--lp-ink);
+}
+
+.lp-compare thead .is-ours {
+  color: var(--lp-ink);
+  font-weight: 600;
+}
+
+/* Proposal */
+.lp-proposal {
+  display: grid;
+  font-size: 0.9375rem;
+}
+
+.lp-proposal > :not(.lp-panel-title) {
+  padding: 1rem 1.1rem;
+  border-bottom: 1px solid var(--lp-rule);
+}
+
+.lp-proposal > :last-child {
+  border-bottom: 0;
+}
+
+.lp-proposal ol,
+.lp-proposal ul {
+  display: grid;
+  gap: 0.4rem;
+  list-style: none;
+}
+
+.lp-proposal ol li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.75rem;
+  justify-content: space-between;
+}
+
+.lp-proposal ol li span {
+  color: var(--lp-ink-2);
+}
+
+.lp-diff {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+}
+
+.lp-diff li {
+  display: grid;
+  grid-template-columns: 1.25rem minmax(0, 1fr);
+}
+
+.lp-diff li::before {
+  color: var(--lp-ok);
+  content: '+';
+}
+
+.lp-diff li.is-changed::before {
+  color: var(--lp-near);
+  content: '~';
+}
+
+.lp-proposal-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  color: var(--lp-ink-2);
+  font-size: 0.875rem;
+}
+
+.lp-proposal-foot .lp-button {
+  cursor: default;
+}
+
+/* Code */
+.lp-code {
+  margin: 0;
+  padding: 1.1rem;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  line-height: 1.7;
+}
+
+.lp-file-tabs {
+  display: flex;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--lp-rule);
+}
+
+.lp-file-tabs button {
+  padding: 0.75rem 1.1rem;
+  border-right: 1px solid var(--lp-rule);
+  color: var(--lp-ink-2);
+  font-size: 0.875rem;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.lp-file-tabs button:hover {
+  color: var(--lp-ink);
+}
+
+.lp-file-tabs button[aria-selected='true'] {
+  background: var(--background);
+  color: var(--lp-ink);
+}
+
+.lp-files .lp-code {
+  min-height: 19rem;
+}
+
+.lp-panel-title button {
+  color: var(--lp-ink-2);
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.lp-panel-title button:hover {
+  color: var(--lp-ink);
+}
+
+.lp-panel-foot {
+  padding: 0.85rem 1.1rem;
+  border-top: 1px solid var(--lp-rule);
+  color: var(--lp-ink-2);
+  font-size: 0.9375rem;
+}
+
+.lp-panel-foot code {
+  color: var(--lp-ink);
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+}
+
+/* ─── Questions ───────────────────────────────────────────────────────────── */
+
+.lp-faq details {
+  border-top: 1px solid var(--lp-rule);
+}
+
+.lp-faq details:first-child {
+  border-top: 0;
+}
+
+.lp-faq summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding-block: 1.1rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.lp-faq details:first-child summary {
+  padding-top: 0;
+}
+
+.lp-faq summary::-webkit-details-marker {
+  display: none;
+}
+
+.lp-faq summary::after {
+  flex: none;
+  color: var(--lp-ink-2);
+  font-family: var(--font-mono);
+  content: '+';
+}
+
+.lp-faq details[open] summary::after {
+  content: '\2212';
+}
+
+.lp-faq details p {
+  max-width: 44rem;
+  padding-bottom: 1.4rem;
+  color: var(--lp-ink-2);
+}
+
+/* ─── Start and footer ────────────────────────────────────────────────────── */
+
+.lp-signin {
+  width: min(100%, 20rem);
+  min-height: 2.75rem;
+}
+
+.lp-footer {
+  border-top: 1px solid var(--lp-rule);
+  color: var(--lp-ink-2);
+  font-size: 0.9375rem;
+}
+
+.lp-footer > div {
+  display: grid;
+  gap: 1.5rem;
+  padding-block: 2.5rem 3.5rem;
+}
+
+.lp-footer nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.75rem;
+}
+
+.lp-footer .lp-brand {
+  color: var(--lp-ink);
+}
+
+@media (min-width: 1024px) {
+  .lp-footer > div {
+    grid-template-columns: minmax(0, 4fr) minmax(0, 7fr);
+    column-gap: clamp(2.5rem, 6vw, 6rem);
+  }
+}
+
+/* What a command answers, under the commands themselves. */
+.lp-code samp {
+  display: grid;
+  margin-top: 0.6rem;
+  color: var(--lp-ink-2);
+  font: inherit;
+}
+
+.lp-typed {
+  display: inline-block;
+}
+
+/*
+ * Motion. The rack in the opening turns by itself (ascii-rack.tsx). Each of
+ * these shows something being worked out, once, when its block is first seen
+ * (use-live.ts arms the block, then sets it live):
+ *   the addresses are handed out from the router outward;
+ *   the load bars fill to their value;
+ *   Compose reports its containers one after another.
+ * Without `is-armed` nothing below applies and every block shows its final state.
+ */
+@keyframes lp-type {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0);
+  }
+}
+
+@keyframes lp-appear {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes lp-fill {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  main:has(> .landing) {
+    scroll-behavior: smooth;
+  }
+
+  /* Starting states, held until the block is seen. */
+  .lp-live.is-armed:not(.is-live) :is(.lp-typed, samp span) {
+    visibility: hidden;
+  }
+
+  .lp-live.is-armed:not(.is-live) .lp-load > span {
+    transform: scaleX(0);
+  }
+
+  .lp-live.is-live .lp-typed {
+    animation: lp-type 0.3s steps(13, end) calc(0.2s + var(--i) * 140ms) both;
+  }
+
+  .lp-load > span {
+    transform-origin: left;
+  }
+
+  .lp-live.is-live .lp-load > span {
+    animation: lp-fill 0.9s cubic-bezier(0.22, 1, 0.36, 1) calc(0.15s + var(--i) * 120ms) both;
+  }
+
+  .lp-live.is-live samp span {
+    animation: lp-appear 1ms linear calc(0.5s + var(--i) * 480ms) both;
+  }
+}

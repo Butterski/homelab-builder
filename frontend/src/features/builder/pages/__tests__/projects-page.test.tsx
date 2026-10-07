@@ -101,6 +101,44 @@ describe('ProjectsPage Export Functionality', () => {
     expect(screen.queryByText(/Fast Start/i)).not.toBeInTheDocument();
   });
 
+  it('asks what to plan when there is no project yet, and sends each answer to the planner', async () => {
+    (buildApi.list as any).mockResolvedValue([]);
+
+    render(page());
+
+    expect(
+      await screen.findByRole('heading', { name: 'What do you want to plan?' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /^Homelab/ })).toHaveAttribute('href', '/planner');
+    expect(screen.getByRole('link', { name: /^LAN party/ })).toHaveAttribute(
+      'href',
+      '/planner?kind=lan_party',
+    );
+    expect(screen.getByRole('link', { name: /^Game server/ })).toHaveAttribute(
+      'href',
+      '/planner?kind=game_server',
+    );
+
+    // The way around the planner opens the usual dialog.
+    fireEvent.click(screen.getByRole('button', { name: 'start with an empty canvas' }));
+    expect(await screen.findByText('Create New Project')).toBeInTheDocument();
+  });
+
+  it('says so when a search matches nothing, without offering a first project', async () => {
+    (buildApi.list as any).mockResolvedValue([
+      { id: 'build-1', user_id: '1', name: 'Rack room', nodes: [], updated_at: '2026-10-01T00:00:00Z' },
+    ]);
+
+    render(page());
+
+    fireEvent.change(await screen.findByPlaceholderText('Search projects...'), {
+      target: { value: 'zzz' },
+    });
+
+    expect(screen.getByText(/No project matches/)).toBeInTheDocument();
+    expect(screen.queryByText('What do you want to plan?')).not.toBeInTheDocument();
+  });
+
   it('exports a project matching the .homelab.json schema', async () => {
     // Mock a project in the database
     const mockBuild = {
