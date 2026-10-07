@@ -514,6 +514,28 @@ The builder feature uses a single Zustand store at `features/builder/store/build
 - `buildSettings.setupDone` holds the steps ticked off in the Setup Guide. `setSetupDone` replaces the settings object, which is in the autosave fingerprint, so a tick is saved like an edit (see [App Pages](#app-pages) and pitfall 34).
 - `components/layout/project-card.tsx` is the open project in the sidebar: a miniature of the canvas, name, kind, device count, save state (a failed save can be retried there) and a badge for a waiting proposal. It reads the store through selectors only; a sidebar subscribed to the whole store renders on every frame of a drag. Away from the canvas it asks for a waiting proposal every 20 s; on the canvas it reads what the builder polls anyway.
 
+### Canvas Performance
+
+The canvas is the one screen that can keep a processor busy for as long as its tab is open, so three rules hold on it. `features/builder/canvas-idle.test.ts` checks what can be checked in source.
+
+- **An idle canvas draws nothing.** No cable, zone outline or status light runs an animation that never ends (pitfall 41). A cable is a dark line with still, coloured dashes; a selected cable, and the cables of a selected device, are thicker and lie on a wide faint line of the same colour. That line is a path, not a blur filter.
+- **A drag renders what moves.** `Flow` takes what it needs from the store through one `useShallow` selector and hands React Flow, for a node that did not change, the object it handed it before (`drawnNode`), so `HardwareNode` (`memo` on `id`, `data`, `selected`) renders for the dragged card only. A cable reads all devices only when smart routing is on; its speed badge is mounted when there is something to show, its buttons and settings while it is hovered, selected or open. What hangs below `Flow` and does not depend on where the cards are is `memo`: the library, the dialogs, the panels (pitfall 42).
+- **A pan moves a picture.** `CanvasGrid` (`components/canvas-grid.tsx`) stands in for React Flow's `<Background>`: a tiled CSS background on a layer of its own, moved by the remainder of one grid step and painted again only when the zoom changes; zoomed out its dots fade instead of crowding. `useCanvasMoving` (`hooks/use-canvas-moving.ts`) marks the canvas while the view moves and for 250 ms after (`data-canvas-moving`), and the mark gives `.react-flow__viewport` `will-change: transform`. Not for longer: a layer keeps the sharpness it was drawn with. The panels that float over the canvas are solid; none has a `backdrop-filter`.
+
+The shared build page and the demo on the landing page use the same cable, grid and mark.
+
+What this bought, measured on a production build in a headless Chromium without GPU rasterisation, on a build of 43 devices with a NAT zone. The percentages are the CPU time of all of Chromium's processes, 100% being one core; a gesture is sent as fast as the page takes it, so its duration says how well the page keeps up.
+
+| | Before | After |
+|---|---|---|
+| Idle canvas | 222%, 6 frames a second | 7% |
+| Idle, hosts over their limit | 166%, 4 frames a second | 7% |
+| Dragging a card, 120 pointer moves | 22.5 s | 4.2 s |
+| Panning, 120 pointer moves | 30.4 s | 3.1 s |
+| Zooming, 60 steps of the wheel | 87.5 s | 4.1 s |
+
+A canvas of five devices was at 257% idle and is at 6%. The other pages were never the problem: 4 to 7% each. On the landing page the ASCII rack costs about half a core in that browser while it is on screen and turning; it stops when scrolled away, in a hidden tab, and on Pause. A browser that rasterises on the GPU pays less for all of this, before and after.
+
 ### Layout Engine (Polish)
 
 `features/builder/lib/layout/` arranges the canvas. It is a pure module: no React, no store, no dependency. A graph library was left out on purpose. The canvas draws every cable itself, as a step line from a port at the bottom of one card to the handle on top of another, so what a library promises about its own routes would not hold here; and a rack whose insides must not move cannot be expressed in one.
@@ -837,6 +859,9 @@ hasPrefix(s, prefix string) bool
 | `frontend/src/features/builder/store/builder-store.proposals.test.ts` | - | A review leaves the live graph alone, apply as one undo step, glow, sync |
 | `frontend/src/features/builder/lib/layout/*.test.ts` | - | Layout engine: every promise on fixtures, planner output and random networks; the route against React Flow's own; the canvas adapter |
 | `frontend/src/features/builder/lib/polish.test.ts` | - | What Polish says and remembers |
+| `frontend/src/features/builder/canvas-idle.test.ts` | - | Reads the source of everything that draws a canvas: no endless animation, no blur behind floating panels, the grid and the moving mark in place (pitfall 41) |
+| `frontend/src/features/builder/components/canvas-grid.test.tsx`, `hooks/use-canvas-moving.test.ts` | - | The dot grid: step, wrap, fading when zoomed out; the canvas is marked while it moves and through wheel notches |
+| `frontend/src/features/builder/store/workspace-storage.test.ts` | - | What the browser remembers is written when it changes, not on every change of the store |
 | `frontend/src/features/builder/components/proposal-review-panel.test.tsx`, `proposal-review-bar.test.tsx` | - | List of changes; review bar and the banner of a waiting proposal |
 | `frontend/src/features/builder/pages/__tests__/projects-page.test.tsx` | - | Projects page, with rename and delete of the open project; the first-project screen and an empty search |
 | `frontend/src/components/layout/project-card.test.tsx`, `sidebar.test.tsx` | - | Project card after a reload, save states, proposal badge, switcher; what the sidebar lists and where, the account menu, the survey row, a visitor, collapsed state |
@@ -846,7 +871,7 @@ hasPrefix(s, prefix string) bool
 | `frontend/src/components/ui/user-avatar.test.tsx` | - | Picture, initials, a generated avatar that is not fetched |
 | `frontend/src/features/settings/**/*.test.ts(x)` | - | MCP snippets and source links, token card, assistant settings card |
 | `frontend/src/features/assistant/**/*.test.ts(x)` | - | SSE reader; chat store (every event, reading the thread again, a queued message); chat panel; activity timeline |
-| `frontend/src/features/gaming/**/*.test.ts(x)` | - | Sizing, tables, kinds, setup steps, game compose text, plan dialog, node fields |
+| `frontend/src/features/gaming/**/*.test.ts(x)` | - | Sizing, tables, kinds, setup steps, game compose text, plan dialog (it asks nothing of the build while closed), node fields |
 | `frontend/src/features/gaming/components/gaming-node-fields.store.test.tsx` | - | The device fields on the real store, in a build without power circuits (pitfall 37) |
 | `frontend/src/features/inventory/**/*.test.ts(x)` | - | Items as nodes and components, what a canvas uses, state, spare memory for a host; placing; the panel; the inventory page and the item form |
 | `frontend/src/features/integrations/**/*.test.ts(x)` | - | What an import does unless told otherwise, and counts; the Proxmox dialog: connection, certificate trust, hosts, compare, import |
@@ -1088,7 +1113,7 @@ Tailwind's `sr-only` is `position: absolute`. In a scrolling list without a posi
 
 ### 28. React Flow's default edge options reach every edge
 
-`defaultEdgeOptions={{ animated: true }}` is merged into controlled edges too, and its dash animation overrides a stroke style set on the path. Edges of a preview set `animated: false`, and the rules that draw a new cable are more specific than `.react-flow__edge.animated path`.
+`defaultEdgeOptions` is merged into controlled edges too. While it carried `animated: true`, the dash animation that brings overrode a stroke style set on the path, and ran on every cable for ever (pitfall 41). The canvas no longer sets it; edges of a preview still set `animated: false`, and the rules that draw a new cable are more specific than `.react-flow__edge.animated path`.
 
 ### 29. Motion is decoration
 
@@ -1140,6 +1165,20 @@ hlbIPAM answers a request for an address inside a gateway's DHCP pool with anoth
 
 The LLM client and the Proxmox client both dial through `internal/netguard`. A new client that calls an address a user named uses `netguard.DialControl` too, follows no redirects and takes no proxy from the environment. A second copy of the address rules would drift.
 
+### 41. Nothing on the canvas animates for ever
+
+**Symptom**: an open builder tab keeps one or two processor cores busy while nobody touches it (issue #32).
+
+**Cause**: an animation that never ends keeps the browser producing frames. Moving dashes (`stroke-dashoffset`), an animated `filter`, a light that pulses inside a card: none of these can be handed to the compositor, so every frame paints what they touch again. React Flow's `animated` option does it to every path of a cable, the wide invisible one for the pointer included.
+
+**Rule**: state on the canvas is shown by colour, weight and shape. Motion that ends (the reveal of a proposal, the glide of Polish, the glow after Apply) is fine; a spinner is fine while something is being waited for. The same care goes for what makes every repaint dear: a `backdrop-filter` on a panel over the canvas is worked out again for each frame the canvas moves, and a `drop-shadow()` on a cable or a zone outline for each repaint near it. `canvas-idle.test.ts` fails when one of these comes back.
+
+### 42. What renders on every frame of a drag
+
+React Flow reports a drag as a change of `nodes` on every move of the pointer. Whatever reads all nodes renders that often: `useBuilderStore()` without a selector, React Flow's `useNodes()`. And a store selector runs on every change whether or not its component renders, so it must be cheap: `state.hasUnsavedChanges()` serialises the whole build, which the closed game plan dialog did sixty times a second.
+
+Take one value with a selector and several with `useShallow`; in a cable use `useInternalNode`, or `useStore` with a selector that returns a plain value. A node object handed to React Flow has to be the same object for as long as nothing in it changed, or `memo` on the card is worth nothing (`drawnNode` in `visual-builder.tsx`). The same holds for what the store writes to `localStorage`: `workspaceStorage` writes only what differs from what is there.
+
 ---
 
 ## Fixed Bugs (Historical)
@@ -1184,6 +1223,10 @@ These bugs were diagnosed and fixed; tests guard against regression.
 | 34 | `checklist-page.tsx` | The setup guide called itself personalised and used nothing of the build but the presence of device types; its numbering skipped; its check marks could not be ticked | Rewritten as a guide generated from the build (`setup-plan.ts`), with progress saved in the build |
 | 35 | `sidebar.tsx`, `checklist-page.tsx` | Invalid HTML: the sign-in button sat inside a button, and a `<div>` badge inside a `<p>` | Both rewritten; the account row is one button, the sign-in button stands alone |
 | 36 | `gaming-node-fields.tsx` | Selecting a device in a build without power circuits blanked the builder: the selector of the circuits returned a new empty array on every call (pitfall 37) | One constant stands for "no circuits"; a test runs the fields on the real store |
+| 37 | `visual-builder.tsx`, `custom-edge.tsx`, `hardware-node.tsx`, `index.css` | An open canvas kept one to two processor cores busy while idle (issue #32): every cable ran React Flow's dash animation on each of its paths, zone outlines flowed and the lights of loaded hosts pulsed, all without end | Nothing on the canvas animates for ever (pitfall 41); a test reads the source for it |
+| 38 | `custom-edge.tsx`, `visual-builder.tsx`, `hardware-node.tsx` | Dragging one card rendered every card and every cable on each frame: a cable read all nodes and kept its settings mounted, node objects were made anew on every change, the canvas and its panels took the whole store | Selectors, node objects kept while unchanged, cable buttons mounted when needed (pitfall 42) |
+| 39 | `index.css`, `canvas-grid.tsx`, `custom-edge.tsx` | Panning and zooming painted the whole canvas again for each frame, under a blur behind every floating panel and an SVG dot pattern; blur filters on cables and zone outlines made each of those paintings dear | Solid panels, `CanvasGrid`, a compositor layer while the view moves, glows drawn as paths or dropped |
+| 40 | `gaming-plan-dialog.tsx` | The closed game plan dialog compared the build with the server on every change of the store, a drag included | Asked only while the dialog is open |
 
 ---
 
