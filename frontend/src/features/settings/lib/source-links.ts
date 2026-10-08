@@ -3,7 +3,7 @@
  * tokens and keys instead of taking the settings page at its word. HEAD resolves
  * to the repository's default branch.
  */
-export const SOURCE_REPO_URL = 'https://github.com/Butterski/homelab-builder';
+const SOURCE_REPO_URL = 'https://github.com/Butterski/homelab-builder';
 
 export function sourceUrl(path: string): string {
   return `${SOURCE_REPO_URL}/blob/HEAD/${path}`;

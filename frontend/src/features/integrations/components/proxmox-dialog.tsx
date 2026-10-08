@@ -10,7 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { cn } from '@/lib/utils';
+import { cn, errorMessage } from '@/lib/utils';
 import {
   useIntegrations,
   useSyncIntegration,
@@ -41,15 +41,12 @@ type ProxmoxDialogProps = {
   onProposal?: (proposalId: string) => void;
 };
 
-const messageOf = (error: unknown, fallback: string) =>
-  error instanceof Error && error.message ? error.message : fallback;
-
 function Overview({ integration }: { integration: Integration }) {
   const sync = useSyncIntegration();
   const read = () =>
     sync.mutate(integration.id, {
       onSuccess: () => toast.success('Read the cluster again.'),
-      onError: cause => toast.error(messageOf(cause, 'The cluster could not be read.')),
+      onError: cause => toast.error(errorMessage(cause, 'The cluster could not be read.')),
     });
 
   return (

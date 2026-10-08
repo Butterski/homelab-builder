@@ -1,15 +1,13 @@
-import { useReducer, useMemo, useEffect, useState } from 'react';
+import { useReducer, useMemo, useEffect, useEffectEvent, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useBuilderStore } from '../store/builder-store';
-import { buildApi, type ConfigBundle } from '../api/builds';
+import { buildApi, type Build, type ConfigBundle } from '../api/builds';
 import { gameServersContent } from '../../gaming/lib/game-compose';
 import {
   generateAnsiblePlaybook,
   generateTraefikLabels,
   generateIpPlan,
 } from '../lib/config-generator';
-// allocateIPs removed
-import type { IpAllocatorOptions } from '../lib/config-generator'; // Use type from lib
 import { Page, PageHeader } from '../../../components/layout/page';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
@@ -36,8 +34,6 @@ const TABS: { id: Tab; label: string; ext: string }[] = [
   { id: 'ip-plan', label: 'IP Address Plan', ext: 'ip-plan.txt' },
   { id: 'game-servers', label: 'Game Servers', ext: 'game-servers.yml' },
 ];
-
-// IpLegend removed as it relied on client-side calculation
 
 // ─── Code Block ───────────────────────────────────────────────────────────────
 function CodeBlock({ content, filename }: { content: string; filename: string }) {
@@ -84,11 +80,9 @@ function CodeBlock({ content, filename }: { content: string; filename: string })
 function StatsBar({
   servicesCount,
   hardwareNodesCount,
-  ipOpts,
 }: {
   servicesCount: number;
   hardwareNodesCount: number;
-  ipOpts: IpAllocatorOptions;
 }) {
   return (
     <dl className="flex flex-wrap gap-x-10 gap-y-2 border-b pb-4 text-sm">
@@ -100,18 +94,6 @@ function StatsBar({
         <dt className="text-muted-foreground">Hardware nodes</dt>
         <dd className="app-figure text-lg">{hardwareNodesCount}</dd>
       </div>
-      <div>
-        <dt className="text-muted-foreground">Subnet</dt>
-        <dd className="app-figure text-lg">
-          {ipOpts.baseIp}/{ipOpts.cidr}
-        </dd>
-      </div>
-      {ipOpts.homeRouterMode && (
-        <div>
-          <dt className="text-muted-foreground">Reserved for home devices</dt>
-          <dd className="app-figure text-lg">{ipOpts.homeReserve}</dd>
-        </div>
-      )}
     </dl>
   );
 }
@@ -186,11 +168,6 @@ function SettingsPanel({
                 />
                 <p className="text-xs text-muted-foreground mt-1">Used in Nginx/Traefik configs</p>
               </div>
-            </div>
-
-            {/* IP settings removed as they are now handled by backend */}
-            <div className="text-sm text-muted-foreground italic p-4">
-              IP Allocation settings are now managed securely by the backend.
             </div>
           </div>
         </div>
@@ -306,66 +283,34 @@ export default function ConfigGeneratorPage() {
 
   // The page follows the project that is open. It never opens one by itself:
   // which project is "current" is the user's choice.
+  const followOpenProject = useEffectEvent((list: Build[]) => {
+    dispatch({ builds: list.map(b => ({ id: b.id, name: b.name })) });
+    const current = useBuilderStore.getState().currentBuildId;
+    if (current && list.some(build => build.id === current)) {
+      void handleSelectBuild(current, false);
+    } else if (current) {
+      // It was deleted elsewhere.
+      clearCurrentBuild();
+    }
+  });
   useEffect(() => {
     buildApi
       .list()
-      .then(list => {
-        dispatch({ builds: list.map(b => ({ id: b.id, name: b.name })) });
-        const current = useBuilderStore.getState().currentBuildId;
-        if (current && list.some(build => build.id === current)) {
-          void handleSelectBuild(current, false);
-        } else if (current) {
-          // It was deleted elsewhere.
-          clearCurrentBuild();
-        }
-      })
+      .then(list => followOpenProject(list))
       .catch(err => console.error('Failed to list builds', err));
   }, []);
 
-  // IP settings
-  // IP settings (Defaults)
-  // const [baseIp, setBaseIp] = useState('192.168.1.0')
-  // const [cidr, setCidr] = useState(24)
-  // const [homeRouterMode, setHomeRouterMode] = useState(false)
-  // const [homeReserve, setHomeReserve] = useState(50)
-
-  const ipOpts: IpAllocatorOptions = useMemo(
-    () => ({
-      baseIp: '192.168.1.0',
-      cidr: 24,
-      homeRouterMode: false,
-      homeReserve: 50,
-    }),
-    [],
+  // The web services placed on the canvas. Game servers are not web apps:
+  // they have their own tab and no proxy labels.
+  const allServices = useMemo(
+    () =>
+      hardwareNodes.flatMap(node =>
+        (node.vms ?? []).filter(
+          vm => !vm.details?.game && (vm.type === 'container' || vm.type === 'vm'),
+        ),
+      ),
+    [hardwareNodes],
   );
-
-  // Derive comprehensive service list from Visual Builder placements (hardwareNodes)
-  const allServices = useMemo(() => {
-    const services: any[] = []; // Using any to avoid strict Service type construction for minimal mock
-
-    hardwareNodes.forEach(node => {
-      node.vms?.forEach(vm => {
-        // Game servers are not web apps: they have their own tab and no proxy labels.
-        if (vm.details?.game) return;
-        if (vm.type === 'container' || vm.type === 'vm') {
-          services.push({
-            id: vm.id, // Use VM ID
-            name: vm.name,
-            description: 'Deployed in Visual Builder',
-            category: 'other',
-            icon: 'Package',
-            official_website: '',
-            docker_support: true,
-            is_active: true,
-            requirements: null,
-            created_at: new Date().toISOString(),
-          });
-        }
-      });
-    });
-
-    return services;
-  }, [hardwareNodes]);
 
   const hasContent = allServices.length > 0 || hardwareNodes.length > 0;
 
@@ -387,13 +332,13 @@ export default function ConfigGeneratorPage() {
       case 'ansible-inventory':
         return configBundle?.ansible_inventory || fallbacks['ansible-inventory'];
       case 'ansible-playbook':
-        return generateAnsiblePlaybook(allServices, hardwareNodes);
+        return generateAnsiblePlaybook(allServices);
       case 'nginx':
         return configBundle?.nginx || fallbacks['nginx'];
       case 'traefik':
         return generateTraefikLabels(allServices, domain);
       case 'ip-plan':
-        return generateIpPlan(hardwareNodes, ipOpts);
+        return generateIpPlan(hardwareNodes);
       case 'game-servers':
         return gameServersContent(configBundle?.game_compose);
     }
@@ -469,11 +414,7 @@ export default function ConfigGeneratorPage() {
       {hasContent && (
         <>
           {/* Stats bar */}
-          <StatsBar
-            servicesCount={allServices.length}
-            hardwareNodesCount={hardwareNodes.length}
-            ipOpts={ipOpts}
-          />
+          <StatsBar servicesCount={allServices.length} hardwareNodesCount={hardwareNodes.length} />
 
           <SettingsPanel
             showSettings={showSettings}

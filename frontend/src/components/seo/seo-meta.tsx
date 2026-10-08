@@ -15,31 +15,35 @@ const DEFAULT_IMAGE = 'https://hlbldr.com/og-image.png';
 const DEFAULT_SITE_URL = 'https://hlbldr.com';
 const SITE_URL = (import.meta.env.VITE_PUBLIC_SITE_URL || DEFAULT_SITE_URL).replace(/\/$/, '');
 
-function upsertMeta(selector: string, create: () => HTMLMetaElement) {
-  let element = document.head.querySelector(selector) as HTMLMetaElement | null;
-  let created = false;
-
-  if (!element) {
-    element = create();
+/**
+ * Sets one attribute of a head element such as `meta[name="description"]`,
+ * adding the element when the page has none. Returns what puts the head back.
+ */
+function setHeadAttribute(
+  tag: 'meta' | 'link',
+  [keyName, keyValue]: [string, string],
+  attribute: string,
+  value: string,
+): () => void {
+  const existing = document.head.querySelector(`${tag}[${keyName}="${keyValue}"]`);
+  const element = existing ?? document.createElement(tag);
+  if (!existing) {
+    element.setAttribute(keyName, keyValue);
     document.head.appendChild(element);
-    created = true;
   }
 
-  return { element, created };
-}
+  const previous = element.getAttribute(attribute);
+  element.setAttribute(attribute, value);
 
-function upsertCanonical() {
-  let element = document.head.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
-  let created = false;
-
-  if (!element) {
-    element = document.createElement('link');
-    element.setAttribute('rel', 'canonical');
-    document.head.appendChild(element);
-    created = true;
-  }
-
-  return { element, created };
+  return () => {
+    if (!existing) {
+      element.remove();
+    } else if (previous === null) {
+      element.removeAttribute(attribute);
+    } else {
+      element.setAttribute(attribute, previous);
+    }
+  };
 }
 
 export function SeoMeta({
@@ -53,268 +57,43 @@ export function SeoMeta({
   structuredData,
 }: SeoMetaProps) {
   useEffect(() => {
-    const updates: Array<() => void> = [];
+    const meta = (key: [string, string], content: string) => setHeadAttribute('meta', key, 'content', content);
+    const restores: Array<() => void> = [];
 
     document.title = title;
 
-    const descriptionMeta = upsertMeta('meta[name="description"]', () => {
-      const element = document.createElement('meta');
-      element.setAttribute('name', 'description');
-      return element;
-    });
-    const previousDescription = descriptionMeta.element.getAttribute('content');
-    descriptionMeta.element.setAttribute('content', description);
-    updates.push(() => {
-      if (descriptionMeta.created) {
-        descriptionMeta.element.remove();
-        return;
-      }
-
-      if (previousDescription === null) {
-        descriptionMeta.element.removeAttribute('content');
-      } else {
-        descriptionMeta.element.setAttribute('content', previousDescription);
-      }
-    });
-
-    if (keywords?.length) {
-      const keywordsMeta = upsertMeta('meta[name="keywords"]', () => {
-        const element = document.createElement('meta');
-        element.setAttribute('name', 'keywords');
-        return element;
-      });
-      const previousKeywords = keywordsMeta.element.getAttribute('content');
-      keywordsMeta.element.setAttribute('content', keywords.join(', '));
-      updates.push(() => {
-        if (keywordsMeta.created) {
-          keywordsMeta.element.remove();
-          return;
-        }
-
-        if (previousKeywords === null) {
-          keywordsMeta.element.removeAttribute('content');
-        } else {
-          keywordsMeta.element.setAttribute('content', previousKeywords);
-        }
-      });
-    }
-
-    if (robots) {
-      const robotsMeta = upsertMeta('meta[name="robots"]', () => {
-        const element = document.createElement('meta');
-        element.setAttribute('name', 'robots');
-        return element;
-      });
-      const previousRobots = robotsMeta.element.getAttribute('content');
-      robotsMeta.element.setAttribute('content', robots);
-      updates.push(() => {
-        if (robotsMeta.created) {
-          robotsMeta.element.remove();
-          return;
-        }
-
-        if (previousRobots === null) {
-          robotsMeta.element.removeAttribute('content');
-        } else {
-          robotsMeta.element.setAttribute('content', previousRobots);
-        }
-      });
-    }
-
-    const ogTitle = upsertMeta('meta[property="og:title"]', () => {
-      const element = document.createElement('meta');
-      element.setAttribute('property', 'og:title');
-      return element;
-    });
-    const previousOgTitle = ogTitle.element.getAttribute('content');
-    ogTitle.element.setAttribute('content', title);
-    updates.push(() => {
-      if (ogTitle.created) {
-        ogTitle.element.remove();
-        return;
-      }
-
-      if (previousOgTitle === null) {
-        ogTitle.element.removeAttribute('content');
-      } else {
-        ogTitle.element.setAttribute('content', previousOgTitle);
-      }
-    });
-
-    const ogDescription = upsertMeta('meta[property="og:description"]', () => {
-      const element = document.createElement('meta');
-      element.setAttribute('property', 'og:description');
-      return element;
-    });
-    const previousOgDescription = ogDescription.element.getAttribute('content');
-    ogDescription.element.setAttribute('content', description);
-    updates.push(() => {
-      if (ogDescription.created) {
-        ogDescription.element.remove();
-        return;
-      }
-
-      if (previousOgDescription === null) {
-        ogDescription.element.removeAttribute('content');
-      } else {
-        ogDescription.element.setAttribute('content', previousOgDescription);
-      }
-    });
-
-    const ogType = upsertMeta('meta[property="og:type"]', () => {
-      const element = document.createElement('meta');
-      element.setAttribute('property', 'og:type');
-      return element;
-    });
-    const previousOgType = ogType.element.getAttribute('content');
-    ogType.element.setAttribute('content', type);
-    updates.push(() => {
-      if (ogType.created) {
-        ogType.element.remove();
-        return;
-      }
-
-      if (previousOgType === null) {
-        ogType.element.removeAttribute('content');
-      } else {
-        ogType.element.setAttribute('content', previousOgType);
-      }
-    });
-
-    const ogImage = upsertMeta('meta[property="og:image"]', () => {
-      const element = document.createElement('meta');
-      element.setAttribute('property', 'og:image');
-      return element;
-    });
-    const previousOgImage = ogImage.element.getAttribute('content');
-    ogImage.element.setAttribute('content', image);
-    updates.push(() => {
-      if (ogImage.created) {
-        ogImage.element.remove();
-        return;
-      }
-
-      if (previousOgImage === null) {
-        ogImage.element.removeAttribute('content');
-      } else {
-        ogImage.element.setAttribute('content', previousOgImage);
-      }
-    });
-
-    const twitterTitle = upsertMeta('meta[name="twitter:title"]', () => {
-      const element = document.createElement('meta');
-      element.setAttribute('name', 'twitter:title');
-      return element;
-    });
-    const previousTwitterTitle = twitterTitle.element.getAttribute('content');
-    twitterTitle.element.setAttribute('content', title);
-    updates.push(() => {
-      if (twitterTitle.created) {
-        twitterTitle.element.remove();
-        return;
-      }
-
-      if (previousTwitterTitle === null) {
-        twitterTitle.element.removeAttribute('content');
-      } else {
-        twitterTitle.element.setAttribute('content', previousTwitterTitle);
-      }
-    });
-
-    const twitterDescription = upsertMeta('meta[name="twitter:description"]', () => {
-      const element = document.createElement('meta');
-      element.setAttribute('name', 'twitter:description');
-      return element;
-    });
-    const previousTwitterDescription = twitterDescription.element.getAttribute('content');
-    twitterDescription.element.setAttribute('content', description);
-    updates.push(() => {
-      if (twitterDescription.created) {
-        twitterDescription.element.remove();
-        return;
-      }
-
-      if (previousTwitterDescription === null) {
-        twitterDescription.element.removeAttribute('content');
-      } else {
-        twitterDescription.element.setAttribute('content', previousTwitterDescription);
-      }
-    });
-
-    const twitterImage = upsertMeta('meta[name="twitter:image"]', () => {
-      const element = document.createElement('meta');
-      element.setAttribute('name', 'twitter:image');
-      return element;
-    });
-    const previousTwitterImage = twitterImage.element.getAttribute('content');
-    twitterImage.element.setAttribute('content', image);
-    updates.push(() => {
-      if (twitterImage.created) {
-        twitterImage.element.remove();
-        return;
-      }
-
-      if (previousTwitterImage === null) {
-        twitterImage.element.removeAttribute('content');
-      } else {
-        twitterImage.element.setAttribute('content', previousTwitterImage);
-      }
-    });
+    restores.push(meta(['name', 'description'], description));
+    if (keywords?.length) restores.push(meta(['name', 'keywords'], keywords.join(', ')));
+    if (robots) restores.push(meta(['name', 'robots'], robots));
+    restores.push(
+      meta(['property', 'og:title'], title),
+      meta(['property', 'og:description'], description),
+      meta(['property', 'og:type'], type),
+      meta(['property', 'og:image'], image),
+      meta(['name', 'twitter:title'], title),
+      meta(['name', 'twitter:description'], description),
+      meta(['name', 'twitter:image'], image),
+    );
 
     if (path) {
       const fullUrl = new URL(path, `${SITE_URL}/`).toString();
-
-      const canonical = upsertCanonical();
-      const previousCanonical = canonical.element.getAttribute('href');
-      canonical.element.setAttribute('href', fullUrl);
-      updates.push(() => {
-        if (canonical.created) {
-          canonical.element.remove();
-          return;
-        }
-
-        if (previousCanonical === null) {
-          canonical.element.removeAttribute('href');
-        } else {
-          canonical.element.setAttribute('href', previousCanonical);
-        }
-      });
-
-      const ogUrl = upsertMeta('meta[property="og:url"]', () => {
-        const element = document.createElement('meta');
-        element.setAttribute('property', 'og:url');
-        return element;
-      });
-      const previousOgUrl = ogUrl.element.getAttribute('content');
-      ogUrl.element.setAttribute('content', fullUrl);
-      updates.push(() => {
-        if (ogUrl.created) {
-          ogUrl.element.remove();
-          return;
-        }
-
-        if (previousOgUrl === null) {
-          ogUrl.element.removeAttribute('content');
-        } else {
-          ogUrl.element.setAttribute('content', previousOgUrl);
-        }
-      });
+      restores.push(
+        setHeadAttribute('link', ['rel', 'canonical'], 'href', fullUrl),
+        meta(['property', 'og:url'], fullUrl),
+      );
     }
 
-    let structuredDataScript: HTMLScriptElement | null = null;
     if (structuredData) {
-      structuredDataScript = document.createElement('script');
+      const structuredDataScript = document.createElement('script');
       structuredDataScript.type = 'application/ld+json';
       structuredDataScript.textContent = JSON.stringify(structuredData);
       document.head.appendChild(structuredDataScript);
-      updates.push(() => {
-        structuredDataScript?.remove();
-      });
+      restores.push(() => structuredDataScript.remove());
     }
 
     return () => {
-      for (let index = updates.length - 1; index >= 0; index -= 1) {
-        updates[index]();
+      for (let index = restores.length - 1; index >= 0; index -= 1) {
+        restores[index]();
       }
     };
   }, [description, image, keywords, path, robots, structuredData, title, type]);

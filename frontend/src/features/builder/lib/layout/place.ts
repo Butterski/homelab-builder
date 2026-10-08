@@ -1,5 +1,5 @@
 import { boundsOf, segmentBox, segmentsOf, snap, snapDown, snapUp } from './geometry';
-import { cableRoute } from './route';
+import { rawRouteOf } from './metrics';
 import { typeOrder, type DownLink, type Feeder, type Forest } from './structure';
 import type { LayoutStyle, Point, Rect } from './types';
 import type { Link, LinkEnd, Unit, UnitGraph } from './units';
@@ -20,7 +20,7 @@ interface Spacing {
   groupGap: number;
 }
 
-export const SPACING: Record<LayoutStyle, Spacing> = {
+const SPACING: Record<LayoutStyle, Spacing> = {
   hierarchy: { gapX: 60, gapY: 60, cardGapY: 40, staggerFrom: 12, baseline: 120, groupGap: 140 },
   compact: { gapX: 40, gapY: 60, cardGapY: 40, staggerFrom: 7, baseline: 0, groupGap: 100 },
 };
@@ -258,14 +258,7 @@ export function place(
 
   /** The runs of a cable as obstacles, with both of its units at their place in `shape`. */
   const cableItems = (link: Link, shape: Shape): Item[] => {
-    const from = shape.at.get(link.from.unit) as Point;
-    const to = shape.at.get(link.to.unit) as Point;
-    const route = cableRoute(
-      { x: from.x + link.from.at.x, y: from.y + link.from.at.y },
-      link.from.side,
-      { x: to.x + link.to.at.x, y: to.y + link.to.at.y },
-      link.to.side,
-    );
+    const route = rawRouteOf(link, shape.at);
     return segmentsOf(route).map(segment => {
       const box = segmentBox(segment);
       return {

@@ -2,7 +2,7 @@ import { useRef, useState, type ChangeEvent } from 'react';
 import { Download, Palette, Trash2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { useTheme } from '@/components/theme-provider';
+import { useTheme } from '@/components/use-theme';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,8 +13,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { cn } from '@/lib/utils';
-import { useAuth } from '@/features/admin/hooks/use-auth';
+import { cn, errorMessage } from '@/lib/utils';
+import { plural } from '@/lib/format';
+import { useAuth } from '@/features/auth/hooks/use-auth';
 import {
   type AppTheme,
   type ThemeSettings,
@@ -97,10 +98,10 @@ export function ThemeSettingsCard() {
 
       await persistThemeSettings(
         nextThemeSettings,
-        `Imported ${importResult.importedThemes.length} theme${importResult.importedThemes.length === 1 ? '' : 's'}.`,
+        `Imported ${plural(importResult.importedThemes.length, 'theme')}.`,
       );
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to import theme file.');
+      toast.error(errorMessage(error, 'Failed to import theme file.'));
     }
   }
 

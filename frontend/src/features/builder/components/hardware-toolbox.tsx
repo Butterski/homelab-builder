@@ -29,7 +29,7 @@ import {
   Gamepad2,
   Armchair,
 } from 'lucide-react';
-import type { HardwareType } from '../../../types';
+import type { HardwareNode, HardwareSpec, HardwareType } from '../../../types';
 import { Card } from '../../../components/ui/card';
 import { canNodeHostVMs } from '../../../lib/hardware-config';
 import { useUserSelections } from '../../catalog/api/use-services';
@@ -74,17 +74,74 @@ const HARDWARE_TOOLS: {
   { type: 'lan_table', label: 'LAN Table', icon: Armchair, color: 'text-amber-500' },
 ];
 
+type PresetItem = {
+  label: string;
+  type: HardwareType;
+  icon: React.ElementType;
+  sub: string;
+  data: object;
+};
+
+/** Every device type a favorite from the catalog may become. */
+const VALID_HARDWARE_TYPES = new Set<string>([
+  'router',
+  'switch',
+  'nas',
+  'server',
+  'server_v2',
+  'firewall',
+  'vps',
+  'pc',
+  'access_point',
+  'disk',
+  'gpu',
+  'hba',
+  'pcie',
+  'ups',
+  'pdu',
+  'sbc',
+  'minipc',
+  'iot',
+  'modem',
+  'rack',
+  'console',
+  'lan_table',
+]);
+
+const FAVORITE_ICONS: Partial<Record<HardwareType, React.ElementType>> = {
+  router: Router,
+  switch: CircuitBoard,
+  server: Server,
+  server_v2: Server,
+  firewall: Shield,
+  vps: Cloud,
+  pc: Monitor,
+  minipc: Monitor,
+  sbc: Cpu,
+  nas: HardDrive,
+  disk: HardDrive,
+  access_point: Wifi,
+  gpu: Layers,
+  hba: Plug,
+  pcie: Plug,
+  ups: Battery,
+  pdu: Battery,
+  iot: Printer,
+  modem: Globe,
+  rack: BoxSelect,
+  console: Gamepad2,
+};
+
+/** The set with `key` added, or taken out when it was in it. */
+function toggled(set: Set<string>, key: string): Set<string> {
+  const next = new Set(set);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  return next;
+}
+
 // ─── Preset library ────────────────────────────────────────────────────────────
-const PRESETS: {
-  category: string;
-  items: {
-    label: string;
-    type: HardwareType;
-    icon: React.ElementType;
-    sub: string;
-    data: object;
-  }[];
-}[] = [
+const PRESETS: { category: string; items: PresetItem[] }[] = [
   {
     category: 'Single Board Computers',
     items: [
@@ -634,38 +691,9 @@ export const HardwareToolbox = React.memo(function HardwareToolbox({
   const { data: blueprintsData } = useHardwareBlueprints();
 
   React.useEffect(() => {
-    fetchServices();
+    // The catalog stays in the store for the session; it is asked for once.
+    if (useBuilderStore.getState().availableServices.length === 0) void fetchServices();
   }, [fetchServices]);
-
-  // Memoize VALID_HARDWARE_TYPES outside component to avoid recreating on each render
-  const VALID_HARDWARE_TYPES = React.useMemo(
-    () =>
-      new Set<string>([
-        'router',
-        'switch',
-        'nas',
-        'server',
-        'server_v2',
-        'firewall',
-        'vps',
-        'pc',
-        'access_point',
-        'disk',
-        'gpu',
-        'hba',
-        'pcie',
-        'ups',
-        'pdu',
-        'sbc',
-        'minipc',
-        'iot',
-        'modem',
-        'rack',
-        'console',
-        'lan_table',
-      ]),
-    [],
-  );
 
   const [activeTab, setActiveTab] = useState<'components' | 'presets' | 'services' | 'power'>(
     'components',
@@ -703,18 +731,17 @@ export const HardwareToolbox = React.memo(function HardwareToolbox({
       });
     }
 
-    // Single iteration: combine flatMap+map+filter for performance
-    const favoriteItems: any[] = [];
+    const favoriteItems: PresetItem[] = [];
     for (const fav of favorites) {
       const comp = fav.hardware_component;
       if (!comp) continue;
 
       const dragData = hardwareComponentToDragData(comp);
-      const type: string = dragData.type;
+      const type = dragData.type;
       if (!VALID_HARDWARE_TYPES.has(type)) continue;
 
       const spec = comp.spec || {};
-      const details: any = dragData.details || {};
+      const details: HardwareSpec = dragData.details || {};
 
       let rack_units = spec.rack_units;
       if (!rack_units && spec.form_factor && typeof spec.form_factor === 'string') {
@@ -733,24 +760,7 @@ export const HardwareToolbox = React.memo(function HardwareToolbox({
 
       const name = `${comp.brand} ${comp.model}`;
 
-      let icon: React.ElementType = Package;
-      if (type === 'router') icon = Router;
-      else if (type === 'switch') icon = CircuitBoard;
-      else if (type === 'server' || type === 'server_v2') icon = Server;
-      else if (type === 'firewall') icon = Shield;
-      else if (type === 'vps') icon = Cloud;
-      else if (type === 'pc' || type === 'minipc') icon = Monitor;
-      else if (type === 'sbc') icon = Cpu;
-      else if (type === 'nas' || type === 'disk') icon = HardDrive;
-      else if (type === 'access_point') icon = Wifi;
-      else if (type === 'gpu') icon = Layers;
-      else if (type === 'hba' || type === 'pcie') icon = Plug;
-      else if (type === 'ups' || type === 'pdu') icon = Battery;
-      else if (type === 'iot') icon = Printer;
-      else if (type === 'modem') icon = Globe;
-      else if (type === 'rack') icon = BoxSelect;
-      else if (type === 'console') icon = Gamepad2;
-
+      const icon = FAVORITE_ICONS[type] ?? Package;
       let sub = `${comp.brand} · ~${comp.price_est} ${comp.currency}`;
       if (comp.category === 'server' || comp.category === 'minipc' || comp.category === 'sbc') {
         const cpuStr = spec.cpu ? String(spec.cpu).split(' ')[0] : '';
@@ -761,13 +771,7 @@ export const HardwareToolbox = React.memo(function HardwareToolbox({
         sub = `${portsStr} · ~${comp.price_est} ${comp.currency}`;
       }
 
-      favoriteItems.push({
-        label: name,
-        type: type as HardwareType,
-        icon,
-        sub,
-        data: dragData,
-      });
+      favoriteItems.push({ label: name, type, icon, sub, data: dragData });
     }
 
     if (favoriteItems.length > 0) {
@@ -821,7 +825,7 @@ export const HardwareToolbox = React.memo(function HardwareToolbox({
   };
 
   const addToolToCanvas = (nodeType: HardwareType, rawData: object = {}) => {
-    const data = rawData as Record<string, any>;
+    const data = rawData as Partial<HardwareNode>;
     const index = hardwareNodes.length;
     addHardware(
       withFreshChildIds({
@@ -860,23 +864,8 @@ export const HardwareToolbox = React.memo(function HardwareToolbox({
     toast.success('Added ' + service.name + ' to ' + host.name + '.');
   };
 
-  const toggleCategory = (cat: string) => {
-    setExpandedCategories(prev => {
-      const next = new Set(prev);
-      if (next.has(cat)) next.delete(cat);
-      else next.add(cat);
-      return next;
-    });
-  };
-
-  const toggleServiceCat = (cat: string) => {
-    setCollapsedServiceCats(prev => {
-      const next = new Set(prev);
-      if (next.has(cat)) next.delete(cat);
-      else next.add(cat);
-      return next;
-    });
-  };
+  const toggleCategory = (cat: string) => setExpandedCategories(prev => toggled(prev, cat));
+  const toggleServiceCat = (cat: string) => setCollapsedServiceCats(prev => toggled(prev, cat));
 
   // Filter and group services
   const favServiceIds = new Set(selectionsData?.data?.map(s => s.service_id) || []);

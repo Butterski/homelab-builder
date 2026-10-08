@@ -12,9 +12,6 @@ vi.mock('@/features/builder/api/builds', () => ({
   buildApi: { list: vi.fn().mockResolvedValue([]) },
 }));
 vi.mock('@/features/builder/api/proposals', () => ({ proposalApi: {} }));
-vi.mock('@/services/api', () => ({
-  api: { getServices: vi.fn().mockResolvedValue({ data: [] }) },
-}));
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
 }));

@@ -1,4 +1,4 @@
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, authHeaders } from '@/lib/api';
 import { apiUrl } from '@/lib/api-base';
 import type { ProposalSummary } from '@/features/builder/api/proposals';
 import { readSSE } from '../lib/sse';
@@ -107,13 +107,12 @@ export async function* streamChat({
   selection,
   signal,
 }: StreamChatInput): AsyncGenerator<ChatEvent> {
-  const token = localStorage.getItem('auth_token');
   const response = await fetch(apiUrl('/api/assistant/chat'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Accept: 'text/event-stream',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...authHeaders(),
     },
     body: JSON.stringify({
       build_id: buildId,

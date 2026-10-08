@@ -3,15 +3,12 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { ApiError } from '../../../lib/api';
+import { errorMessage } from '../../../lib/utils';
 import { proposalApi, syncStateKey, useSyncState, type ProposalSummary } from '../api/proposals';
 import { polishCanvas } from '../lib/polish';
 import { useBuilderStore } from '../store/builder-store';
 
 type Busy = 'open' | 'apply' | 'reject' | null;
-
-function messageOf(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback;
-}
 
 /**
  * Connects the builder to LLM proposals: it polls for new ones, shows them on
@@ -57,7 +54,7 @@ export function useProposals(buildId: string | undefined) {
         openedAt.current = Date.now();
         useBuilderStore.getState().startProposalPreview(proposal);
       } catch (error) {
-        toast.error(messageOf(error, 'Could not open the proposal.'));
+        toast.error(errorMessage(error, 'Could not open the proposal.'));
       } finally {
         setBusy(null);
       }
@@ -85,7 +82,7 @@ export function useProposals(buildId: string | undefined) {
       });
       return true;
     } catch (error) {
-      toast.error(messageOf(error, 'Could not apply the proposal.'));
+      toast.error(errorMessage(error, 'Could not apply the proposal.'));
       if (error instanceof ApiError && error.status === 409) {
         // It was settled elsewhere or no longer fits: show its current state.
         try {
@@ -115,7 +112,7 @@ export function useProposals(buildId: string | undefined) {
         closeReview();
         return true;
       } catch (error) {
-        toast.error(messageOf(error, 'Could not reject the proposal.'));
+        toast.error(errorMessage(error, 'Could not reject the proposal.'));
         if (error instanceof ApiError && error.status === 409) closeReview();
         return false;
       } finally {

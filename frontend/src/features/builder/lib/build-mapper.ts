@@ -1,11 +1,5 @@
 import type { Edge, Node } from '@xyflow/react';
-import type {
-  HardwareComponent,
-  HardwareNode,
-  HardwareSpec,
-  HardwareType,
-  VirtualMachine,
-} from '../../../types';
+import type { HardwareNode, HardwareSpec, HardwareType } from '../../../types';
 import type { Build } from '../api/builds';
 import {
   RACK_FOOTER_PX,
@@ -20,37 +14,8 @@ export type FlowBuild = {
   edges: Edge[];
 };
 
-/** A node row as the build API returns it. */
-type ServerNode = {
-  id: string;
-  type: string;
-  name: string;
-  ip?: string;
-  mac_address?: string;
-  power_draw?: number;
-  x?: number;
-  y?: number;
-  details?: unknown;
-  parent_id?: string | null;
-  virtual_machines?: VirtualMachine[];
-  internal_components?: HardwareComponent[];
-};
-
-/** An edge row as the build API returns it. */
-type ServerEdge = {
-  id?: string;
-  source_node_id: string;
-  source_handle?: string;
-  target_node_id: string;
-  target_handle?: string;
-  type?: string;
-  speed?: string;
-  subnet?: string;
-  wireless_standard?: string;
-  direction?: string;
-};
-
-function parseDetails(details: unknown): HardwareSpec {
+/** Details as the API stores them: an object, or the same as a JSON string. */
+export function parseDetails(details: unknown): HardwareSpec {
   if (!details) return {};
   if (typeof details === 'string') {
     try {
@@ -68,8 +33,8 @@ function parseDetails(details: unknown): HardwareSpec {
  * canvas representation: the hardware list plus React Flow nodes and edges.
  */
 export function mapBuildToFlow(build: Build): FlowBuild {
-  const serverNodes = (build.nodes || []) as ServerNode[];
-  const serverEdges = (build.edges || []) as ServerEdge[];
+  const serverNodes = build.nodes || [];
+  const serverEdges = build.edges || [];
 
   const hardwareNodes: HardwareNode[] = serverNodes.map(n => ({
     id: n.id,

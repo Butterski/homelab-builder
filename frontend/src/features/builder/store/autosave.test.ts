@@ -23,7 +23,7 @@ vi.mock('../api/proposals', () => ({
 
 import { ApiError } from '../../../lib/api';
 import type { HardwareNode } from '../../../types';
-import { buildApi } from '../api/builds';
+import { buildApi, type Build, type BuildNode, type TopologyUpdateResponse } from '../api/builds';
 import { AUTOSAVE_DELAY_MS, AUTOSAVE_RETRY_MS, startAutosave } from './autosave';
 import { BuildConflictError, useBuilderStore } from './builder-store';
 
@@ -35,10 +35,19 @@ const device = (id: string, type: HardwareNode['type'] = 'router'): HardwareNode
   y: 0,
 });
 
-const serverBuild = (revision: number, nodes: unknown[] = []) =>
-  ({ id: 'build-1', name: 'Lab', revision, nodes, edges: [], settings: {} }) as any;
+const serverBuild = (revision: number, nodes: BuildNode[] = []): Build => ({
+  id: 'build-1',
+  user_id: 'user-1',
+  name: 'Lab',
+  revision,
+  nodes,
+  edges: [],
+  settings: {},
+  created_at: '',
+  updated_at: '',
+});
 
-const saved = (revision: number) => ({ build: serverBuild(revision) }) as any;
+const saved = (revision: number): TopologyUpdateResponse => ({ build: serverBuild(revision) });
 
 let stop: () => void;
 let onConflict: Mock<(error: BuildConflictError) => void>;
@@ -147,7 +156,21 @@ describe('when it must not save', () => {
       base_revision: 1,
       created_at: '2026-10-06T10:00:00Z',
       diff: {
-        counts: {} as any,
+        counts: {
+          nodes_added: 1,
+          nodes_removed: 0,
+          nodes_changed: 0,
+          connections_added: 0,
+          connections_removed: 0,
+          connections_changed: 0,
+          vms_added: 0,
+          vms_removed: 0,
+          vms_changed: 0,
+          components_added: 0,
+          components_removed: 0,
+          ip_changes: 0,
+          total: 1,
+        },
         nodes: { added: [{ id: 'switch-1', name: 'Switch', type: 'switch' }], removed: [], changed: [] },
         connections: { added: [], removed: [], changed: [] },
         vms: { added: [], removed: [], changed: [] },

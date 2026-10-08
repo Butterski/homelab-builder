@@ -1,5 +1,5 @@
 # HLBuilder
-<img src="./logo.svg" alt="Logo" width="100" height="100">
+<img src="./frontend/public/logo.svg" alt="Logo" width="100" height="100">
 
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
@@ -9,7 +9,7 @@
 
 ![alt text](docs/homelabbuilder.gif)
 
-HLBuilder is a comprehensive, interactive web application designed to simplify the process of planning and architecting home laboratory infrastructure. It provides users with a visual interface to design network topologies, receive intelligent hardware recommendations based on their self-hosting needs, and generate actionable shopping lists.
+HLBuilder is a comprehensive, interactive web application designed to simplify the process of planning and architecting home laboratory infrastructure. It provides users with a visual interface to design network topologies, get addresses assigned and hardware sized for the services they want to run, and generate the configuration files to build it.
 
 ## 🚀 Key Features
 
@@ -17,7 +17,7 @@ HLBuilder is a comprehensive, interactive web application designed to simplify t
 The core of the application is a visual canvas powered by **ReactFlow**.
 - **Drag-and-drop hardware nodes**: Routers, switches, servers, NAS, Mini-PCs, SBCs (like Raspberry Pi), UPS, game consoles, and more.
 - **Wire components**: Graph-based representation of physical and logical connections.
-- **Nested Virtualization**: Define Virtual Machines (VMs), Containers, or LXCs directly on compute nodes.
+- **Nested Virtualization**: Define Virtual Machines (VMs), Containers, or LXCs directly on compute nodes, and wire them in a host's virtual network. See [docs/VIRTUAL-NETWORKS.md](./docs/VIRTUAL-NETWORKS.md).
 - **Polish**: One click arranges the canvas with a layout engine written for it: internet at the top, every device under the port it is plugged into, a rack moved as one block, no overlapping cards, and the cables of the network tree drawn without a crossing. Two styles (Hierarchy and Compact), shown on your own build before anything moves; one `Ctrl+Z` undoes it.
 - **Saves by itself, stays current**: The canvas is saved to PostgreSQL as you work and says honestly whether it is saved. A failed save is retried, changes made in another tab arrive without a reload, and an edit that lost against a newer version is one Undo away.
 
@@ -33,17 +33,13 @@ A sophisticated backend microservice manages network addressing:
 - **3-Tier Suggestions**: Generates "Minimal", "Recommended", and "Optimal" hardware profiles.
 - **Live Resource Dashboard**: Calculates aggregate CPU, RAM, Storage, and Power needs to ensure hardware can handle the concurrent load.
 
-### 4. Actionable Shopping List
-- **Itemized Components**: Automatically generates a shopping list including main hardware and necessary peripherals (RAM, NVMe, etc.).
-- **Price Estimation**: Provides estimated costs with direct purchase links based on your region.
-
-### 5. Design With an LLM
+### 4. Design With an LLM
 - **MCP server**: Connect Claude Code, Cursor, VS Code or any MCP client to `/mcp` with a personal access token. The client can read your builds, search the catalogs and propose changes. See [docs/MCP.md](./docs/MCP.md).
 - **In-app assistant**: An optional chat panel in the builder, off by default. You bring your own provider and API key (Anthropic, OpenAI, Gemini, OpenRouter, Ollama or any OpenAI-compatible endpoint). It shows each step it takes while it works: what it reads, what it searches for and what came of it.
 - **You approve every change**: An LLM never edits a build. It sends a proposal that you review on the canvas itself, drawn as the build would be with every change marked, and then apply or reject; one `Ctrl+Z` undoes an applied proposal.
 - **Keys you can verify**: Provider keys are stored AES-256-GCM encrypted and never sent back to the browser. The settings page shows the stored record and links to the code. See [docs/AI-ASSISTANT-SECURITY.md](./docs/AI-ASSISTANT-SECURITY.md).
 
-### 6. Plan a LAN Party or a Game Server
+### 5. Plan a LAN Party or a Game Server
 A project can be a homelab, a **LAN party** or a **game server** for friends. See [docs/GAMING.md](./docs/GAMING.md).
 - **Guided planner**: Answer a few questions (players, games, your internet line, the venue's power) and get a wired, addressed build to refine.
 - **LAN tables and consoles**: A table stands for its seats and its switch, so a 64-seat party stays readable. Seats take DHCP leases and the router's pool grows to fit them. PCs and consoles can join an access point over Wi-Fi.
@@ -51,10 +47,10 @@ A project can be a homelab, a **LAN party** or a **game server** for friends. Se
 - **Game plan report**: Which ports to forward on which router, whether your upload is enough, carrier-grade NAT, port clashes, free switch ports, the DHCP pool, and the load on every power circuit against its breaker.
 - **Ready-to-use files**: A compose file per game host, the port-forward list, a connect sheet for your players and a party plan.
 
-### 7. Plan With the Hardware You Own
+### 6. Plan With the Hardware You Own
 An inventory of what is on your shelf, and a look at what really runs on it. See [docs/INVENTORY.md](./docs/INVENTORY.md).
 - **Inventory**: List your machines, switches, memory, disks and cables once, with where each is kept. It belongs to your account and sits beside the canvas in every project.
-- **Your machines on the canvas**: Drag an owned device in and it is that machine: its role in the project has one name, the machine another. Owned hardware never lands on the shopping list, and spare memory in the drawer is offered to a host that is short of it.
+- **Your machines on the canvas**: Drag an owned device in and it is that machine: its role in the project has one name, the machine another. Spare memory in the drawer is offered to a host that is short of it.
 - **Proxmox import**: Connect Proxmox VE with a read-only API token (or paste an export) and see which machine of your inventory each host is.
 - **Plan against reality**: Lay a project beside the cluster: guests on both sides, guests only on Proxmox, guests only in the plan, and each host's capacity as planned and as it runs. You tick what to take over, review it on the canvas and apply it. Nothing is imported by itself.
 
@@ -75,7 +71,7 @@ An inventory of what is on your shelf, and a look at what really runs on it. See
 ---
 
 ## 🏗️ Architecture Overview
-For detailed information on the codebase architecture, folder structure, testing infrastructure, and known pitfalls, please refer to [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md).
+For detailed information on the codebase architecture, folder structure, testing infrastructure, and known pitfalls, please refer to [AGENTS.md](./AGENTS.md).
 
 ---
 
@@ -90,8 +86,8 @@ The entire mechanism is driven by a single condition: **whether `GOOGLE_CLIENT_I
 | Component | What happens when `GOOGLE_CLIENT_ID` is **empty / unset** |
 |---|---|
 | **Backend** | `config.AuthDisabled` becomes `true`. Every protected endpoint's auth middleware skips JWT validation and instead auto-provisions a **Local Admin** user (`local@homelab.local`) with full access, including admin privileges. |
-| **Frontend** | `VITE_GOOGLE_CLIENT_ID` is empty, so the Google login button is non-functional. The auth hook detects this and calls `/auth/me` without a token - the backend responds with the Local Admin user, automatically logging you in. |
-| **Login Page** | You will still briefly see the login page on first load, but the auto-login fires immediately and redirects you to the projects dashboard. |
+| **Frontend** | The app reads `/auth/config` from the backend, sees that login is off and calls `/auth/me` without a token: the backend answers with the Local Admin user. |
+| **Login Page** | There is none: you land on the projects page at once. |
 
 ### Quick Start (Auth-Disabled)
 
@@ -160,20 +156,6 @@ Database connected. Setting up routes...
 
 There will be **no** panic or error about `JWT_SECRET` because the default Compose config sets `GIN_MODE=debug` for local self-hosting. The Compose stack can run in local auth-disabled mode or hosted Google OAuth mode; set `GOOGLE_CLIENT_ID` and `JWT_SECRET` in `.env` for hosted mode.
 
-<!--
-
-      # GOOGLE_CLIENT_ID intentionally left unset → auth disabled
-      # JWT_SECRET intentionally left unset → uses built-in dev secret
-```
-
-Then run:
-
-```bash
-docker compose up -d
-```
-
--->
-
 ### Environment Variables Reference (Auth-Related)
 
 | Variable | Where | Required for Auth-Disabled? | Description |
@@ -237,19 +219,18 @@ docker compose up -d --build
 ## 👨‍💻 Local Development
 
 ```bash
-# Docker build from local source
-docker compose up -d --build
+# Backend, database and hlbIPAM in Docker (backend on http://127.0.0.1:8080)
+docker compose -f docker-compose.local.yml up -d --build
 
-# Backend (requires Go 1.25+)
-cd backend
-cp ../.env.example ../.env
-go run ./cmd/server
-
-# Frontend (requires Node 20+)
+# Frontend with hot reload (requires Node 20+)
 cd frontend
-npm install
-npm run dev
+npm ci --legacy-peer-deps
+npm run dev -- --host 127.0.0.1 --port 5173
 ```
+
+If port 8080 is taken, set `LOCAL_BACKEND_PORT=8082` for the Docker command and `VITE_API_URL=http://127.0.0.1:8082` for `npm run dev`.
+
+Tests run in Docker; the commands are in [AGENTS.md](./AGENTS.md#running-tests) (`make test` runs both suites).
 
 ## 🎨 Credits
 HLBuilder's custom 3-layer structural logo was designed and created by **[Paweł Kręczewski](https://www.linkedin.com/in/pawe%C5%82-kr%C4%99czewski-a2a372242/)**.

@@ -1,5 +1,4 @@
 import type { GamingPlan, Service } from '../../../../types';
-import type { CreateBuildParams } from '../../api/builds';
 import {
   DEFAULT_SEAT_WATTS,
   MAX_TABLE_SEATS,
@@ -8,7 +7,7 @@ import {
 } from '../../../gaming/lib/table';
 import { arrangePlan } from './arrange';
 import { gameHost, gameServerVM, gameService, nextPortOffsets } from './game-hosts';
-import type { LanPartyAnswers, PlannedEdge, PlannedNode, PlannedVM } from './types';
+import type { LanPartyAnswers, Plan, PlannedEdge, PlannedNode, PlannedVM } from './types';
 
 export const MAX_PARTY_SEATS = 64;
 
@@ -68,7 +67,7 @@ const clampSeats = (seats: number) =>
 export function buildLanPartyPlan(
   answers: LanPartyAnswers,
   services: Service[],
-): CreateBuildParams {
+): Plan {
   const seats = clampSeats(answers.seats);
   const consoles = Math.min(16, Math.max(0, Math.round(answers.consoles) || 0));
   const circuitCount = Math.min(32, Math.max(1, Math.round(answers.circuits) || 1));
@@ -245,7 +244,7 @@ export function buildLanPartyPlan(
     thumbnail: '',
     kind: 'lan_party',
     gaming_plan,
-    settings: { planner: { kind: 'lan_party', ...answers }, boughtItems: [], showBought: false },
+    settings: { planner: { kind: 'lan_party', ...answers } },
     nodes,
     edges,
     services: [],

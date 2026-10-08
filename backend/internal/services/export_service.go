@@ -35,10 +35,7 @@ func (s *ConfigService) GenerateCompleteExport(buildID, userID uuid.UUID) ([]byt
 	if build.UserID != userID {
 		return nil, "", fmt.Errorf("unauthorized to export this build")
 	}
-	configs, err := s.GenerateAll(buildID, userID)
-	if err != nil {
-		return nil, "", err
-	}
+	configs := configBundle(&build)
 
 	nodesByID := make(map[uuid.UUID]models.Node, len(build.Nodes))
 	warnings := make([]string, 0)
@@ -176,7 +173,7 @@ func exportRackPlan(build models.Build, nodes map[uuid.UUID]models.Node) []byte 
 		if node.ParentID == nil {
 			continue
 		}
-		details := decodeDetails(node.Details)
+		details, _ := detailsMap(node.Details)
 		rows = append(rows, []string{
 			nodes[*node.ParentID].Name, node.Name, node.Type,
 			detailString(details, "rack_position"), detailString(details, "rack_units"),
@@ -203,10 +200,11 @@ func exportPowerBudget(build models.Build) []byte {
 func exportShoppingList(build models.Build) []byte {
 	rows := [][]string{{"item", "category", "model", "quantity", "estimated_unit_price", "currency", "source"}}
 	for _, node := range build.Nodes {
-		details := decodeDetails(node.Details)
+		details, _ := detailsMap(node.Details)
 		rows = append(rows, shoppingRow(node.Name, node.Type, details, "topology"))
 		for _, component := range node.InternalComponents {
-			rows = append(rows, shoppingRow(component.Name, component.Type, decodeDetails(component.Details), node.Name))
+			componentDetails, _ := detailsMap(component.Details)
+			rows = append(rows, shoppingRow(component.Name, component.Type, componentDetails, node.Name))
 		}
 	}
 	return encodeCSV(rows)
@@ -254,15 +252,6 @@ func encodeCSV(rows [][]string) []byte {
 	_ = writer.WriteAll(rows)
 	writer.Flush()
 	return output.Bytes()
-}
-
-func decodeDetails(raw json.RawMessage) map[string]any {
-	var details map[string]any
-	_ = json.Unmarshal(raw, &details)
-	if details == nil {
-		details = make(map[string]any)
-	}
-	return details
 }
 
 func detailString(details map[string]any, key string) string {

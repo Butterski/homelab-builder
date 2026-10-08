@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
   survey: null as Record<string, unknown> | null,
 }));
 
-vi.mock('../../features/admin/hooks/use-auth', () => ({ useAuth: () => ({ user: mocks.user }) }));
+vi.mock('../../features/auth/hooks/use-auth', () => ({ useAuth: () => ({ user: mocks.user }) }));
 vi.mock('../../features/survey/api/use-survey', () => ({
   useSurvey: () => ({ data: mocks.survey }),
 }));

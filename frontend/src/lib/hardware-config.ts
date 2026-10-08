@@ -1,6 +1,6 @@
 import type { HardwareType } from '../types';
 
-export interface HardwareFeatures {
+interface HardwareFeatures {
   hasCPU: boolean;
   hasRAM: boolean;
   hasStorage: boolean;
@@ -13,7 +13,7 @@ export interface HardwareFeatures {
   canConnectToAny: boolean; // Can connect directly to any other node without needing a network hub
 }
 
-export const HARDWARE_FEATURES: Record<HardwareType, HardwareFeatures> = {
+const HARDWARE_FEATURES: Record<HardwareType, HardwareFeatures> = {
   server:       { hasCPU: true,  hasRAM: true,  hasStorage: true,  canHostVMs: true,  isCompute: true,  hasDynamicPorts: true, isNetworked: true,  canBeNested: false, canHostNested: true,  canConnectToAny: false },
   server_v2:    { hasCPU: true,  hasRAM: true,  hasStorage: true,  canHostVMs: true,  isCompute: true,  hasDynamicPorts: true, isNetworked: true,  canBeNested: false, canHostNested: true,  canConnectToAny: true },
   firewall:     { hasCPU: true,  hasRAM: true,  hasStorage: true,  canHostVMs: false, isCompute: false, hasDynamicPorts: true, isNetworked: true,  canBeNested: false, canHostNested: false, canConnectToAny: true },
@@ -59,7 +59,6 @@ const WIFI_CLIENT_TYPES = new Set<HardwareType>(['pc', 'minipc', 'sbc', 'console
 /** Devices that stand on a desk or the floor and cannot be mounted in a rack. */
 const FLOOR_TYPES = new Set<HardwareType>(['console', 'lan_table']);
 
-export const isWifiClientNode = (type: HardwareType) => WIFI_CLIENT_TYPES.has(type);
 export const isFloorNode = (type: HardwareType) => FLOOR_TYPES.has(type);
 
 /**

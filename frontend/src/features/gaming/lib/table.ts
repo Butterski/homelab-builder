@@ -4,7 +4,7 @@ import type { HardwareSpec } from '../../../types';
 // rules mirror backend/internal/services/topology_gaming.go.
 
 export const MAX_TABLE_SEATS = 24;
-export const DEFAULT_TABLE_SEATS = 8;
+const DEFAULT_TABLE_SEATS = 8;
 export const DEFAULT_SEAT_WATTS = 350;
 export const MIN_SEAT_WATTS = 50;
 export const MAX_SEAT_WATTS = 2000;

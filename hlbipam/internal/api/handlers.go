@@ -11,31 +11,22 @@ import (
 
 // RegisterRoutes wires the IPAM endpoints onto the provided mux.
 func RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST /api/v1/allocate", handleAllocate)
-	mux.HandleFunc("POST /api/v1/validate", handleValidate)
+	mux.HandleFunc("POST /api/v1/allocate", handleRequest(core.Allocate))
+	mux.HandleFunc("POST /api/v1/validate", handleRequest(core.Validate))
 	mux.HandleFunc("GET /health", handleHealth)
 }
 
-func handleAllocate(w http.ResponseWriter, r *http.Request) {
-	var req models.AllocateRequest
-	if err := decodeBody(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-		return
+// handleRequest serves an endpoint that decodes an AllocateRequest and answers
+// with whatever run computes from it.
+func handleRequest[T any](run func(models.AllocateRequest) T) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req models.AllocateRequest
+		if err := decodeBody(r, &req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, run(req))
 	}
-
-	result := core.Allocate(req)
-	writeJSON(w, http.StatusOK, result)
-}
-
-func handleValidate(w http.ResponseWriter, r *http.Request) {
-	var req models.AllocateRequest
-	if err := decodeBody(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-		return
-	}
-
-	result := core.Validate(req)
-	writeJSON(w, http.StatusOK, result)
 }
 
 func handleHealth(w http.ResponseWriter, _ *http.Request) {

@@ -1,12 +1,12 @@
 import { Gamepad2 } from 'lucide-react';
 import type { GameInstance, VirtualMachine } from '../../../types';
+import { formatMemory } from '../../../lib/format';
 import { useBuilderStore } from '../../builder/store/builder-store';
 import { NumberInput } from './number-input';
 import {
   EXPOSURES,
   MAX_INSTANCE_PLAYERS,
   findGameProfile,
-  formatMemory,
   maxPortOffset,
   readGameInstance,
   resolvePorts,

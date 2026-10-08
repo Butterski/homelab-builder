@@ -7,7 +7,7 @@
  */
 
 /** Details keys that say which physical machine a node or component is. */
-export const ASSET_DETAIL_KEYS = [
+const ASSET_DETAIL_KEYS = [
   'inventory_item_id',
   'inventory_label',
   'inventory_quantity',

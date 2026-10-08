@@ -1,6 +1,13 @@
-import { api } from '../../../lib/api';
+import { api, authHeaders } from '../../../lib/api';
 import { apiUrl } from '../../../lib/api-base';
-import type { BuildKind, GamingPlan } from '../../../types';
+import type {
+  BuildKind,
+  GamingPlan,
+  HardwareComponent,
+  HardwareSpec,
+  VirtualMachine,
+} from '../../../types';
+import type { ValidationReport } from './proposals';
 
 let topologyQueue: Promise<void> = Promise.resolve();
 
@@ -13,6 +20,50 @@ function serializeTopologyMutation<T>(operation: () => Promise<T>): Promise<T> {
   return result;
 }
 
+/**
+ * What a build keeps besides its graph. The builder manages `setupDone`; the
+ * planner's answers and keys written by older versions are sent back as loaded,
+ * because a save replaces the whole object.
+ */
+export type BuildSettings = {
+  /** The guided planner's answers the build was made from. */
+  planner?: Record<string, unknown>;
+  /** Which steps of the setup guide are ticked off. */
+  setupDone?: string[];
+  [key: string]: unknown;
+};
+
+/** A node as the build API returns it. */
+export type BuildNode = {
+  id: string;
+  type: string;
+  name: string;
+  ip?: string;
+  mac_address?: string;
+  power_draw?: number;
+  x?: number;
+  y?: number;
+  /** An object, or the same as a JSON string. */
+  details?: unknown;
+  parent_id?: string | null;
+  virtual_machines?: VirtualMachine[];
+  internal_components?: HardwareComponent[];
+};
+
+/** An edge as the build API returns it. */
+export type BuildEdge = {
+  id?: string;
+  source_node_id: string;
+  source_handle?: string;
+  target_node_id: string;
+  target_handle?: string;
+  type?: string;
+  speed?: string;
+  subnet?: string;
+  wireless_standard?: string;
+  direction?: string;
+};
+
 export interface Build {
   id: string;
   user_id: string;
@@ -24,33 +75,58 @@ export interface Build {
   revision: number;
   thumbnail?: string;
   total_power?: number;
-  settings: any; // e.g. boughtItems, showBought
+  settings?: BuildSettings;
   share_token?: string;
   is_shared?: boolean;
   shared_editable?: boolean;
   created_at: string;
   updated_at: string;
-
-  // Relational Data from Preloads
-  nodes?: any[];
-  edges?: any[];
-  virtual_machines?: any[];
-  service_instances?: any[];
+  nodes?: BuildNode[];
+  edges?: BuildEdge[];
 }
+
+/** A node as a save sends it. */
+export type BuildNodeInput = {
+  id: string;
+  type: string;
+  name: string;
+  x: number;
+  y: number;
+  power_draw?: number;
+  ip?: string;
+  mac_address?: string;
+  details?: HardwareSpec;
+  vms?: VirtualMachine[];
+  internal_components?: HardwareComponent[];
+  parent_id?: string;
+};
+
+/** An edge as a save sends it. */
+export type BuildEdgeInput = {
+  source: string;
+  source_handle?: string;
+  target: string;
+  target_handle?: string;
+  type?: string;
+  speed?: string;
+  subnet?: string;
+  wireless_standard?: string;
+  direction?: string;
+};
 
 export type CreateBuildParams = {
   name: string;
   thumbnail?: string;
-  settings: any;
-  nodes: any[];
-  edges: any[];
-  services: any[];
+  settings: BuildSettings;
+  nodes: BuildNodeInput[];
+  edges: BuildEdgeInput[];
+  services: Array<{ id: string; name: string }>;
   /** Left out, the server keeps the kind and plan the build already has. */
   kind?: BuildKind;
   gaming_plan?: Partial<GamingPlan>;
 };
 
-export type TopologyUpdateParams = CreateBuildParams & { revision: number };
+type TopologyUpdateParams = CreateBuildParams & { revision: number };
 
 /** The compose file for the game servers on one host. */
 export type GameComposeFile = {
@@ -70,55 +146,32 @@ export type ConfigBundle = {
   nginx: string;
   game_compose?: GameComposeFile[];
 };
+
 export type TopologyUpdateResponse = {
   build: Build;
-  validation?: { valid: boolean; errors: any[]; warnings: any[] };
+  validation?: ValidationReport;
 };
 
 export const buildApi = {
-  list: async () => {
-    const response = await api.get<Build[]>('/api/builds');
-    return response; // api.get returns data directly in this codebase's wrapper
-  },
-  get: async (id: string) => {
-    const response = await api.get<Build>(`/api/builds/${id}`);
-    return response;
-  },
-  create: async (params: CreateBuildParams) => {
-    const response = await api.post<Build>('/api/builds', params);
-    return response;
-  },
-  rename: async (id: string, name: string, revision: number) => {
-    const response = await api.patch<Build>(`/api/builds/${id}`, { name, revision });
-    return response;
-  },
-  updateTopology: async (id: string, params: TopologyUpdateParams) => {
-    return serializeTopologyMutation(() =>
+  list: () => api.get<Build[]>('/api/builds'),
+  get: (id: string) => api.get<Build>(`/api/builds/${id}`),
+  create: (params: CreateBuildParams) => api.post<Build>('/api/builds', params),
+  rename: (id: string, name: string, revision: number) =>
+    api.patch<Build>(`/api/builds/${id}`, { name, revision }),
+  updateTopology: (id: string, params: TopologyUpdateParams) =>
+    serializeTopologyMutation(() =>
       api.put<TopologyUpdateResponse>(`/api/builds/${id}/topology`, params),
-    );
-  },
+    ),
   delete: async (id: string) => {
     await api.del(`/api/builds/${id}`);
   },
-  duplicate: async (id: string) => {
-    const response = await api.post<Build>(`/api/builds/${id}/duplicate`, {});
-    return response;
-  },
-  calculateNetwork: async (id: string) => {
-    await api.post(`/api/builds/${id}/calculate-network`, {});
-  },
-  validateNetwork: async (id: string) => {
-    const response = await api.post<any>(`/api/builds/${id}/validate-network`, {});
-    return response;
-  },
-  generateConfig: async (id: string) => {
-    const response = await api.post<ConfigBundle>(`/api/builds/${id}/generate-config`, {});
-    return response;
-  },
+  duplicate: (id: string) => api.post<Build>(`/api/builds/${id}/duplicate`, {}),
+  validateNetwork: (id: string) =>
+    api.post<Partial<ValidationReport>>(`/api/builds/${id}/validate-network`, {}),
+  generateConfig: (id: string) => api.post<ConfigBundle>(`/api/builds/${id}/generate-config`, {}),
   downloadExportBundle: async (id: string) => {
-    const token = localStorage.getItem('auth_token');
     const response = await fetch(apiUrl(`/api/builds/${id}/export-bundle`), {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      headers: authHeaders(),
     });
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Export failed' }));
@@ -128,24 +181,11 @@ export const buildApi = {
     const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] || 'homelab-export.zip';
     return { blob: await response.blob(), filename };
   },
-  share: async (id: string) => {
-    const response = await api.post<Build>(`/api/builds/${id}/share`, {});
-    return response;
-  },
-  unshare: async (id: string) => {
-    const response = await api.post<Build>(`/api/builds/${id}/unshare`, {});
-    return response;
-  },
-  setShareEditable: async (id: string, editable: boolean) => {
-    const response = await api.patch<Build>(`/api/builds/${id}/share`, { editable });
-    return response;
-  },
-  getShared: async (token: string) => {
-    const response = await api.get<Build>(`/api/shared/${token}`);
-    return response;
-  },
-  updateShared: async (token: string, params: TopologyUpdateParams) => {
-    const response = await api.put<Build>(`/api/shared/${token}`, params);
-    return response;
-  },
+  share: (id: string) => api.post<Build>(`/api/builds/${id}/share`, {}),
+  unshare: (id: string) => api.post<Build>(`/api/builds/${id}/unshare`, {}),
+  setShareEditable: (id: string, editable: boolean) =>
+    api.patch<Build>(`/api/builds/${id}/share`, { editable }),
+  getShared: (token: string) => api.get<Build>(`/api/shared/${token}`),
+  updateShared: (token: string, params: TopologyUpdateParams) =>
+    api.put<Build>(`/api/shared/${token}`, params),
 };

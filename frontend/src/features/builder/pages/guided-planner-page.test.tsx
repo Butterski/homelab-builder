@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { buildApi } from '../api/builds';
 import GuidedPlannerPage from './guided-planner-page';
 
 const mocks = vi.hoisted(() => ({
@@ -45,13 +46,22 @@ const valheim = {
   },
 };
 
-vi.mock('../store/builder-store', () => ({
-  useBuilderStore: () => ({
+vi.mock('../store/builder-store', () => {
+  type State = {
+    availableServices: Array<typeof valheim>;
+    fetchServices: typeof mocks.fetchServices;
+    loadBuild: typeof mocks.loadBuild;
+  };
+  // Read on use: the factory runs before `valheim` is defined.
+  const state = (): State => ({
     availableServices: [valheim],
     fetchServices: mocks.fetchServices,
     loadBuild: mocks.loadBuild,
-  }),
-}));
+  });
+  const useBuilderStore = <T,>(selector: (current: State) => T) => selector(state());
+  useBuilderStore.getState = state;
+  return { useBuilderStore };
+});
 
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
@@ -98,10 +108,11 @@ describe('GuidedPlannerPage', () => {
       'build-1',
       expect.objectContaining({ revision: 1, nodes: expect.any(Array), edges: expect.any(Array) }),
     );
-    expect(mocks.updateTopology.mock.calls[0][1].nodes.length).toBeGreaterThan(2);
-    expect(mocks.updateTopology.mock.calls[0][1].edges.length).toBeGreaterThan(1);
+    const saved = vi.mocked(buildApi.updateTopology).mock.calls[0][1];
+    expect(saved.nodes.length).toBeGreaterThan(2);
+    expect(saved.edges.length).toBeGreaterThan(1);
     // A homelab is created exactly as before: no kind, no gaming plan.
-    expect(mocks.create.mock.calls[0][0]).not.toHaveProperty('kind');
+    expect(vi.mocked(buildApi.create).mock.calls[0][0]).not.toHaveProperty('kind');
   });
 
   it('plans a LAN party from seats and what the venue offers', async () => {
@@ -140,14 +151,15 @@ describe('GuidedPlannerPage', () => {
     expect(mocks.create).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 'lan_party', nodes: [], edges: [] }),
     );
-    const saved = mocks.updateTopology.mock.calls[0][1];
+    const saved = vi.mocked(buildApi.updateTopology).mock.calls[0][1];
     expect(saved.kind).toBe('lan_party');
-    expect(saved.nodes.filter((node: any) => node.type === 'lan_table')).toHaveLength(4);
-    expect(saved.gaming_plan.power.circuits).toHaveLength(5);
+    expect(saved.nodes.filter(node => node.type === 'lan_table')).toHaveLength(4);
+    expect(saved.gaming_plan?.power?.circuits).toHaveLength(5);
     // With enough circuits nothing shares one with a full table except small gear.
-    const loads = new Map<string, number>();
+    const loads = new Map<string | undefined, number>();
     for (const node of saved.nodes) {
-      loads.set(node.details.circuit, (loads.get(node.details.circuit) ?? 0) + node.power_draw);
+      const circuit = node.details?.circuit;
+      loads.set(circuit, (loads.get(circuit) ?? 0) + (node.power_draw ?? 0));
     }
     // 230 V x 16 A x 80% = 2944 W is what a circuit carries for hours.
     expect(Math.max(...loads.values())).toBeLessThanOrEqual(2944);
@@ -179,10 +191,10 @@ describe('GuidedPlannerPage', () => {
     await user.click(screen.getByRole('button', { name: /create this plan/i }));
 
     await waitFor(() => expect(mocks.updateTopology).toHaveBeenCalledTimes(1));
-    const saved = mocks.updateTopology.mock.calls[0][1];
+    const saved = vi.mocked(buildApi.updateTopology).mock.calls[0][1];
     expect(saved.kind).toBe('game_server');
-    const host = saved.nodes.find((node: any) => node.vms.length > 0);
-    expect(host.vms[0].details.game).toEqual({
+    const host = saved.nodes.find(node => (node.vms?.length ?? 0) > 0);
+    expect(host?.vms?.[0].details?.game).toEqual({
       profile: 'valheim',
       players: 10,
       exposure: 'vpn',

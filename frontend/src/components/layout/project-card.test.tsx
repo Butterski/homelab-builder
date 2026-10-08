@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
   updateTopology: vi.fn(),
 }));
 
-vi.mock('../../features/admin/hooks/use-auth', () => ({ useAuth: () => ({ user: mocks.user }) }));
+vi.mock('../../features/auth/hooks/use-auth', () => ({ useAuth: () => ({ user: mocks.user }) }));
 vi.mock('../../features/builder/api/builds', () => ({
   buildApi: { list: mocks.list, updateTopology: mocks.updateTopology, get: vi.fn(), validateNetwork: vi.fn() },
 }));

@@ -50,14 +50,14 @@ func TestBuildService_Update(t *testing.T) {
 
 	build, _ := svc.Create(user.ID, SyncGraphInput{Name: "B1", Nodes: []NodeDTO{{ID: "n1", Type: "server", Name: "A", Details: map[string]any{"model": "R1"}}}})
 
-	_, err := svc.Update(build.ID, user.ID, SyncGraphInput{
+	_, err := svc.UpdateAndCalculate(build.ID, user.ID, SyncGraphInput{
 		Name:     "Updated",
 		Revision: build.Revision,
 		Nodes: []NodeDTO{
 			{ID: build.Nodes[0].ID.String(), Type: "server", Name: "A-Updated", Details: map[string]any{"model": "R2"}}, // Keep ID
 			{ID: "n2", Type: "server", Name: "B"}, // New
 		},
-	})
+	}, newIPAMStub(t, tx))
 	if err != nil {
 		t.Fatalf("Update failed: %v", err)
 	}
@@ -232,14 +232,14 @@ func TestBuildService_Update_InvalidEdgeReferenceRollsBack(t *testing.T) {
 		t.Fatalf("Create failed: %v", err)
 	}
 
-	_, err = svc.Update(initial.ID, user.ID, SyncGraphInput{
+	_, err = svc.UpdateAndCalculate(initial.ID, user.ID, SyncGraphInput{
 		Name:     "Should Fail",
 		Revision: initial.Revision,
 		Nodes: []NodeDTO{
 			{ID: "router-1", Type: "router", Name: "Router Updated"},
 		},
 		Edges: []EdgeDTO{{Source: "router-1", Target: "missing-switch", Speed: "10 GbE"}},
-	})
+	}, newIPAMStub(t, tx))
 	if err == nil {
 		t.Fatalf("expected validation error for invalid edge reference")
 	}
@@ -391,14 +391,14 @@ func TestBuildService_Update_PowerDraw(t *testing.T) {
 	})
 
 	// Update Build with new node and new power
-	updatedBuild, err := svc.Update(build.ID, user.ID, SyncGraphInput{
+	updatedBuild, err := svc.UpdateAndCalculate(build.ID, user.ID, SyncGraphInput{
 		Name:     "Power Update Build",
 		Revision: build.Revision,
 		Nodes: []NodeDTO{
 			{ID: "n1", Type: "server", Name: "Server Updated", PowerDraw: 150.0},
 			{ID: "n2", Type: "switch", Name: "Switch New", PowerDraw: 40.0},
 		},
-	})
+	}, newIPAMStub(t, tx))
 
 	if err != nil {
 		t.Fatalf("Update failed: %v", err)
@@ -444,22 +444,23 @@ func TestBuildService_MultipleEmptyShareTokens(t *testing.T) {
 		t.Fatalf("Create build2 failed: %v", err)
 	}
 
-	// Update build 1 - this triggers tx.Save which previously crashed on empty string ShareToken index violation
-	_, err = svc.Update(build1.ID, user1.ID, SyncGraphInput{
+	// Saving must not trip over the unique share token index while both tokens are empty.
+	ipam := newIPAMStub(t, tx)
+	_, err = svc.UpdateAndCalculate(build1.ID, user1.ID, SyncGraphInput{
 		Name:     "Project One Updated",
 		Revision: build1.Revision,
 		Nodes:    []NodeDTO{{ID: build1.Nodes[0].ID.String(), Type: "server", Name: "Server 1"}},
-	})
+	}, ipam)
 	if err != nil {
 		t.Fatalf("Update build1 failed: %v", err)
 	}
 
 	// Update build 2 - ensure it updates without errors too
-	_, err = svc.Update(build2.ID, user2.ID, SyncGraphInput{
+	_, err = svc.UpdateAndCalculate(build2.ID, user2.ID, SyncGraphInput{
 		Name:     "Project Two Updated",
 		Revision: build2.Revision,
 		Nodes:    []NodeDTO{{ID: build2.Nodes[0].ID.String(), Type: "server", Name: "Server 2"}},
-	})
+	}, ipam)
 	if err != nil {
 		t.Fatalf("Update build2 failed: %v", err)
 	}

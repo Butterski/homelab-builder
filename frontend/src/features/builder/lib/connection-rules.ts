@@ -11,7 +11,7 @@ export interface LinkEnd {
   targetHandle?: string | null;
 }
 
-export type ConnectionCheck = { ok: true } | { ok: false; message?: string };
+type ConnectionCheck = { ok: true } | { ok: false; message?: string };
 
 const isPowerLink = (a: HardwareType, b: HardwareType) => a === 'ups' || b === 'ups';
 

@@ -29,12 +29,12 @@ const valheim: GameProfile = {
 };
 
 const store = vi.hoisted(() => ({
-  state: {} as Record<string, any>,
+  state: {} as Record<string, unknown>,
   report: { data: undefined as unknown, isLoading: false, isError: false },
 }));
 
 vi.mock('../../builder/store/builder-store', () => {
-  const useBuilderStore = (selector: (state: any) => unknown) => selector(store.state);
+  const useBuilderStore = (selector: (state: Record<string, unknown>) => unknown) => selector(store.state);
   useBuilderStore.getState = () => store.state;
   return { useBuilderStore };
 });

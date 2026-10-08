@@ -31,15 +31,6 @@ func NewAssistantHandler(settings *services.AssistantSettingsService, agent *ass
 	return &AssistantHandler{settings: settings, agent: agent}
 }
 
-func assistantUser(c *gin.Context) (uuid.UUID, bool) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return uuid.Nil, false
-	}
-	return userID.(uuid.UUID), true
-}
-
 func respondAssistantError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, assistant.ErrMessageInvalid), errors.Is(err, services.ErrAssistantInput):
@@ -63,7 +54,7 @@ func respondAssistantError(c *gin.Context, err error) {
 }
 
 func (h *AssistantHandler) GetSettings(c *gin.Context) {
-	userID, ok := assistantUser(c)
+	userID, ok := currentUser(c)
 	if !ok {
 		return
 	}
@@ -78,7 +69,7 @@ func (h *AssistantHandler) GetSettings(c *gin.Context) {
 // UpdateSettings accepts a new key but never returns one: the response is the
 // same view GetSettings gives, with the key reduced to a hint.
 func (h *AssistantHandler) UpdateSettings(c *gin.Context) {
-	userID, ok := assistantUser(c)
+	userID, ok := currentUser(c)
 	if !ok {
 		return
 	}
@@ -96,7 +87,7 @@ func (h *AssistantHandler) UpdateSettings(c *gin.Context) {
 }
 
 func (h *AssistantHandler) DeleteKey(c *gin.Context) {
-	userID, ok := assistantUser(c)
+	userID, ok := currentUser(c)
 	if !ok {
 		return
 	}
@@ -109,7 +100,7 @@ func (h *AssistantHandler) DeleteKey(c *gin.Context) {
 }
 
 func (h *AssistantHandler) ResetSettings(c *gin.Context) {
-	userID, ok := assistantUser(c)
+	userID, ok := currentUser(c)
 	if !ok {
 		return
 	}
@@ -123,7 +114,7 @@ func (h *AssistantHandler) ResetSettings(c *gin.Context) {
 // TestSettings checks the stored key by listing the provider's models, which
 // costs nothing. A provider-side failure is a normal answer here, not an error.
 func (h *AssistantHandler) TestSettings(c *gin.Context) {
-	userID, ok := assistantUser(c)
+	userID, ok := currentUser(c)
 	if !ok {
 		return
 	}
@@ -139,21 +130,12 @@ func (h *AssistantHandler) TestSettings(c *gin.Context) {
 	}
 }
 
-func buildParam(c *gin.Context) (uuid.UUID, bool) {
-	buildID, err := uuid.Parse(c.Param("buildId"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid build ID"})
-		return uuid.Nil, false
-	}
-	return buildID, true
-}
-
 func (h *AssistantHandler) GetThread(c *gin.Context) {
-	userID, ok := assistantUser(c)
+	userID, ok := currentUser(c)
 	if !ok {
 		return
 	}
-	buildID, ok := buildParam(c)
+	buildID, ok := uuidParam(c, "buildId")
 	if !ok {
 		return
 	}
@@ -166,11 +148,11 @@ func (h *AssistantHandler) GetThread(c *gin.Context) {
 }
 
 func (h *AssistantHandler) ClearThread(c *gin.Context) {
-	userID, ok := assistantUser(c)
+	userID, ok := currentUser(c)
 	if !ok {
 		return
 	}
-	buildID, ok := buildParam(c)
+	buildID, ok := uuidParam(c, "buildId")
 	if !ok {
 		return
 	}
@@ -185,7 +167,7 @@ func (h *AssistantHandler) ClearThread(c *gin.Context) {
 // that can be refused is refused with a normal JSON error before the stream
 // starts; after that, problems arrive as "error" events.
 func (h *AssistantHandler) Chat(c *gin.Context) {
-	userID, ok := assistantUser(c)
+	userID, ok := currentUser(c)
 	if !ok {
 		return
 	}

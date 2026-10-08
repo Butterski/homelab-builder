@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
+	"log"
 	"net/http"
 	"time"
 
@@ -23,37 +25,13 @@ func NewAdminHandler(db *gorm.DB, serviceService *services.ServiceService) *Admi
 
 // Dashboard - basic stats
 func (h *AdminHandler) Dashboard(c *gin.Context) {
-	var serviceCount int64
-	h.db.Model(&models.Service{}).Where("is_active = ?", true).Count(&serviceCount)
+	var serviceCount, userCount, eventCount, buildCount, nodeCount, vmCount int64
 
-	var userCount int64
-	h.db.Model(&models.User{}).Count(&userCount)
-
-	var eventCount int64
-	h.db.Model(&models.Event{}).Count(&eventCount)
-
-	var buildCount int64
-	h.db.Model(&models.Build{}).Count(&buildCount)
-
-	var avgNodes float64
-	var avgVMs float64
-	if buildCount > 0 {
-		var nodeCount int64
-		h.db.Model(&models.Node{}).Count(&nodeCount)
-		avgNodes = float64(nodeCount) / float64(buildCount)
-
-		var vmCount int64
-		h.db.Model(&models.VirtualMachine{}).Count(&vmCount)
-		avgVMs = float64(vmCount) / float64(buildCount)
-	}
-
-	// Standalone Node Type Distribution
 	type NodeDist struct {
 		Type  string `json:"type"`
 		Count int64  `json:"count"`
 	}
 	var nodeDist []NodeDist
-	h.db.Model(&models.Node{}).Select("type, count(id) as count").Group("type").Order("count DESC").Scan(&nodeDist)
 
 	// Brand Market Share (Based on node details and titles)
 	type BrandShare struct {
@@ -61,14 +39,6 @@ func (h *AdminHandler) Dashboard(c *gin.Context) {
 		Count int64  `json:"count"`
 	}
 	var brandShare []BrandShare
-	h.db.Raw(`
-		SELECT COALESCE(NULLIF(details->>'brand', ''), split_part(name, ' ', 1)) as brand, COUNT(id) as count
-		FROM nodes
-		WHERE COALESCE(NULLIF(details->>'brand', ''), split_part(name, ' ', 1)) IS NOT NULL AND COALESCE(NULLIF(details->>'brand', ''), split_part(name, ' ', 1)) != ''
-		GROUP BY brand
-		ORDER BY count DESC
-		LIMIT 10
-	`).Scan(&brandShare)
 
 	// Most popular services active in designs
 	type ActiveServiceDist struct {
@@ -76,7 +46,6 @@ func (h *AdminHandler) Dashboard(c *gin.Context) {
 		Count int64  `json:"count"`
 	}
 	var activeServiceDist []ActiveServiceDist
-	h.db.Model(&models.ServiceInstance{}).Select("name, count(id) as count").Group("name").Order("count DESC").Limit(10).Scan(&activeServiceDist)
 
 	// Most popular services (by catalog selection count)
 	type PopularService struct {
@@ -84,14 +53,44 @@ func (h *AdminHandler) Dashboard(c *gin.Context) {
 		Count       int    `json:"count"`
 	}
 	var popular []PopularService
-	h.db.Raw(`
+
+	err := errors.Join(
+		h.db.Model(&models.Service{}).Where("is_active = ?", true).Count(&serviceCount).Error,
+		h.db.Model(&models.User{}).Count(&userCount).Error,
+		h.db.Model(&models.Event{}).Count(&eventCount).Error,
+		h.db.Model(&models.Build{}).Count(&buildCount).Error,
+		h.db.Model(&models.Node{}).Count(&nodeCount).Error,
+		h.db.Model(&models.VirtualMachine{}).Count(&vmCount).Error,
+		h.db.Model(&models.Node{}).Select("type, count(id) as count").Group("type").Order("count DESC").Scan(&nodeDist).Error,
+		h.db.Raw(`
+		SELECT COALESCE(NULLIF(details->>'brand', ''), split_part(name, ' ', 1)) as brand, COUNT(id) as count
+		FROM nodes
+		WHERE COALESCE(NULLIF(details->>'brand', ''), split_part(name, ' ', 1)) IS NOT NULL AND COALESCE(NULLIF(details->>'brand', ''), split_part(name, ' ', 1)) != ''
+		GROUP BY brand
+		ORDER BY count DESC
+		LIMIT 10
+	`).Scan(&brandShare).Error,
+		h.db.Model(&models.ServiceInstance{}).Select("name, count(id) as count").Group("name").Order("count DESC").Limit(10).Scan(&activeServiceDist).Error,
+		h.db.Raw(`
 		SELECT s.name as service_name, COUNT(us.id) as count
 		FROM user_selections us
 		JOIN services s ON s.id = us.service_id
 		GROUP BY s.name
 		ORDER BY count DESC
 		LIMIT 5
-	`).Scan(&popular)
+	`).Scan(&popular).Error,
+	)
+	if err != nil {
+		log.Printf("Admin dashboard query failed: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load dashboard"})
+		return
+	}
+
+	var avgNodes, avgVMs float64
+	if buildCount > 0 {
+		avgNodes = float64(nodeCount) / float64(buildCount)
+		avgVMs = float64(vmCount) / float64(buildCount)
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"data": gin.H{
@@ -142,42 +141,17 @@ func (h *AdminHandler) ListUsers(c *gin.Context) {
 // ListAllServices - list all services including inactive
 func (h *AdminHandler) ListAllServices(c *gin.Context) {
 	var svcs []models.Service
-	h.db.Preload("Requirements").Order("category, name").Find(&svcs)
+	if err := h.db.Preload("Requirements").Order("category, name").Find(&svcs).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list services"})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"data": svcs})
-}
-
-// ToggleServiceActive - activate/deactivate a service
-func (h *AdminHandler) ToggleServiceActive(c *gin.Context) {
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid service ID"})
-		return
-	}
-
-	var service models.Service
-	if err := h.db.First(&service, "id = ?", id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Service not found"})
-		return
-	}
-
-	service.IsActive = !service.IsActive
-	h.db.Save(&service)
-
-	c.JSON(http.StatusOK, gin.H{"data": service, "message": "Service toggled"})
-}
-
-// RecentEvents - get recent analytics events
-func (h *AdminHandler) RecentEvents(c *gin.Context) {
-	var events []models.Event
-	h.db.Order("created_at DESC").Limit(50).Find(&events)
-	c.JSON(http.StatusOK, gin.H{"data": events})
 }
 
 // UpdateServiceFull - full PUT for an existing service (including requirements)
 func (h *AdminHandler) UpdateServiceFull(c *gin.Context) {
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid service ID"})
+	id, ok := uuidParam(c, "id")
+	if !ok {
 		return
 	}
 
@@ -198,9 +172,8 @@ func (h *AdminHandler) UpdateServiceFull(c *gin.Context) {
 
 // DeleteService - hard delete for a service
 func (h *AdminHandler) DeleteService(c *gin.Context) {
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid service ID"})
+	id, ok := uuidParam(c, "id")
+	if !ok {
 		return
 	}
 
@@ -254,9 +227,9 @@ func (h *AdminHandler) ExportAnonymizedTopologies(c *gin.Context) {
 
 		var eNodes []ExportedNode
 		for _, n := range b.Nodes {
-			var services []string
+			var serviceNames []string
 			for _, s := range n.ServiceInstances {
-				services = append(services, s.Name)
+				serviceNames = append(serviceNames, s.Name)
 			}
 
 			// Extract brand/model from name or details
@@ -279,7 +252,7 @@ func (h *AdminHandler) ExportAnonymizedTopologies(c *gin.Context) {
 				Model:    model,
 				Power:    n.PowerDraw,
 				VMsCount: len(n.VirtualMachines),
-				Services: services,
+				Services: serviceNames,
 			})
 		}
 

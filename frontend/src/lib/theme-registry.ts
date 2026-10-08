@@ -2,7 +2,6 @@ import presetThemeData from '@/theme/presets.json';
 
 export const THEME_STORAGE_KEY = 'hlbuilder-theme-settings';
 export const DEFAULT_THEME_ID = 'dark';
-export const LIGHT_THEME_ID = 'light';
 
 const THEME_TOKEN_KEYS = [
   'background',
@@ -38,7 +37,7 @@ const THEME_TOKEN_KEYS = [
   'sidebar-ring',
 ] as const;
 
-export type ThemeTokenKey = (typeof THEME_TOKEN_KEYS)[number];
+type ThemeTokenKey = (typeof THEME_TOKEN_KEYS)[number];
 export type ThemeMode = 'dark' | 'light';
 
 export type ThemeTokens = Record<ThemeTokenKey, string>;
@@ -57,14 +56,13 @@ export type ThemeSettings = {
   customThemes: AppTheme[];
 };
 
-export type ThemeImportPayload = {
+type ThemeImportPayload = {
   version: 1;
   themes: AppTheme[];
   activeThemeId?: string;
 };
 
 const presetThemes = normalizeThemeCollection((presetThemeData as { themes?: unknown[] }).themes ?? [], true);
-const presetThemeMap = new Map(presetThemes.map(theme => [theme.id, theme]));
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -159,18 +157,14 @@ export function getThemeCatalog(customThemes: AppTheme[]) {
   return [...getPresetThemes(), ...normalizedCustomThemes];
 }
 
-export function getThemeById(themeId: string, customThemes: AppTheme[]) {
-  return getThemeCatalog(customThemes).find(theme => theme.id === themeId) ?? presetThemeMap.get(DEFAULT_THEME_ID)!;
-}
-
-export function getDefaultThemeSettings(): ThemeSettings {
+function getDefaultThemeSettings(): ThemeSettings {
   return {
     activeThemeId: DEFAULT_THEME_ID,
     customThemes: [],
   };
 }
 
-export function normalizeCustomThemes(customThemes: unknown) {
+function normalizeCustomThemes(customThemes: unknown) {
   if (!Array.isArray(customThemes)) {
     return [];
   }
@@ -284,14 +278,5 @@ export function buildThemeExportPayload(themeSettings: ThemeSettings): ThemeImpo
     version: 1,
     themes: normalizedThemeSettings.customThemes.map(theme => ({ ...theme, builtin: undefined })),
     activeThemeId: activeTheme?.id,
-  };
-}
-
-export function createPreferencePayload(themeSettings: ThemeSettings) {
-  const normalizedThemeSettings = normalizeThemeSettings(themeSettings);
-
-  return {
-    theme: normalizedThemeSettings.activeThemeId,
-    themeSettings: normalizedThemeSettings,
   };
 }

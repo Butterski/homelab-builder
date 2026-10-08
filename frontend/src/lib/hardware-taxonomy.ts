@@ -1,6 +1,6 @@
 import type { HardwareType } from '../types';
 
-export const HARDWARE_CATEGORY_LABELS: Record<string, string> = {
+const HARDWARE_CATEGORY_LABELS: Record<string, string> = {
   router: 'Routers',
   switch: 'Switches',
   nas: 'NAS',

@@ -1,18 +1,19 @@
-// @ts-nocheck
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import type { MouseEvent, ReactNode } from 'react';
 import ProjectsPage from '../projects-page';
 import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { buildApi } from '../../api/builds';
+import { buildApi, type Build } from '../../api/builds';
 import { useBuilderStore } from '../../store/builder-store';
-import { useAuth } from '../../../admin/hooks/use-auth';
 import { toast } from 'sonner';
 import { ApiError } from '../../../../lib/api';
 
+const user = vi.hoisted(() => ({ id: '1', email: 'test@example.com', name: 'Test User' }));
+
 // Mock dependencies
-vi.mock('../../../admin/hooks/use-auth', () => ({
-  useAuth: vi.fn(),
+vi.mock('../../../auth/hooks/use-auth', () => ({
+  useAuth: () => ({ user }),
 }));
 
 vi.mock('../../api/builds', () => ({
@@ -24,16 +25,17 @@ vi.mock('../../api/builds', () => ({
     rename: vi.fn(),
     duplicate: vi.fn(),
     updateTopology: vi.fn(),
-    calculateNetwork: vi.fn(),
     validateNetwork: vi.fn(),
   },
 }));
 
+type MenuProps = { children?: ReactNode; onClick?: (event: MouseEvent) => void };
+
 vi.mock('../../../../components/ui/dropdown-menu', () => ({
-  DropdownMenu: ({ children }: any) => <div>{children}</div>,
-  DropdownMenuTrigger: ({ children }: any) => <div>{children}</div>,
-  DropdownMenuContent: ({ children }: any) => <div>{children}</div>,
-  DropdownMenuItem: ({ children, onClick }: any) => (
+  DropdownMenu: ({ children }: MenuProps) => <div>{children}</div>,
+  DropdownMenuTrigger: ({ children }: MenuProps) => <div>{children}</div>,
+  DropdownMenuContent: ({ children }: MenuProps) => <div>{children}</div>,
+  DropdownMenuItem: ({ children, onClick }: MenuProps) => (
     <button
       onClick={e => {
         e.stopPropagation();
@@ -53,12 +55,6 @@ vi.mock('sonner', () => ({
   },
 }));
 
-vi.mock('../store/builder-store', () => ({
-  useBuilderStore: vi.fn(() => ({
-    loadBuild: vi.fn(),
-  })),
-}));
-
 // The page reads the project list through the shared query; every test gets
 // a cache of its own.
 function page() {
@@ -72,8 +68,21 @@ function page() {
   );
 }
 
+/** A build as the server returns it; tests fill in what they look at. */
+function serverBuild(fields: Partial<Build>): Build {
+  return {
+    id: 'build-1',
+    user_id: '1',
+    name: 'test',
+    revision: 1,
+    created_at: '',
+    updated_at: '',
+    ...fields,
+  };
+}
+
 // Mock URL object methods
-const mockCreateObjectURL = vi.fn();
+const mockCreateObjectURL = vi.fn<(blob: Blob) => string>();
 const mockRevokeObjectURL = vi.fn();
 URL.createObjectURL = mockCreateObjectURL;
 URL.revokeObjectURL = mockRevokeObjectURL;
@@ -82,15 +91,10 @@ describe('ProjectsPage Export Functionality', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockCreateObjectURL.mockReturnValue('blob:fake-url');
-
-    // Mock authenticated user
-    (useAuth as any).mockReturnValue({
-      user: { id: '1', email: 'test@example.com' },
-    });
   });
 
   it('uses Guided Planner as the only assisted project-start path', async () => {
-    (buildApi.list as any).mockResolvedValue([]);
+    vi.mocked(buildApi.list).mockResolvedValue([]);
 
     render(
       page(),
@@ -102,7 +106,7 @@ describe('ProjectsPage Export Functionality', () => {
   });
 
   it('asks what to plan when there is no project yet, and sends each answer to the planner', async () => {
-    (buildApi.list as any).mockResolvedValue([]);
+    vi.mocked(buildApi.list).mockResolvedValue([]);
 
     render(page());
 
@@ -125,8 +129,8 @@ describe('ProjectsPage Export Functionality', () => {
   });
 
   it('says so when a search matches nothing, without offering a first project', async () => {
-    (buildApi.list as any).mockResolvedValue([
-      { id: 'build-1', user_id: '1', name: 'Rack room', nodes: [], updated_at: '2026-10-01T00:00:00Z' },
+    vi.mocked(buildApi.list).mockResolvedValue([
+      serverBuild({ name: 'Rack room', nodes: [], updated_at: '2026-10-01T00:00:00Z' }),
     ]);
 
     render(page());
@@ -141,22 +145,23 @@ describe('ProjectsPage Export Functionality', () => {
 
   it('exports a project matching the .homelab.json schema', async () => {
     // Mock a project in the database
-    const mockBuild = {
-      id: 'build-1',
-      user_id: '1',
+    const mockBuild = serverBuild({
       name: 'Test Project',
       thumbnail: '',
-      nodes: [{ id: 'react-flow-1' }],
-      edges: [{ id: 'edge-1' }],
-      settings: { boughtItems: [], showBought: false },
+      nodes: [
+        { id: 'router-1', type: 'router', name: 'Router' },
+        { id: 'server-1', type: 'server', name: 'Server' },
+      ],
+      edges: [{ id: 'edge-1', source_node_id: 'router-1', target_node_id: 'server-1' }],
+      settings: { planner: { goals: ['backup'] }, setupDone: ['router'] },
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-    };
+    });
 
     const mockBuildList = [{ ...mockBuild }];
 
-    (buildApi.list as any).mockResolvedValue(mockBuildList);
-    (buildApi.get as any).mockResolvedValue(mockBuild);
+    vi.mocked(buildApi.list).mockResolvedValue(mockBuildList);
+    vi.mocked(buildApi.get).mockResolvedValue(mockBuild);
 
     render(
       page(),
@@ -187,21 +192,19 @@ describe('ProjectsPage Export Functionality', () => {
     expect(payload).toHaveProperty('version', 1);
     expect(payload).toHaveProperty('name', 'Test Project');
     expect(payload).toHaveProperty('exportedAt');
-    expect(payload.nodes).toHaveLength(1);
-    expect(payload.edges).toHaveLength(1);
-    expect(payload).toHaveProperty('boughtItems');
-    expect(payload).toHaveProperty('showBought');
+    expect(payload.nodes).toEqual(mockBuild.nodes);
+    expect(payload.edges).toEqual(mockBuild.edges);
+    // The settings go out as the server keeps them.
+    expect(payload.settings).toEqual(mockBuild.settings);
   });
 
   it('filters invalid imported edges and warns while allowing partial import', async () => {
-    (buildApi.list as any).mockResolvedValue([]);
-    (buildApi.create as any).mockResolvedValue({
-      id: 'new-build',
-      name: 'Imported Build',
-      revision: 1,
-    });
-    (buildApi.updateTopology as any).mockResolvedValue({
-      build: { id: 'new-build', name: 'Imported Build', revision: 2, nodes: [] },
+    vi.mocked(buildApi.list).mockResolvedValue([]);
+    vi.mocked(buildApi.create).mockResolvedValue(
+      serverBuild({ id: 'new-build', name: 'Imported Build', revision: 1 }),
+    );
+    vi.mocked(buildApi.updateTopology).mockResolvedValue({
+      build: serverBuild({ id: 'new-build', name: 'Imported Build', revision: 2, nodes: [] }),
       validation: { valid: true, errors: [], warnings: [] },
     });
 
@@ -214,7 +217,7 @@ describe('ProjectsPage Export Functionality', () => {
 
     const readAsTextSpy = vi
       .spyOn(FileReader.prototype, 'readAsText')
-      .mockImplementation(function () {
+      .mockImplementation(function (this: FileReader) {
         const payload = JSON.stringify({
           nodes: [
             { id: 'router-1', type: 'router', name: 'Router' },
@@ -225,7 +228,9 @@ describe('ProjectsPage Export Functionality', () => {
             { source: 'router-1', target: 'missing-node', speed: '1 GbE' },
           ],
         });
-        this.onload?.({ target: { result: payload } } as any);
+        // The page reads the text off the load event's reader.
+        Object.defineProperty(this, 'result', { value: payload });
+        this.dispatchEvent(new Event('load'));
       });
 
     const importFile = new File(['ignored'], 'import.homelab.json', { type: 'application/json' });
@@ -241,8 +246,8 @@ describe('ProjectsPage Export Functionality', () => {
       expect(buildApi.create).toHaveBeenCalled();
     });
 
-    expect((buildApi.create as any).mock.calls[0][0].nodes).toHaveLength(0);
-    const topologyArgs = (buildApi.updateTopology as any).mock.calls[0][1];
+    expect(vi.mocked(buildApi.create).mock.calls[0][0].nodes).toHaveLength(0);
+    const topologyArgs = vi.mocked(buildApi.updateTopology).mock.calls[0][1];
     expect(topologyArgs.revision).toBe(1);
     expect(topologyArgs.nodes).toHaveLength(2);
     expect(topologyArgs.edges).toHaveLength(1);
@@ -253,13 +258,10 @@ describe('ProjectsPage Export Functionality', () => {
   });
 
   it('creates a project of the kind picked in the dialog', async () => {
-    (buildApi.list as any).mockResolvedValue([]);
-    (buildApi.create as any).mockResolvedValue({
-      id: 'party-1',
-      name: 'Autumn LAN',
-      kind: 'lan_party',
-      revision: 1,
-    });
+    vi.mocked(buildApi.list).mockResolvedValue([]);
+    vi.mocked(buildApi.create).mockResolvedValue(
+      serverBuild({ id: 'party-1', name: 'Autumn LAN', kind: 'lan_party', revision: 1 }),
+    );
 
     render(
       page(),
@@ -292,10 +294,10 @@ describe('ProjectsPage Export Functionality', () => {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
-    (buildApi.list as any).mockResolvedValue([
-      { ...base, id: 'b1', name: 'Rack at home', kind: 'homelab' },
-      { ...base, id: 'b2', name: 'Valheim box', kind: 'game_server' },
-      { ...base, id: 'b3', name: 'Old project' },
+    vi.mocked(buildApi.list).mockResolvedValue([
+      serverBuild({ ...base, id: 'b1', name: 'Rack at home', kind: 'homelab' }),
+      serverBuild({ ...base, id: 'b2', name: 'Valheim box', kind: 'game_server' }),
+      serverBuild({ ...base, id: 'b3', name: 'Old project' }),
     ]);
 
     render(
@@ -310,13 +312,11 @@ describe('ProjectsPage Export Functionality', () => {
   });
 
   it('shows a specific error when backend rejects invalid edge references', async () => {
-    (buildApi.list as any).mockResolvedValue([]);
-    (buildApi.create as any).mockResolvedValue({
-      id: 'new-build',
-      name: 'Imported Build',
-      revision: 1,
-    });
-    (buildApi.updateTopology as any).mockRejectedValue(
+    vi.mocked(buildApi.list).mockResolvedValue([]);
+    vi.mocked(buildApi.create).mockResolvedValue(
+      serverBuild({ id: 'new-build', name: 'Imported Build', revision: 1 }),
+    );
+    vi.mocked(buildApi.updateTopology).mockRejectedValue(
       new ApiError(400, 'UNKNOWN', 'invalid edge references: 1 edge(s) reference missing node(s)'),
     );
 
@@ -327,12 +327,14 @@ describe('ProjectsPage Export Functionality', () => {
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
     const readAsTextSpy = vi
       .spyOn(FileReader.prototype, 'readAsText')
-      .mockImplementation(function () {
+      .mockImplementation(function (this: FileReader) {
         const payload = JSON.stringify({
           nodes: [{ id: 'router-1', type: 'router', name: 'Router' }],
           edges: [],
         });
-        this.onload?.({ target: { result: payload } } as any);
+        // The page reads the text off the load event's reader.
+        Object.defineProperty(this, 'result', { value: payload });
+        this.dispatchEvent(new Event('load'));
       });
 
     fireEvent.change(fileInput, {
@@ -356,22 +358,19 @@ describe('ProjectsPage Export Functionality', () => {
 });
 
 describe('ProjectsPage and the open project', () => {
-  const listed = {
-    id: 'build-1',
-    user_id: '1',
+  const listed = serverBuild({
     name: 'Garage Lab',
     revision: 3,
     nodes: [],
     settings: {},
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
-  };
+  });
 
   beforeEach(() => {
     vi.clearAllMocks();
-    (useAuth as any).mockReturnValue({ user: { id: '1', email: 'test@example.com' } });
-    (buildApi.list as any).mockResolvedValue([{ ...listed }]);
-    (buildApi.delete as any).mockResolvedValue(undefined);
+    vi.mocked(buildApi.list).mockResolvedValue([{ ...listed }]);
+    vi.mocked(buildApi.delete).mockResolvedValue(undefined);
     // The project is open elsewhere in the app (sidebar, config generator).
     useBuilderStore.getState().clearCurrentBuild();
     useBuilderStore.setState({ currentBuildId: 'build-1', projectName: 'Garage Lab' });
@@ -408,7 +407,7 @@ describe('ProjectsPage and the open project', () => {
   });
 
   it('shows the new name everywhere after a rename', async () => {
-    (buildApi.rename as any).mockResolvedValue({ ...listed, name: 'Basement Lab', revision: 4 });
+    vi.mocked(buildApi.rename).mockResolvedValue({ ...listed, name: 'Basement Lab', revision: 4 });
     await openPage();
 
     fireEvent.click(screen.getByRole('button', { name: 'Rename' }));
@@ -423,7 +422,7 @@ describe('ProjectsPage and the open project', () => {
 
   it('renames a project that was saved since the list was loaded', async () => {
     // The list still has revision 3; the builder saved revision 6 meanwhile.
-    (buildApi.rename as any)
+    vi.mocked(buildApi.rename)
       .mockRejectedValueOnce(
         new ApiError(409, 'UNKNOWN', 'build revision conflict', {
           error: 'build revision conflict',

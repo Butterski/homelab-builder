@@ -1,4 +1,4 @@
-import { memo, useState, useMemo } from 'react';
+import { memo, useState, useMemo, type ComponentType } from 'react';
 import { useBuilderStore } from '../store/builder-store';
 import { Card, CardContent } from '../../../components/ui/card';
 import { Progress } from '../../../components/ui/progress';
@@ -15,6 +15,37 @@ const parseSpec = (val?: string | number): number => {
   const matches = val.toString().match(/\d+/);
   return matches ? parseInt(matches[0], 10) : 0;
 };
+
+const getProgressColor = (percent: number) => {
+  if (percent >= 90) return 'bg-destructive';
+  if (percent >= 75) return 'bg-amber-500';
+  return 'bg-primary';
+};
+
+interface ResourceBarProps {
+  icon: ComponentType<{ className?: string }>;
+  label: string;
+  usage: string;
+  percent: number;
+}
+
+function ResourceBar({ icon: Icon, label, usage, percent }: ResourceBarProps) {
+  return (
+    <div className="space-y-1.5">
+      <div className="flex justify-between items-center text-xs">
+        <span className="flex items-center gap-1.5 text-muted-foreground">
+          <Icon className="size-3.5" /> {label}
+        </span>
+        <span className="font-mono font-medium">{usage}</span>
+      </div>
+      <Progress
+        value={Math.min(percent, 100)}
+        className="h-2"
+        indicatorClassName={getProgressColor(percent)}
+      />
+    </div>
+  );
+}
 
 export const LiveResourceDashboard = memo(function LiveResourceDashboard() {
   const hardwareNodes = useBuilderStore(state => state.hardwareNodes);
@@ -98,7 +129,7 @@ export const LiveResourceDashboard = memo(function LiveResourceDashboard() {
       usedStorageGb,
       storagePercent,
       totalPowerDraw,
-      hasCompute: totalRamMb > 0 || totalCpuThreads > 0, // Wait, maybe we want to show power even without compute
+      hasCompute: totalRamMb > 0 || totalCpuThreads > 0,
     };
   }, [hardwareNodes]);
 
@@ -122,12 +153,6 @@ export const LiveResourceDashboard = memo(function LiveResourceDashboard() {
   } else if (maxPercent >= 60) {
     lightColor = 'bg-yellow-500';
   }
-
-  const getProgressColor = (percent: number) => {
-    if (percent >= 90) return 'bg-destructive';
-    if (percent >= 75) return 'bg-amber-500';
-    return 'bg-primary';
-  };
 
   return (
     <div
@@ -166,54 +191,24 @@ export const LiveResourceDashboard = memo(function LiveResourceDashboard() {
 
         {isExpanded && (
           <CardContent className="p-4 pt-2 space-y-4">
-            <div className="space-y-1.5">
-              <div className="flex justify-between items-center text-xs">
-                <span className="flex items-center gap-1.5 text-muted-foreground">
-                  <Cpu className="size-3.5" /> CPU Threads
-                </span>
-                <span className="font-mono font-medium">
-                  {stats.usedCpuThreads} / {stats.totalCpuThreads}
-                </span>
-              </div>
-              <Progress
-                value={Math.min(stats.cpuPercent, 100)}
-                className="h-2"
-                indicatorClassName={getProgressColor(stats.cpuPercent)}
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <div className="flex justify-between items-center text-xs">
-                <span className="flex items-center gap-1.5 text-muted-foreground">
-                  <Package className="size-3.5" /> Memory (RAM)
-                </span>
-                <span className="font-mono font-medium">
-                  {Math.round((stats.usedRamMb / 1024) * 10) / 10}G /{' '}
-                  {Math.round((stats.totalRamMb / 1024) * 10) / 10}G
-                </span>
-              </div>
-              <Progress
-                value={Math.min(stats.ramPercent, 100)}
-                className="h-2"
-                indicatorClassName={getProgressColor(stats.ramPercent)}
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <div className="flex justify-between items-center text-xs">
-                <span className="flex items-center gap-1.5 text-muted-foreground">
-                  <HardDrive className="size-3.5" /> Storage
-                </span>
-                <span className="font-mono font-medium">
-                  {stats.usedStorageGb}G / {stats.totalStorageGb}G
-                </span>
-              </div>
-              <Progress
-                value={Math.min(stats.storagePercent, 100)}
-                className="h-2"
-                indicatorClassName={getProgressColor(stats.storagePercent)}
-              />
-            </div>
+            <ResourceBar
+              icon={Cpu}
+              label="CPU Threads"
+              usage={`${stats.usedCpuThreads} / ${stats.totalCpuThreads}`}
+              percent={stats.cpuPercent}
+            />
+            <ResourceBar
+              icon={Package}
+              label="Memory (RAM)"
+              usage={`${Math.round((stats.usedRamMb / 1024) * 10) / 10}G / ${Math.round((stats.totalRamMb / 1024) * 10) / 10}G`}
+              percent={stats.ramPercent}
+            />
+            <ResourceBar
+              icon={HardDrive}
+              label="Storage"
+              usage={`${stats.usedStorageGb}G / ${stats.totalStorageGb}G`}
+              percent={stats.storagePercent}
+            />
 
             {stats.totalPowerDraw > 0 && (
               <div className="pt-2 mt-2 border-t space-y-2">

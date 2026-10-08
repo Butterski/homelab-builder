@@ -25,6 +25,7 @@ import {
 import { Button } from '../../../components/ui/button';
 import { Badge } from '../../../components/ui/badge';
 import { Progress } from '../../../components/ui/progress';
+import { formatMemory } from '../../../lib/format';
 import { cn } from '../../../lib/utils';
 import type { HardwareNode, HardwareNodeValidationIssue, HardwareType } from '../../../types';
 import { isComputeNode, isNetworkNode, nodeHasStorage } from '../../../lib/hardware-config';
@@ -182,11 +183,6 @@ function actionToneClass(tone: ActionItem['tone']) {
   if (tone === 'warning') return 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300';
   if (tone === 'success') return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300';
   return 'border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300';
-}
-
-function formatRam(mb: number) {
-  if (mb <= 0) return '0 GB';
-  return `${Math.round((mb / 1024) * 10) / 10} GB`;
 }
 
 function formatStorage(gb: number) {
@@ -587,7 +583,7 @@ export const ReadinessReportDialog = memo(function ReadinessReportDialog({
                   <div className="flex justify-between gap-3">
                     <span>RAM</span>
                     <span className="font-mono text-foreground">
-                      {formatRam(report.stats.usedRamMb)} / {formatRam(report.stats.ramCapacityMb)}
+                      {formatMemory(report.stats.usedRamMb)} / {formatMemory(report.stats.ramCapacityMb)}
                     </span>
                   </div>
                   <div className="flex justify-between gap-3">

@@ -1,5 +1,5 @@
-import { useState } from "react"
-import { useSurvey, useSubmitSurvey, useUpdateSurvey } from "../api/use-survey"
+import { useState, type ReactNode } from "react"
+import { useSurvey, useSubmitSurvey, useUpdateSurvey, type SurveyAnswers } from "../api/use-survey"
 import { X, Star, ExternalLink } from "lucide-react"
 import { Button } from "../../../components/ui/button"
 
@@ -7,24 +7,9 @@ interface SurveyModalProps {
     onClose: () => void
 }
 
-const STEPS = ["intro", "usage", "features", "opensource", "about", "contact", "company", "done"] as const
-type Step = typeof STEPS[number]
+type Step = "intro" | "usage" | "features" | "opensource" | "about" | "contact" | "company" | "done"
 
-interface FormState {
-    rating: number
-    will_use_app: string
-    feature_wishlist: string
-    open_source_interest: string
-    contribution_intent: string
-    discord_handle: string
-    hear_about_us: string
-    experience_level: string
-    primary_use_case: string
-    is_company: boolean
-    company_contact: string
-}
-
-const defaultForm: FormState = {
+const defaultForm: SurveyAnswers = {
     rating: 0,
     will_use_app: "",
     feature_wishlist: "",
@@ -38,6 +23,42 @@ const defaultForm: FormState = {
     company_contact: "",
 }
 
+interface OptionButtonsProps {
+    options: Array<[value: string, label: string]>
+    value: string
+    onSelect: (value: string) => void
+    className: string
+}
+
+function OptionButtons({ options, value, onSelect, className }: OptionButtonsProps) {
+    return (
+        <div className={className}>
+            {options.map(([v, l]) => (
+                <button type="button" key={v} onClick={() => onSelect(v)}
+                    className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${value === v ? "bg-primary text-primary-foreground border-primary" : "hover:bg-accent"}`}>
+                    {l}
+                </button>
+            ))}
+        </div>
+    )
+}
+
+interface StepNavProps {
+    onBack: () => void
+    onNext: () => void
+    nextDisabled?: boolean
+    nextLabel?: ReactNode
+}
+
+function StepNav({ onBack, onNext, nextDisabled, nextLabel = "Next →" }: StepNavProps) {
+    return (
+        <div className="flex gap-2">
+            <Button variant="outline" className="flex-1" onClick={onBack}>← Back</Button>
+            <Button className="flex-1" onClick={onNext} disabled={nextDisabled}>{nextLabel}</Button>
+        </div>
+    )
+}
+
 export function SurveyModal({ onClose }: SurveyModalProps) {
     const { data: existing } = useSurvey()
     const submitMut = useSubmitSurvey()
@@ -45,9 +66,9 @@ export function SurveyModal({ onClose }: SurveyModalProps) {
     const isEditing = !!existing
 
     const [step, setStep] = useState<Step>(existing ? "usage" : "intro")
-    const [form, setForm] = useState<FormState>({ ...defaultForm, ...existing })
+    const [form, setForm] = useState<SurveyAnswers>({ ...defaultForm, ...existing })
 
-    const set = (key: keyof FormState, val: string | number | boolean) => setForm(prev => ({ ...prev, [key]: val }))
+    const set = (key: keyof SurveyAnswers, val: string | number | boolean) => setForm(prev => ({ ...prev, [key]: val }))
 
     const handleSubmit = async () => {
         const fn = isEditing ? updateMut.mutateAsync : submitMut.mutateAsync
@@ -101,24 +122,12 @@ export function SurveyModal({ onClose }: SurveyModalProps) {
                             </div>
 
                             <h3 className="font-semibold pt-2">Are you planning to use HLBuilder?</h3>
-                            <div className="grid grid-cols-3 gap-2">
-                                {[["yes", "Yes 🙌"], ["maybe", "Maybe 🤔"], ["no", "Not really 😬"]].map(([v, l]) => (
-                                    <button type="button" key={v} onClick={() => set("will_use_app", v)}
-                                        className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${form.will_use_app === v ? "bg-primary text-primary-foreground border-primary" : "hover:bg-accent"}`}>
-                                        {l}
-                                    </button>
-                                ))}
-                            </div>
+                            <OptionButtons className="grid grid-cols-3 gap-2" value={form.will_use_app} onSelect={v => set("will_use_app", v)}
+                                options={[["yes", "Yes 🙌"], ["maybe", "Maybe 🤔"], ["no", "Not really 😬"]]} />
 
                             <h3 className="font-semibold pt-2">What best describes your use case?</h3>
-                            <div className="grid grid-cols-2 gap-2">
-                                {[["homeserver", "Home Server"], ["development", "Development"], ["learning", "Learning"], ["other", "Other"]].map(([v, l]) => (
-                                    <button type="button" key={v} onClick={() => set("primary_use_case", v)}
-                                        className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${form.primary_use_case === v ? "bg-primary text-primary-foreground border-primary" : "hover:bg-accent"}`}>
-                                        {l}
-                                    </button>
-                                ))}
-                            </div>
+                            <OptionButtons className="grid grid-cols-2 gap-2" value={form.primary_use_case} onSelect={v => set("primary_use_case", v)}
+                                options={[["homeserver", "Home Server"], ["development", "Development"], ["learning", "Learning"], ["other", "Other"]]} />
                             <Button className="w-full" onClick={() => setStep("features")} disabled={!form.rating || !form.will_use_app}>Next →</Button>
                         </div>
                     )}
@@ -134,10 +143,7 @@ export function SurveyModal({ onClose }: SurveyModalProps) {
                                 placeholder="More node types, monitoring integration, automatic config deployment…"
                                 rows={4}
                                 className="w-full rounded-lg border bg-background px-3 py-2 text-sm resize-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
-                            <div className="flex gap-2">
-                                <Button variant="outline" className="flex-1" onClick={() => setStep("usage")}>← Back</Button>
-                                <Button className="flex-1" onClick={() => setStep("opensource")}>Next →</Button>
-                            </div>
+                            <StepNav onBack={() => setStep("usage")} onNext={() => setStep("opensource")} />
                         </div>
                     )}
 
@@ -146,31 +152,16 @@ export function SurveyModal({ onClose }: SurveyModalProps) {
                         <div className="space-y-4">
                             <h3 className="font-semibold text-lg">Are you interested in an open source model?</h3>
                             <p className="text-sm text-muted-foreground">We're exploring fully open-sourcing HLBuilder for self-hosting and community contributions.</p>
-                            <div className="grid grid-cols-2 gap-2">
-                                {[["yes", "Yes! 🎉"], ["no", "Not really"]].map(([v, l]) => (
-                                    <button type="button" key={v} onClick={() => set("open_source_interest", v)}
-                                        className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${form.open_source_interest === v ? "bg-primary text-primary-foreground border-primary" : "hover:bg-accent"}`}>
-                                        {l}
-                                    </button>
-                                ))}
-                            </div>
+                            <OptionButtons className="grid grid-cols-2 gap-2" value={form.open_source_interest} onSelect={v => set("open_source_interest", v)}
+                                options={[["yes", "Yes! 🎉"], ["no", "Not really"]]} />
                             {form.open_source_interest === "yes" && (
                                 <div className="space-y-2 pt-1">
                                     <p className="text-sm font-medium">Would you want to…</p>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        {[["contribute", "💻 Contribute code"], ["selfhost", "🏠 Self-host only"]].map(([v, l]) => (
-                                            <button type="button" key={v} onClick={() => set("contribution_intent", v)}
-                                                className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${form.contribution_intent === v ? "bg-primary text-primary-foreground border-primary" : "hover:bg-accent"}`}>
-                                                {l}
-                                            </button>
-                                        ))}
-                                    </div>
+                                    <OptionButtons className="grid grid-cols-2 gap-2" value={form.contribution_intent} onSelect={v => set("contribution_intent", v)}
+                                        options={[["contribute", "💻 Contribute code"], ["selfhost", "🏠 Self-host only"]]} />
                                 </div>
                             )}
-                            <div className="flex gap-2">
-                                <Button variant="outline" className="flex-1" onClick={() => setStep("features")}>← Back</Button>
-                                <Button className="flex-1" onClick={() => setStep("about")} disabled={!form.open_source_interest}>Next →</Button>
-                            </div>
+                            <StepNav onBack={() => setStep("features")} onNext={() => setStep("about")} nextDisabled={!form.open_source_interest} />
                         </div>
                     )}
 
@@ -181,31 +172,16 @@ export function SurveyModal({ onClose }: SurveyModalProps) {
 
                             <div>
                                 <span className="text-sm font-medium">Experience level</span>
-                                <div className="grid grid-cols-3 gap-2 mt-2">
-                                    {[["beginner", "Beginner"], ["intermediate", "Intermediate"], ["expert", "Expert"]].map(([v, l]) => (
-                                        <button key={v} type="button" onClick={() => set("experience_level", v)}
-                                            className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${form.experience_level === v ? "bg-primary text-primary-foreground border-primary" : "hover:bg-accent"}`}>
-                                            {l}
-                                        </button>
-                                    ))}
-                                </div>
+                                <OptionButtons className="grid grid-cols-3 gap-2 mt-2" value={form.experience_level} onSelect={v => set("experience_level", v)}
+                                    options={[["beginner", "Beginner"], ["intermediate", "Intermediate"], ["expert", "Expert"]]} />
                             </div>
 
                             <div>
                                 <span className="text-sm font-medium">How did you hear about us?</span>
-                                <div className="grid grid-cols-2 gap-2 mt-2">
-                                    {[["reddit", "Reddit"], ["github", "GitHub"], ["friend", "Friend/Colleague"], ["other", "Other"]].map(([v, l]) => (
-                                        <button key={v} type="button" onClick={() => set("hear_about_us", v)}
-                                            className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${form.hear_about_us === v ? "bg-primary text-primary-foreground border-primary" : "hover:bg-accent"}`}>
-                                            {l}
-                                        </button>
-                                    ))}
-                                </div>
+                                <OptionButtons className="grid grid-cols-2 gap-2 mt-2" value={form.hear_about_us} onSelect={v => set("hear_about_us", v)}
+                                    options={[["reddit", "Reddit"], ["github", "GitHub"], ["friend", "Friend/Colleague"], ["other", "Other"]]} />
                             </div>
-                            <div className="flex gap-2">
-                                <Button variant="outline" className="flex-1" onClick={() => setStep("opensource")}>← Back</Button>
-                                <Button className="flex-1" onClick={() => setStep("contact")}>Next →</Button>
-                            </div>
+                            <StepNav onBack={() => setStep("opensource")} onNext={() => setStep("contact")} />
                         </div>
                     )}
 
@@ -220,10 +196,7 @@ export function SurveyModal({ onClose }: SurveyModalProps) {
                                 placeholder="yourname or yourname#1234"
                                 aria-label="Discord handle"
                                 className="w-full rounded-lg border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
-                            <div className="flex gap-2">
-                                <Button variant="outline" className="flex-1" onClick={() => setStep("about")}>← Back</Button>
-                                <Button className="flex-1" onClick={() => setStep("company")}>Next →</Button>
-                            </div>
+                            <StepNav onBack={() => setStep("about")} onNext={() => setStep("company")} />
                         </div>
                     )}
 
@@ -253,12 +226,8 @@ export function SurveyModal({ onClose }: SurveyModalProps) {
                                         className="w-full mt-1 rounded-lg border bg-background px-3 py-2 text-sm resize-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
                                 </div>
                             )}
-                            <div className="flex gap-2">
-                                <Button variant="outline" className="flex-1" onClick={() => setStep("contact")}>← Back</Button>
-                                <Button className="flex-1" onClick={handleSubmit} disabled={isPending}>
-                                    {isPending ? "Submitting…" : isEditing ? "Save Changes ✓" : "Submit Survey 🚀"}
-                                </Button>
-                            </div>
+                            <StepNav onBack={() => setStep("contact")} onNext={handleSubmit} nextDisabled={isPending}
+                                nextLabel={isPending ? "Submitting…" : isEditing ? "Save Changes ✓" : "Submit Survey 🚀"} />
                         </div>
                     )}
 

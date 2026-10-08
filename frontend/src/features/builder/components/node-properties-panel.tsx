@@ -17,7 +17,7 @@ import {
   Save,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import type { HardwareSpec, HardwareType } from '../../../types';
+import type { HardwareNode, HardwareSpec } from '../../../types';
 import { VMManager } from './vm-manager';
 import { InternalComponentManager } from './internal-component-manager';
 import { GamingNodeFields } from '../../gaming/components/gaming-node-fields';
@@ -31,7 +31,7 @@ import {
   isNetworkNode,
   isFloorNode,
 } from '../../../lib/hardware-config';
-import { getVmResourceUsage } from '../lib/resource-usage';
+import { getHostLoad } from '../lib/resource-usage';
 import { getNodePortCount, parsePortCount } from '../lib/port-count';
 import { DEFAULT_DEVICE_U } from './rack-node-constants';
 import { useHardware } from '../../catalog/api/use-hardware';
@@ -40,6 +40,26 @@ import { HardwareBlueprintCreator } from '../../catalog/components/hardware-blue
 const IP_REGEX =
   /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
 
+/** A size in GB as the form shows it: whole terabytes in TB, anything else in GB. */
+function sizeField(gb: number): { value: string; unit: 'GB' | 'TB' } {
+  return gb >= 1000 && gb % 1000 === 0
+    ? { value: String(gb / 1000), unit: 'TB' }
+    : { value: String(gb), unit: 'GB' };
+}
+
+type FieldErrors = { ip?: string; mask?: string; gateway?: string; macAddress?: string };
+
+/** What is wrong with the network fields of the form; empty when they can be saved. */
+function fieldErrors(fields: { ip: string; mask: string; gateway: string; macAddress: string }) {
+  const errors: FieldErrors = {};
+  if (fields.ip && !IP_REGEX.test(fields.ip)) errors.ip = 'Invalid IPv4';
+  if (fields.mask && !IP_REGEX.test(fields.mask)) errors.mask = 'Invalid mask';
+  if (fields.gateway && !IP_REGEX.test(fields.gateway)) errors.gateway = 'Invalid gateway';
+  if (fields.macAddress && !/^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/.test(fields.macAddress))
+    errors.macAddress = 'Invalid MAC';
+  return errors;
+}
+
 export const NodePropertiesPanel = memo(function NodePropertiesPanel() {
   const {
     selectedNodeId,
@@ -47,7 +67,7 @@ export const NodePropertiesPanel = memo(function NodePropertiesPanel() {
     selectNode,
     updateHardware,
     removeHardware,
-    autoAssignIP,
+    reassignAllIPs,
   } = useBuilderStore(
     useShallow(state => ({
       selectedNodeId: state.selectedNodeId,
@@ -55,7 +75,7 @@ export const NodePropertiesPanel = memo(function NodePropertiesPanel() {
       selectNode: state.selectNode,
       updateHardware: state.updateHardware,
       removeHardware: state.removeHardware,
-      autoAssignIP: state.autoAssignIP,
+      reassignAllIPs: state.reassignAllIPs,
     })),
   );
 
@@ -85,12 +105,7 @@ export const NodePropertiesPanel = memo(function NodePropertiesPanel() {
   const [ramUnit, setRamUnit] = useState<'GB' | 'TB'>('GB');
   const [storageUnit, setStorageUnit] = useState<'GB' | 'TB'>('GB');
 
-  const [errors, setErrors] = useState<{
-    ip?: string;
-    mask?: string;
-    gateway?: string;
-    macAddress?: string;
-  }>({});
+  const [errors, setErrors] = useState<FieldErrors>({});
   const [netOpen, setNetOpen] = useState(false);
   const [modelSearchOpen, setModelSearchOpen] = useState(false);
   const [blueprintCreatorOpen, setBlueprintCreatorOpen] = useState(false);
@@ -114,17 +129,17 @@ export const NodePropertiesPanel = memo(function NodePropertiesPanel() {
     selectedNode ? { category: selectedNode.type, limit: 100 } : {},
   );
 
-  // Pre-compute filtered hardware list once to avoid iterating twice (filter + map)
+  const hardwareList = hardwareResponse?.data;
   const filteredHardware = useMemo(() => {
-    if (!hardwareResponse?.data || !model) return [];
+    if (!hardwareList || !model) return [];
     const lowerModel = model.toLowerCase();
-    return hardwareResponse.data.filter(p => {
+    return hardwareList.filter(p => {
       const full = (p.brand + ' ' + p.model).toLowerCase();
       return full.includes(lowerModel) && full !== lowerModel;
     });
-  }, [hardwareResponse?.data, model]);
+  }, [hardwareList, model]);
 
-  const parseHardwareSpecString = (spec: Record<string, any>) => {
+  const parseHardwareSpecString = (spec: Record<string, string | number | boolean>) => {
     let cpu = undefined;
     if (spec.cpu) {
       const cpuStr = String(spec.cpu).toLowerCase();
@@ -174,168 +189,114 @@ export const NodePropertiesPanel = memo(function NodePropertiesPanel() {
     return { cpu, ram: ramGB, storage: storageGB, rackUnits };
   };
 
-  const validate = () => {
-    const newErrors: typeof errors = {};
-    if (ip && !IP_REGEX.test(ip)) newErrors.ip = 'Invalid IPv4';
-    if (mask && !IP_REGEX.test(mask)) newErrors.mask = 'Invalid mask';
-    if (gateway && !IP_REGEX.test(gateway)) newErrors.gateway = 'Invalid gateway';
-    if (macAddress && !/^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/.test(macAddress))
-      newErrors.macAddress = 'Invalid MAC';
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
+  const selectedId = selectedNode?.id;
+  const selectedType = selectedNode?.type;
 
-  // Sync from store to local state (only if changed to avoid loops)
-  useEffect(() => {
+  // The form follows the device in the store: another selection, or a change
+  // made elsewhere (undo, a reload, addresses from a save).
+  const [syncedNode, setSyncedNode] = useState<HardwareNode | undefined>(undefined);
+  if (selectedNode !== syncedNode) {
+    setSyncedNode(selectedNode);
     if (selectedNode) {
-      if (name !== selectedNode.name) setName(selectedNode.name);
-      if (ip !== (selectedNode.ip || '')) setIp(selectedNode.ip || '');
-      if (macAddress !== (selectedNode.mac_address || ''))
-        setMacAddress(selectedNode.mac_address || '');
-      if (mask !== (selectedNode.subnet_mask || '')) setMask(selectedNode.subnet_mask || '');
-      if (gateway !== (selectedNode.gateway || '')) setGateway(selectedNode.gateway || '');
+      const details = selectedNode.details;
+      setName(selectedNode.name);
+      setIp(selectedNode.ip || '');
+      setMacAddress(selectedNode.mac_address || '');
+      setMask(selectedNode.subnet_mask || '');
+      setGateway(selectedNode.gateway || '');
       const defaultDhcp = selectedNode.type === 'router' || selectedNode.type === 'firewall';
-      if (dhcpEnabled !== (selectedNode.details?.dhcp_enabled ?? defaultDhcp))
-        setDhcpEnabled(selectedNode.details?.dhcp_enabled ?? defaultDhcp);
-      if (dhcpLocked !== (selectedNode.details?.dhcp_locked ?? false))
-        setDhcpLocked(selectedNode.details?.dhcp_locked ?? false);
+      setDhcpEnabled(details?.dhcp_enabled ?? defaultDhcp);
+      setDhcpLocked(details?.dhcp_locked ?? false);
+      setModel(details?.model || '');
+      setCpu(details?.cpu?.toString() || '');
 
-      if (model !== (selectedNode.details?.model || ''))
-        setModel(selectedNode.details?.model || '');
-      if (cpu !== (selectedNode.details?.cpu?.toString() || ''))
-        setCpu(selectedNode.details?.cpu?.toString() || '');
+      const ramField = details?.ram
+        ? sizeField(Number(details.ram))
+        : { value: '', unit: 'GB' as const };
+      setRam(ramField.value);
+      setRamUnit(ramField.unit);
+      const storageField = details?.storage
+        ? sizeField(Number(details.storage))
+        : { value: '', unit: 'GB' as const };
+      setStorage(storageField.value);
+      setStorageUnit(storageField.unit);
 
-      // Re-hydrate RAM with TB format extraction
-      if (selectedNode.details?.ram) {
-        const r = Number(selectedNode.details.ram);
-        if (r >= 1000 && r % 1000 === 0) {
-          setRam(String(r / 1000));
-          setRamUnit('TB');
-        } else {
-          setRam(String(r));
-          setRamUnit('GB');
-        }
-      } else {
-        setRam('');
-        setRamUnit('GB');
-      }
-
-      // Re-hydrate Storage with TB format extraction
-      if (selectedNode.details?.storage) {
-        const s = Number(selectedNode.details.storage);
-        if (s >= 1000 && s % 1000 === 0) {
-          setStorage(String(s / 1000));
-          setStorageUnit('TB');
-        } else {
-          setStorage(String(s));
-          setStorageUnit('GB');
-        }
-      } else {
-        setStorage('');
-        setStorageUnit('GB');
-      }
-
-      const portValue = selectedNode.details?.ports;
-      const normalizedPorts =
+      const portValue = details?.ports;
+      setPorts(
         portValue === undefined
           ? ''
-          : String(parsePortCount(portValue) ?? getNodePortCount(selectedNode.type, portValue));
-      if (ports !== normalizedPorts) setPorts(normalizedPorts);
-      if (hypervisorEnabled !== (selectedNode.details?.hypervisor_enabled ?? false))
-        setHypervisorEnabled(selectedNode.details?.hypervisor_enabled ?? false);
-      if (appHostEnabled !== (selectedNode.details?.app_host_enabled ?? false))
-        setAppHostEnabled(selectedNode.details?.app_host_enabled ?? false);
-      if (storageEnabled !== (selectedNode.details?.storage_enabled ?? false))
-        setStorageEnabled(selectedNode.details?.storage_enabled ?? false);
-      if (routingEnabled !== (selectedNode.details?.routing_enabled ?? false))
-        setRoutingEnabled(selectedNode.details?.routing_enabled ?? false);
-      if (natEnabled !== (selectedNode.details?.nat_enabled ?? false))
-        setNatEnabled(selectedNode.details?.nat_enabled ?? false);
-      if (firewallEnabled !== (selectedNode.details?.firewall_enabled ?? false))
-        setFirewallEnabled(selectedNode.details?.firewall_enabled ?? false);
-      if (networkZone !== (selectedNode.details?.network_zone || 'lan'))
-        setNetworkZone(selectedNode.details?.network_zone || 'lan');
-      if (publicIP !== (selectedNode.details?.public_ip || ''))
-        setPublicIP(selectedNode.details?.public_ip || '');
-      if (provider !== (selectedNode.details?.provider || ''))
-        setProvider(selectedNode.details?.provider || '');
-      if (region !== (selectedNode.details?.region || ''))
-        setRegion(selectedNode.details?.region || '');
-
+          : String(parsePortCount(portValue) ?? getNodePortCount(selectedNode.type, portValue)),
+      );
+      setHypervisorEnabled(details?.hypervisor_enabled ?? false);
+      setAppHostEnabled(details?.app_host_enabled ?? false);
+      setStorageEnabled(details?.storage_enabled ?? false);
+      setRoutingEnabled(details?.routing_enabled ?? false);
+      setNatEnabled(details?.nat_enabled ?? false);
+      setFirewallEnabled(details?.firewall_enabled ?? false);
+      setNetworkZone(details?.network_zone || 'lan');
+      setPublicIP(details?.public_ip || '');
+      setProvider(details?.provider || '');
+      setRegion(details?.region || '');
       setErrors({});
     }
-  }, [selectedNode]); // Rely on store reference changes
+  }
 
-  // Auto-save to store (Debounced)
+  // Saved half a second after the last edit of the form. The device is read
+  // from the store when the write happens, so fields saved outside this form
+  // in the meantime (rack slot, seats, circuit) are kept.
   useEffect(() => {
-    if (!selectedNode) return;
-
+    if (!selectedId || !selectedType) return;
     const timer = setTimeout(() => {
-      // Validate and Save
-      if (validate()) {
-        const parseNum = (val: string) => {
-          if (!val || val.trim() === '') return undefined;
-          const num = Number(val);
-          return isNaN(num) ? undefined : num;
-        };
+      const nextErrors = fieldErrors({ ip, mask, gateway, macAddress });
+      setErrors(nextErrors);
+      if (Object.keys(nextErrors).length > 0) return;
+      const current = useBuilderStore.getState().hardwareNodes.find(node => node.id === selectedId);
+      if (!current) return;
+      const parseNum = (val: string) => {
+        if (!val || val.trim() === '') return undefined;
+        const num = Number(val);
+        return isNaN(num) ? undefined : num;
+      };
+      const rVal = parseNum(ram);
+      const sVal = parseNum(storage);
+      const hostsGuests = selectedType === 'server_v2' || selectedType === 'vps';
+      const routes = hostsGuests || selectedType === 'firewall';
 
-        const rVal = parseNum(ram);
-        const sVal = parseNum(storage);
-
-        updateHardware(selectedNode.id, {
-          name,
-          ip,
-          mac_address: macAddress,
-          subnet_mask: mask,
-          gateway,
-          details: {
-            // Fields saved outside this form (rack slot, seats, circuit) may have
-            // changed while this write was waiting: build on the latest details.
-            ...(useBuilderStore.getState().hardwareNodes.find(node => node.id === selectedNode.id)
-              ?.details ?? selectedNode.details),
-            model,
-            dhcp_enabled: canProvideDHCP ? dhcpEnabled : undefined,
-            dhcp_locked: dhcpLocked,
-            cpu: parseNum(cpu),
-            ram: rVal ? rVal * (ramUnit === 'TB' ? 1000 : 1) : undefined,
-            storage: sVal ? sVal * (storageUnit === 'TB' ? 1000 : 1) : undefined,
-            ports: parseNum(ports),
-            hypervisor_enabled:
-              selectedNode.type === 'server_v2' || selectedNode.type === 'vps'
-                ? hypervisorEnabled
-                : undefined,
-            app_host_enabled:
-              selectedNode.type === 'server_v2' || selectedNode.type === 'vps'
-                ? appHostEnabled
-                : undefined,
-            storage_enabled: selectedNode.type === 'server_v2' ? storageEnabled : undefined,
-            routing_enabled:
-              selectedNode.type === 'server_v2' ||
-              selectedNode.type === 'firewall' ||
-              selectedNode.type === 'vps'
-                ? routingEnabled
-                : undefined,
-            nat_enabled:
-              selectedNode.type === 'server_v2' ||
-              selectedNode.type === 'firewall' ||
-              selectedNode.type === 'vps'
-                ? natEnabled
-                : undefined,
-            firewall_enabled:
-              selectedNode.type === 'server_v2' || selectedNode.type === 'firewall'
-                ? firewallEnabled
-                : undefined,
-            network_zone: isNetworkNode(selectedNode.type) ? networkZone : undefined,
-            public_ip: selectedNode.type === 'vps' ? publicIP : undefined,
-            provider: selectedNode.type === 'vps' ? provider : undefined,
-            region: selectedNode.type === 'vps' ? region : undefined,
-          },
-        });
-      }
-    }, 500); // 500ms debounce
-
+      updateHardware(selectedId, {
+        name,
+        ip,
+        mac_address: macAddress,
+        subnet_mask: mask,
+        gateway,
+        details: {
+          ...current.details,
+          model,
+          dhcp_enabled: canProvideDHCP ? dhcpEnabled : undefined,
+          dhcp_locked: dhcpLocked,
+          cpu: parseNum(cpu),
+          ram: rVal ? rVal * (ramUnit === 'TB' ? 1000 : 1) : undefined,
+          storage: sVal ? sVal * (storageUnit === 'TB' ? 1000 : 1) : undefined,
+          ports: parseNum(ports),
+          hypervisor_enabled: hostsGuests ? hypervisorEnabled : undefined,
+          app_host_enabled: hostsGuests ? appHostEnabled : undefined,
+          storage_enabled: selectedType === 'server_v2' ? storageEnabled : undefined,
+          routing_enabled: routes ? routingEnabled : undefined,
+          nat_enabled: routes ? natEnabled : undefined,
+          firewall_enabled:
+            selectedType === 'server_v2' || selectedType === 'firewall' ? firewallEnabled : undefined,
+          network_zone: isNetworkNode(selectedType) ? networkZone : undefined,
+          public_ip: selectedType === 'vps' ? publicIP : undefined,
+          provider: selectedType === 'vps' ? provider : undefined,
+          region: selectedType === 'vps' ? region : undefined,
+        },
+      });
+    }, 500);
     return () => clearTimeout(timer);
   }, [
+    selectedId,
+    selectedType,
+    canProvideDHCP,
+    updateHardware,
     name,
     ip,
     macAddress,
@@ -369,19 +330,16 @@ export const NodePropertiesPanel = memo(function NodePropertiesPanel() {
     selectNode(null);
   };
 
+  // The server hands out addresses with every save; the field follows when it answers.
   const handleAutoIP = () => {
-    const assigned = autoAssignIP(selectedNode.id);
-    if (assigned) setIp(assigned);
-    else toast.error('No router with a configured IP found. Add a Router and set its IP first.');
+    void reassignAllIPs().catch(() =>
+      toast.error('No address could be assigned: the project was not saved.'),
+    );
   };
 
   const handleIpChange = (val: string) => {
     setIp(val);
-    if (val.trim() === '') {
-      setDhcpLocked(false);
-    } else {
-      setDhcpLocked(true);
-    }
+    setDhcpLocked(val.trim() !== '');
   };
 
   const isLegacyServer = selectedNode.type === 'server';
@@ -410,30 +368,16 @@ export const NodePropertiesPanel = memo(function NodePropertiesPanel() {
     toast.success('Legacy server upgraded.');
   };
 
-  // Resource limit calculations
-  const { cpu: usedCpu, ramMb: usedRam } = getVmResourceUsage(selectedNode.vms || []);
-
-  const totalCpu = Number(selectedNode.details?.cpu) || 0;
-  const totalRamGB = Number(selectedNode.details?.ram) || 0;
-  const totalRamMB = totalRamGB < 1000 ? totalRamGB * 1024 : totalRamGB;
-
-  // Sum storage from base details + internal disk/NAS components
-  let totalStorageGB = Number(selectedNode.details?.storage) || 0;
-  let totalGpuRamMB = 0;
-  (selectedNode.internal_components || []).forEach(comp => {
-    if (!comp.details) return;
-    if (nodeHasStorage(comp.type as HardwareType)) {
-      totalStorageGB += Number(comp.details.storage) || 0;
-    }
-    if (comp.type === 'gpu') {
-      const vram = Number(comp.details.ram) || 0;
-      totalGpuRamMB += vram < 1000 ? vram * 1024 : vram;
-    }
-  });
-
-  const cpuWarning = totalCpu > 0 && usedCpu > totalCpu;
-  const ramWarning = totalRamMB > 0 && usedRam > totalRamMB;
+  const {
+    usedCpu,
+    usedRamMb: usedRam,
+    totalCpu,
+    totalRamMb: totalRamMB,
+    cpuWarning,
+    ramWarning,
+  } = getHostLoad(selectedNode.details, selectedNode.vms);
   const hasWarning = cpuWarning || ramWarning;
+  const rackChildren = isRack ? hardwareNodes.filter(n => n.parent_id === selectedNode.id) : [];
 
   return (
     <>
@@ -542,8 +486,7 @@ export const NodePropertiesPanel = memo(function NodePropertiesPanel() {
               {/* U Occupancy Bar */}
               {(() => {
                 const rackSize = selectedNode.details?.rack_size || 24;
-                const children = hardwareNodes.filter(n => n.parent_id === selectedNode.id);
-                const usedU = children.reduce(
+                const usedU = rackChildren.reduce(
                   (sum, n) => sum + (n.details?.rack_units || DEFAULT_DEVICE_U[n.type] || 1),
                   0,
                 );
@@ -571,8 +514,7 @@ export const NodePropertiesPanel = memo(function NodePropertiesPanel() {
 
               {/* Child devices list */}
               {(() => {
-                const children = hardwareNodes.filter(n => n.parent_id === selectedNode.id);
-                if (children.length === 0)
+                if (rackChildren.length === 0)
                   return (
                     <p className="text-xs text-muted-foreground italic py-2">
                       Drop devices into this rack to mount them.
@@ -582,7 +524,7 @@ export const NodePropertiesPanel = memo(function NodePropertiesPanel() {
                   <div className="space-y-1">
                     <span className="text-xs text-muted-foreground">Mounted Devices</span>
                     <div className="space-y-1 max-h-32 overflow-y-auto">
-                      {children.map(child => (
+                      {rackChildren.map(child => (
                         <button
                           key={child.id}
                           type="button"
@@ -978,22 +920,14 @@ export const NodePropertiesPanel = memo(function NodePropertiesPanel() {
 
                             if (parsed.cpu !== undefined) setCpu(String(parsed.cpu));
                             if (parsed.ram !== undefined) {
-                              if (parsed.ram >= 1000 && parsed.ram % 1000 === 0) {
-                                setRam(String(parsed.ram / 1000));
-                                setRamUnit('TB');
-                              } else {
-                                setRam(String(parsed.ram));
-                                setRamUnit('GB');
-                              }
+                              const field = sizeField(parsed.ram);
+                              setRam(field.value);
+                              setRamUnit(field.unit);
                             }
                             if (parsed.storage !== undefined) {
-                              if (parsed.storage >= 1000 && parsed.storage % 1000 === 0) {
-                                setStorage(String(parsed.storage / 1000));
-                                setStorageUnit('TB');
-                              } else {
-                                setStorage(String(parsed.storage));
-                                setStorageUnit('GB');
-                              }
+                              const field = sizeField(parsed.storage);
+                              setStorage(field.value);
+                              setStorageUnit(field.unit);
                             }
                             if (item.spec.ports !== undefined) {
                               const pCount = parsePortCount(item.spec.ports);

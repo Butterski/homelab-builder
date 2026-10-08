@@ -47,13 +47,8 @@ const sheetVariants = cva(
   },
 );
 
-interface SheetContentProps
-  extends
-    React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content>,
-    VariantProps<typeof sheetVariants> {
-  className?: string; // Explicitly add if missing
-  children?: React.ReactNode;
-}
+type SheetContentProps = React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content> &
+  VariantProps<typeof sheetVariants>;
 
 const SheetContent = ({
   side = 'right',
@@ -75,4 +70,4 @@ const SheetContent = ({
 );
 SheetContent.displayName = SheetPrimitive.Content.displayName;
 
-export { Sheet, SheetPortal, SheetTitle, SheetOverlay, SheetTrigger, SheetClose, SheetContent };
+export { Sheet, SheetTitle, SheetTrigger, SheetClose, SheetContent };

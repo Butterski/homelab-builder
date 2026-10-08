@@ -3,7 +3,7 @@ import { ApiError } from '../../../lib/api';
 import type { BuildKind } from '../../../types';
 import { useBuilderStore } from '../store/builder-store';
 
-export type CurrentProject = {
+type CurrentProject = {
   /** The open project, or null when there is none. */
   id: string | null;
   name: string;

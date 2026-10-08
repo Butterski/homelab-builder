@@ -184,6 +184,14 @@ func (a *Agent) prepareLocked(userID uuid.UUID, build *models.Build, creds *serv
 	if len(history) >= maxThreadMessages {
 		return nil, ErrThreadFull
 	}
+	provider, err := a.newProvider(creds)
+	if err != nil {
+		return nil, err
+	}
+	return &Turn{agent: a, userID: userID, build: build, thread: thread, history: history, provider: provider, creds: creds, text: text}, nil
+}
+
+func (a *Agent) newProvider(creds *services.AssistantCredentials) (llm.Provider, error) {
 	provider, err := a.deps.NewProvider(llm.Config{
 		Provider: creds.Provider, Model: creds.Model, BaseURL: creds.BaseURL, APIKey: creds.APIKey,
 		HTTPClient: a.deps.Settings.HTTPClient(),
@@ -191,7 +199,7 @@ func (a *Agent) prepareLocked(userID uuid.UUID, build *models.Build, creds *serv
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s", services.ErrAssistantNotConfigured, err.Error())
 	}
-	return &Turn{agent: a, userID: userID, build: build, thread: thread, history: history, provider: provider, creds: creds, text: text}, nil
+	return provider, nil
 }
 
 // contextNote tells the model which build is open and what happened to its
@@ -501,9 +509,13 @@ func truncateToolResult(text string) string {
 // that never got an answer (a turn interrupted between two writes), because
 // providers reject a conversation with unanswered calls.
 func ConversationFromMessages(rows []models.AssistantMessage) []llm.Message {
+	decoded := make([][]services.MessagePart, len(rows))
+	for i, row := range rows {
+		decoded[i] = services.DecodeParts(row)
+	}
 	conversation := make([]llm.Message, 0, len(rows))
 	for i, row := range rows {
-		parts := services.DecodeParts(row)
+		parts := decoded[i]
 		switch row.Role {
 		case services.AssistantRoleUser:
 			var text []string
@@ -525,7 +537,7 @@ func ConversationFromMessages(rows []models.AssistantMessage) []llm.Message {
 					message.ToolCalls = append(message.ToolCalls, llm.ToolCall{ID: part.ID, Name: part.Name, Input: part.Input})
 				}
 			}
-			answered := len(message.ToolCalls) == 0 || (i+1 < len(rows) && answersAll(rows[i+1], message.ToolCalls))
+			answered := len(message.ToolCalls) == 0 || (i+1 < len(rows) && answersAll(rows[i+1], decoded[i+1], message.ToolCalls))
 			if answered && !row.Interrupted {
 				message.Native, message.NativeFor = row.Native, row.Provider+"/"+row.Model
 			} else {
@@ -551,12 +563,12 @@ func ConversationFromMessages(rows []models.AssistantMessage) []llm.Message {
 	return conversation
 }
 
-func answersAll(row models.AssistantMessage, calls []llm.ToolCall) bool {
+func answersAll(row models.AssistantMessage, parts []services.MessagePart, calls []llm.ToolCall) bool {
 	if row.Role != services.AssistantRoleTool {
 		return false
 	}
 	answered := map[string]bool{}
-	for _, part := range services.DecodeParts(row) {
+	for _, part := range parts {
 		if part.Type == services.PartToolResult {
 			answered[part.ID] = true
 		}
@@ -688,12 +700,9 @@ func (a *Agent) TestProvider(ctx context.Context, userID uuid.UUID) ([]string, e
 	if err != nil {
 		return nil, err
 	}
-	provider, err := a.deps.NewProvider(llm.Config{
-		Provider: creds.Provider, Model: creds.Model, BaseURL: creds.BaseURL, APIKey: creds.APIKey,
-		HTTPClient: a.deps.Settings.HTTPClient(),
-	})
+	provider, err := a.newProvider(creds)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s", services.ErrAssistantNotConfigured, err.Error())
+		return nil, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()

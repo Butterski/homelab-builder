@@ -2,9 +2,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/features/builder/api/builds', () => ({ buildApi: {} }));
 vi.mock('@/features/builder/api/proposals', () => ({ proposalApi: {} }));
-vi.mock('@/services/api', () => ({
-  api: { getServices: vi.fn().mockResolvedValue({ data: [] }) },
-}));
 
 import type { HardwareNode } from '@/types';
 import { useBuilderStore } from '@/features/builder/store/builder-store';

@@ -41,14 +41,14 @@ import {
   type HardwareBlueprintExport,
   type HardwareBlueprint,
 } from '../api/use-hardware-blueprints';
-import { HardwareBlueprintCreator } from '../components/hardware-blueprint-creator';
+import { CapacityBar, HardwareBlueprintCreator } from '../components/hardware-blueprint-creator';
 import {
   blueprintMetricBars,
   componentSummary,
   estimateBlueprintFit,
   fitTone,
-  formatMetric,
 } from '../lib/blueprint-fit';
+import { errorMessage } from '../../../lib/utils';
 
 const PAGE_SIZE = 24;
 
@@ -188,7 +188,7 @@ function SubmitHardwareModal({ onClose }: { onClose: () => void }) {
       qc.invalidateQueries({ queryKey: ['hardware'] });
       setTimeout(onClose, 1400);
     } catch (err: unknown) {
-      dispatch({ type: 'SET_ERROR', value: err instanceof Error ? err.message : 'Submission failed.' });
+      dispatch({ type: 'SET_ERROR', value: errorMessage(err, 'Submission failed.') });
     } finally {
       dispatch({ type: 'SET_LOADING', value: false });
     }
@@ -310,7 +310,7 @@ function ImportBlueprintModal({ onClose }: { onClose: () => void }) {
       }
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Import failed.');
+      setError(errorMessage(err, 'Import failed.'));
     }
   };
 
@@ -361,7 +361,7 @@ function Field({ label, children, className = '' }: { label: string; children: R
 
 function SpecBadges({ spec }: { spec: Record<string, string | number | boolean> }) {
   const entries = Object.entries(spec)
-    .filter(([key]) => !['note'].includes(key))
+    .filter(([key]) => key !== 'note')
     .slice(0, 4);
 
   return (
@@ -483,8 +483,7 @@ function BlueprintCard({
   exporting: boolean;
   shareCode?: string;
 }) {
-  const localFit = estimateBlueprintFit(blueprint.node_data || {}, blueprint.services || []);
-  const fit = blueprint.fit ?? localFit;
+  const fit = blueprint.fit ?? estimateBlueprintFit(blueprint.node_data || {}, blueprint.services || []);
   const bars = blueprintMetricBars(fit).slice(0, 5);
   const tags = Array.isArray(blueprint.tags) ? blueprint.tags : [];
   const services = Array.isArray(blueprint.services) ? blueprint.services : [];
@@ -527,7 +526,7 @@ function BlueprintCard({
 
         <div className="space-y-2">
           {bars.map(bar => (
-            <BlueprintBar key={bar.label} label={bar.label} used={bar.used} total={bar.total} unit={bar.unit} percent={bar.percent} />
+            <CapacityBar key={bar.label} metric={bar} />
           ))}
         </div>
 
@@ -562,9 +561,7 @@ function BlueprintCard({
       </div>
 
       <div className="mt-auto flex items-center gap-2 border-t px-4 py-2.5">
-        <span className="app-figure text-xs text-muted-foreground">
-          {shareCode || `${blueprint.upvotes - blueprint.downvotes} score`}
-        </span>
+        {shareCode && <span className="app-figure text-xs text-muted-foreground">{shareCode}</span>}
         <div className="flex-1" />
         <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={onExport} disabled={exporting} aria-label={`Export ${blueprint.name}`}>
           {exporting ? <Loader2 className="size-3 animate-spin" /> : <Download className="size-3" />}
@@ -587,39 +584,6 @@ function MiniStat({ label, value }: { label: string; value: string }) {
     <div className="min-w-0">
       <dt className="text-muted-foreground">{label}</dt>
       <dd className="truncate font-medium">{value}</dd>
-    </div>
-  );
-}
-
-function BlueprintBar({
-  label,
-  used,
-  total,
-  unit,
-  percent,
-}: {
-  label: string;
-  used: number;
-  total: number;
-  unit: string;
-  percent: number;
-}) {
-  const overloaded = total > 0 && used > total;
-  const fill = label === 'Power' ? (total > 0 ? 100 : 0) : percent;
-  return (
-    <div className="space-y-1">
-      <div className="flex items-center justify-between gap-2 text-[10px]">
-        <span className="font-medium text-muted-foreground">{label}</span>
-        <span className="font-mono text-muted-foreground">
-          {label === 'Power' ? formatMetric(total, unit) : `${formatMetric(used, unit)} / ${formatMetric(total, unit)}`}
-        </span>
-      </div>
-      <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-        <div
-          className={`h-full rounded-full ${overloaded ? 'bg-red-500' : percent > 80 ? 'bg-amber-500' : 'bg-primary'}`}
-          style={{ width: `${Math.max(4, fill)}%` }}
-        />
-      </div>
     </div>
   );
 }
@@ -1032,8 +996,6 @@ function blueprintPrice(blueprint: HardwareBlueprint) {
 function sortBlueprints(blueprints: HardwareBlueprint[], sort: SortMode) {
   return [...blueprints].sort((a, b) => {
     switch (sort) {
-      case 'popular':
-        return b.upvotes - b.downvotes - (a.upvotes - a.downvotes);
       case 'recent':
         return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
       case 'price':

@@ -133,13 +133,14 @@ func proposeChanges(_ context.Context, r *Registry, actor Actor, args json.RawMe
 		next = "Nothing has changed in the build yet. The user now sees this proposal in the builder with Apply and Reject buttons; " +
 			"tell them briefly what it does and wait for their decision."
 	}
+	validation := describeValidation(preview.Validation, preview.Build)
 	data := map[string]any{
 		"proposal_id": proposal.ID,
 		"status":      proposal.Status,
 		"summary":     proposal.Summary,
 		"review_url":  reviewURL(actor, buildID, &proposal.ID),
 		"changes":     json.RawMessage(proposal.Diff),
-		"validation":  describeValidation(preview.Validation, preview.Build),
+		"validation":  validation,
 		"next":        next,
 	}
 	// What the gaming report would say once the proposal is applied, so the
@@ -149,7 +150,6 @@ func proposeChanges(_ context.Context, r *Registry, actor Actor, args json.RawMe
 			data["gaming"] = map[string]any{"status": report.Status, "issues": report.Issues}
 		}
 	}
-	validation, _ := data["validation"].(validationView)
 	summary := count(services.SummarizeProposal(proposal).Counts.Total, "change", "changes")
 	if len(validation.Errors)+len(validation.Warnings) > 0 {
 		summary += ", " + validation.summary()

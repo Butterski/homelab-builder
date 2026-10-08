@@ -1,30 +1,17 @@
 import { useState } from 'react';
 import { format } from 'date-fns';
-import { ExternalLink, Loader2, ShieldCheck, Trash2 } from 'lucide-react';
+import { Loader2, ShieldCheck, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import type { AssistantSettings } from '../api/assistant-settings';
-import { SOURCE_PATHS, sourceUrl } from '../lib/source-links';
+import { SOURCE_PATHS } from '../lib/source-links';
+import { SourceLink } from './source-link';
 
 type KeyProtectionPanelProps = {
   settings: AssistantSettings;
   deleting: boolean;
   onDeleteKey: () => void;
 };
-
-function SourceLink({ path, children }: { path: string; children: string }) {
-  return (
-    <a
-      href={sourceUrl(path)}
-      target="_blank"
-      rel="noreferrer"
-      className="inline-flex items-center gap-1 text-primary underline-offset-4 hover:underline"
-    >
-      {children}
-      <ExternalLink className="size-3" aria-hidden="true" />
-    </a>
-  );
-}
 
 function when(value: string | null, fallback: string): string {
   return value ? format(new Date(value), 'PPp') : fallback;

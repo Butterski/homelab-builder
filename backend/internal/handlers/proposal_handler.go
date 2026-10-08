@@ -23,20 +23,14 @@ func NewProposalHandler(service *services.ProposalService) *ProposalHandler {
 // proposalParams reads the caller and the build id, plus the proposal id when
 // the route has one. It writes the error response itself when it returns false.
 func proposalParams(c *gin.Context, withProposal bool) (userID, buildID, proposalID uuid.UUID, ok bool) {
-	rawUser, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+	if userID, ok = currentUser(c); !ok {
 		return
 	}
-	userID = rawUser.(uuid.UUID)
-	buildID, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+	if buildID, ok = uuidParam(c, "id"); !ok {
 		return
 	}
 	if withProposal {
-		if proposalID, err = uuid.Parse(c.Param("pid")); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid proposal ID"})
+		if proposalID, ok = uuidParam(c, "pid"); !ok {
 			return
 		}
 	}

@@ -17,7 +17,7 @@ export type ApiToken = {
   created_at: string;
 };
 
-export type CreateTokenInput = {
+type CreateTokenInput = {
   name: string;
   scope: TokenScope;
   build_id?: string;
@@ -30,13 +30,13 @@ export type CreatedToken = {
   record: ApiToken;
 };
 
-export const apiTokensApi = {
+const apiTokensApi = {
   list: () => api.get<{ tokens: ApiToken[]; limit: number }>('/api/tokens'),
   create: (input: CreateTokenInput) => api.post<CreatedToken>('/api/tokens', input),
   revoke: (id: string) => api.del<unknown>(`/api/tokens/${id}`),
 };
 
-export const API_TOKENS_KEY = ['api-tokens'];
+const API_TOKENS_KEY = ['api-tokens'];
 
 export function useApiTokens() {
   return useQuery({ queryKey: API_TOKENS_KEY, queryFn: apiTokensApi.list });

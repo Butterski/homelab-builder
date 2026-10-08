@@ -6,6 +6,10 @@ export const RACK_HEADER_PX = 40;   // header height
 export const RACK_FOOTER_PX = 8;    // bottom padding
 export const RACK_RAIL_WIDTH = 28;  // left rail for U numbers
 
+/** The height of a rack card with `rackSize` units (24 when unknown). */
+export const rackHeightPx = (rackSize: number | undefined) =>
+  RACK_HEADER_PX + (rackSize || 24) * RACK_U_HEIGHT_PX + RACK_FOOTER_PX;
+
 // Default U-heights for device types
 export const DEFAULT_DEVICE_U: Record<string, number> = {
   server: 2,

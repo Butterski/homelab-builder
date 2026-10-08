@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { Toaster as Sonner, type ToasterProps } from 'sonner';
 
-import { useTheme } from '../theme-provider';
+import { useTheme } from '../use-theme';
 
 const Toaster = ({ ...props }: ToasterProps) => {
   const { resolvedMode } = useTheme();

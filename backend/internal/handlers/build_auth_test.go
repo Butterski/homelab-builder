@@ -8,12 +8,13 @@ import (
 	"github.com/Butterski/homelab-builder/backend/internal/middleware"
 	"github.com/Butterski/homelab-builder/backend/internal/models"
 	"github.com/Butterski/homelab-builder/backend/internal/services"
+	"github.com/Butterski/homelab-builder/backend/internal/testutil"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
 func TestBuildHandler_Get_Authorization(t *testing.T) {
-	tx := handlersTestTx(t)
+	tx := testutil.Tx(t)
 	buildSvc := services.NewBuildService(tx)
 	ipSvc := services.NewIPService(tx)
 	handler := NewBuildHandler(buildSvc, ipSvc)
@@ -54,35 +55,8 @@ func TestBuildHandler_Get_Authorization(t *testing.T) {
 	}
 }
 
-func TestBuildHandler_CalculateNetwork_Authorization(t *testing.T) {
-	tx := handlersTestTx(t)
-	buildSvc := services.NewBuildService(tx)
-	ipSvc := services.NewIPService(tx)
-	handler := NewBuildHandler(buildSvc, ipSvc)
-
-	user1 := models.User{GoogleID: "u1-" + uuid.NewString(), Email: uuid.NewString() + "@u1.com", Name: "U1"}
-	tx.Create(&user1)
-	build1, _ := buildSvc.Create(user1.ID, services.SyncGraphInput{Name: "P1"})
-
-	user2 := models.User{GoogleID: "u2-" + uuid.NewString(), Email: uuid.NewString() + "@u2.com", Name: "U2"}
-	tx.Create(&user2)
-
-	// Try to calculate network for user 1's build as user 2
-	req, _ := http.NewRequest(http.MethodPost, "/api/builds/"+build1.ID.String()+"/calculate-network", nil)
-	recorder := httptest.NewRecorder()
-	ctx, _ := ginCreateTestContext(recorder, req)
-	ctx.Params = gin.Params{{Key: "id", Value: build1.ID.String()}}
-	ctx.Set("user_id", user2.ID)
-
-	handler.CalculateNetwork(ctx)
-
-	if recorder.Code != http.StatusForbidden {
-		t.Errorf("expected CalculateNetwork to return 403 Forbidden, got %d", recorder.Code)
-	}
-}
-
 func TestBuildHandler_ValidateNetwork_Authorization(t *testing.T) {
-	tx := handlersTestTx(t)
+	tx := testutil.Tx(t)
 	buildSvc := services.NewBuildService(tx)
 	ipSvc := services.NewIPService(tx)
 	handler := NewBuildHandler(buildSvc, ipSvc)
@@ -109,7 +83,7 @@ func TestBuildHandler_ValidateNetwork_Authorization(t *testing.T) {
 }
 
 func TestConfigHandler_GenerateConfig_Authorization(t *testing.T) {
-	tx := handlersTestTx(t)
+	tx := testutil.Tx(t)
 	buildSvc := services.NewBuildService(tx)
 	configSvc := services.NewConfigService(tx)
 	handler := NewConfigHandler(configSvc)
@@ -142,7 +116,7 @@ func TestConfigHandler_GenerateConfig_Authorization(t *testing.T) {
 }
 
 func TestMiddleware_AdminRequired(t *testing.T) {
-	tx := handlersTestTx(t)
+	tx := testutil.Tx(t)
 	// 1. Create a non-admin user
 	nonAdmin := models.User{GoogleID: "non-admin-" + uuid.NewString(), Email: "na@t.com", IsAdmin: false}
 	tx.Create(&nonAdmin)

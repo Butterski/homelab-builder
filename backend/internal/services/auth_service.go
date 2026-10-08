@@ -177,7 +177,9 @@ func (s *AuthService) loginOrRegister(email, name, googleID, avatarURL string) (
 			"name":       name,
 			"avatar_url": avatarURL,
 		}
-		s.db.Model(&user).Updates(updates)
+		if err := s.db.Model(&user).Updates(updates).Error; err != nil {
+			return nil, fmt.Errorf("failed to update user: %w", err)
+		}
 	}
 
 	token, err := s.generateToken(user)

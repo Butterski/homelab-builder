@@ -123,7 +123,7 @@ func TestValidate_VMAddressWithoutHostAddress(t *testing.T) {
 }
 
 func TestSubnetAllocator_DHCPRangeDoesNotMaterializeEveryAddress(t *testing.T) {
-	sa := NewSubnetAllocator("10.0.0.0/8", "10.0.0.1", DefaultDeviceZones, true, 0)
+	sa := NewSubnetAllocator("10.0.0.0/8", "10.0.0.1", true, 0)
 	if got := len(sa.Used); got > 3 {
 		t.Fatalf("expected constant-size reservation map for a large subnet, got %d entries", got)
 	}

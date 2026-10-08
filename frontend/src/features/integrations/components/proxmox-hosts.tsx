@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
+import { formatMemory } from '@/lib/format';
+import { cn, errorMessage } from '@/lib/utils';
 import { useInventory, type InventoryItem } from '@/features/inventory/api/inventory';
 import { InventoryItemDialog } from '@/features/inventory/components/inventory-item-dialog';
 import { formatGB } from '@/features/inventory/lib/inventory';
@@ -12,16 +13,12 @@ import {
   type ImportHost,
   type Integration,
 } from '../api/integrations';
-import { formatMemory } from '../lib/import-selection';
 
 const SELECT_CLASS =
   'h-8 max-w-48 rounded-md border border-input bg-transparent px-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50';
 
 /** Machines that can be a hypervisor. */
 const HOST_TYPES = new Set(['server_v2', 'minipc', 'pc', 'sbc', 'nas']);
-
-const messageOf = (error: unknown, fallback: string) =>
-  error instanceof Error && error.message ? error.message : fallback;
 
 function hostStorageGb(host: ImportHost): number {
   const local = host.storage
@@ -148,7 +145,7 @@ export function ProxmoxHosts({ integration }: ProxmoxHostsProps) {
       {
         onSuccess: () =>
           toast.success(itemId ? `Linked ${node} to its machine.` : `Unlinked ${node}.`),
-        onError: cause => toast.error(messageOf(cause, 'The link could not be changed.')),
+        onError: cause => toast.error(errorMessage(cause, 'The link could not be changed.')),
       },
     );
   };
@@ -162,7 +159,7 @@ export function ProxmoxHosts({ integration }: ProxmoxHostsProps) {
           toast.success(`Added ${item.name} to your inventory. Say what machine it is.`);
           setEditing({ ...item, placements: item.placements ?? [] });
         },
-        onError: cause => toast.error(messageOf(cause, 'The item could not be added.')),
+        onError: cause => toast.error(errorMessage(cause, 'The item could not be added.')),
       },
     );
   };
@@ -172,7 +169,7 @@ export function ProxmoxHosts({ integration }: ProxmoxHostsProps) {
   if (plan.isError || !plan.data) {
     return (
       <p className="text-sm text-destructive" role="alert">
-        {messageOf(plan.error, 'Nothing has been read from this integration yet.')}
+        {errorMessage(plan.error, 'Nothing has been read from this integration yet.')}
       </p>
     );
   }

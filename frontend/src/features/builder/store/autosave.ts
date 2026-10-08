@@ -2,13 +2,13 @@ import { ApiError } from '../../../lib/api';
 import { BuildConflictError, useBuilderStore } from './builder-store';
 
 /** How long the canvas has to be quiet before it is compared with the server's copy. */
-export const AUTOSAVE_CHECK_MS = 300;
+const AUTOSAVE_CHECK_MS = 300;
 /** How long after the last edit a save starts. */
 export const AUTOSAVE_DELAY_MS = 2000;
 /** Waits before a save that got no answer, or a server error, is tried again. */
 export const AUTOSAVE_RETRY_MS = [2000, 5000, 15000];
 
-export type AutosaveHandlers = {
+type AutosaveHandlers = {
   /** The build changed elsewhere and was reloaded; the canvas as it was is an undo step. */
   onConflict?: (error: BuildConflictError) => void;
   /** A save failed and is not tried again by itself: the server refused it, or the retries ran out. */
@@ -104,8 +104,6 @@ export function startAutosave(handlers: AutosaveHandlers = {}): () => void {
       state.buildKind === previous.buildKind &&
       state.gamingPlan === previous.gamingPlan &&
       state.buildSettings === previous.buildSettings &&
-      state.boughtItems === previous.boughtItems &&
-      state.showBought === previous.showBought &&
       state.lastSyncedFingerprint === previous.lastSyncedFingerprint &&
       state.buildStatus === previous.buildStatus &&
       state.currentBuildId === previous.currentBuildId

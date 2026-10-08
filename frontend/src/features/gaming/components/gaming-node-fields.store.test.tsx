@@ -5,9 +5,6 @@ import type { HardwareNode } from '../../../types';
 vi.mock('@/lib/api', () => ({ api: {}, ApiError: class ApiError extends Error {} }));
 vi.mock('@/features/builder/api/builds', () => ({ buildApi: {} }));
 vi.mock('@/features/builder/api/proposals', () => ({ proposalApi: {} }));
-vi.mock('@/services/api', () => ({
-  api: { getServices: vi.fn().mockResolvedValue({ data: [] }) },
-}));
 
 import { useBuilderStore } from '../../builder/store/builder-store';
 import { GamingNodeFields } from './gaming-node-fields';

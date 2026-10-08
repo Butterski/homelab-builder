@@ -16,16 +16,6 @@ import (
 // live in netguard, which the other outbound integrations share; this file is
 // what provider calls use.
 
-// ErrPrivateEndpoint means an endpoint resolved to an address the instance may not call.
-var ErrPrivateEndpoint = netguard.ErrPrivateEndpoint
-
-// IsPublicAddress reports whether ip is a routable public address: not
-// loopback, private, link-local (which includes cloud metadata at
-// 169.254.169.254), unique-local, multicast or otherwise reserved.
-func IsPublicAddress(ip net.IP) bool {
-	return netguard.IsPublicAddress(ip)
-}
-
 // SafeHTTPClient returns the HTTP client used for provider calls. Unless
 // allowPrivate is set, it refuses to connect to any non-public address. It
 // ignores proxy environment variables so the check always sees the real target.
@@ -82,14 +72,8 @@ func ValidateBaseURL(raw string, allowPrivate bool) (string, error) {
 	}
 	// Refuse obviously internal targets up front for a clear message; the
 	// dialer enforces the same rule on the resolved address.
-	if !allowPrivate {
-		host := parsed.Hostname()
-		if ip := net.ParseIP(host); ip != nil && !IsPublicAddress(ip) {
-			return "", ErrPrivateEndpoint
-		}
-		if netguard.IsInternalHostname(host) {
-			return "", ErrPrivateEndpoint
-		}
+	if !allowPrivate && netguard.IsBlockedHost(parsed.Hostname()) {
+		return "", netguard.ErrPrivateEndpoint
 	}
 	return strings.TrimRight(parsed.String(), "/"), nil
 }

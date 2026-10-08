@@ -12,22 +12,23 @@ import type { Forest } from './structure';
 import type { LayoutMetrics, Point, Rect } from './types';
 import type { Link, UnitGraph } from './units';
 
+/** Where a cable runs, with its units at the given places, point by point as the canvas computes it. */
+export function rawRouteOf(link: Link, at: Map<string, Point>): Point[] {
+  return cableRoute(
+    pointOf(link.from.unit, link.from.at, at),
+    link.from.side,
+    pointOf(link.to.unit, link.to.at, at),
+    link.to.side,
+  );
+}
+
 /**
- * Where a cable runs, with its units at the given places: corner points only.
- * A straight drop has to be one run, or a cable crossing it at the height of a
- * corner that is not there would go unnoticed.
+ * The same with corner points only. A straight drop has to be one run, or a
+ * cable crossing it at the height of a corner that is not there would go
+ * unnoticed.
  */
 export function routeOf(link: Link, at: Map<string, Point>): Point[] {
-  const from = at.get(link.from.unit) as Point;
-  const to = at.get(link.to.unit) as Point;
-  return simplifyRoute(
-    cableRoute(
-      { x: from.x + link.from.at.x, y: from.y + link.from.at.y },
-      link.from.side,
-      { x: to.x + link.to.at.x, y: to.y + link.to.at.y },
-      link.to.side,
-    ),
-  );
+  return simplifyRoute(rawRouteOf(link, at));
 }
 
 /** Every card on the canvas with the unit it belongs to. */

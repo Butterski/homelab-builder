@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { apiUrl } from '../../../lib/api-base';
 
 export type AuthConfig = {
@@ -55,4 +56,22 @@ export function getAuthConfig(): Promise<AuthConfig> {
   }
 
   return authConfigPromise;
+}
+
+/** The auth config, or null until it has arrived. */
+export function useAuthConfig(): AuthConfig | null {
+  const [config, setConfig] = useState(peekAuthConfig);
+
+  useEffect(() => {
+    if (config) return;
+    let cancelled = false;
+    void getAuthConfig().then(loaded => {
+      if (!cancelled) setConfig(loaded);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [config]);
+
+  return config;
 }

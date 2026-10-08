@@ -135,11 +135,16 @@ func (s *RecommendationService) Generate(req RecommendationRequest) (*Recommenda
 	minStorage += sysOverheadStorage
 	recStorage += sysOverheadStorage
 
+	candidates, err := s.loadHardwareCandidates()
+	if err != nil {
+		return nil, err
+	}
+
 	minimalSpec := buildSpec(minRAM, minCPU, minStorage, "minimal")
-	minimalSpec.HardwareMatches = s.matchHardware(minRAM, minCPU, minStorage)
+	minimalSpec.HardwareMatches = matchHardware(candidates, minRAM, minCPU)
 
 	recommendedSpec := buildSpec(recRAM, recCPU, recStorage, "recommended")
-	recommendedSpec.HardwareMatches = s.matchHardware(recRAM, recCPU, recStorage)
+	recommendedSpec.HardwareMatches = matchHardware(candidates, recRAM, recCPU)
 
 	optimalSpec := buildSpec(
 		int(float64(recRAM)*1.5),
@@ -147,7 +152,7 @@ func (s *RecommendationService) Generate(req RecommendationRequest) (*Recommenda
 		int(float64(recStorage)*1.5),
 		"optimal",
 	)
-	optimalSpec.HardwareMatches = s.matchHardware(optimalSpec.TotalRAMMB, optimalSpec.TotalCPUCores, optimalSpec.TotalStorageGB)
+	optimalSpec.HardwareMatches = matchHardware(candidates, optimalSpec.TotalRAMMB, optimalSpec.TotalCPUCores)
 
 	// Build per-service insights
 	insights := buildInsights(svcs, svcRAMs, recRAM)
@@ -241,12 +246,9 @@ func buildSpec(ramMB int, cpuCores float32, storageGB int, tier string) Spec {
 	spec.RAMSuggestion = fmt.Sprintf("%d GB DDR4", nextPow2RAM)
 
 	// Storage suggestions
-	switch {
-	case storageGB <= 128:
+	if storageGB <= 512 {
 		spec.StorageSuggestion = fmt.Sprintf("%d GB NVMe SSD", nextPowerOf2(storageGB))
-	case storageGB <= 512:
-		spec.StorageSuggestion = fmt.Sprintf("%d GB NVMe SSD", nextPowerOf2(storageGB))
-	default:
+	} else {
 		spec.StorageSuggestion = fmt.Sprintf("%d GB NVMe SSD + HDD for data", nextPowerOf2(storageGB))
 	}
 
@@ -305,36 +307,38 @@ func estimateCost(ramMB int, cpuCores float32, storageGB int, multiplier float64
 	return int(math.Round(total/50) * 50)
 }
 
-func (s *RecommendationService) SaveRecommendation(userID *uuid.UUID, spec Spec, tier string, serviceIDs []uuid.UUID) (*models.HardwareRecommendation, error) {
-	rec := models.HardwareRecommendation{
-		UserID:            userID,
-		Tier:              tier,
-		TotalRAMMB:        spec.TotalRAMMB,
-		TotalCPUCores:     spec.TotalCPUCores,
-		TotalStorageGB:    spec.TotalStorageGB,
-		CPUSuggestion:     spec.CPUSuggestion,
-		RAMSuggestion:     spec.RAMSuggestion,
-		StorageSuggestion: spec.StorageSuggestion,
-		NetworkSuggestion: spec.NetworkSuggestion,
-		Rationale:         spec.Rationale,
-		EstimatedCostMin:  spec.EstimatedCostMin,
-		EstimatedCostMax:  spec.EstimatedCostMax,
-	}
-
-	if err := s.db.Create(&rec).Error; err != nil {
-		return nil, fmt.Errorf("failed to save recommendation: %w", err)
-	}
-
-	return &rec, nil
+// hardwareCandidate is a compute catalog entry with the capacity read from its spec.
+type hardwareCandidate struct {
+	component models.HardwareComponent
+	ramMB     int
+	cores     float32
 }
 
-func (s *RecommendationService) matchHardware(ramMB int, cpuCores float32, storageGB int) []models.HardwareComponent {
+// loadHardwareCandidates reads the approved compute hardware once per request;
+// every tier is matched against the same list.
+func (s *RecommendationService) loadHardwareCandidates() ([]hardwareCandidate, error) {
 	var raw []models.HardwareComponent
-	// Only check compute / main categories
-	s.db.Where("category IN ?", []string{"server", "minipc", "nas", "sbc"}).
+	if err := s.db.Where("category IN ?", []string{"server", "minipc", "nas", "sbc"}).
 		Where("approved = ?", true).
-		Find(&raw)
+		Find(&raw).Error; err != nil {
+		return nil, fmt.Errorf("failed to fetch hardware: %w", err)
+	}
+	candidates := make([]hardwareCandidate, 0, len(raw))
+	for _, c := range raw {
+		var specMap map[string]interface{}
+		if err := json.Unmarshal(c.Spec, &specMap); err != nil {
+			continue
+		}
+		ramMB := extractGB(specMap["ram"]) * 1024
+		if ramMB == 0 {
+			ramMB = extractGB(specMap["capacity"]) * 1024
+		}
+		candidates = append(candidates, hardwareCandidate{component: c, ramMB: ramMB, cores: extractCores(specMap["cpu"])})
+	}
+	return candidates, nil
+}
 
+func matchHardware(candidates []hardwareCandidate, ramMB int, cpuCores float32) []models.HardwareComponent {
 	type scored struct {
 		component models.HardwareComponent
 		score     float64
@@ -342,28 +346,14 @@ func (s *RecommendationService) matchHardware(ramMB int, cpuCores float32, stora
 
 	var scoredList []scored
 
-	for _, c := range raw {
-		var specMap map[string]interface{}
-		if err := json.Unmarshal(c.Spec, &specMap); err != nil {
-			continue
-		}
-
-		cRam := extractGB(specMap["ram"]) * 1024
-		if cRam == 0 {
-			cRam = extractGB(specMap["capacity"]) * 1024
-		}
-		cCPU := extractCores(specMap["cpu"])
-
-		// log extraction
-		fmt.Printf("Parsed %s %s - RAM: %d, CPU: %.1f from Spec: %+v\n", c.Brand, c.Model, cRam, cCPU, specMap)
+	for _, c := range candidates {
+		cRam, cCPU := c.ramMB, c.cores
 
 		// Basic eligibility: Must have at least 50% of required RAM and CPU to even be considered
 		if float64(cRam) < float64(ramMB)*0.5 && ramMB > 0 {
-			fmt.Printf("Skipped %s %s - RAM too low (%d < %f)\n", c.Brand, c.Model, cRam, float64(ramMB)*0.5)
 			continue
 		}
 		if cCPU < cpuCores*0.5 && cpuCores > 0 && cCPU != 0 {
-			fmt.Printf("Skipped %s %s - CPU too low (%f < %f)\n", c.Brand, c.Model, cCPU, cpuCores*0.5)
 			continue
 		}
 
@@ -384,9 +374,9 @@ func (s *RecommendationService) matchHardware(ramMB int, cpuCores float32, stora
 		}
 
 		// Prefer cheaper components if they satisfy needs
-		score += c.PriceEst * 1.0
+		score += c.component.PriceEst * 1.0
 
-		scoredList = append(scoredList, scored{component: c, score: score})
+		scoredList = append(scoredList, scored{component: c.component, score: score})
 	}
 
 	sort.Slice(scoredList, func(i, j int) bool {
@@ -400,24 +390,28 @@ func (s *RecommendationService) matchHardware(ramMB int, cpuCores float32, stora
 	return matches
 }
 
+var (
+	gbPattern     = regexp.MustCompile(`(\d+)\s*GB`)
+	tbPattern     = regexp.MustCompile(`(\d+)\s*TB`)
+	numberPattern = regexp.MustCompile(`^(\d+)$`)
+	corePattern   = regexp.MustCompile(`(\d+)\s*-?core`)
+)
+
 func extractGB(val interface{}) int {
 	if val == nil {
 		return 0
 	}
 	str := strings.ToUpper(fmt.Sprintf("%v", val))
 
-	reGB := regexp.MustCompile(`(\d+)\s*GB`)
-	if m := reGB.FindStringSubmatch(str); len(m) > 1 {
+	if m := gbPattern.FindStringSubmatch(str); len(m) > 1 {
 		v, _ := strconv.Atoi(m[1])
 		return v
 	}
-	reTB := regexp.MustCompile(`(\d+)\s*TB`)
-	if m := reTB.FindStringSubmatch(str); len(m) > 1 {
+	if m := tbPattern.FindStringSubmatch(str); len(m) > 1 {
 		v, _ := strconv.Atoi(m[1])
 		return v * 1024
 	}
-	reNum := regexp.MustCompile(`^(\d+)$`)
-	if m := reNum.FindStringSubmatch(str); len(m) > 1 {
+	if m := numberPattern.FindStringSubmatch(str); len(m) > 1 {
 		v, _ := strconv.Atoi(m[1])
 		return v
 	}
@@ -430,8 +424,7 @@ func extractCores(val interface{}) float32 {
 	}
 	str := strings.ToLower(fmt.Sprintf("%v", val))
 
-	reCore := regexp.MustCompile(`(\d+)\s*-?core`)
-	if m := reCore.FindStringSubmatch(str); len(m) > 1 {
+	if m := corePattern.FindStringSubmatch(str); len(m) > 1 {
 		v, _ := strconv.ParseFloat(m[1], 32)
 		return float32(v)
 	}

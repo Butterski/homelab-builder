@@ -5,7 +5,7 @@ import type { HardwareNode, HardwareType } from '../../../../types';
 import { buildGameServerPlan } from '../planner/game-server-plan';
 import { buildHomelabPlan } from '../planner/homelab-plan';
 import { buildLanPartyPlan } from '../planner/lan-party-plan';
-import type { PlannedEdge, PlannedNode } from '../planner/types';
+import type { Plan } from '../planner/types';
 import { buildLayoutGraph } from './from-flow';
 import { computeLayout, pictureOf, withPositions, type LayoutPicture } from './index';
 import type { LayoutEdge, LayoutGraph, LayoutNode, LayoutResult, LayoutStyle, Medium } from './types';
@@ -113,9 +113,7 @@ function cable(
 }
 
 /** A planner's output as the layout sees it before anything is on screen. */
-function planned(plan: { nodes: unknown[]; edges: unknown[] }): LayoutGraph {
-  const nodes = plan.nodes as PlannedNode[];
-  const edges = plan.edges as PlannedEdge[];
+function planned({ nodes, edges }: Plan): LayoutGraph {
   return buildLayoutGraph(
     nodes.map(node => ({
       hardware: node as unknown as HardwareNode,
@@ -718,7 +716,7 @@ describe('planner output', () => {
       [],
     );
     const { hierarchy } = expectTidy(planned(plan), 'game server plan');
-    const ids = Object.fromEntries((plan.nodes as PlannedNode[]).map(node => [node.type, node.id]));
+    const ids = Object.fromEntries(plan.nodes.map(node => [node.type, node.id]));
     expect(at(hierarchy, ids.modem).y).toBeLessThan(at(hierarchy, ids.router).y);
   });
 });

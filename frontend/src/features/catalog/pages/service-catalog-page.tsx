@@ -7,7 +7,7 @@ import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { cn } from '../../../lib/utils';
 import type { Service } from '../../../types';
-import { useAuth } from '../../admin/hooks/use-auth';
+import { useAuth } from '../../auth/hooks/use-auth';
 import { useBuilderStore } from '../../builder/store/builder-store';
 import { useAddSelection, useRemoveSelection, useUserSelections } from '../api/use-services';
 import { CustomServiceDialog } from '../components/custom-service-dialog';

@@ -14,7 +14,7 @@ import {
 import { cn } from '../../lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
-import { useAuth } from '../../features/admin/hooks/use-auth';
+import { useAuth } from '../../features/auth/hooks/use-auth';
 import { useSyncState } from '../../features/builder/api/proposals';
 import { useBuilds } from '../../features/builder/api/use-builds';
 import { LayoutThumbnail } from '../../features/builder/components/layout-thumbnail';

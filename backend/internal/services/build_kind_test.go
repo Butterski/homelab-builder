@@ -56,7 +56,7 @@ func TestBuildService_KindAndPlanRoundTrip(t *testing.T) {
 	}
 
 	// What the server returns is exactly what a second save would store.
-	again, err := svc.Update(party.ID, user.ID, SyncGraphInput{Name: "Party", Revision: party.Revision, Kind: "lan_party", GamingPlan: &stored})
+	again, err := svc.UpdateAndCalculate(party.ID, user.ID, SyncGraphInput{Name: "Party", Revision: party.Revision, Kind: "lan_party", GamingPlan: &stored}, newIPAMStub(t, svc.db))
 	if err != nil {
 		t.Fatalf("save again: %v", err)
 	}
@@ -78,10 +78,11 @@ func TestBuildService_EmptyKindAndNilPlanKeepStoredValues(t *testing.T) {
 	}
 
 	// A client that knows nothing about gaming builds sends neither field.
-	saved, err := svc.Update(party.ID, user.ID, SyncGraphInput{
+	ipam := newIPAMStub(t, svc.db)
+	saved, err := svc.UpdateAndCalculate(party.ID, user.ID, SyncGraphInput{
 		Name: "Party", Revision: party.Revision,
 		Nodes: []NodeDTO{{ID: uuid.NewString(), Type: "router", Name: "Router"}},
-	})
+	}, ipam)
 	if err != nil {
 		t.Fatalf("update: %v", err)
 	}
@@ -94,7 +95,7 @@ func TestBuildService_EmptyKindAndNilPlanKeepStoredValues(t *testing.T) {
 	}
 
 	// The kind can change later: adding a game server to a homelab is the usual way in.
-	changed, err := svc.Update(party.ID, user.ID, SyncGraphInput{Name: "Party", Revision: saved.Revision, Kind: "game_server"})
+	changed, err := svc.UpdateAndCalculate(party.ID, user.ID, SyncGraphInput{Name: "Party", Revision: saved.Revision, Kind: "game_server"}, ipam)
 	if err != nil {
 		t.Fatalf("change kind: %v", err)
 	}
@@ -116,7 +117,7 @@ func TestBuildService_RejectsUnknownKindAndInvalidPlan(t *testing.T) {
 	}
 	bad := partyPlan()
 	bad.Power.Circuits[0].BreakerAmps = 0
-	if _, err := svc.Update(build.ID, user.ID, SyncGraphInput{Name: "X", Revision: build.Revision, GamingPlan: bad}); !errors.Is(err, ErrInvalidTopology) {
+	if _, err := svc.UpdateAndCalculate(build.ID, user.ID, SyncGraphInput{Name: "X", Revision: build.Revision, GamingPlan: bad}, newIPAMStub(t, svc.db)); !errors.Is(err, ErrInvalidTopology) {
 		t.Fatalf("expected an invalid topology error for a bad plan, got %v", err)
 	}
 	reloaded, _ := svc.GetByID(build.ID)

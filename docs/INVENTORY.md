@@ -2,7 +2,7 @@
 
 HLBuilder plans a homelab. The inventory tells it what you already own, and a connection to
 Proxmox VE tells it what really runs on that hardware. With both, a plan stops being a wish list:
-the machines on the canvas are your machines, the shopping list holds only what is missing, and
+the machines on the canvas are your machines, and
 the plan can be laid beside what is deployed.
 
 - [The inventory](#the-inventory)
@@ -55,7 +55,6 @@ and a filter by state. *Planned in* names every project that uses an item, and a
 - **Variants.** The same item can be planned in several projects, for instance the lab as it is
   and the lab as it will be. A copy of a device on one canvas is a new device, not the same
   machine, so it loses the link.
-- **Nothing to buy.** Owned hardware is left out of the shopping list.
 - **Spare parts are offered.** When a host gives its guests more memory than it has and a kit in
   your inventory covers it, the device's properties and the readiness report say so ("pve02 gives
   its guests 24 GB and has 16 GB. You own 2× 16 GB DDR4 SODIMM (drawer): with it the host has
@@ -229,4 +228,4 @@ add it to the backend's `environment:` there.
 | The screens | `frontend/src/features/inventory/`, `frontend/src/features/integrations/` |
 
 To try the import without a cluster, see "Proxmox in a browser, without a cluster" in
-[ARCHITECTURE.md](./ARCHITECTURE.md).
+[AGENTS.md](../AGENTS.md#proxmox-in-a-browser-without-a-cluster).

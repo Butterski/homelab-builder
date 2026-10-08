@@ -69,7 +69,7 @@ export const assistantSettingsApi = {
   test: () => api.post<ProviderTestResult>('/api/assistant/settings/test', {}),
 };
 
-export const ASSISTANT_SETTINGS_KEY = ['assistant-settings'];
+const ASSISTANT_SETTINGS_KEY = ['assistant-settings'];
 
 /** Shared by the settings page and the builder, so a change shows up in both. */
 export function useAssistantSettings(enabled = true) {

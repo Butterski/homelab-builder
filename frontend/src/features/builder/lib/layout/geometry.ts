@@ -1,7 +1,7 @@
 import type { Point, Rect } from './types';
 
 /** The canvas grid; cards dragged by hand snap to it. */
-export const GRID = 20;
+const GRID = 20;
 
 export const snap = (value: number) => Math.round(value / GRID) * GRID;
 export const snapUp = (value: number) => Math.ceil(value / GRID) * GRID;
@@ -40,10 +40,6 @@ export function rectsOverlap(a: Rect, b: Rect): boolean {
   return (
     a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
   );
-}
-
-export function moveRect(rect: Rect, dx: number, dy = 0): Rect {
-  return { x: rect.x + dx, y: rect.y + dy, width: rect.width, height: rect.height };
 }
 
 export function boundsOf(rects: Rect[]): Rect {

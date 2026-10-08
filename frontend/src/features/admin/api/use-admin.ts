@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { api } from "../../../lib/api"
 import type { Service, User } from "../../../types"
 
-interface AdminStats {
+export interface AdminDashboardStats {
     total_users: number
     total_services: number
     total_selections: number
@@ -19,7 +19,7 @@ export const useAdminStats = () => {
     return useQuery({
         queryKey: ["admin", "stats"],
         queryFn: async () => {
-            const response = await api.get<{ data: AdminStats }>("/api/admin/dashboard")
+            const response = await api.get<{ data: AdminDashboardStats }>("/api/admin/dashboard")
             return response.data
         },
     })
@@ -43,9 +43,6 @@ export const useAdminUsers = () => {
 }
 
 export const useAdminServices = () => {
-    // Re-use standard services or specific admin endpoint if needed
-    // Usually admin needs raw data, but standard endpoint might be enough
-    // For now assuming standard endpoint is fine, but maybe we need a mutation to toggle status
     return useQuery({
         queryKey: ["services"], // Same key as public to share cache or invalidate
         queryFn: async () => {
@@ -55,22 +52,20 @@ export const useAdminServices = () => {
     })
 }
 
-export const useToggleService = () => {
-    const queryClient = useQueryClient()
-    return useMutation({
-        mutationFn: async (id: string) => {
-            return api.post(`/api/admin/services/${id}/toggle`, {})
-        },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["services"] })
-        },
-    })
+/** What the admin service form sends: the requirements are flat fields, as the backend takes them. */
+interface ServiceInput {
+    name: string
+    description: string
+    category: string
+    min_cpu_cores: number
+    min_ram_mb: number
+    min_storage_gb: number
 }
 
 export const useCreateService = () => {
     const queryClient = useQueryClient()
     return useMutation({
-        mutationFn: async (data: Partial<Service>) => {
+        mutationFn: async (data: ServiceInput) => {
             return api.post("/api/admin/services", data)
         },
         onSuccess: () => {
@@ -83,7 +78,7 @@ export const useCreateService = () => {
 export const useUpdateService = () => {
     const queryClient = useQueryClient()
     return useMutation({
-        mutationFn: async ({ id, data }: { id: string, data: Partial<Service> }) => {
+        mutationFn: async ({ id, data }: { id: string, data: ServiceInput }) => {
             return api.put(`/api/admin/services/${id}`, data)
         },
         onSuccess: () => {
@@ -96,7 +91,7 @@ export const useDeleteService = () => {
     const queryClient = useQueryClient()
     return useMutation({
         mutationFn: async (id: string) => {
-            return (api as any).del(`/api/admin/services/${id}`)
+            return api.del(`/api/admin/services/${id}`)
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["services"] })

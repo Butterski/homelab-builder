@@ -32,8 +32,10 @@ import {
   estimateBlueprintFit,
   fitTone,
   formatMetric,
+  type BlueprintMetric,
 } from '../lib/blueprint-fit';
 import { withoutAssetLink } from '../../../lib/asset-link';
+import { errorMessage } from '../../../lib/utils';
 
 type Props = {
   open: boolean;
@@ -79,22 +81,35 @@ function previewGrade(utilization: { cpu: number; ram: number; storage: number; 
 }
 
 export function HardwareBlueprintCreator({ open, onClose, initialNode }: Props) {
-  const { availableServices, fetchServices } = useBuilderStore();
+  if (!open) return null;
+  return <BlueprintForm key={initialNode?.id} onClose={onClose} initialNode={initialNode} />;
+}
+
+/** Mounted each time the creator opens, so every field starts from `initialNode`. */
+function BlueprintForm({ onClose, initialNode }: Omit<Props, 'open'>) {
+  const availableServices = useBuilderStore(state => state.availableServices);
+  const fetchServices = useBuilderStore(state => state.fetchServices);
   const createBlueprint = useCreateHardwareBlueprint();
   const submitBlueprint = useSubmitHardwareBlueprint();
 
-  const [name, setName] = useState('');
-  const [type, setType] = useState<HardwareType>(DEFAULT_TYPE);
+  const initialDetails = initialNode?.details || {};
+  const [name, setName] = useState(initialNode?.name || 'N100 Mini PC');
+  const [type, setType] = useState<HardwareType>(initialNode?.type || DEFAULT_TYPE);
   const [description, setDescription] = useState('');
-  const [tags, setTags] = useState('useful, beginner friendly');
-  const [cpu, setCpu] = useState('');
-  const [ram, setRam] = useState('');
-  const [storage, setStorage] = useState('');
-  const [ports, setPorts] = useState('');
-  const [price, setPrice] = useState('');
-  const [power, setPower] = useState('');
-  const [rackUnits, setRackUnits] = useState('');
-  const [internalComponents, setInternalComponents] = useState<HardwareComponent[]>([]);
+  const [tags, setTags] = useState('useful, quiet, power efficient');
+  const [cpu, setCpu] = useState(initialDetails.cpu?.toString() || '4');
+  const [ram, setRam] = useState(initialDetails.ram?.toString() || '16');
+  const [storage, setStorage] = useState(initialDetails.storage?.toString() || '512');
+  const [ports, setPorts] = useState(initialDetails.ports?.toString() || (initialNode?.type === 'switch' ? '8' : '2'));
+  const [price, setPrice] = useState(initialDetails.price_est?.toString() || '');
+  const [power, setPower] = useState(initialNode?.power_draw?.toString() || '');
+  const [rackUnits, setRackUnits] = useState(initialDetails.rack_units?.toString() || '');
+  const [internalComponents, setInternalComponents] = useState<HardwareComponent[]>(() =>
+    (initialNode?.internal_components || []).map(component => ({
+      ...component,
+      id: component.id || makeComponentId(),
+    })),
+  );
   const [componentType, setComponentType] = useState<HardwareType>('disk');
   const [componentName, setComponentName] = useState('');
   const [componentModel, setComponentModel] = useState('');
@@ -107,41 +122,8 @@ export function HardwareBlueprintCreator({ open, onClose, initialNode }: Props) 
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!open) return;
     fetchServices();
-  }, [open, fetchServices]);
-
-  useEffect(() => {
-    if (!open) return;
-    const details = initialNode?.details || {};
-    setName(initialNode?.name || 'N100 Mini PC');
-    setType(initialNode?.type || DEFAULT_TYPE);
-    setDescription('');
-    setTags('useful, quiet, power efficient');
-    setCpu(details.cpu?.toString() || '4');
-    setRam(details.ram?.toString() || '16');
-    setStorage(details.storage?.toString() || '512');
-    setPorts(details.ports?.toString() || (initialNode?.type === 'switch' ? '8' : '2'));
-    setPrice(details.price_est?.toString() || '');
-    setPower(initialNode?.power_draw?.toString() || '');
-    setRackUnits(details.rack_units?.toString() || '');
-    setInternalComponents(
-      (initialNode?.internal_components || []).map(component => ({
-        ...component,
-        id: component.id || makeComponentId(),
-      })),
-    );
-    setComponentType('disk');
-    setComponentName('');
-    setComponentModel('');
-    setComponentStorage('');
-    setComponentRam('');
-    setComponentPorts('');
-    setComponentPower('');
-    setSelectedServiceIds([]);
-    setSubmitToCommunity(false);
-    setError('');
-  }, [open, initialNode]);
+  }, [fetchServices]);
 
   const selectedServices = useMemo(
     () => availableServices.filter(service => selectedServiceIds.includes(service.id)),
@@ -170,8 +152,6 @@ export function HardwareBlueprintCreator({ open, onClose, initialNode }: Props) 
   const previewBars = blueprintMetricBars(previewFit);
   const componentCounts = componentSummary(internalComponents);
   const fitGrade = previewGrade(previewFit.utilization);
-
-  if (!open) return null;
 
   const toggleService = (serviceId: string) => {
     setSelectedServiceIds(current =>
@@ -259,7 +239,7 @@ export function HardwareBlueprintCreator({ open, onClose, initialNode }: Props) 
       }
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save blueprint.');
+      setError(errorMessage(err, 'Could not save blueprint.'));
     }
   };
 
@@ -601,9 +581,9 @@ function SpecField({
   );
 }
 
-function CapacityBar({ metric }: { metric: ReturnType<typeof blueprintMetricBars>[number] }) {
+export function CapacityBar({ metric }: { metric: BlueprintMetric }) {
   const overloaded = metric.total > 0 && metric.used > metric.total;
-  const fill = metric.label === 'Power' ? 100 : metric.percent;
+  const fill = metric.label === 'Power' ? (metric.total > 0 ? 100 : 0) : metric.percent;
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between gap-2 text-[10px]">

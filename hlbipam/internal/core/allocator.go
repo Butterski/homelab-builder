@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/Butterski/hlbipam/internal/models"
-	"github.com/Butterski/hlbipam/internal/utils"
 )
 
 func mergeZones(custom map[string]models.ZoneOverride) map[string]ZoneConfig {
@@ -20,15 +19,12 @@ func mergeZones(custom map[string]models.ZoneOverride) map[string]ZoneConfig {
 			BaseOffset: v.BaseOffset,
 			Step:       v.Step,
 			CanHostVMs: v.CanHostVMs,
-			Label:      k,
 		}
 	}
 	return zones
 }
 
 type allocationDomain struct {
-	key         string
-	routerIDs   []string
 	nodeIndexes []int
 	allocator   *SubnetAllocator
 	owners      map[uint32]string
@@ -68,7 +64,7 @@ func Allocate(req models.AllocateRequest) models.AllocateResponse {
 		defaultGateway := fmt.Sprintf("192.168.%d.1", i+1)
 		if r.GatewayIP == "" {
 			r.GatewayIP = defaultGateway
-		} else if !utils.IsValidIPv4(r.GatewayIP) {
+		} else if !isValidIPv4(r.GatewayIP) {
 			resp.Conflicts = append(resp.Conflicts, models.Issue{NodeID: r.ID, Message: fmt.Sprintf("invalid gateway IPv4 address %q; using %s", r.GatewayIP, defaultGateway)})
 			r.GatewayIP = defaultGateway
 		}
@@ -76,12 +72,12 @@ func Allocate(req models.AllocateRequest) models.AllocateResponse {
 			r.Subnet = r.GatewayIP + "/24"
 		}
 
-		network, capacity, mask, err := utils.ParseCIDR(r.Subnet)
-		gateway := utils.IPToUint32(net.ParseIP(r.GatewayIP))
+		network, capacity, mask, err := parseCIDR(r.Subnet)
+		gateway := ipToUint32(net.ParseIP(r.GatewayIP))
 		if err != nil || capacity <= 1 || gateway <= network || gateway >= network+capacity {
 			resp.Conflicts = append(resp.Conflicts, models.Issue{NodeID: r.ID, Message: fmt.Sprintf("gateway %s is not a usable address in subnet %s; using its /24", r.GatewayIP, r.Subnet)})
 			r.Subnet = r.GatewayIP + "/24"
-			network, capacity, mask, _ = utils.ParseCIDR(r.Subnet)
+			network, _, mask, _ = parseCIDR(r.Subnet)
 		}
 
 		key := fmt.Sprintf("%08x/%08x", network, mask)
@@ -159,9 +155,8 @@ func Allocate(req models.AllocateRequest) models.AllocateResponse {
 		domain, exists := domainByKey[key]
 		if !exists {
 			r := req.Routers[ri]
-			sa := NewSubnetAllocator(r.Subnet, r.GatewayIP, zones, domainDHCP[key], domainDemand[key])
+			sa := NewSubnetAllocator(r.Subnet, r.GatewayIP, domainDHCP[key], domainDemand[key])
 			domain = &allocationDomain{
-				key:       key,
 				allocator: sa,
 				owners: map[uint32]string{
 					sa.Network:               "network address",
@@ -179,14 +174,13 @@ func Allocate(req models.AllocateRequest) models.AllocateResponse {
 				resp.Warnings = append(resp.Warnings, models.Issue{NodeID: r.ID, Message: fmt.Sprintf("the DHCP pool holds %d addresses but %d devices expect one; use a larger subnet such as 255.255.254.0", sa.DHCPPoolSize(), demand)})
 			}
 		}
-		domain.routerIDs = append(domain.routerIDs, req.Routers[ri].ID)
 		if sa := domain.allocator; sa.DHCPStart != 0 {
 			resp.Routers[ri].DHCPStart = sa.FormatIP(sa.DHCPStart)
 			resp.Routers[ri].DHCPEnd = sa.FormatIP(sa.DHCPEnd)
 			resp.Routers[ri].DHCPSize = sa.DHCPPoolSize()
 		}
 		resp.Routers[ri].DHCPClients = domainDemand[key]
-		gateway := utils.IPToUint32(net.ParseIP(req.Routers[ri].GatewayIP))
+		gateway := ipToUint32(net.ParseIP(req.Routers[ri].GatewayIP))
 		if previous, exists := domain.owners[gateway]; exists {
 			resp.Conflicts = append(resp.Conflicts, models.Issue{NodeID: req.Routers[ri].ID, Message: fmt.Sprintf("gateway IP %s conflicts with %s", req.Routers[ri].GatewayIP, previous)})
 		} else {
@@ -234,7 +228,6 @@ func allocateDomain(domain *allocationDomain, nodes []models.NodeDTO, zones map[
 		}
 		domainZones[kind] = zone
 	}
-	sa.Zones = domainZones
 
 	acceptedExisting := make(map[string]uint32)
 	for _, idx := range domain.nodeIndexes {
@@ -357,11 +350,11 @@ func preReserveExisting(entityID, value string, sa *SubnetAllocator, owners map[
 	if value == "" {
 		return
 	}
-	if !utils.IsValidIPv4(value) {
+	if !isValidIPv4(value) {
 		resp.Conflicts = append(resp.Conflicts, models.Issue{NodeID: entityID, Message: fmt.Sprintf("invalid IPv4 address %q; a safe address was assigned instead", value)})
 		return
 	}
-	ip := utils.IPToUint32(net.ParseIP(value))
+	ip := ipToUint32(net.ParseIP(value))
 	if !sa.IsUsable(ip) {
 		resp.Conflicts = append(resp.Conflicts, models.Issue{NodeID: entityID, Message: fmt.Sprintf("IP %s is outside the assigned subnet; a safe address was assigned instead", value)})
 		return

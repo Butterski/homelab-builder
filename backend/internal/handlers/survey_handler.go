@@ -7,7 +7,6 @@ import (
 
 	"github.com/Butterski/homelab-builder/backend/internal/models"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -33,9 +32,26 @@ type surveyInput struct { // BETA_SURVEY
 	CompanyContact     string `json:"company_contact"`
 }
 
+func (in surveyInput) applyTo(survey *models.BetaSurvey) { // BETA_SURVEY
+	survey.Rating = in.Rating
+	survey.WillUseApp = in.WillUseApp
+	survey.FeatureWishlist = in.FeatureWishlist
+	survey.OpenSourceInterest = in.OpenSourceInterest
+	survey.ContributionIntent = in.ContributionIntent
+	survey.DiscordHandle = in.DiscordHandle
+	survey.HearAboutUs = in.HearAboutUs
+	survey.ExperienceLevel = in.ExperienceLevel
+	survey.PrimaryUseCase = in.PrimaryUseCase
+	survey.IsCompany = in.IsCompany
+	survey.CompanyContact = in.CompanyContact
+}
+
 // GetSurvey returns the current user's survey response, or 404 if not submitted yet.
 func (h *SurveyHandler) GetSurvey(c *gin.Context) { // BETA_SURVEY
-	userID := c.MustGet("user_id").(uuid.UUID)
+	userID, ok := currentUser(c)
+	if !ok {
+		return
+	}
 
 	var survey models.BetaSurvey
 	if err := h.db.Where("user_id = ?", userID).First(&survey).Error; err != nil {
@@ -47,7 +63,10 @@ func (h *SurveyHandler) GetSurvey(c *gin.Context) { // BETA_SURVEY
 
 // SubmitSurvey creates a new survey response (one per user, enforced by DB unique index).
 func (h *SurveyHandler) SubmitSurvey(c *gin.Context) { // BETA_SURVEY
-	userID := c.MustGet("user_id").(uuid.UUID)
+	userID, ok := currentUser(c)
+	if !ok {
+		return
+	}
 
 	var input surveyInput
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -55,20 +74,8 @@ func (h *SurveyHandler) SubmitSurvey(c *gin.Context) { // BETA_SURVEY
 		return
 	}
 
-	survey := models.BetaSurvey{
-		UserID:             userID,
-		Rating:             input.Rating,
-		WillUseApp:         input.WillUseApp,
-		FeatureWishlist:    input.FeatureWishlist,
-		OpenSourceInterest: input.OpenSourceInterest,
-		ContributionIntent: input.ContributionIntent,
-		DiscordHandle:      input.DiscordHandle,
-		HearAboutUs:        input.HearAboutUs,
-		ExperienceLevel:    input.ExperienceLevel,
-		PrimaryUseCase:     input.PrimaryUseCase,
-		IsCompany:          input.IsCompany,
-		CompanyContact:     input.CompanyContact,
-	}
+	survey := models.BetaSurvey{UserID: userID}
+	input.applyTo(&survey)
 
 	// Upsert: create or update on user_id conflict
 	if err := h.db.
@@ -84,7 +91,10 @@ func (h *SurveyHandler) SubmitSurvey(c *gin.Context) { // BETA_SURVEY
 
 // UpdateSurvey updates the current user's existing survey response.
 func (h *SurveyHandler) UpdateSurvey(c *gin.Context) { // BETA_SURVEY
-	userID := c.MustGet("user_id").(uuid.UUID)
+	userID, ok := currentUser(c)
+	if !ok {
+		return
+	}
 
 	var survey models.BetaSurvey
 	if err := h.db.Where("user_id = ?", userID).First(&survey).Error; err != nil {
@@ -98,17 +108,7 @@ func (h *SurveyHandler) UpdateSurvey(c *gin.Context) { // BETA_SURVEY
 		return
 	}
 
-	survey.Rating = input.Rating
-	survey.WillUseApp = input.WillUseApp
-	survey.FeatureWishlist = input.FeatureWishlist
-	survey.OpenSourceInterest = input.OpenSourceInterest
-	survey.ContributionIntent = input.ContributionIntent
-	survey.DiscordHandle = input.DiscordHandle
-	survey.HearAboutUs = input.HearAboutUs
-	survey.ExperienceLevel = input.ExperienceLevel
-	survey.PrimaryUseCase = input.PrimaryUseCase
-	survey.IsCompany = input.IsCompany
-	survey.CompanyContact = input.CompanyContact
+	input.applyTo(&survey)
 
 	if err := h.db.Save(&survey).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update survey"})

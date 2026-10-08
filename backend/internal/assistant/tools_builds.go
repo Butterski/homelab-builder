@@ -183,18 +183,29 @@ type proposalsView struct {
 	Recent  []services.ProposalSummary `json:"recent"`
 }
 
-func getBuild(_ context.Context, r *Registry, actor Actor, args json.RawMessage) (*Result, error) {
+// buildIDArg reads the build_id argument of a tool that takes nothing else.
+func buildIDArg(actor Actor, args json.RawMessage) (uuid.UUID, error) {
 	var in struct {
 		BuildID string `json:"build_id"`
 	}
 	if err := decodeArgs(args, &in); err != nil {
-		return nil, err
+		return uuid.Nil, err
 	}
-	buildID, err := ownedBuildID(actor, in.BuildID)
+	return ownedBuildID(actor, in.BuildID)
+}
+
+// ownedBuildArg loads the build named by the build_id argument, refusing one
+// the actor does not own.
+func ownedBuildArg(r *Registry, actor Actor, args json.RawMessage) (*models.Build, error) {
+	buildID, err := buildIDArg(actor, args)
 	if err != nil {
 		return nil, err
 	}
-	build, err := r.deps.Builds.GetOwned(buildID, actor.UserID)
+	return r.deps.Builds.GetOwned(buildID, actor.UserID)
+}
+
+func getBuild(_ context.Context, r *Registry, actor Actor, args json.RawMessage) (*Result, error) {
+	build, err := ownedBuildArg(r, actor, args)
 	if err != nil {
 		return nil, err
 	}
@@ -203,7 +214,7 @@ func getBuild(_ context.Context, r *Registry, actor Actor, args json.RawMessage)
 		return nil, err
 	}
 	view.URL = reviewURL(actor, build.ID, nil)
-	if state, err := r.deps.Proposals.SyncState(buildID, actor.UserID); err == nil {
+	if state, err := r.deps.Proposals.SyncState(build.ID, actor.UserID); err == nil {
 		view.Proposals = proposalsView{Pending: state.Pending, Recent: state.Recent}
 	}
 	summary := count(len(view.Nodes), "device", "devices") + ", " + count(len(view.Connections), "connection", "connections")
@@ -369,21 +380,11 @@ func describeValidation(raw json.RawMessage, build *models.Build) validationView
 }
 
 func validateBuild(_ context.Context, r *Registry, actor Actor, args json.RawMessage) (*Result, error) {
-	var in struct {
-		BuildID string `json:"build_id"`
-	}
-	if err := decodeArgs(args, &in); err != nil {
-		return nil, err
-	}
-	buildID, err := ownedBuildID(actor, in.BuildID)
+	build, err := ownedBuildArg(r, actor, args)
 	if err != nil {
 		return nil, err
 	}
-	build, err := r.deps.Builds.GetOwned(buildID, actor.UserID)
-	if err != nil {
-		return nil, err
-	}
-	raw, err := r.deps.IP.ValidateNetwork(buildID)
+	raw, err := r.deps.IP.ValidateNetwork(build.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -392,20 +393,11 @@ func validateBuild(_ context.Context, r *Registry, actor Actor, args json.RawMes
 }
 
 func generateConfigs(_ context.Context, r *Registry, actor Actor, args json.RawMessage) (*Result, error) {
-	var in struct {
-		BuildID string `json:"build_id"`
-	}
-	if err := decodeArgs(args, &in); err != nil {
-		return nil, err
-	}
-	buildID, err := ownedBuildID(actor, in.BuildID)
+	build, err := ownedBuildArg(r, actor, args)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := r.deps.Builds.GetOwned(buildID, actor.UserID); err != nil {
-		return nil, err
-	}
-	bundle, err := r.deps.Config.GenerateAll(buildID, actor.UserID)
+	bundle, err := r.deps.Config.GenerateAll(build.ID, actor.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -413,13 +405,7 @@ func generateConfigs(_ context.Context, r *Registry, actor Actor, args json.RawM
 }
 
 func gamingReport(_ context.Context, r *Registry, actor Actor, args json.RawMessage) (*Result, error) {
-	var in struct {
-		BuildID string `json:"build_id"`
-	}
-	if err := decodeArgs(args, &in); err != nil {
-		return nil, err
-	}
-	buildID, err := ownedBuildID(actor, in.BuildID)
+	buildID, err := buildIDArg(actor, args)
 	if err != nil {
 		return nil, err
 	}

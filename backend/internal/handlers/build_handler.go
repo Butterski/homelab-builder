@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/Butterski/homelab-builder/backend/internal/models"
 	"github.com/Butterski/homelab-builder/backend/internal/services"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -22,13 +23,9 @@ func NewBuildHandler(service *services.BuildService, ipService *services.IPServi
 	}
 }
 
-// We no longer define CreateBuildRequest locally.
-// We bind directly to the new structured DTO `services.SyncGraphInput`.
-
 func (h *BuildHandler) Create(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+	userID, ok := currentUser(c)
+	if !ok {
 		return
 	}
 
@@ -42,7 +39,7 @@ func (h *BuildHandler) Create(c *gin.Context) {
 		return
 	}
 
-	build, err := h.service.Create(userID.(uuid.UUID), req)
+	build, err := h.service.Create(userID, req)
 	if err != nil {
 		log.Printf("Build Create Error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create build"})
@@ -53,41 +50,54 @@ func (h *BuildHandler) Create(c *gin.Context) {
 }
 
 func (h *BuildHandler) Get(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+	userID, ok := currentUser(c)
+	if !ok {
 		return
 	}
 
-	idParam := c.Param("id")
-	id, err := uuid.Parse(idParam)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+	id, ok := uuidParam(c, "id")
+	if !ok {
 		return
 	}
 
-	build, err := h.service.GetByID(id)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Build not found"})
-		return
-	}
-
-	if build.UserID != userID.(uuid.UUID) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized to access this build"})
+	build, ok := h.ownedBuild(c, id, userID)
+	if !ok {
 		return
 	}
 
 	c.JSON(http.StatusOK, build)
 }
 
+// ownedBuild loads a build for its owner: 404 when it is missing, 403 when it
+// belongs to someone else. It writes the error itself when it returns false.
+func (h *BuildHandler) ownedBuild(c *gin.Context, id, userID uuid.UUID) (*models.Build, bool) {
+	build, err := h.service.GetByID(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Build not found"})
+		return nil, false
+	}
+	if build.UserID != userID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized to access this build"})
+		return nil, false
+	}
+	return build, true
+}
+
+func respondShareError(c *gin.Context, err error) {
+	if errors.Is(err, services.ErrBuildNotFound) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Build not found"})
+		return
+	}
+	c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+}
+
 func (h *BuildHandler) List(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+	userID, ok := currentUser(c)
+	if !ok {
 		return
 	}
 
-	builds, err := h.service.ListByUser(userID.(uuid.UUID))
+	builds, err := h.service.ListByUser(userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list builds"})
 		return
@@ -111,14 +121,12 @@ func (h *BuildHandler) conflictResponse(id uuid.UUID, cause error) gin.H {
 }
 
 func (h *BuildHandler) Rename(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+	userID, ok := currentUser(c)
+	if !ok {
 		return
 	}
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+	id, ok := uuidParam(c, "id")
+	if !ok {
 		return
 	}
 	var req struct {
@@ -129,7 +137,7 @@ func (h *BuildHandler) Rename(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	build, err := h.service.Rename(id, userID.(uuid.UUID), req.Name, req.Revision)
+	build, err := h.service.Rename(id, userID, req.Name, req.Revision)
 	if errors.Is(err, services.ErrBuildRevisionConflict) {
 		c.JSON(http.StatusConflict, h.conflictResponse(id, err))
 		return
@@ -144,15 +152,13 @@ func (h *BuildHandler) Rename(c *gin.Context) {
 // UpdateTopology is the builder's canonical mutation endpoint. It serializes
 // writers by build revision and only commits when IP allocation also succeeds.
 func (h *BuildHandler) UpdateTopology(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+	userID, ok := currentUser(c)
+	if !ok {
 		return
 	}
 
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+	id, ok := uuidParam(c, "id")
+	if !ok {
 		return
 	}
 
@@ -162,7 +168,7 @@ func (h *BuildHandler) UpdateTopology(c *gin.Context) {
 		return
 	}
 
-	build, err := h.service.UpdateAndCalculate(id, userID.(uuid.UUID), req, h.ipService)
+	build, err := h.service.UpdateAndCalculate(id, userID, req, h.ipService)
 	if err == nil {
 		validation, validationErr := h.ipService.ValidateNetwork(id)
 		if validationErr != nil {
@@ -186,20 +192,17 @@ func (h *BuildHandler) UpdateTopology(c *gin.Context) {
 	c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save and calculate topology: " + err.Error()})
 }
 func (h *BuildHandler) Delete(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+	userID, ok := currentUser(c)
+	if !ok {
 		return
 	}
 
-	idParam := c.Param("id")
-	id, err := uuid.Parse(idParam)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+	id, ok := uuidParam(c, "id")
+	if !ok {
 		return
 	}
 
-	if err := h.service.Delete(id, userID.(uuid.UUID)); err != nil {
+	if err := h.service.Delete(id, userID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete build"})
 		return
 	}
@@ -207,64 +210,18 @@ func (h *BuildHandler) Delete(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Build deleted"})
 }
 
-func (h *BuildHandler) CalculateNetwork(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
-	}
-
-	idParam := c.Param("id")
-	id, err := uuid.Parse(idParam)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
-		return
-	}
-
-	build, err := h.service.GetByID(id)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Build not found"})
-		return
-	}
-
-	if build.UserID != userID.(uuid.UUID) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized to access this build"})
-		return
-	}
-
-	if err := h.ipService.CalculateNetwork(id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to calculate network: " + err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"message":  "Network calculated successfully",
-		"build_id": id,
-	})
-}
-
 func (h *BuildHandler) ValidateNetwork(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+	userID, ok := currentUser(c)
+	if !ok {
 		return
 	}
 
-	idParam := c.Param("id")
-	id, err := uuid.Parse(idParam)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+	id, ok := uuidParam(c, "id")
+	if !ok {
 		return
 	}
 
-	build, err := h.service.GetByID(id)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Build not found"})
-		return
-	}
-
-	if build.UserID != userID.(uuid.UUID) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Unauthorized to access this build"})
+	if _, ok := h.ownedBuild(c, id, userID); !ok {
 		return
 	}
 
@@ -278,26 +235,19 @@ func (h *BuildHandler) ValidateNetwork(c *gin.Context) {
 }
 
 func (h *BuildHandler) Share(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+	userID, ok := currentUser(c)
+	if !ok {
 		return
 	}
 
-	idParam := c.Param("id")
-	id, err := uuid.Parse(idParam)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+	id, ok := uuidParam(c, "id")
+	if !ok {
 		return
 	}
 
-	build, err := h.service.ShareBuild(id, userID.(uuid.UUID))
+	build, err := h.service.ShareBuild(id, userID)
 	if err != nil {
-		if err == services.ErrBuildNotFound {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Build not found"})
-			return
-		}
-		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		respondShareError(c, err)
 		return
 	}
 
@@ -305,26 +255,19 @@ func (h *BuildHandler) Share(c *gin.Context) {
 }
 
 func (h *BuildHandler) Unshare(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+	userID, ok := currentUser(c)
+	if !ok {
 		return
 	}
 
-	idParam := c.Param("id")
-	id, err := uuid.Parse(idParam)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+	id, ok := uuidParam(c, "id")
+	if !ok {
 		return
 	}
 
-	build, err := h.service.UnshareBuild(id, userID.(uuid.UUID))
+	build, err := h.service.UnshareBuild(id, userID)
 	if err != nil {
-		if err == services.ErrBuildNotFound {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Build not found"})
-			return
-		}
-		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		respondShareError(c, err)
 		return
 	}
 
@@ -346,16 +289,13 @@ type shareSettingsRequest struct {
 }
 
 func (h *BuildHandler) SetShareEditable(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+	userID, ok := currentUser(c)
+	if !ok {
 		return
 	}
 
-	idParam := c.Param("id")
-	id, err := uuid.Parse(idParam)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+	id, ok := uuidParam(c, "id")
+	if !ok {
 		return
 	}
 
@@ -365,13 +305,9 @@ func (h *BuildHandler) SetShareEditable(c *gin.Context) {
 		return
 	}
 
-	build, err := h.service.SetShareEditable(id, userID.(uuid.UUID), req.Editable)
+	build, err := h.service.SetShareEditable(id, userID, req.Editable)
 	if err != nil {
-		if err == services.ErrBuildNotFound {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Build not found"})
-			return
-		}
-		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		respondShareError(c, err)
 		return
 	}
 
@@ -411,20 +347,17 @@ func (h *BuildHandler) UpdateShared(c *gin.Context) {
 }
 
 func (h *BuildHandler) Duplicate(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+	userID, ok := currentUser(c)
+	if !ok {
 		return
 	}
 
-	idParam := c.Param("id")
-	id, err := uuid.Parse(idParam)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+	id, ok := uuidParam(c, "id")
+	if !ok {
 		return
 	}
 
-	build, err := h.service.Duplicate(id, userID.(uuid.UUID))
+	build, err := h.service.Duplicate(id, userID)
 	if err != nil {
 		log.Printf("Build Duplicate Error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to duplicate build"})

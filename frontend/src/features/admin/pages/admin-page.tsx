@@ -1,46 +1,38 @@
 import { Page, PageHeader } from "../../../components/layout/page"
-import { useAdminStats, useAdminServices, useAdminUsers } from "../api/use-admin"
+import { useAdminStats, useAdminServices, useAdminUsers, type AdminDashboardStats, type EnrichedUser } from "../api/use-admin"
 import { AdminStats } from "../components/admin-stats"
 import { ServiceDialog } from "../components/service-dialog"
 import { Skeleton } from "../../../components/ui/skeleton"
-import { LoadingScreen } from "../../../components/ui/loading-screen"
 import { ServicesTable } from "../components/services-table"
 import { AdminHardwareManager } from "../components/hardware-manager"
 import { BlueprintModerationManager } from "../components/blueprint-moderation-manager"
-import { SteeringRulesManager } from "../components/steering-rules-manager"
 import { CatalogComponentsManager } from "../components/catalog-components-manager"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../../components/ui/card"
 import { Button } from "../../../components/ui/button"
-import React, { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Download, Shield, Network, Server, Cpu, Search } from "lucide-react"
-import { useCallback } from "react"
-
-import { useAuth } from "../hooks/use-auth"
+import { useAuth } from "../../auth/hooks/use-auth"
 import { Navigate } from "react-router-dom"
 import { apiUrl } from "../../../lib/api-base"
+import { authHeaders } from "../../../lib/api"
 
 function AnimatedCounter({ value, decimals = 0 }: { value: number; decimals?: number }) {
   const [displayed, setDisplayed] = useState(0)
-  const prevValueRef = useRef(0)
+  const displayedRef = useRef(0)
 
   useEffect(() => {
-    const prevVal = prevValueRef.current
-    prevValueRef.current = value
-
-    if (prevVal === value) {
-      setDisplayed(value)
-      return
-    }
+    const from = displayedRef.current
+    if (from === value) return
 
     const duration = 1000
     const startTime = performance.now()
     let animationFrameId: number
 
     const updateCounter = (now: number) => {
-      const elapsed = now - startTime
-      const progress = Math.min(elapsed / duration, 1)
+      const progress = Math.min((now - startTime) / duration, 1)
       const eased = progress * (2 - progress)
-      setDisplayed(prevVal + eased * (value - prevVal))
+      displayedRef.current = from + eased * (value - from)
+      setDisplayed(displayedRef.current)
 
       if (progress < 1) {
         animationFrameId = requestAnimationFrame(updateCounter)
@@ -84,23 +76,22 @@ const getAvatarColor = (id: string) => {
   return colors[index]
 }
 
+const ADMIN_TABS = ["insights", "users", "services", "hardware", "blueprints", "mass-planner"] as const
+type AdminTab = (typeof ADMIN_TABS)[number]
 
-// ─── Extracted sub-components to reduce component size ───────────────────────
-function TabSwitcher({ tab, onTabChange }: { tab: string; onTabChange: (t: any) => void }) {
-  const tabs = ["insights", "users", "services", "hardware", "blueprints", "links", "steering", "mass-planner"] as const;
-  const labels: Record<string, string> = {
-    insights: "Topology Insights",
-    users: "Active Homelabers",
-    services: "Service Catalog",
-    hardware: "Community Hardware",
-    blueprints: "Blueprint Review",
-    links: "Buy Links (Affiliate)",
-    steering: "Store Steering",
-    "mass-planner": "Component Planner",
-  };
+const TAB_LABELS: Record<AdminTab, string> = {
+  insights: "Topology Insights",
+  users: "Active Homelabers",
+  services: "Service Catalog",
+  hardware: "Community Hardware",
+  blueprints: "Blueprint Review",
+  "mass-planner": "Component Planner",
+}
+
+function TabSwitcher({ tab, onTabChange }: { tab: AdminTab; onTabChange: (t: AdminTab) => void }) {
   return (
     <div className="flex gap-1 rounded-lg border p-1 bg-muted/30 flex-wrap">
-      {tabs.map(t => (
+      {ADMIN_TABS.map(t => (
         <button
           key={t}
           type="button"
@@ -109,14 +100,45 @@ function TabSwitcher({ tab, onTabChange }: { tab: string; onTabChange: (t: any) 
             tab === t ? "bg-background shadow-sm" : "hover:bg-muted text-muted-foreground hover:text-foreground"
           }`}
         >
-          {labels[t]}
+          {TAB_LABELS[t]}
         </button>
       ))}
     </div>
   );
 }
 
-function InsightsTab({ stats }: { stats: any }) {
+/** Counts drawn as bars against the largest one. */
+function CountBars({ items, unit, labelClassName, emptyText }: {
+  items: Array<{ label: string; count: number }>;
+  unit: string;
+  labelClassName?: string;
+  emptyText: string;
+}) {
+  if (items.length === 0) {
+    return <div className="text-center py-8 text-sm text-muted-foreground">{emptyText}</div>;
+  }
+  const maxVal = Math.max(...items.map(item => item.count));
+  return (
+    <>
+      {items.map(item => {
+        const pct = maxVal > 0 ? (item.count / maxVal) * 100 : 0;
+        return (
+          <div key={item.label} className="space-y-1">
+            <div className="flex items-center justify-between text-xs font-medium">
+              <span className={labelClassName}>{item.label}</span>
+              <span className="text-muted-foreground">{item.count} {unit}</span>
+            </div>
+            <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+              <div className="h-full rounded-full bg-foreground/70 transition-all" style={{ width: `${pct}%` }} />
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+function InsightsTab({ stats }: { stats: AdminDashboardStats | undefined }) {
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-3">
@@ -164,25 +186,12 @@ function InsightsTab({ stats }: { stats: any }) {
             <CardDescription>Most preferred manufacturers inside user network topologies</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {stats?.brand_market_share && stats.brand_market_share.length > 0 ? (
-              stats.brand_market_share.map((item: any) => {
-                const maxVal = Math.max(...(stats.brand_market_share.map((x: any) => Number(x.count)) || [1]));
-                const pct = maxVal > 0 ? (item.count / maxVal) * 100 : 0;
-                return (
-                  <div key={`brand-${item.brand}`} className="space-y-1">
-                    <div className="flex items-center justify-between text-xs font-medium">
-                      <span className="capitalize">{item.brand}</span>
-                      <span className="text-muted-foreground">{item.count} nodes</span>
-                    </div>
-                    <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
-                      <div className="h-full rounded-full bg-foreground/70 transition-all" style={{ width: `${pct}%` }} />
-                    </div>
-                  </div>
-                );
-              })
-            ) : (
-              <div className="text-center py-8 text-sm text-muted-foreground">No brand metrics available yet.</div>
-            )}
+            <CountBars
+              items={(stats?.brand_market_share ?? []).map(item => ({ label: item.brand, count: item.count }))}
+              unit="nodes"
+              labelClassName="capitalize"
+              emptyText="No brand metrics available yet."
+            />
           </CardContent>
         </Card>
         <Card>
@@ -191,25 +200,11 @@ function InsightsTab({ stats }: { stats: any }) {
             <CardDescription>Most frequently active services mapped inside user server/NAS nodes</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {stats?.active_services_distribution && stats.active_services_distribution.length > 0 ? (
-              stats.active_services_distribution.map((item: any) => {
-                const maxVal = Math.max(...(stats.active_services_distribution.map((x: any) => Number(x.count)) || [1]));
-                const pct = maxVal > 0 ? (item.count / maxVal) * 100 : 0;
-                return (
-                  <div key={`svc-${item.name}`} className="space-y-1">
-                    <div className="flex items-center justify-between text-xs font-medium">
-                      <span>{item.name}</span>
-                      <span className="text-muted-foreground">{item.count} active</span>
-                    </div>
-                    <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
-                      <div className="h-full rounded-full bg-foreground/70 transition-all" style={{ width: `${pct}%` }} />
-                    </div>
-                  </div>
-                );
-              })
-            ) : (
-              <div className="text-center py-8 text-sm text-muted-foreground">No service metrics available yet.</div>
-            )}
+            <CountBars
+              items={(stats?.active_services_distribution ?? []).map(item => ({ label: item.name, count: item.count }))}
+              unit="active"
+              emptyText="No service metrics available yet."
+            />
           </CardContent>
         </Card>
         <Card className="md:col-span-2">
@@ -219,7 +214,7 @@ function InsightsTab({ stats }: { stats: any }) {
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {stats?.node_distribution && stats.node_distribution.length > 0 ? (
-              stats.node_distribution.map((item: any) => (
+              stats.node_distribution.map(item => (
                 <div key={`node-${item.type}`} className="flex items-center gap-3 p-3 border rounded-lg bg-card">
                   <div className="size-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs capitalize">
                     {item.type.slice(0, 2)}
@@ -240,14 +235,31 @@ function InsightsTab({ stats }: { stats: any }) {
   );
 }
 
-function UsersTab({ userSearch, onUserSearchChange, userMinBuilds, onUserMinBuildsChange, users, usersLoading, onDownloadAnonymous }: {
+function downloadAnonymousTopologies() {
+  fetch(apiUrl('/api/admin/export-anonymized-topologies'), { headers: authHeaders() })
+    .then(res => res.blob())
+    .then(blob => {
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'homelab_topologies_anonymized.json';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    })
+    .catch(err => {
+      console.error('Failed to download anonymous topologies', err);
+    });
+}
+
+function UsersTab({ userSearch, onUserSearchChange, userMinBuilds, onUserMinBuildsChange, users, usersLoading }: {
   userSearch: string;
   onUserSearchChange: (v: string) => void;
   userMinBuilds: number;
   onUserMinBuildsChange: (v: number) => void;
-  users: any[];
+  users: EnrichedUser[];
   usersLoading: boolean;
-  onDownloadAnonymous: () => void;
 }) {
   const filteredUsers = users.filter(u => {
     const anonName = getPseudonym(u.id).toLowerCase();
@@ -271,7 +283,7 @@ function UsersTab({ userSearch, onUserSearchChange, userMinBuilds, onUserMinBuil
               Export anonymized visual builder diagrams to compile a local custom layout model or dashboard templates.
             </CardDescription>
           </div>
-          <Button onClick={onDownloadAnonymous} size="sm" className="hover:cursor-pointer">
+          <Button onClick={downloadAnonymousTopologies} size="sm" className="hover:cursor-pointer">
             <Download className="mr-2 size-4" /> Download Topology JSON
           </Button>
         </CardHeader>
@@ -362,49 +374,15 @@ function UsersTab({ userSearch, onUserSearchChange, userMinBuilds, onUserMinBuil
 }
 
 function AdminPage() {
-  const { user, loading } = useAuth()
+  const { user } = useAuth()
   const { data: stats, isLoading: statsLoading } = useAdminStats()
   const { data: services, isLoading: servicesLoading } = useAdminServices()
   const { data: users, isLoading: usersLoading } = useAdminUsers()
-  const [tab, setTab] = useState<"insights" | "users" | "services" | "hardware" | "blueprints" | "links" | "steering" | "mass-planner">("insights")
+  const [tab, setTab] = useState<AdminTab>("insights")
 
   const [userSearch, setUserSearch] = useState("")
   const [userMinBuilds, setUserMinBuilds] = useState<number>(0)
 
-  const filteredUsers = (users || []).filter(u => {
-    const anonName = getPseudonym(u.id).toLowerCase()
-    const anonEmail = getAnonymizedEmail(u.id).toLowerCase()
-    const matchesSearch = anonName.includes(userSearch.toLowerCase()) || 
-                          anonEmail.includes(userSearch.toLowerCase())
-    const matchesBuilds = u.builds_count >= userMinBuilds
-    return matchesSearch && matchesBuilds
-  })
-
-  // Memoized BEFORE early returns to avoid rules-of-hooks violations
-  const handleDownloadAnonymousTopologies = useCallback(() => {
-    const token = localStorage.getItem('auth_token');
-    
-    fetch(apiUrl('/api/admin/export-anonymized-topologies'), {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    })
-    .then(res => res.blob())
-    .then(blob => {
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'homelab_topologies_anonymized.json';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    })
-    .catch(err => {
-      console.error('Failed to download anonymous topologies', err);
-    });
-  }, []);
-
-  if (loading) return <LoadingScreen message="Loading Admin Dashboard..." />
   if (!user?.is_admin) return <Navigate to="/" replace />
 
   return (
@@ -438,9 +416,8 @@ function AdminPage() {
           onUserSearchChange={setUserSearch}
           userMinBuilds={userMinBuilds}
           onUserMinBuildsChange={setUserMinBuilds}
-          users={filteredUsers}
+          users={users ?? []}
           usersLoading={usersLoading}
-          onDownloadAnonymous={handleDownloadAnonymousTopologies}
         />
       )}
 
@@ -453,18 +430,9 @@ function AdminPage() {
       )}
       {tab === "hardware" && <AdminHardwareManager />}
       {tab === "blueprints" && <BlueprintModerationManager />}
-      {tab === "links" && (
-        <div className="app-empty-state px-6 py-10">
-          <h3 className="font-semibold">Not available in the open beta</h3>
-          <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-            Affiliate Links Management is disabled for the Open Beta. This feature is reserved for future implementation to support community funding.
-          </p>
-        </div>
-      )}
-      {tab === "steering" && <SteeringRulesManager />}
       {tab === "mass-planner" && <CatalogComponentsManager />}
     </Page>
   )
 }
 
-export default React.memo(AdminPage);
+export default AdminPage

@@ -201,7 +201,7 @@ const AIM = -0.016;
 /** Width of a character cell over its height, as landing.css sets the rack's text. */
 const CELL_ASPECT = 0.6 / 1.1;
 
-export type RackFrame = {
+type RackFrame = {
   /** The rack and the floor under it. */
   shade: string;
   /** Lights that are on and fine. A space wherever there is none. */

@@ -17,7 +17,7 @@ vi.mock('@/features/builder/api/builds', () => ({
   buildApi: { list: vi.fn().mockResolvedValue([{ id: 'build-1', name: 'Home Lab' }]) },
 }));
 vi.mock('@/features/auth/lib/auth-config', () => ({
-  getAuthConfig: vi.fn().mockResolvedValue({ mcp_enabled: true, assistant_enabled: true }),
+  useAuthConfig: () => ({ mcp_enabled: true, assistant_enabled: true }),
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 

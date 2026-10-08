@@ -1,8 +1,7 @@
 import type { GameExposure, GamingPlan, Service } from '../../../../types';
-import type { CreateBuildParams } from '../../api/builds';
 import { arrangePlan } from './arrange';
 import { gameHost, gameServerVM, gameService, nextPortOffsets } from './game-hosts';
-import type { GameServerAnswers, PlannedEdge, PlannedNode, PlannedVM } from './types';
+import type { GameServerAnswers, Plan, PlannedEdge, PlannedNode, PlannedVM } from './types';
 
 export const MAX_PLANNED_GAMES = 8;
 
@@ -10,7 +9,7 @@ export const MAX_PLANNED_GAMES = 8;
 export function buildGameServerPlan(
   answers: GameServerAnswers,
   services: Service[],
-): CreateBuildParams {
+): Plan {
   const nodes: PlannedNode[] = [];
   const edges: PlannedEdge[] = [];
   const onVPS = answers.location === 'vps';
@@ -127,7 +126,7 @@ export function buildGameServerPlan(
     thumbnail: '',
     kind: 'game_server',
     gaming_plan,
-    settings: { planner: { kind: 'game_server', ...answers }, boughtItems: [], showBought: false },
+    settings: { planner: { kind: 'game_server', ...answers } },
     nodes,
     edges,
     services: [],

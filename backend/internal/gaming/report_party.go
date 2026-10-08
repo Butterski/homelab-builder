@@ -161,7 +161,7 @@ func (b *reportBuilder) checkParty() {
 				Fix:     "Enter it in the game plan to see how far it goes for everyone."})
 		} else if perSeat := plan.Uplink.DownMbps / float64(party.Seats); perSeat < 5 {
 			b.add(Issue{Code: "download_per_seat_low", Severity: SeverityWarning,
-				Message: fmt.Sprintf("%s Mbps of download shared by %d seats is %s Mbps each.", formatMbps(plan.Uplink.DownMbps), party.Seats, formatMbps(round1(perSeat))),
+				Message: fmt.Sprintf("%s Mbps of download shared by %d seats is %s Mbps each.", formatNumber(plan.Uplink.DownMbps), party.Seats, formatNumber(round1(perSeat))),
 				Fix:     "Ask players to install and update their games before they arrive."})
 		}
 		if party.Seats >= lanCacheSeats && !party.HasLANCache {
@@ -219,11 +219,11 @@ func (b *reportBuilder) checkParty() {
 			switch {
 			case load.Watts > load.CapacityWatts:
 				b.add(Issue{Code: "circuit_overloaded", Severity: SeverityError,
-					Message: fmt.Sprintf("%s carries %d W on a %s A breaker that trips at %d W.", name, int(load.Watts), formatCores(circuit.BreakerAmps), int(load.CapacityWatts)),
+					Message: fmt.Sprintf("%s carries %d W on a %s A breaker that trips at %d W.", name, int(load.Watts), formatNumber(circuit.BreakerAmps), int(load.CapacityWatts)),
 					Fix:     "Move tables to another circuit."})
 			case load.Watts > load.ContinuousWatts:
 				b.add(Issue{Code: "circuit_over_80", Severity: SeverityWarning,
-					Message: fmt.Sprintf("%s carries %d W, over the %d W a %s A breaker should carry for hours.", name, int(load.Watts), int(load.ContinuousWatts), formatCores(circuit.BreakerAmps)),
+					Message: fmt.Sprintf("%s carries %d W, over the %d W a %s A breaker should carry for hours.", name, int(load.Watts), int(load.ContinuousWatts), formatNumber(circuit.BreakerAmps)),
 					Fix:     "Move something to another circuit to stay under 80% of the breaker."})
 			}
 		}
@@ -246,8 +246,5 @@ func formatGbps(gbps float64) string {
 	if gbps < 1 {
 		return fmt.Sprintf("%d Mb", int(gbps*1000+0.5))
 	}
-	if gbps == math.Trunc(gbps) {
-		return fmt.Sprintf("%d Gb", int(gbps))
-	}
-	return fmt.Sprintf("%.1f Gb", gbps)
+	return formatNumber(gbps) + " Gb"
 }

@@ -54,16 +54,6 @@ func (s *BuildService) Create(userID uuid.UUID, input SyncGraphInput) (*models.B
 	return s.GetByID(build.ID)
 }
 
-func (s *BuildService) Update(buildID uuid.UUID, userID uuid.UUID, input SyncGraphInput) (*models.Build, error) {
-	err := s.db.Transaction(func(tx *gorm.DB) error {
-		return s.updateGraphTx(tx, buildID, userID, input, nil)
-	})
-	if err != nil {
-		return nil, err
-	}
-	return s.GetByID(buildID)
-}
-
 // Rename updates only build metadata and never rewrites topology rows.
 func (s *BuildService) Rename(buildID, userID uuid.UUID, name string, revision uint64) (*models.Build, error) {
 	name = strings.TrimSpace(name)
@@ -106,12 +96,6 @@ func (s *BuildService) UpdateAndCalculate(buildID, userID uuid.UUID, input SyncG
 // SaveAndCalculateTx writes the graph and its calculated addresses inside an
 // already open transaction, so callers can commit it or roll it back as a unit.
 func (s *BuildService) SaveAndCalculateTx(tx *gorm.DB, buildID, userID uuid.UUID, input SyncGraphInput, ipService *IPService) error {
-	return s.updateGraphTx(tx, buildID, userID, input, func() error {
-		return ipService.WithDB(tx).CalculateNetwork(buildID)
-	})
-}
-
-func (s *BuildService) updateGraphTx(tx *gorm.DB, buildID, userID uuid.UUID, input SyncGraphInput, afterSync func() error) error {
 	var build models.Build
 	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&build, "id = ?", buildID).Error; err != nil {
 		return err
@@ -119,6 +103,12 @@ func (s *BuildService) updateGraphTx(tx *gorm.DB, buildID, userID uuid.UUID, inp
 	if build.UserID != userID {
 		return errors.New("unauthorized")
 	}
+	return s.saveRevisionTx(tx, &build, input, ipService)
+}
+
+// saveRevisionTx writes the next revision of a locked build: its metadata, its
+// graph and the addresses calculated for it.
+func (s *BuildService) saveRevisionTx(tx *gorm.DB, build *models.Build, input SyncGraphInput, ipService *IPService) error {
 	if input.Revision != build.Revision {
 		return fmt.Errorf("%w: expected %d, received %d", ErrBuildRevisionConflict, build.Revision, input.Revision)
 	}
@@ -130,19 +120,16 @@ func (s *BuildService) updateGraphTx(tx *gorm.DB, buildID, userID uuid.UUID, inp
 	if input.Thumbnail != "" {
 		build.Thumbnail = input.Thumbnail
 	}
-	if err := applyKindAndPlan(&build, input); err != nil {
+	if err := applyKindAndPlan(build, input); err != nil {
 		return err
 	}
-	if err := tx.Save(&build).Error; err != nil {
+	if err := tx.Save(build).Error; err != nil {
 		return err
 	}
 	if err := s.syncGraph(tx, build.ID, input); err != nil {
 		return err
 	}
-	if afterSync != nil {
-		return afterSync()
-	}
-	return nil
+	return ipService.WithDB(tx).CalculateNetwork(build.ID)
 }
 
 // applyKindAndPlan copies the build kind and the gaming plan from a save onto
@@ -619,45 +606,32 @@ func defaultString(value, fallback string) string {
 
 // ShareBuild enables public sharing for a build and returns the share token.
 func (s *BuildService) ShareBuild(buildID uuid.UUID, userID uuid.UUID) (*models.Build, error) {
-	var build models.Build
-	if err := s.db.First(&build, "id = ?", buildID).Error; err != nil {
-		return nil, ErrBuildNotFound
-	}
-	if build.UserID != userID {
-		return nil, errors.New("unauthorized")
-	}
-
-	if build.ShareToken == nil || *build.ShareToken == "" {
-		token := uuid.New().String()
-		build.ShareToken = &token
-	}
-	build.IsShared = true
-
-	if err := s.db.Save(&build).Error; err != nil {
-		return nil, err
-	}
-	return s.GetByID(buildID)
+	return s.updateSharing(buildID, userID, func(build *models.Build) map[string]any {
+		fields := map[string]any{"is_shared": true}
+		if build.ShareToken == nil || *build.ShareToken == "" {
+			fields["share_token"] = uuid.New().String()
+		}
+		return fields
+	})
 }
 
 // UnshareBuild disables public sharing for a build.
 func (s *BuildService) UnshareBuild(buildID uuid.UUID, userID uuid.UUID) (*models.Build, error) {
-	var build models.Build
-	if err := s.db.First(&build, "id = ?", buildID).Error; err != nil {
-		return nil, ErrBuildNotFound
-	}
-	if build.UserID != userID {
-		return nil, errors.New("unauthorized")
-	}
-
-	build.IsShared = false
-	if err := s.db.Save(&build).Error; err != nil {
-		return nil, err
-	}
-	return s.GetByID(buildID)
+	return s.updateSharing(buildID, userID, func(*models.Build) map[string]any {
+		return map[string]any{"is_shared": false}
+	})
 }
 
 // SetShareEditable sets whether collaborators with the share link can edit the build.
 func (s *BuildService) SetShareEditable(buildID uuid.UUID, userID uuid.UUID, editable bool) (*models.Build, error) {
+	return s.updateSharing(buildID, userID, func(*models.Build) map[string]any {
+		return map[string]any{"shared_editable": editable}
+	})
+}
+
+// updateSharing writes only the sharing columns of a build its owner asked to
+// change, so it cannot undo a topology save that commits in between.
+func (s *BuildService) updateSharing(buildID, userID uuid.UUID, fields func(*models.Build) map[string]any) (*models.Build, error) {
 	var build models.Build
 	if err := s.db.First(&build, "id = ?", buildID).Error; err != nil {
 		return nil, ErrBuildNotFound
@@ -665,9 +639,7 @@ func (s *BuildService) SetShareEditable(buildID uuid.UUID, userID uuid.UUID, edi
 	if build.UserID != userID {
 		return nil, errors.New("unauthorized")
 	}
-
-	build.SharedEditable = editable
-	if err := s.db.Save(&build).Error; err != nil {
+	if err := s.db.Model(&build).Updates(fields(&build)).Error; err != nil {
 		return nil, err
 	}
 	return s.GetByID(buildID)
@@ -681,23 +653,9 @@ func (s *BuildService) UpdateByShareToken(token string, input SyncGraphInput, ip
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("share_token = ? AND is_shared = true AND shared_editable = true", token).First(&build).Error; err != nil {
 			return ErrBuildNotFound
 		}
-		if input.Revision != build.Revision {
-			return fmt.Errorf("%w: expected %d, received %d", ErrBuildRevisionConflict, build.Revision, input.Revision)
-		}
-		settingsJSON, _ := json.Marshal(input.Settings)
-		build.Name = input.Name
-		build.Settings = settingsJSON
-		build.Revision++
-		if input.Thumbnail != "" {
-			build.Thumbnail = input.Thumbnail
-		}
-		if err := tx.Save(&build).Error; err != nil {
-			return err
-		}
-		if err := s.syncGraph(tx, build.ID, input); err != nil {
-			return err
-		}
-		if err := ipService.CalculateNetworkInTransaction(tx, build.ID); err != nil {
+		// A save through a share link never changes the kind or the plan.
+		input.Kind, input.GamingPlan = "", nil
+		if err := s.saveRevisionTx(tx, &build, input, ipService); err != nil {
 			return err
 		}
 		buildID = build.ID
@@ -796,13 +754,29 @@ func (s *BuildService) Duplicate(buildID uuid.UUID, userID uuid.UUID) (*models.B
 			return err
 		}
 
-		// Relational Clone:
-		idMap := make(map[uuid.UUID]uuid.UUID)
-
-		// 1. Clone Nodes
+		idMap := make(map[uuid.UUID]uuid.UUID, len(build.Nodes))
 		for _, node := range build.Nodes {
-			newUID := uuid.New()
-			idMap[node.ID] = newUID
+			idMap[node.ID] = uuid.New()
+		}
+
+		for _, node := range build.Nodes {
+			newUID := idMap[node.ID]
+
+			// Guests get their new ids first, so the copied virtual network can
+			// point at them when the node is written.
+			vmIDs := make(map[string]string, len(node.VirtualMachines))
+			newVMs := make([]models.VirtualMachine, len(node.VirtualMachines))
+			for i, vm := range node.VirtualMachines {
+				newVM := vm
+				newVM.ID = uuid.New()
+				newVM.NodeID = newUID
+				vmIDs[vm.ID.String()] = newVM.ID.String()
+				newVMs[i] = newVM
+			}
+			details, err := remapVirtualNetwork(node.Details, vmIDs)
+			if err != nil {
+				return err
+			}
 
 			newNode := models.Node{
 				ID:         newUID,
@@ -814,33 +788,24 @@ func (s *BuildService) Duplicate(buildID uuid.UUID, userID uuid.UUID) (*models.B
 				PowerDraw:  node.PowerDraw,
 				IP:         node.IP,
 				MacAddress: node.MacAddress,
-				Details:    node.Details,
+				Details:    details,
+			}
+			// Rack-mounted copies point at the copied rack, not the original one.
+			if node.ParentID != nil {
+				if parentID, ok := idMap[*node.ParentID]; ok {
+					newNode.ParentID = &parentID
+				}
 			}
 			if err := tx.Create(&newNode).Error; err != nil {
 				return err
 			}
 
-			// 1.1 Clone VMs
-			vmIDs := make(map[string]string)
-			for _, vm := range node.VirtualMachines {
-				newVM := vm // struct copy
-				newVM.ID = uuid.New()
-				vmIDs[vm.ID.String()] = newVM.ID.String()
-				newVM.NodeID = newUID
-				if err := tx.Create(&newVM).Error; err != nil {
+			for i := range newVMs {
+				if err := tx.Create(&newVMs[i]).Error; err != nil {
 					return err
 				}
 			}
 
-			details, err := remapVirtualNetwork(newNode.Details, vmIDs)
-			if err != nil {
-				return err
-			}
-			if err := tx.Model(&newNode).Update("details", details).Error; err != nil {
-				return err
-			}
-
-			// 1.2 Clone Internal Components
 			for _, comp := range node.InternalComponents {
 				newComp := comp
 				newComp.ID = uuid.New()
@@ -850,7 +815,6 @@ func (s *BuildService) Duplicate(buildID uuid.UUID, userID uuid.UUID) (*models.B
 				}
 			}
 
-			// 1.3 Clone Service Instances (Node bound)
 			for _, svc := range node.ServiceInstances {
 				newSvc := svc
 				newSvc.ID = uuid.New()
@@ -863,21 +827,6 @@ func (s *BuildService) Duplicate(buildID uuid.UUID, userID uuid.UUID) (*models.B
 			}
 		}
 
-		// 1.4 Point rack-mounted copies at the copied rack, not the original one
-		for _, node := range build.Nodes {
-			if node.ParentID == nil {
-				continue
-			}
-			parentID, ok := idMap[*node.ParentID]
-			if !ok {
-				continue
-			}
-			if err := tx.Model(&models.Node{}).Where("id = ?", idMap[node.ID]).Update("parent_id", parentID).Error; err != nil {
-				return err
-			}
-		}
-
-		// 2. Clone Edges
 		for _, edge := range build.Edges {
 			sourceUUID, ok1 := idMap[edge.SourceNodeID]
 			targetUUID, ok2 := idMap[edge.TargetNodeID]
@@ -902,29 +851,17 @@ func (s *BuildService) Duplicate(buildID uuid.UUID, userID uuid.UUID) (*models.B
 			}
 		}
 
-		// 3. Clone Global Service Instances (Backlog / NodeID is null)
+		// Backlog service instances belong to no node.
 		var globalServices []models.ServiceInstance
-		if err := tx.Where("build_id = ? AND node_id IS NULL", buildID).Find(&globalServices).Error; err == nil {
-			for _, svc := range globalServices {
-				newSvc := svc
-				newSvc.ID = uuid.New()
-				newSvc.BuildID = newBuild.ID
-				if err := tx.Create(&newSvc).Error; err != nil {
-					return err
-				}
-			}
+		if err := tx.Where("build_id = ? AND node_id IS NULL", buildID).Find(&globalServices).Error; err != nil {
+			return err
 		}
-
-		// Fix ParentIDs on cloned Nodes
-		var clonedNodes []models.Node
-		if err := tx.Where("build_id = ?", newBuild.ID).Find(&clonedNodes).Error; err == nil {
-			for _, cn := range clonedNodes {
-				if cn.ParentID != nil {
-					if mappedParent, ok := idMap[*cn.ParentID]; ok {
-						cn.ParentID = &mappedParent
-						tx.Save(&cn)
-					}
-				}
+		for _, svc := range globalServices {
+			newSvc := svc
+			newSvc.ID = uuid.New()
+			newSvc.BuildID = newBuild.ID
+			if err := tx.Create(&newSvc).Error; err != nil {
+				return err
 			}
 		}
 

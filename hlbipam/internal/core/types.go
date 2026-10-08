@@ -1,36 +1,35 @@
 package core
 
 type ZoneConfig struct {
-	BaseOffset int    `json:"base_offset"`
-	Step       int    `json:"step"`
-	CanHostVMs bool   `json:"can_host_vms"`
-	Label      string `json:"label"`
+	BaseOffset int
+	Step       int
+	CanHostVMs bool
 }
 
 var DefaultDeviceZones = map[string]ZoneConfig{
-	"router":       {BaseOffset: 1, Step: 1, CanHostVMs: false, Label: "Router"},
-	"switch":       {BaseOffset: 10, Step: 1, CanHostVMs: false, Label: "Switch"},
-	"access_point": {BaseOffset: 20, Step: 1, CanHostVMs: false, Label: "AP"},
-	"ups":          {BaseOffset: 80, Step: 1, CanHostVMs: false, Label: "UPS"},
-	"pdu":          {BaseOffset: 85, Step: 1, CanHostVMs: false, Label: "PDU"},
-	"disk":         {BaseOffset: 90, Step: 1, CanHostVMs: false, Label: "Disk"},
-	"nas":          {BaseOffset: 100, Step: 10, CanHostVMs: true, Label: "NAS"},
-	"server":       {BaseOffset: 150, Step: 10, CanHostVMs: true, Label: "Server"},
-	"server_v2":    {BaseOffset: 150, Step: 10, CanHostVMs: true, Label: "Server"},
-	"firewall":     {BaseOffset: 2, Step: 1, CanHostVMs: false, Label: "Firewall"},
-	"vps":          {BaseOffset: 120, Step: 10, CanHostVMs: true, Label: "VPS"},
-	"pc":           {BaseOffset: 160, Step: 10, CanHostVMs: true, Label: "PC"},
-	"minipc":       {BaseOffset: 170, Step: 10, CanHostVMs: true, Label: "Mini PC"},
-	"sbc":          {BaseOffset: 180, Step: 10, CanHostVMs: true, Label: "SBC"},
-	"gpu":          {BaseOffset: 190, Step: 1, CanHostVMs: false, Label: "GPU"},
-	"hba":          {BaseOffset: 195, Step: 1, CanHostVMs: false, Label: "HBA"},
-	"pcie":         {BaseOffset: 198, Step: 1, CanHostVMs: false, Label: "PCIe"},
-	"iot":          {BaseOffset: 200, Step: 10, CanHostVMs: true, Label: "IoT"},
-	"modem":        {BaseOffset: 5, Step: 1, CanHostVMs: false, Label: "Modem"},
-	"console":      {BaseOffset: 30, Step: 1, CanHostVMs: false, Label: "Console"},
+	"router":       {BaseOffset: 1, Step: 1, CanHostVMs: false},
+	"switch":       {BaseOffset: 10, Step: 1, CanHostVMs: false},
+	"access_point": {BaseOffset: 20, Step: 1, CanHostVMs: false},
+	"ups":          {BaseOffset: 80, Step: 1, CanHostVMs: false},
+	"pdu":          {BaseOffset: 85, Step: 1, CanHostVMs: false},
+	"disk":         {BaseOffset: 90, Step: 1, CanHostVMs: false},
+	"nas":          {BaseOffset: 100, Step: 10, CanHostVMs: true},
+	"server":       {BaseOffset: 150, Step: 10, CanHostVMs: true},
+	"server_v2":    {BaseOffset: 150, Step: 10, CanHostVMs: true},
+	"firewall":     {BaseOffset: 2, Step: 1, CanHostVMs: false},
+	"vps":          {BaseOffset: 120, Step: 10, CanHostVMs: true},
+	"pc":           {BaseOffset: 160, Step: 10, CanHostVMs: true},
+	"minipc":       {BaseOffset: 170, Step: 10, CanHostVMs: true},
+	"sbc":          {BaseOffset: 180, Step: 10, CanHostVMs: true},
+	"gpu":          {BaseOffset: 190, Step: 1, CanHostVMs: false},
+	"hba":          {BaseOffset: 195, Step: 1, CanHostVMs: false},
+	"pcie":         {BaseOffset: 198, Step: 1, CanHostVMs: false},
+	"iot":          {BaseOffset: 200, Step: 10, CanHostVMs: true},
+	"modem":        {BaseOffset: 5, Step: 1, CanHostVMs: false},
+	"console":      {BaseOffset: 30, Step: 1, CanHostVMs: false},
 }
 
-var FallbackZone = ZoneConfig{BaseOffset: 220, Step: 1, CanHostVMs: false, Label: "Device"}
+var FallbackZone = ZoneConfig{BaseOffset: 220, Step: 1, CanHostVMs: false}
 
 var VMHostTypeOrder = []string{"nas", "vps", "server_v2", "server", "pc", "minipc", "sbc", "iot"}
 

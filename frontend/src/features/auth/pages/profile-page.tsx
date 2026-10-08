@@ -10,7 +10,7 @@ import {
   DialogTitle,
 } from '../../../components/ui/dialog';
 import { UserAvatar } from '../../../components/ui/user-avatar';
-import { useAuth } from '../../admin/hooks/use-auth';
+import { useAuth } from '../hooks/use-auth';
 import { useBuilds } from '../../builder/api/use-builds';
 
 export default function ProfilePage() {

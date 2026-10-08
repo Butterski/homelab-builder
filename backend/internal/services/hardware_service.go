@@ -2,6 +2,7 @@ package services
 
 import (
 	"encoding/json"
+	"errors"
 	"sort"
 	"strings"
 
@@ -113,29 +114,26 @@ func (s *HardwareService) GetCategories() ([]string, error) {
 	return normalized, nil
 }
 
-func (s *HardwareService) GetBrands(category string) ([]string, error) {
-	q := s.db.Model(&models.HardwareComponent{}).Where("approved = true")
-	if category != "" {
-		q = q.Where("category = ?", NormalizeHardwareCategory(category))
-	}
-	var brands []string
-	err := q.Distinct("brand").Order("brand").Pluck("brand", &brands).Error
-	return brands, err
-}
-
 type CreateHardwareInput struct {
-	Category     string          `json:"category" binding:"required"`
-	Brand        string          `json:"brand" binding:"required"`
-	Model        string          `json:"model" binding:"required"`
-	Spec         json.RawMessage `json:"spec"`
-	PriceEst     float64         `json:"price_est"`
-	Currency     string          `json:"currency"`
-	AffiliateTag string          `json:"affiliate_tag"`
-	BuyURLs      json.RawMessage `json:"buy_urls"`
-	ImageURL     string          `json:"image_url"`
+	Category string          `json:"category" binding:"required"`
+	Brand    string          `json:"brand" binding:"required"`
+	Model    string          `json:"model" binding:"required"`
+	Spec     json.RawMessage `json:"spec"`
+	PriceEst float64         `json:"price_est"`
+	Currency string          `json:"currency"`
+	BuyURLs  json.RawMessage `json:"buy_urls"`
+	ImageURL string          `json:"image_url"`
 }
 
 func (s *HardwareService) Create(input CreateHardwareInput, submittedBy *uuid.UUID, autoApprove bool) (*models.HardwareComponent, error) {
+	c := newHardwareComponent(input, submittedBy, autoApprove)
+	if err := s.db.Create(&c).Error; err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+func newHardwareComponent(input CreateHardwareInput, submittedBy *uuid.UUID, approved bool) models.HardwareComponent {
 	spec := json.RawMessage("{}")
 	if input.Spec != nil {
 		spec = input.Spec
@@ -148,24 +146,18 @@ func (s *HardwareService) Create(input CreateHardwareInput, submittedBy *uuid.UU
 	if currency == "" {
 		currency = "EUR"
 	}
-
-	c := models.HardwareComponent{
-		Category:     NormalizeHardwareCategory(input.Category),
-		Brand:        input.Brand,
-		Model:        input.Model,
-		Spec:         spec,
-		PriceEst:     input.PriceEst,
-		Currency:     currency,
-		AffiliateTag: input.AffiliateTag,
-		BuyURLs:      buyURLs,
-		ImageURL:     input.ImageURL,
-		SubmittedBy:  submittedBy,
-		Approved:     &autoApprove,
+	return models.HardwareComponent{
+		Category:    NormalizeHardwareCategory(input.Category),
+		Brand:       input.Brand,
+		Model:       input.Model,
+		Spec:        spec,
+		PriceEst:    input.PriceEst,
+		Currency:    currency,
+		BuyURLs:     buyURLs,
+		ImageURL:    input.ImageURL,
+		SubmittedBy: submittedBy,
+		Approved:    &approved,
 	}
-	if err := s.db.Create(&c).Error; err != nil {
-		return nil, err
-	}
-	return &c, nil
 }
 
 func (s *HardwareService) Update(id uuid.UUID, input CreateHardwareInput) (*models.HardwareComponent, error) {
@@ -187,7 +179,6 @@ func (s *HardwareService) Update(id uuid.UUID, input CreateHardwareInput) (*mode
 	c.Spec = spec
 	c.PriceEst = input.PriceEst
 	c.Currency = input.Currency
-	c.AffiliateTag = input.AffiliateTag
 	c.BuyURLs = buyURLs
 	c.ImageURL = input.ImageURL
 	if err := s.db.Save(&c).Error; err != nil {
@@ -202,55 +193,15 @@ func (s *HardwareService) Approve(id uuid.UUID, approved bool) error {
 		Update("approved", approved).Error
 }
 
-func (s *HardwareService) UpdateBuyURLs(id uuid.UUID, buyURLs json.RawMessage, affiliateTag string) error {
-	return s.db.Model(&models.HardwareComponent{}).
-		Where("id = ?", id).
-		Updates(map[string]interface{}{
-			"buy_urls":      buyURLs,
-			"affiliate_tag": affiliateTag,
-		}).Error
-}
-
 func (s *HardwareService) Delete(id uuid.UUID) error {
 	return s.db.Delete(&models.HardwareComponent{}, "id = ?", id).Error
 }
 
-func (s *HardwareService) Like(id uuid.UUID) error {
-	return s.db.Model(&models.HardwareComponent{}).
-		Where("id = ?", id).
-		UpdateColumn("likes", gorm.Expr("likes + 1")).Error
-}
-
 // BulkImport inserts many components at once (admin only)
 func (s *HardwareService) BulkImport(items []CreateHardwareInput, submittedBy *uuid.UUID) (int, error) {
-	var components []models.HardwareComponent
+	components := make([]models.HardwareComponent, 0, len(items))
 	for _, input := range items {
-		spec := json.RawMessage("{}")
-		if input.Spec != nil {
-			spec = input.Spec
-		}
-		buyURLs := json.RawMessage("[]")
-		if input.BuyURLs != nil {
-			buyURLs = input.BuyURLs
-		}
-		currency := input.Currency
-		if currency == "" {
-			currency = "EUR"
-		}
-		approvedTrue := true
-		components = append(components, models.HardwareComponent{
-			Category:     NormalizeHardwareCategory(input.Category),
-			Brand:        input.Brand,
-			Model:        input.Model,
-			Spec:         spec,
-			PriceEst:     input.PriceEst,
-			Currency:     currency,
-			AffiliateTag: input.AffiliateTag,
-			BuyURLs:      buyURLs,
-			ImageURL:     input.ImageURL,
-			SubmittedBy:  submittedBy,
-			Approved:     &approvedTrue,
-		})
+		components = append(components, newHardwareComponent(input, submittedBy, true))
 	}
 	if err := s.db.CreateInBatches(&components, 50).Error; err != nil {
 		return 0, err
@@ -265,37 +216,39 @@ func (s *HardwareService) GetHardwareFavorites(userID uuid.UUID) ([]models.UserH
 }
 
 func (s *HardwareService) AddHardwareFavorite(userID uuid.UUID, componentID uuid.UUID) (*models.UserHardwareFavorite, error) {
-	var existing models.UserHardwareFavorite
-	if err := s.db.Where("user_id = ? AND hardware_component_id = ?", userID, componentID).First(&existing).Error; err == nil {
-		s.db.Preload("HardwareComponent").First(&existing, "id = ?", existing.ID)
-		return &existing, nil
-	}
-
-	fav := models.UserHardwareFavorite{
-		UserID:              userID,
-		HardwareComponentID: componentID,
-	}
-	if err := s.db.Create(&fav).Error; err != nil {
+	var fav models.UserHardwareFavorite
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		err := tx.Where("user_id = ? AND hardware_component_id = ?", userID, componentID).First(&fav).Error
+		if err == nil {
+			return nil
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		fav = models.UserHardwareFavorite{UserID: userID, HardwareComponentID: componentID}
+		if err := tx.Create(&fav).Error; err != nil {
+			return err
+		}
+		return tx.Model(&models.HardwareComponent{}).Where("id = ?", componentID).UpdateColumn("likes", gorm.Expr("likes + 1")).Error
+	})
+	if err != nil {
 		return nil, err
 	}
-
-	// Increment likes count on the hardware component
-	s.db.Model(&models.HardwareComponent{}).Where("id = ?", componentID).UpdateColumn("likes", gorm.Expr("likes + 1"))
-
-	s.db.Preload("HardwareComponent").First(&fav, "id = ?", fav.ID)
+	if err := s.db.Preload("HardwareComponent").First(&fav, "id = ?", fav.ID).Error; err != nil {
+		return nil, err
+	}
 	return &fav, nil
 }
 
 func (s *HardwareService) RemoveHardwareFavorite(userID uuid.UUID, componentID uuid.UUID) error {
-	var fav models.UserHardwareFavorite
-	if err := s.db.Where("user_id = ? AND hardware_component_id = ?", userID, componentID).First(&fav).Error; err != nil {
-		return err
-	}
-	if err := s.db.Delete(&fav).Error; err != nil {
-		return err
-	}
-
-	// Decrement likes count on the hardware component safely
-	s.db.Model(&models.HardwareComponent{}).Where("id = ?", componentID).UpdateColumn("likes", gorm.Expr("GREATEST(0, likes - 1)"))
-	return nil
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		var fav models.UserHardwareFavorite
+		if err := tx.Where("user_id = ? AND hardware_component_id = ?", userID, componentID).First(&fav).Error; err != nil {
+			return err
+		}
+		if err := tx.Delete(&fav).Error; err != nil {
+			return err
+		}
+		return tx.Model(&models.HardwareComponent{}).Where("id = ?", componentID).UpdateColumn("likes", gorm.Expr("GREATEST(0, likes - 1)")).Error
+	})
 }

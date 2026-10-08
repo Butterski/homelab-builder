@@ -65,10 +65,14 @@ func IsPublicAddress(ip net.IP) bool {
 	return true
 }
 
-// IsInternalHostname reports names that can only point inside a network. It is
-// a courtesy for a clear message up front; DialControl enforces the rule on the
-// resolved address whatever the name is.
-func IsInternalHostname(host string) bool {
+// IsBlockedHost reports hosts refused before any lookup: a literal non-public
+// address, or a name that can only point inside a network. It is a courtesy
+// for a clear message up front; DialControl enforces the rule on the resolved
+// address whatever the name is.
+func IsBlockedHost(host string) bool {
+	if ip := net.ParseIP(host); ip != nil {
+		return !IsPublicAddress(ip)
+	}
 	lower := strings.ToLower(strings.TrimSuffix(host, "."))
 	return lower == "localhost" || strings.HasSuffix(lower, ".localhost") ||
 		strings.HasSuffix(lower, ".local") || strings.HasSuffix(lower, ".internal")

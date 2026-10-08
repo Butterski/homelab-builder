@@ -73,10 +73,7 @@ var tokenIDPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+![A-Za-
 
 // NormalizeTokenID checks an API token id: user@realm!tokenname.
 func NormalizeTokenID(raw string) (string, error) {
-	id := strings.TrimSpace(raw)
-	if strings.HasPrefix(id, "PVEAPIToken=") {
-		id = strings.TrimPrefix(id, "PVEAPIToken=")
-	}
+	id := strings.TrimPrefix(strings.TrimSpace(raw), "PVEAPIToken=")
 	if !tokenIDPattern.MatchString(id) || len(id) > 160 {
 		return "", &Error{Kind: KindInvalid, Message: "The token id has the form user@realm!tokenname, for example hlbuilder@pve!hlbuilder."}
 	}
@@ -126,14 +123,8 @@ func NormalizeBaseURL(raw string, allowPrivate bool) (string, error) {
 	if parsed.User != nil {
 		return invalid("The address must not contain a user name or password.")
 	}
-	host := parsed.Hostname()
-	if !allowPrivate {
-		if ip := net.ParseIP(host); ip != nil && !netguard.IsPublicAddress(ip) {
-			return "", &Error{Kind: KindBlocked, Message: blockedMessage}
-		}
-		if netguard.IsInternalHostname(host) {
-			return "", &Error{Kind: KindBlocked, Message: blockedMessage}
-		}
+	if !allowPrivate && netguard.IsBlockedHost(parsed.Hostname()) {
+		return "", &Error{Kind: KindBlocked, Message: blockedMessage}
 	}
 	return parsed.Scheme + "://" + parsed.Host, nil
 }

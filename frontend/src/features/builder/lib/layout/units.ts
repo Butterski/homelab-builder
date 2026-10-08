@@ -63,17 +63,17 @@ const TOP_ANCHOR = 3;
 const HUB_PORT_ANCHOR = 4;
 const SINGLE_PORT_ANCHOR = 6;
 
-export function sideOfHandle(handle: string): Side {
+function sideOfHandle(handle: string): Side {
   return handle === TOP_HANDLE ? 'top' : 'bottom';
 }
 
-export function portOfHandle(handle: string): number {
+function portOfHandle(handle: string): number {
   const match = /^eth(\d+)$/.exec(handle);
   return match ? Number(match[1]) : 0;
 }
 
 /** Where a cable attached to `handle` ends, relative to the card's top-left corner. */
-export function handleAnchor(node: LayoutNode, handle: string): Point {
+function handleAnchor(node: LayoutNode, handle: string): Point {
   if (sideOfHandle(handle) === 'top') return { x: node.width / 2, y: -TOP_ANCHOR };
   if (!node.spreadPorts) return { x: node.width / 2, y: node.height + SINGLE_PORT_ANCHOR };
   const port = Math.min(portOfHandle(handle), Math.max(0, node.ports - 1));

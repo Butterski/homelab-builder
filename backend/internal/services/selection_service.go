@@ -46,16 +46,19 @@ func (s *SelectionService) AddSelection(userID uuid.UUID, input AddSelectionInpu
 		return nil, fmt.Errorf("failed to add selection (may already exist): %w", err)
 	}
 
-	// Reload with service data
-	s.db.Preload("Service").Preload("Service.Requirements").First(&selection, "id = ?", selection.ID)
-
+	if err := s.db.Preload("Service").Preload("Service.Requirements").First(&selection, "id = ?", selection.ID).Error; err != nil {
+		return nil, err
+	}
 	return &selection, nil
 }
 
 func (s *SelectionService) RemoveSelection(userID uuid.UUID, selectionID uuid.UUID) error {
 	result := s.db.Where("id = ? AND user_id = ?", selectionID, userID).Delete(&models.UserSelection{})
+	if result.Error != nil {
+		return result.Error
+	}
 	if result.RowsAffected == 0 {
 		return fmt.Errorf("selection not found")
 	}
-	return result.Error
+	return nil
 }

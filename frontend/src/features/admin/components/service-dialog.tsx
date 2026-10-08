@@ -27,7 +27,18 @@ const serviceSchema = z.object({
   min_storage_gb: z.coerce.number().min(1, "At least 1GB"),
 })
 
-type ServiceFormValues = z.infer<typeof serviceSchema>
+type ServiceFormValues = z.output<typeof serviceSchema>
+
+function formValues(service?: Service): ServiceFormValues {
+  return {
+    name: service?.name || "",
+    description: service?.description || "",
+    category: service?.category || "other",
+    min_cpu_cores: service?.requirements?.min_cpu_cores || 1,
+    min_ram_mb: service?.requirements?.min_ram_mb || 512,
+    min_storage_gb: service?.requirements?.min_storage_gb || 10,
+  }
+}
 
 interface ServiceDialogProps {
     initialData?: Service
@@ -42,57 +53,21 @@ export function ServiceDialog({ initialData, trigger }: ServiceDialogProps) {
   const isEditing = !!initialData
   const isPending = isCreating || isUpdating
 
-  const form = useForm<ServiceFormValues>({
-    resolver: zodResolver(serviceSchema) as any,
-    defaultValues: {
-      name: initialData?.name || "",
-      description: initialData?.description || "",
-      category: initialData?.category || "other",
-      min_cpu_cores: initialData?.requirements?.min_cpu_cores || 1,
-      min_ram_mb: initialData?.requirements?.min_ram_mb || 512,
-      min_storage_gb: initialData?.requirements?.min_storage_gb || 10,
-    },
+  const form = useForm<z.input<typeof serviceSchema>, unknown, ServiceFormValues>({
+    resolver: zodResolver(serviceSchema),
+    defaultValues: formValues(initialData),
   })
 
   useEffect(() => {
-     if (open && initialData) {
-         form.reset({
-             name: initialData.name,
-             description: initialData.description,
-             category: initialData.category,
-             min_cpu_cores: initialData.requirements?.min_cpu_cores || 1,
-             min_ram_mb: initialData.requirements?.min_ram_mb || 512,
-             min_storage_gb: initialData.requirements?.min_storage_gb || 10,
-         })
-     } else if (open && !initialData) {
-         form.reset({
-            name: "", description: "", category: "other", min_cpu_cores: 1, min_ram_mb: 512, min_storage_gb: 10
-         })
-     }
+    if (open) form.reset(formValues(initialData))
   }, [open, initialData, form])
 
   function onSubmit(data: ServiceFormValues) {
-    const payload = {
-        name: data.name,
-        description: data.description,
-        category: data.category as any,
-        min_cpu_cores: data.min_cpu_cores,
-        min_ram_mb: data.min_ram_mb,
-        min_storage_gb: data.min_storage_gb
-    }
-
-    if (isEditing && initialData) {
-        updateService({ id: initialData.id, data: payload as any }, {
-            onSuccess: () => {
-                setOpen(false)
-            }
-        })
+    const onSuccess = () => setOpen(false)
+    if (initialData) {
+        updateService({ id: initialData.id, data }, { onSuccess })
     } else {
-        createService(payload as any, {
-            onSuccess: () => {
-                setOpen(false)
-            },
-        })
+        createService(data, { onSuccess })
     }
   }
 
@@ -119,8 +94,7 @@ export function ServiceDialog({ initialData, trigger }: ServiceDialogProps) {
 
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="category" className="text-right">Category</Label>
-            <Input id="category" className="col-span-3" {...form.register("category")} /> 
-            {/* Should be Select, but using Input for speed unless I make Select component */}
+            <Input id="category" className="col-span-3" {...form.register("category")} />
           </div>
 
           <div className="grid grid-cols-4 items-center gap-4">

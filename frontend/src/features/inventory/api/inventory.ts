@@ -95,7 +95,7 @@ export type InventoryInput = {
 
 type InventoryList = { items: InventoryItem[]; limit: number };
 
-export const inventoryApi = {
+const inventoryApi = {
   list: () => api.get<InventoryList>('/api/inventory'),
   create: (input: InventoryInput) => api.post<InventoryItem>('/api/inventory', input),
   update: (id: string, input: InventoryInput) =>

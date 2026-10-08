@@ -8,7 +8,6 @@ import (
 	"github.com/Butterski/homelab-builder/backend/internal/middleware"
 	"github.com/Butterski/homelab-builder/backend/internal/services"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 type AuthHandler struct {
@@ -41,16 +40,8 @@ func (h *AuthHandler) GoogleLogin(c *gin.Context) {
 	if err != nil {
 		log.Printf("Google Login Error: %v", err)
 
-		// Record failure
-		locked := h.rateLimiter.RecordFailure(ip)
-		if locked {
+		if h.rateLimiter.RecordFailure(ip) {
 			log.Printf("Rate limit locked IP: %s", ip)
-			// Just locked - return same generic error
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error": "Invalid credentials",
-				"code":  "invalid_credentials",
-			})
-			return
 		}
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"error": "Invalid credentials",
@@ -85,15 +76,8 @@ func (h *AuthHandler) DevLogin(c *gin.Context) {
 }
 
 func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
-	userIDStr, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
-		return
-	}
-
-	userID, ok := userIDStr.(uuid.UUID)
+	userID, ok := currentUser(c)
 	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user session"})
 		return
 	}
 
@@ -108,15 +92,8 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 }
 
 func (h *AuthHandler) UpdatePreferences(c *gin.Context) {
-	userIDStr, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
-		return
-	}
-
-	userID, ok := userIDStr.(uuid.UUID)
+	userID, ok := currentUser(c)
 	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user session"})
 		return
 	}
 
@@ -129,28 +106,12 @@ func (h *AuthHandler) UpdatePreferences(c *gin.Context) {
 	}
 
 	user, err := h.service.UpdatePreferences(userID, input.Preferences)
-	if err != nil {
-		if errors.Is(err, services.ErrInvalidThemeSettings) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, user)
+	respondThemeUpdate(c, user, err)
 }
 
 func (h *AuthHandler) GetThemeSettings(c *gin.Context) {
-	userIDStr, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
-		return
-	}
-
-	userID, ok := userIDStr.(uuid.UUID)
+	userID, ok := currentUser(c)
 	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user session"})
 		return
 	}
 
@@ -164,15 +125,8 @@ func (h *AuthHandler) GetThemeSettings(c *gin.Context) {
 }
 
 func (h *AuthHandler) UpdateThemeSettings(c *gin.Context) {
-	userIDStr, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
-		return
-	}
-
-	userID, ok := userIDStr.(uuid.UUID)
+	userID, ok := currentUser(c)
 	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user session"})
 		return
 	}
 
@@ -183,14 +137,19 @@ func (h *AuthHandler) UpdateThemeSettings(c *gin.Context) {
 	}
 
 	themeSettings, err := h.service.UpdateThemeSettings(userID, input)
+	respondThemeUpdate(c, themeSettings, err)
+}
+
+// respondThemeUpdate answers a write that validates theme settings: invalid
+// settings are the caller's fault, anything else is ours.
+func respondThemeUpdate(c *gin.Context, result any, err error) {
+	if errors.Is(err, services.ErrInvalidThemeSettings) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 	if err != nil {
-		if errors.Is(err, services.ErrInvalidThemeSettings) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-
-	c.JSON(http.StatusOK, themeSettings)
+	c.JSON(http.StatusOK, result)
 }

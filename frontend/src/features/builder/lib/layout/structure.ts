@@ -77,7 +77,7 @@ const TYPE_ORDER: Partial<Record<HardwareType, number>> = {
 /** A cable beats Wi-Fi, Wi-Fi beats a tunnel, and a power feed comes last. */
 const MEDIUM_RANK: Record<Medium, number> = { ethernet: 0, wireless: 1, vpn: 2, power: 3 };
 
-export const upstreamRank = (type: HardwareType) => UPSTREAM_RANK[type] ?? 5;
+const upstreamRank = (type: HardwareType) => UPSTREAM_RANK[type] ?? 5;
 export const typeOrder = (type: HardwareType) => TYPE_ORDER[type] ?? 99;
 
 const isNetworkMedium = (medium: Medium) => medium === 'ethernet' || medium === 'wireless';

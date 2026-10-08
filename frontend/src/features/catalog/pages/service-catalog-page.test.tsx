@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
   patch: vi.fn(),
 }));
 
-vi.mock('../../admin/hooks/use-auth', () => ({ useAuth: () => ({ user: mocks.user }) }));
+vi.mock('../../auth/hooks/use-auth', () => ({ useAuth: () => ({ user: mocks.user }) }));
 vi.mock('../../../lib/api', () => ({
   api: { get: mocks.get, post: mocks.post, del: mocks.del, patch: mocks.patch },
   ApiError: class extends Error {},

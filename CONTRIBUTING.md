@@ -5,10 +5,10 @@ First, thanks for taking the time to contribute!
 ## Development Setup
 
 1. Fork the repository (or clone it if you have write access)
-2. Set up the environment variables (`cp .env.example .env`)
-3. Spin up the development environment using Docker:
+2. Set up the environment variables (`cp .env.hosted.example .env`)
+3. Spin up the development environment using Docker (see "Local Development" in the README for hot reload):
    ```bash
-   docker compose up -d
+   docker compose up -d --build
    ```
 
 ## Branching Strategy

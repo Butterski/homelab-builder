@@ -197,13 +197,15 @@ func BuildToSyncInput(build *models.Build) (SyncGraphInput, error) {
 	return input, nil
 }
 
+// detailsMap decodes stored details. The map is never nil, so callers that can
+// live with unreadable details may ignore the error.
 func detailsMap(raw json.RawMessage) (map[string]any, error) {
 	details := map[string]any{}
 	if len(raw) == 0 {
 		return details, nil
 	}
 	if err := json.Unmarshal(raw, &details); err != nil {
-		return nil, err
+		return map[string]any{}, err
 	}
 	if details == nil {
 		details = map[string]any{}

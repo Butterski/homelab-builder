@@ -7,33 +7,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-)
 
-func TestIsPublicAddress(t *testing.T) {
-	blocked := []string{
-		"127.0.0.1", "127.8.9.1", "::1", // loopback
-		"10.0.0.5", "172.16.0.1", "172.31.255.255", "192.168.1.50", // private
-		"169.254.169.254", "fe80::1", // link-local, incl. cloud metadata
-		"100.64.0.1", "100.127.255.254", // carrier-grade NAT
-		"fc00::1", "fd12:3456::1", // unique local
-		"0.0.0.0", "::", "224.0.0.1", "ff02::1", "255.255.255.255", "240.0.0.1",
-		"::ffff:127.0.0.1", "::ffff:10.0.0.1", "::ffff:169.254.169.254", // IPv4-mapped forms
-		"64:ff9b::7f00:1", "198.18.0.1", "192.0.0.8",
-	}
-	for _, address := range blocked {
-		if IsPublicAddress(net.ParseIP(address)) {
-			t.Errorf("%s must not be treated as public", address)
-		}
-	}
-	for _, address := range []string{"1.1.1.1", "8.8.8.8", "172.32.0.1", "100.63.255.255", "2606:4700:4700::1111"} {
-		if !IsPublicAddress(net.ParseIP(address)) {
-			t.Errorf("%s should be public", address)
-		}
-	}
-	if IsPublicAddress(nil) {
-		t.Error("an unparsable address must not be treated as public")
-	}
-}
+	"github.com/Butterski/homelab-builder/backend/internal/netguard"
+)
 
 func TestSafeHTTPClientRefusesInternalTargets(t *testing.T) {
 	internal := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -43,12 +19,12 @@ func TestSafeHTTPClientRefusesInternalTargets(t *testing.T) {
 
 	// On a shared instance the dial itself is refused, whatever the URL says.
 	_, err := SafeHTTPClient(false).Get(internal.URL)
-	if err == nil || !errors.Is(err, ErrPrivateEndpoint) {
+	if err == nil || !errors.Is(err, netguard.ErrPrivateEndpoint) {
 		t.Fatalf("expected ErrPrivateEndpoint, got %v", err)
 	}
 	// A hostname is checked after resolution, so a name pointing inwards is refused too.
 	_, port, _ := net.SplitHostPort(strings.TrimPrefix(internal.URL, "http://"))
-	if _, err := SafeHTTPClient(false).Get("http://localhost:" + port); err == nil || !errors.Is(err, ErrPrivateEndpoint) {
+	if _, err := SafeHTTPClient(false).Get("http://localhost:" + port); err == nil || !errors.Is(err, netguard.ErrPrivateEndpoint) {
 		t.Fatalf("hostname resolving to loopback: got %v", err)
 	}
 

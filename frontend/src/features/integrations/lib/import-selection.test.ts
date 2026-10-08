@@ -4,7 +4,6 @@ import {
   changeSentence,
   countChanges,
   decisionOf,
-  formatMemory,
   freeShare,
   guestChosen,
   guestDefault,
@@ -192,11 +191,7 @@ describe('figures in words', () => {
     );
   });
 
-  it('writes memory the way people say it', () => {
-    expect(formatMemory(4096)).toBe('4 GB');
-    expect(formatMemory(31985)).toBe('31.2 GB');
-    expect(formatMemory(512)).toBe('512 MB');
-    expect(formatMemory(0)).toBe('0 GB');
+  it('works out the share of a whole', () => {
     expect(share(27, 32)).toBe(84);
     expect(share(40, 32)).toBe(100);
     expect(share(1, 0)).toBe(0);

@@ -44,7 +44,7 @@ Remember - I don't want migrations scripts or Legacy things support. If somethin
 - **LLM access**: built-in MCP server (`/mcp`) and an opt-in, bring-your-own-key chat assistant; both can only propose changes
 - **Gaming (1.3)**: a build has a kind (`homelab`, `lan_party`, `game_server`); the gaming kinds add a plan (internet line, power circuits, event) and a report computed on the backend
 - **Canvas (1.3)**: Polish arranges the canvas with a layout engine of its own (`features/builder/lib/layout`); an LLM proposal is reviewed on the live canvas, not on a copy
-- **Inventory**: the hardware a user owns belongs to the account, not to a build. An owned device dragged onto the canvas is that machine: it keeps its link to the item, and the shopping list leaves it out
+- **Inventory**: the hardware a user owns belongs to the account, not to a build. An owned device dragged onto the canvas is that machine: it keeps its link to the item
 - **Proxmox import**: a read-only connection to Proxmox VE, or a pasted export, says what really runs on that hardware. What differs from a build becomes a proposal the owner reviews; nothing is imported by itself
 - **App pages**: every screen outside the canvas follows one design contract, `frontend/DESIGN.md` (see [App Pages](#app-pages))
 - **Infrastructure**: Docker Compose (postgres + backend + hlbipam + frontend)
@@ -82,20 +82,16 @@ homelab-builder/
 │   │   └── version/version.go  # release number; a frontend test keeps package.json in step
 │   ├── pkg/database/database.go # connection, AutoMigrate, Models() (every table)
 │   ├── go.mod
-│   ├── Dockerfile              # multi-stage: builder → final scratch image
+│   ├── Dockerfile              # multi-stage: Go builder → alpine runtime
 │   └── Dockerfile.test         # test runner image
 ├── hlbipam/                    # standalone IPAM microservice
 │   ├── cmd/server/             # entrypoint
 │   ├── internal/
 │   │   ├── api/                # HTTP handlers
-│   │   ├── core/               # allocator, subnet, types, validator
-│   │   ├── models/             # data models
-│   │   └── utils/              # utility functions
+│   │   ├── core/               # allocator, subnet and address math (ip.go), types, validator
+│   │   └── models/             # request and response DTOs
 │   ├── Dockerfile
-│   ├── Dockerfile.test
-│   ├── go.mod
-│   └── test_ipam.go            # integration test script
-├── discord-bot/                # placeholder (empty)
+│   └── go.mod
 ├── frontend/
 │   ├── src/
 │   │   ├── features/           # domain-sliced feature modules
@@ -113,7 +109,6 @@ homelab-builder/
 │   │   │   ├── legal/          # privacy policy, terms of service
 │   │   │   ├── settings/       # settings page: appearance, AI assistant, MCP access
 │   │   │   ├── setup-guide/    # the setup guide of a build: cables, addresses, hosts; ticked off and printed
-│   │   │   ├── shopping/       # shopping list generation
 │   │   │   └── survey/         # beta survey
 │   │   ├── components/         # shared UI components
 │   │   │   ├── auth/           # auth guards (RequireAuth)
@@ -121,14 +116,14 @@ homelab-builder/
 │   │   │   ├── layout/         # sidebar with the project card; page.tsx is the frame of every page
 │   │   │   └── ui/             # design system primitives (button, dialog, tick box, avatar, etc.)
 │   │   ├── lib/                # shared utilities
-│   │   │   ├── api.ts          # base axios instance
+│   │   │   ├── api.ts          # the one HTTP client (fetch): api.get/post/put/patch/del, ApiError, authHeaders()
+│   │   │   ├── api-base.ts     # base URL of the backend (VITE_API_URL, or :8080 in dev)
 │   │   │   ├── asset-link.ts   # which inventory item a node or component stands for
-│   │   │   ├── templates.ts    # config templates
+│   │   │   ├── format.ts       # formatMemory, plural: shared by the features
 │   │   │   ├── prerender.ts    # the landing page copy in index.html: release, shared keys
 │   │   │   ├── site.ts         # public site or somebody's own instance (decides landing page vs welcome screen)
-│   │   │   ├── utils.ts        # general utilities
+│   │   │   ├── utils.ts        # cn, errorMessage
 │   │   │   └── version.ts      # app version, taken from package.json at build time
-│   │   ├── services/           # shared service layer (api.ts)
 │   │   ├── types/index.ts      # shared TypeScript types
 │   │   ├── App.tsx             # root component with routing
 │   │   ├── main.tsx            # React entry point
@@ -139,10 +134,10 @@ homelab-builder/
 │   ├── vite.config.ts
 │   └── package.json
 └── docs/
-    ├── ARCHITECTURE.md         # copy of this file
     ├── MCP.md                  # connecting LLM clients over MCP
     ├── GAMING.md               # user guide: LAN party and game server builds
     ├── INVENTORY.md            # user guide: inventory and Proxmox import; how the token is handled
+    ├── VIRTUAL-NETWORKS.md     # user guide: a host's virtual network editor
     └── AI-ASSISTANT-SECURITY.md # how provider keys and chat data are handled
 ```
 
@@ -173,18 +168,16 @@ HTTP Request → Gin Router → Middleware → Handler → Service → GORM → 
 
 | File | Responsibility |
 |---|---|
+| `context.go` | `currentUser` and `uuidParam`: the caller and a UUID path parameter; each writes its own 401 / 400 |
 | `auth.go` | Google OAuth login, dev login, get current user, update preferences |
-| `build_handler.go` | Build CRUD, duplicate, calculate-network, validate-network |
-| `hardware_handler.go` | Public hardware catalog + admin CRUD, bulk import, approve, buy URLs |
-| `services.go` | Service CRUD + community submission |
-| `recommendations.go` | Generate recommendations |
-| `shopping_list.go` | Generate shopping list |
+| `build_handler.go` | Build CRUD, rename, duplicate, share links, topology save, validate-network |
+| `hardware_handler.go` | Public hardware catalog, favorites, community submission + admin CRUD, bulk import, approve |
+| `hardware_blueprint_handler.go` | Hardware blueprints: own list, create, import/export, share code, submit for review; admin moderation |
+| `services.go` | Service catalog, own services and their submission to the community, admin create |
 | `selections.go` | User service selections CRUD |
-| `admin_handler.go` | Admin dashboard, user list, service management, events |
+| `admin_handler.go` | Admin dashboard, user list, service management, anonymized topology export |
 | `config_handler.go` | Config generation for builds |
-| `steering_handler.go` | Steering rules CRUD (admin) |
-| `catalog_component_handler.go` | Catalog component CRUD |
-| `donate_handler.go` | Donation progress read/update |
+| `catalog_component_handler.go` | Catalog component CRUD (admin) |
 | `survey_handler.go` | Beta survey CRUD |
 | `health.go` | Health check endpoint (also reports the version) |
 | `gaming_handler.go` | Gaming report of a build (`GET /builds/:id/gaming-report`) |
@@ -210,14 +203,11 @@ HTTP Request → Gin Router → Middleware → Handler → Service → GORM → 
 | `hardware_seed.go`, `default_service_seed.go`, `catalog_seed.go` | Startup seed of the hardware catalog (`hardware_seed.json`) and the service catalog; `SeedCatalog` runs both |
 | `auth_service.go` | Google OAuth token verification, JWT issuance |
 | `hardware_service.go` | Hardware catalog queries + admin operations |
-| `recommendation_service.go` | Service/hardware recommendations based on selections |
-| `service_service.go` | Service catalog CRUD + community submissions |
-| `shopping_service.go` | Shopping list generation from build data |
+| `recommendation_service.go` | Hardware tiers for a set of services (the assistant's `recommend_hardware` tool) |
+| `service_service.go` | Service catalog CRUD, own services, community submissions |
 | `selection_service.go` | User service selections |
-| `config_service.go` | Network config generation (e.g. router configs) |
-| `steering_service.go` | Affiliate steering rules per hardware category |
+| `config_service.go`, `export_service.go` | Config files of a build (compose, .env, Ansible inventory, nginx) and the export bundle; each loads the build once |
 | `catalog_component_service.go` | Catalog component CRUD |
-| `analytics_service.go` | Analytics tracking (available for future handler integration) |
 | `inventory_service.go` | Owned hardware per account; where each item is planned (read from the builds) and what its integration reports |
 | `integration_service.go` | Proxmox connections: encrypted token secret, trusted certificate, the last snapshot, host-to-item links, outbound rate limit |
 | `proxmox_import.go` | Compares a snapshot with a build (`Plan`) and turns the owner's choices into a proposal, or into a new build (`Import`) |
@@ -253,12 +243,11 @@ hlbipam/
 │   ├── api/             # HTTP route handlers
 │   ├── core/            # Core logic
 │   │   ├── allocator.go # IP allocation engine
+│   │   ├── ip.go        # IPv4 and CIDR helpers
 │   │   ├── subnet.go    # Subnet calculations
 │   │   ├── types.go     # Data types for network topology
 │   │   └── validator.go # Network validation rules
-│   ├── models/          # Data models
-│   └── utils/           # Utility functions
-└── test_ipam.go         # Integration test script
+│   └── models/          # Request and response DTOs
 ```
 
 The backend communicates with HLBIPAM via `IPAM_URL` (default: `http://hlbipam:8081`).
@@ -281,7 +270,7 @@ User-facing docs: `docs/MCP.md` (client setup) and `docs/AI-ASSISTANT-SECURITY.m
 | `internal/assistant/instructions.go` | The fixed domain primer: MCP server instructions and the chat system prompt. |
 | `internal/assistant/agent.go` | Chat loop for the in-app assistant: one turn per user at a time, at most 12 model calls per message, history stored append-only. Streams what it does as events (see Chat events). |
 | `internal/mcpserver/` | `/mcp` endpoint (official `modelcontextprotocol/go-sdk`, stateless streamable HTTP). Authenticates a personal access token, rate-limits per token, and builds a per-request server exposing only the tools the token's scope allows. |
-| `internal/llm/` | Provider adapters behind one `Provider` interface: Anthropic (official SDK) and OpenAI-compatible (OpenAI, Gemini, OpenRouter, Ollama, custom). `Stream` takes `StreamHandlers`: text as it is written, the start of a tool call, and how many bytes of its arguments exist so far. `ssrf.go` restricts which addresses the server may call. |
+| `internal/llm/` | Provider adapters behind one `Provider` interface: Anthropic (official SDK) and OpenAI-compatible (OpenAI, Gemini, OpenRouter, Ollama, custom). `Stream` takes `StreamHandlers`: text as it is written, the start of a tool call, and how many bytes of its arguments exist so far. `ssrf.go` checks a base URL and builds the HTTP client that dials through `netguard`. |
 | `internal/llm/llmtest/`, `cmd/fakellm/` | A scripted OpenAI-compatible provider. Go tests run the real adapter against it; `go run ./cmd/fakellm` serves it so the chat can be driven in a browser without a key (see Running Tests). |
 | `internal/secrets/` | AES-256-GCM sealing of provider keys, bound to the owner through the AAD. |
 | `services/proposal_service.go` | Propose (dry run + diff), Refresh, Apply (replays the operations on the latest revision), Reject, SyncState. |
@@ -422,7 +411,6 @@ Two connected things. The **inventory** is what a user owns; a **Proxmox import*
 - One device is one node on a canvas: placing it again selects the node it is. The same item may be planned in several builds, which may be variants of each other.
 - Where an item is planned is never stored with the item. `InventoryService.placements` reads it from the builds.
 - `status` is what the owner set; `state` is what lists show. `inventory.State` makes an available item "in use" when a build plans every unit of it, or when it is the machine behind a host an integration reads. Broken and sold stay as set.
-- Owned hardware is left out of the shopping list (`shopping/lib/generator.ts`).
 - Memory is an internal component of type `ram` (`ComponentType = HardwareType | 'ram'`); a host's capacity stays `details.ram`. A kit at least as large as what is fitted takes its place, a smaller one is added (`ramAfterInstall`). `lib/upgrade-hints.ts` offers spare memory to a host that is short of it, in the device's panel and in the readiness report.
 - A copy is not the same machine: duplicating a node, or saving it as a blueprint, drops the link and the MAC address (pitfall 39).
 
@@ -594,7 +582,7 @@ docker run --rm -v "$PWD:/repo" -v hlb-frontend-node-modules:/repo/frontend/node
 - **Demo** (`components/landing-demo.tsx`, `lib/demo-plan.ts`). The guided planners (`buildHomelabPlan`, `buildLanPartyPlan`), `mapBuildToFlow`, the builder's `HardwareNode` and `CustomEdge`, and `computeLayout` run in the browser; nothing is saved. A plan is arranged once more after its cards have been measured, since the planner works from estimated sizes. Addresses come from `lib/demo-addresses.ts`, a copy of the role zones, because no server calculates anything for a guest. A rack is not offered: `RackNode` draws its contents from the builder store, which the demo does not fill. The demo is loaded when it scrolls near (it brings React Flow). "Keep this plan" stores the planner's path in `sessionStorage` (`AFTER_LOGIN_KEY`), and `AppContent` opens it after sign-in.
 - **Prerender.** `npm run build` ends with `vite build --ssr src/prerender.tsx` and `scripts/prerender.mjs`. The script writes the page into `dist/index.html` as `#prerender` next to the empty `#root`, adds the canonical link and the FAQ structured data, and keeps the untouched shell as `dist/app.html`. A crawler that runs no JavaScript (most AI crawlers) reads the whole page. In the browser `#root` stays hidden until `LandingPage` has drawn itself; `releasePrerender` then removes the copy and carries the scroll position over. A script in `index.html` hides the copy at once on any host but the public site, and for a browser that holds a token or has seen an instance without login (`LOCAL_INSTANCE_KEY`), so signed-in users and self-hosters never see the landing page flash by.
 - **nginx** (`frontend/nginx.conf`). `/` serves `index.html`, the known routes of the app serve `app.html`, and anything else is a real 404 (`public/404.html`).
-- `useAuth` starts with `loading` false when the auth config is known, login is on and there is no token: a guest gets the landing page without a loading screen in between.
+- `useAuth` reads one module-level auth state shared by every caller: `/auth/me` is asked once per page load, and a change (theme settings, preferences) is seen everywhere. It starts with `loading` false when the auth config is known, login is on and there is no token: a guest gets the landing page without a loading screen in between.
 
 ### App Pages
 
@@ -630,13 +618,13 @@ Every screen outside the canvas is built to one contract, `frontend/DESIGN.md`. 
 Each feature under `src/features/` follows this general pattern (not all subdirs are present in every feature):
 ```
 feature/
-├── api/       # axios calls (typed with backend DTOs)
+├── api/       # requests through lib/api.ts and their react-query hooks (typed with backend DTOs)
 ├── components/
-├── data/      # static data / constants (e.g. shopping feature)
 ├── hooks/
-├── lib/       # feature-specific utilities (e.g. builder, auth)
+├── lib/       # feature-specific pure logic
 ├── pages/
-└── store/     # Zustand store (builder feature only)
+├── store/     # Zustand store (builder and assistant)
+└── testing/   # fixtures shared by a feature's tests (inventory, integrations)
 ```
 
 ### Frontend Features
@@ -644,11 +632,10 @@ feature/
 | Feature | Description |
 |---|---|
 | `builder/` | Visual network builder - the main feature (ReactFlow canvas, node management, IP display, Polish, proposal review on the canvas) |
-| `admin/` | Admin dashboard, user management, service/hardware admin, steering rules, catalog components |
-| `auth/` | Welcome and sign-in screen of an own instance, profile page |
+| `admin/` | Admin dashboard, user management, service/hardware admin, blueprint moderation, catalog components |
+| `auth/` | `useAuth` (one auth state for the whole app), welcome and sign-in screen of an own instance, profile page |
 | `catalog/` | Public hardware catalog (cards) and service library (a sortable table), adding a service of one's own |
-| `shopping/` | Shopping list generation from build data |
-| `donate/` | Donation page with progress tracking |
+| `donate/` | Donation page |
 | `landing/` | Landing page of the public site: ASCII rack, live demo, the plan's tables and files, FAQ, sign-in |
 | `setup-guide/` | The setup guide of the open build: cable schedule, address plan, steps per host; ticked off, saved with the build, printable |
 | `guides/` | The homelab guide, a public article; diagrams for the static docs under `/docs/visuals/` |
@@ -737,10 +724,7 @@ All primary keys use PostgreSQL-native UUID generation:
 ID uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
 ```
 
-The server and the test helpers enable the `pgcrypto` extension for it. **SQLite cannot be used for tests** because:
-- `gen_random_uuid()` does not exist in SQLite
-- `jsonb` type does not exist in SQLite
-- AutoMigrate fails on both
+The server and the test helpers enable the `pgcrypto` extension for it. Postgres is the only database: the models use `uuid` and `jsonb`, and the backend has no other driver (pitfall 2).
 
 ---
 
@@ -829,8 +813,6 @@ hasPrefix(s, prefix string) bool
 | `internal/services/hardware_service_test.go` | `services` | Hardware catalog tests |
 | `internal/services/recommendation_service_test.go` | `services` | Recommendation generation tests |
 | `internal/services/service_service_test.go` | `services` | Service catalog tests |
-| `internal/services/shopping_service_test.go` | `services` | Shopping list tests |
-| `internal/services/steering_service_test.go` | `services` | Steering rules tests |
 | `internal/handlers/health_test.go` | `handlers` | Health endpoint test |
 | `internal/handlers/assistant_handler_test.go` | `handlers` | Settings API never returns the key; chat SSE stream; the selection sent with a message |
 | `internal/services/topology_ops_test.go` | `services` | Change-set engine: refs, ports, loops, racks, VMs; a replay places new nodes on the canvas as it is then |
@@ -879,9 +861,9 @@ hasPrefix(s, prefix string) bool
 | `frontend/src/features/assistant/**/*.test.ts(x)` | - | SSE reader; chat store (every event, reading the thread again, a queued message); chat panel; activity timeline |
 | `frontend/src/features/gaming/**/*.test.ts(x)` | - | Sizing, tables, kinds, setup steps, game compose text, plan dialog (it asks nothing of the build while closed), node fields |
 | `frontend/src/features/gaming/components/gaming-node-fields.store.test.tsx` | - | The device fields on the real store, in a build without power circuits (pitfall 37) |
+| `frontend/src/features/builder/components/node-properties-panel.store.test.tsx` | - | Selecting a device leaves it as it is; an edit of the form is saved to that device (pitfall 43) |
 | `frontend/src/features/inventory/**/*.test.ts(x)` | - | Items as nodes and components, what a canvas uses, state, spare memory for a host; placing; the panel; the inventory page and the item form |
 | `frontend/src/features/integrations/**/*.test.ts(x)` | - | What an import does unless told otherwise, and counts; the Proxmox dialog: connection, certificate trust, hosts, compare, import |
-| `frontend/src/features/shopping/lib/generator.test.ts` | - | Owned hardware is not on the shopping list |
 | `frontend/src/features/builder/lib/planner/planner.test.ts`, `lib/connection-rules.test.ts` | - | Plan builders for the three kinds; canvas connection rules |
 | `frontend/src/features/landing/lib/demo-plan.test.ts` | - | Demo addresses by role; the demo plans from the real planners |
 | `frontend/src/features/landing/lib/ascii-rack.test.ts`, `components/ascii-rack.test.tsx` | - | The ASCII rack: grid, characters, framing, lights from the front only, fans from behind; pause, and standing still under reduced motion until started |
@@ -900,12 +882,7 @@ hasPrefix(s, prefix string) bool
 
 ## Running Tests
 
-### Prerequisites
-
-```bash
-make setup   # or: docker compose up -d
-# Wait for postgres container to be healthy before running backend tests.
-```
+Docker is the only prerequisite: the backend tests start their own Postgres and hlbIPAM, and the frontend tests run in a Node container.
 
 ### All tests
 
@@ -928,7 +905,7 @@ To iterate on one package without rebuilding the image, keep the two services up
 ```bash
 docker compose -f docker-compose.test.yml up -d test-postgres hlbipam
 docker run --rm --network homelab-builder_default -v "$PWD/backend:/app" -w /app \
-  -e CGO_ENABLED=0 -e DB_TYPE=postgres -e DB_HOST=test-postgres -e DB_USER=homelab -e DB_PASSWORD=homelab_password \
+  -e CGO_ENABLED=0 -e DB_HOST=test-postgres -e DB_USER=homelab -e DB_PASSWORD=homelab_password \
   -e TEST_DB_NAME=homelab_builder_test -e IPAM_URL=http://hlbipam:8081 \
   golang:1.25-alpine go test ./internal/assistant/... -count=1
 ```
@@ -937,10 +914,12 @@ docker run --rm --network homelab-builder_default -v "$PWD/backend:/app" -w /app
 
 ```bash
 make test-frontend
-# or: cd frontend && npm test
-# in Docker, keeping node_modules off the host:
+# the same, written out (node_modules stays in a named volume, off the host):
 docker run --rm -v "$PWD:/repo" -v hlb-frontend-node-modules:/repo/frontend/node_modules -w /repo/frontend \
   node:22-alpine sh -c "npm ci --legacy-peer-deps && npx tsc -b && npx vitest run"
+# lint (CI does not run it; keep it at zero problems):
+docker run --rm -v "$PWD:/repo" -v hlb-frontend-node-modules:/repo/frontend/node_modules -w /repo/frontend \
+  node:22-alpine npx eslint .
 ```
 
 The whole repository is mounted because one test checks that the source files the settings page links to exist.
@@ -999,9 +978,9 @@ In the builder, under Integrations, choose Connect Proxmox: address `https://hlb
 
 **Fix**: Always use `newBuildID(t, tx)` which creates a real `User` + `Build` first.
 
-### 2. Tests cannot use SQLite
+### 2. Postgres only
 
-`models.go` uses `gorm:"type:uuid;default:gen_random_uuid()"` and `gorm:"type:jsonb"`. These are PostgreSQL-specific. GORM AutoMigrate will fail on SQLite with both types. Tests must always run against a real PostgreSQL instance via Docker.
+`models.go` uses `gorm:"type:uuid;default:gen_random_uuid()"` and `gorm:"type:jsonb"`, and the backend links no other database driver. Tests always run against a real PostgreSQL instance in Docker.
 
 ### 3. "no router found to establish gateway" from calculateNetwork
 
@@ -1185,6 +1164,10 @@ React Flow reports a drag as a change of `nodes` on every move of the pointer. W
 
 Take one value with a selector and several with `useShallow`; in a cable use `useInternalNode`, or `useStore` with a selector that returns a plain value. A node object handed to React Flow has to be the same object for as long as nothing in it changed, or `memo` on the card is worth nothing (`drawnNode` in `visual-builder.tsx`). The same holds for what the store writes to `localStorage`: `workspaceStorage` writes only what differs from what is there.
 
+### 43. The properties form saves through a plain effect
+
+`NodePropertiesPanel` copies the selected device into its form while rendering and writes the form back half a second after it changes. Do not move that write into `useEffectEvent`: with state set during render (React 19.2), the effect event kept a closure from before the copy, so selecting a device wrote the empty form over it, and an edit was saved with the old values. The write is an ordinary effect with all its dependencies that reads the device from the store by id. `node-properties-panel.store.test.tsx` runs the panel on the real store.
+
 ---
 
 ## Fixed Bugs (Historical)
@@ -1248,7 +1231,6 @@ These bugs were diagnosed and fixed; tests guard against regression.
 | `DB_PASSWORD` | `homelab_password` | PostgreSQL password |
 | `DB_NAME` | `homelab_builder` | Production database name |
 | `DB_SSLMODE` | `disable` | PostgreSQL SSL mode |
-| `DB_TYPE` | `postgres` | Database driver type |
 | `TEST_DB_NAME` | `homelab_builder_test` | Test database name (used by TestMain) |
 | `JWT_SECRET` | - | Secret for signing JWTs |
 | `GOOGLE_CLIENT_ID` | - | Google OAuth client ID |

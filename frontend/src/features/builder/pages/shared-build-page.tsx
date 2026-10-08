@@ -14,7 +14,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import { toast } from 'sonner';
 import { Save, Pencil, Eye } from 'lucide-react';
-import { buildApi, type Build } from '../api/builds';
+import { buildApi, type Build, type BuildNodeInput } from '../api/builds';
 import { LoadingScreen } from '../../../components/ui/loading-screen';
 import { Button } from '../../../components/ui/button';
 import { SeoMeta } from '../../../components/seo/seo-meta';
@@ -23,69 +23,11 @@ import { RackNode } from '../components/rack-node';
 import { CanvasGrid } from '../components/canvas-grid';
 import { useCanvasMoving } from '../hooks/use-canvas-moving';
 import { CustomEdge } from '../components/custom-edge';
-import {
-  RACK_U_HEIGHT_PX,
-  RACK_WIDTH_PX,
-  RACK_HEADER_PX,
-  RACK_FOOTER_PX,
-} from '../components/rack-node-constants';
-import type { HardwareNode as HardwareNodeType, HardwareType } from '../../../types';
+import { mapBuildToFlow } from '../lib/build-mapper';
+import type { HardwareNode as HardwareNodeType } from '../../../types';
 
 const nodeTypes = { hardware: HardwareNode, rack: RackNode };
 const edgeTypes = { custom: CustomEdge };
-
-function buildReactFlowNodes(build: Build): Node[] {
-  const rawNodes = (build.nodes || []).toSorted((a: any, b: any) => {
-    return (a.type === 'rack' ? 0 : 1) - (b.type === 'rack' ? 0 : 1);
-  });
-
-  return rawNodes.map((n: any) => {
-    const isRack = n.type === 'rack';
-    const details = typeof n.details === 'string' ? JSON.parse(n.details) : n.details || {};
-    const rackSize = details.rack_size || 24;
-    const totalHeight = RACK_HEADER_PX + rackSize * RACK_U_HEIGHT_PX + RACK_FOOTER_PX;
-
-    const hw: HardwareNodeType = {
-      id: n.id,
-      type: n.type as HardwareType,
-      name: n.name,
-      ip: n.ip,
-      x: n.x,
-      y: n.y,
-      vms: n.virtual_machines || [],
-      internal_components: n.internal_components || [],
-      details,
-      parent_id: n.parent_id || undefined,
-    };
-
-    return {
-      id: n.id,
-      type: isRack ? 'rack' : 'hardware',
-      position: { x: n.x, y: n.y },
-      data: { ...hw, label: n.name },
-      ...(isRack ? { style: { width: RACK_WIDTH_PX, height: totalHeight }, zIndex: -1 } : {}),
-      ...(n.parent_id ? { parentId: n.parent_id, extent: 'parent' as const } : {}),
-    };
-  });
-}
-
-function buildReactFlowEdges(build: Build): Edge[] {
-  return (build.edges || []).map((e: any) => ({
-    id: String(e.id || `${e.source_node_id}-${e.target_node_id}`),
-    source: String(e.source_node_id),
-    sourceHandle: e.source_handle || undefined,
-    target: String(e.target_node_id),
-    targetHandle: e.target_handle || undefined,
-    type: 'custom',
-    data: {
-      connection_type: e.type || 'ethernet',
-      speed: e.speed || '1 GbE',
-      subnet: e.subnet || '',
-      wireless_standard: e.wireless_standard || 'Wi-Fi 6',
-      direction: e.direction || 'auto',
-    },
-  }));
-}
 
 export default function SharedBuildPage() {
   const { token } = useParams<{ token: string }>();
@@ -103,11 +45,11 @@ export default function SharedBuildPage() {
     (async () => {
       try {
         const b = await buildApi.getShared(token);
-        const rfNodes = buildReactFlowNodes(b);
-        const rfEdges = buildReactFlowEdges(b);
+        const { nodes: rfNodes, edges: rfEdges } = mapBuildToFlow(b);
         // Batch all state updates (React 18 auto-batches in async contexts)
         setBuild(b);
-        setNodes(rfNodes);
+        // Racks sit behind the devices mounted in them.
+        setNodes(rfNodes.map(node => (node.type === 'rack' ? { ...node, zIndex: -1 } : node)));
         setEdges(rfEdges);
       } catch {
         setError('This layout is not available or sharing has been disabled.');
@@ -130,19 +72,22 @@ export default function SharedBuildPage() {
     if (!token || !build) return;
     setSaving(true);
     try {
-      const nodeDTOs = nodes.map((n: Node) => ({
-        id: n.id,
-        type: (n.data as any).type || n.type,
-        name: (n.data as any).name || '',
-        x: n.position.x,
-        y: n.position.y,
-        power_draw: (n.data as any).power_draw || 0,
-        ip: (n.data as any).ip || '',
-        details: (n.data as any).details || {},
-        vms: (n.data as any).vms || [],
-        internal_components: (n.data as any).internal_components || [],
-        parent_id: (n.data as any).parent_id || null,
-      }));
+      const nodeDTOs = nodes.map((n): BuildNodeInput => {
+        const data: Partial<HardwareNodeType> = n.data;
+        return {
+          id: n.id,
+          type: data.type || n.type || '',
+          name: data.name || '',
+          x: n.position.x,
+          y: n.position.y,
+          power_draw: data.power_draw || 0,
+          ip: data.ip || '',
+          details: data.details || {},
+          vms: data.vms || [],
+          internal_components: data.internal_components || [],
+          parent_id: data.parent_id || undefined,
+        };
+      });
 
       const edgeDTOs = edges.map((e: Edge) => {
         const data = (e.data ?? {}) as Record<string, string | undefined>;

@@ -1,7 +1,7 @@
 import { Gamepad2, Home, Server, type LucideIcon } from 'lucide-react';
 import type { BuildKind, GamingPlan } from '../../../types';
 
-export interface BuildKindInfo {
+interface BuildKindInfo {
   kind: BuildKind;
   label: string;
   description: string;

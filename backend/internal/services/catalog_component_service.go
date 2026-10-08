@@ -75,8 +75,9 @@ func (s *CatalogComponentService) Update(id uuid.UUID, input UpdateCatalogCompon
 		}
 	}
 
-	// Refresh from DB
-	s.db.First(&comp, "id = ?", id)
+	if err := s.db.First(&comp, "id = ?", id).Error; err != nil {
+		return nil, err
+	}
 	return &comp, nil
 }
 

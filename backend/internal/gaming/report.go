@@ -1,6 +1,7 @@
 package gaming
 
 import (
+	"slices"
 	"sort"
 )
 
@@ -267,6 +268,10 @@ func ComputeReport(input ReportInput) Report {
 		b.graph[link.A] = append(b.graph[link.A], link.B)
 		b.graph[link.B] = append(b.graph[link.B], link.A)
 	}
+	// Sorted once, so the same build always gives the same paths.
+	for _, neighbors := range b.graph {
+		sort.Strings(neighbors)
+	}
 
 	b.checkServers()
 	if b.report.Kind == KindLANParty || b.hasTables() {
@@ -324,14 +329,10 @@ func (b *reportBuilder) pathTo(from string, match func(*ReportNode) bool) []stri
 			for id := current; id != ""; id = previous[id] {
 				path = append(path, id)
 			}
-			for l, r := 0, len(path)-1; l < r; l, r = l+1, r-1 {
-				path[l], path[r] = path[r], path[l]
-			}
+			slices.Reverse(path)
 			return path
 		}
-		neighbors := append([]string(nil), b.graph[current]...)
-		sort.Strings(neighbors) // the same build always gives the same path
-		for _, next := range neighbors {
+		for _, next := range b.graph[current] {
 			if _, seen := previous[next]; !seen {
 				previous[next] = current
 				queue = append(queue, next)

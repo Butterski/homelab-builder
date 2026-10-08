@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -78,12 +79,6 @@ func State(status string, quantity, plannedUnits int, deployed bool) string {
 	return status
 }
 
-// componentNodeTypes maps an owned component to the internal component it is
-// inside a host on the canvas. A CPU has no such form: it is kept, not placed.
-var componentNodeTypes = map[string]string{
-	"ram": "ram", "disk": "disk", "gpu": "gpu", "nic": "pcie", "hba": "hba",
-}
-
 var macPattern = regexp.MustCompile(`^([0-9A-F]{2}:){5}[0-9A-F]{2}$`)
 
 // Specs are the figures of an item. Every field is optional. For a component
@@ -116,27 +111,6 @@ type Item struct {
 	MacAddresses []string
 	PowerDraw    float64
 	Notes        string
-}
-
-// Types lists the types of a kind, in the order they are offered.
-func Types(kind string) []string {
-	return append([]string(nil), typesByKind[kind]...)
-}
-
-// ComponentNodeType is the internal component type an owned component becomes
-// inside a host, and whether it has one.
-func ComponentNodeType(itemType string) (string, bool) {
-	nodeType, ok := componentNodeTypes[itemType]
-	return nodeType, ok
-}
-
-func contains(values []string, target string) bool {
-	for _, value := range values {
-		if value == target {
-			return true
-		}
-	}
-	return false
 }
 
 func cleanText(field, value string, limit int) (string, error) {
@@ -185,7 +159,7 @@ func (item Item) Normalize() (Item, error) {
 		return Item{}, fmt.Errorf("%w: kind must be device, component or accessory", ErrInvalid)
 	}
 	out.Type = strings.ToLower(strings.TrimSpace(item.Type))
-	if !contains(types, out.Type) {
+	if !slices.Contains(types, out.Type) {
 		return Item{}, fmt.Errorf("%w: a %s cannot be of type %q; use one of %s", ErrInvalid, out.Kind, out.Type, strings.Join(types, ", "))
 	}
 
@@ -222,14 +196,14 @@ func (item Item) Normalize() (Item, error) {
 	if out.Status == "" {
 		out.Status = StatusAvailable
 	}
-	if !contains(statuses, out.Status) {
+	if !slices.Contains(statuses, out.Status) {
 		return Item{}, fmt.Errorf("%w: status must be one of %s", ErrInvalid, strings.Join(statuses, ", "))
 	}
 	out.Location = strings.ToLower(strings.TrimSpace(item.Location))
 	if out.Location == "" {
 		out.Location = "other"
 	}
-	if !contains(locations, out.Location) {
+	if !slices.Contains(locations, out.Location) {
 		return Item{}, fmt.Errorf("%w: location must be one of %s", ErrInvalid, strings.Join(locations, ", "))
 	}
 

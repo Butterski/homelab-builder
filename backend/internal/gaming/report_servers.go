@@ -117,7 +117,7 @@ func (b *reportBuilder) checkServers() {
 			}
 			if (ram > 0 && ram < needed.RAMMB) || (cpu > 0 && cpu < needed.CPUCores) {
 				b.add(Issue{Code: "server_undersized", Severity: SeverityWarning, NodeID: host.ID, VMID: guest.ID,
-					Message: fmt.Sprintf("%s has %s and %s cores; %d players need about %s and %s cores.", guest.Name, formatMB(ram), formatCores(cpu), instance.Players, formatMB(needed.RAMMB), formatCores(needed.CPUCores)),
+					Message: fmt.Sprintf("%s has %s and %s cores; %d players need about %s and %s cores.", guest.Name, formatMB(ram), formatNumber(cpu), instance.Players, formatMB(needed.RAMMB), formatNumber(needed.CPUCores)),
 					Fix:     "Raise the memory and cores of the service, or lower the player count."})
 			}
 
@@ -239,7 +239,7 @@ func (b *reportBuilder) checkServers() {
 		}
 		if host.CPUCores > 0 && load.cpu > host.CPUCores {
 			b.add(Issue{Code: "host_cpu_short", Severity: SeverityWarning, NodeID: host.ID,
-				Message: fmt.Sprintf("%s has %s cores; what runs on it wants %s.", host.Name, formatCores(host.CPUCores), formatCores(load.cpu)),
+				Message: fmt.Sprintf("%s has %s cores; what runs on it wants %s.", host.Name, formatNumber(host.CPUCores), formatNumber(load.cpu)),
 				Fix:     "Servers share cores when they are not all busy at once; plan a faster CPU if they are."})
 		}
 	}
@@ -262,18 +262,18 @@ func (b *reportBuilder) checkServers() {
 	b.report.Uplink = uplink
 	if plan.UpMbps <= 0 {
 		b.add(Issue{Code: "uplink_unknown", Severity: SeverityInfo,
-			Message: fmt.Sprintf("Remote players need about %s Mbps of upload. The upload speed of your line is not filled in.", formatMbps(uplink.NeededUpMbps)),
+			Message: fmt.Sprintf("Remote players need about %s Mbps of upload. The upload speed of your line is not filled in.", formatNumber(uplink.NeededUpMbps)),
 			Fix:     "Enter your upload speed in the game plan."})
 	} else {
 		uplink.UsedPct = round1(uplink.NeededUpMbps / plan.UpMbps * 100)
 		switch {
 		case uplink.NeededUpMbps > plan.UpMbps:
 			b.add(Issue{Code: "upload_short", Severity: SeverityError,
-				Message: fmt.Sprintf("Remote players need about %s Mbps of upload; your line has %s Mbps.", formatMbps(uplink.NeededUpMbps), formatMbps(plan.UpMbps)),
+				Message: fmt.Sprintf("Remote players need about %s Mbps of upload; your line has %s Mbps.", formatNumber(uplink.NeededUpMbps), formatNumber(plan.UpMbps)),
 				Fix:     "Plan for fewer remote players, rent a VPS for the server, or get a faster line."})
 		case uplink.NeededUpMbps > plan.UpMbps*continuousLoadShare:
 			b.add(Issue{Code: "upload_tight", Severity: SeverityWarning,
-				Message: fmt.Sprintf("Remote players would use %s of your %s Mbps upload; anything else on the line will cause lag.", formatMbps(uplink.NeededUpMbps), formatMbps(plan.UpMbps))})
+				Message: fmt.Sprintf("Remote players would use %s of your %s Mbps upload; anything else on the line will cause lag.", formatNumber(uplink.NeededUpMbps), formatNumber(plan.UpMbps))})
 		}
 	}
 
@@ -298,25 +298,15 @@ func (b *reportBuilder) checkServers() {
 
 func formatMB(mb int) string {
 	if mb >= 1024 {
-		gb := float64(mb) / 1024
-		if gb == math.Trunc(gb) {
-			return fmt.Sprintf("%d GB", int(gb))
-		}
-		return fmt.Sprintf("%.1f GB", gb)
+		return formatNumber(float64(mb)/1024) + " GB"
 	}
 	return fmt.Sprintf("%d MB", mb)
 }
 
-func formatCores(cores float64) string {
-	if cores == math.Trunc(cores) {
-		return fmt.Sprintf("%d", int(cores))
+// formatNumber writes a whole number without decimals and anything else with one.
+func formatNumber(value float64) string {
+	if value == math.Trunc(value) {
+		return fmt.Sprintf("%d", int(value))
 	}
-	return fmt.Sprintf("%.1f", cores)
-}
-
-func formatMbps(mbps float64) string {
-	if mbps == math.Trunc(mbps) {
-		return fmt.Sprintf("%d", int(mbps))
-	}
-	return fmt.Sprintf("%.1f", mbps)
+	return fmt.Sprintf("%.1f", value)
 }

@@ -73,43 +73,6 @@ type UserSelection struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-type HardwareRecommendation struct {
-	ID                uuid.UUID  `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
-	UserID            *uuid.UUID `gorm:"type:uuid" json:"user_id,omitempty"`
-	Tier              string     `gorm:"not null;default:'recommended'" json:"tier"`
-	TotalRAMMB        int        `gorm:"column:total_ram_mb;not null;default:0" json:"total_ram_mb"`
-	TotalCPUCores     float32    `gorm:"not null;default:0" json:"total_cpu_cores"`
-	TotalStorageGB    int        `gorm:"not null;default:0" json:"total_storage_gb"`
-	CPUSuggestion     string     `gorm:"default:''" json:"cpu_suggestion"`
-	RAMSuggestion     string     `gorm:"column:ram_suggestion;default:''" json:"ram_suggestion"`
-	StorageSuggestion string     `gorm:"default:''" json:"storage_suggestion"`
-	NetworkSuggestion string     `gorm:"default:''" json:"network_suggestion"`
-	Rationale         string     `gorm:"default:''" json:"rationale"`
-	EstimatedCostMin  int        `gorm:"default:0" json:"estimated_cost_min"`
-	EstimatedCostMax  int        `gorm:"default:0" json:"estimated_cost_max"`
-	CreatedAt         time.Time  `json:"created_at"`
-}
-
-type ShoppingList struct {
-	ID                 uuid.UUID          `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
-	RecommendationID   uuid.UUID          `gorm:"type:uuid;not null" json:"recommendation_id"`
-	UserID             *uuid.UUID         `gorm:"type:uuid" json:"user_id,omitempty"`
-	TotalEstimatedCost int                `gorm:"default:0" json:"total_estimated_cost"`
-	Items              []ShoppingListItem `gorm:"foreignKey:ShoppingListID" json:"items,omitempty"`
-	CreatedAt          time.Time          `json:"created_at"`
-}
-
-type ShoppingListItem struct {
-	ID             uuid.UUID `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
-	ShoppingListID uuid.UUID `gorm:"type:uuid;not null" json:"shopping_list_id"`
-	Name           string    `gorm:"not null" json:"name"`
-	Category       string    `gorm:"not null;default:'other'" json:"category"`
-	EstimatedPrice int       `gorm:"default:0" json:"estimated_price"`
-	Priority       string    `gorm:"default:'essential'" json:"priority"`
-	PurchaseLinks  string    `gorm:"type:jsonb;default:'[]'" json:"purchase_links"`
-	CreatedAt      time.Time `json:"created_at"`
-}
-
 type Event struct {
 	ID        uuid.UUID  `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
 	UserID    *uuid.UUID `gorm:"type:uuid" json:"user_id,omitempty"`
@@ -119,22 +82,21 @@ type Event struct {
 }
 
 type HardwareComponent struct {
-	ID           uuid.UUID       `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
-	Category     string          `gorm:"not null;index" json:"category"`
-	Brand        string          `gorm:"not null;index" json:"brand"`
-	Model        string          `gorm:"not null" json:"model"`
-	PowerDraw    float64         `gorm:"default:0" json:"power_draw"`
-	Spec         json.RawMessage `gorm:"type:jsonb;not null;default:'{}'" json:"spec"`
-	PriceEst     float64         `gorm:"default:0" json:"price_est"`
-	Currency     string          `gorm:"default:'EUR'" json:"currency"`
-	AffiliateTag string          `gorm:"default:''" json:"affiliate_tag"`
-	BuyURLs      json.RawMessage `gorm:"type:jsonb;default:'[]'" json:"buy_urls"`
-	ImageURL     string          `gorm:"default:''" json:"image_url"`
-	SubmittedBy  *uuid.UUID      `gorm:"type:uuid" json:"submitted_by,omitempty"`
-	Approved     *bool           `gorm:"default:false;index" json:"approved"`
-	Likes        int             `gorm:"default:0" json:"likes"`
-	CreatedAt    time.Time       `json:"created_at"`
-	UpdatedAt    time.Time       `json:"updated_at"`
+	ID          uuid.UUID       `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	Category    string          `gorm:"not null;index" json:"category"`
+	Brand       string          `gorm:"not null;index" json:"brand"`
+	Model       string          `gorm:"not null" json:"model"`
+	PowerDraw   float64         `gorm:"default:0" json:"power_draw"`
+	Spec        json.RawMessage `gorm:"type:jsonb;not null;default:'{}'" json:"spec"`
+	PriceEst    float64         `gorm:"default:0" json:"price_est"`
+	Currency    string          `gorm:"default:'EUR'" json:"currency"`
+	BuyURLs     json.RawMessage `gorm:"type:jsonb;default:'[]'" json:"buy_urls"`
+	ImageURL    string          `gorm:"default:''" json:"image_url"`
+	SubmittedBy *uuid.UUID      `gorm:"type:uuid" json:"submitted_by,omitempty"`
+	Approved    *bool           `gorm:"default:false;index" json:"approved"`
+	Likes       int             `gorm:"default:0" json:"likes"`
+	CreatedAt   time.Time       `json:"created_at"`
+	UpdatedAt   time.Time       `json:"updated_at"`
 }
 
 func (HardwareComponent) TableName() string { return "hardware_components" }
@@ -150,8 +112,6 @@ type HardwareBlueprint struct {
 	Tags             json.RawMessage       `gorm:"type:jsonb;not null;default:'[]'" json:"tags"`
 	NodeData         json.RawMessage       `gorm:"type:jsonb;not null;default:'{}'" json:"node_data"`
 	Services         json.RawMessage       `gorm:"type:jsonb;not null;default:'[]'" json:"services"`
-	Upvotes          int                   `gorm:"default:0" json:"upvotes"`
-	Downvotes        int                   `gorm:"default:0" json:"downvotes"`
 	ShareCode        *string               `gorm:"uniqueIndex" json:"share_code,omitempty"`
 	ModerationStatus string                `gorm:"not null;default:'none';index" json:"moderation_status"`
 	ModerationNote   string                `gorm:"type:text;default:''" json:"moderation_note"`
@@ -203,61 +163,6 @@ type HardwareBlueprintFitFactor struct {
 	Weight float64 `json:"weight"`
 	Note   string  `json:"note"`
 }
-
-type HardwareBlueprintVote struct {
-	ID          uuid.UUID          `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
-	BlueprintID uuid.UUID          `gorm:"type:uuid;not null;uniqueIndex:idx_blueprint_vote" json:"blueprint_id"`
-	UserID      uuid.UUID          `gorm:"type:uuid;not null;uniqueIndex:idx_blueprint_vote" json:"user_id"`
-	Value       int                `gorm:"not null;default:1" json:"value"`
-	Blueprint   *HardwareBlueprint `gorm:"foreignKey:BlueprintID" json:"-"`
-	User        *User              `gorm:"foreignKey:UserID" json:"-"`
-	CreatedAt   time.Time          `json:"created_at"`
-	UpdatedAt   time.Time          `json:"updated_at"`
-}
-
-func (HardwareBlueprintVote) TableName() string { return "hardware_blueprint_votes" }
-
-type HardwareBlueprintReview struct {
-	ID              uuid.UUID          `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
-	BlueprintID     uuid.UUID          `gorm:"type:uuid;not null;uniqueIndex:idx_blueprint_review" json:"blueprint_id"`
-	UserID          uuid.UUID          `gorm:"type:uuid;not null;uniqueIndex:idx_blueprint_review" json:"user_id"`
-	UseCase         string             `gorm:"default:''" json:"use_case"`
-	Stability       string             `gorm:"default:''" json:"stability"`
-	Noise           string             `gorm:"default:''" json:"noise"`
-	Power           string             `gorm:"default:''" json:"power"`
-	WouldBuildAgain bool               `gorm:"default:false" json:"would_build_again"`
-	Tags            json.RawMessage    `gorm:"type:jsonb;not null;default:'[]'" json:"tags"`
-	Blueprint       *HardwareBlueprint `gorm:"foreignKey:BlueprintID" json:"-"`
-	User            *User              `gorm:"foreignKey:UserID" json:"-"`
-	CreatedAt       time.Time          `json:"created_at"`
-	UpdatedAt       time.Time          `json:"updated_at"`
-}
-
-func (HardwareBlueprintReview) TableName() string { return "hardware_blueprint_reviews" }
-
-type HardwareReview struct {
-	ID               uuid.UUID  `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
-	ComponentID      uuid.UUID  `gorm:"type:uuid;not null;index" json:"component_id"`
-	UserID           *uuid.UUID `gorm:"type:uuid" json:"user_id,omitempty"`
-	Rating           int        `gorm:"check:rating >= 1 AND rating <= 5" json:"rating"`
-	Body             string     `gorm:"default:''" json:"body"`
-	Pros             string     `gorm:"type:text[];default:'{}'" json:"pros"`
-	Cons             string     `gorm:"type:text[];default:'{}'" json:"cons"`
-	VerifiedPurchase bool       `gorm:"default:false" json:"verified_purchase"`
-	CreatedAt        time.Time  `json:"created_at"`
-}
-
-func (HardwareReview) TableName() string { return "hardware_reviews" }
-
-type SteeringRule struct {
-	ID            uuid.UUID       `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
-	Category      string          `gorm:"not null;uniqueIndex" json:"category"`
-	RetailerOrder json.RawMessage `gorm:"type:jsonb;default:'[]'" json:"retailer_order"`
-	CreatedAt     time.Time       `json:"created_at"`
-	UpdatedAt     time.Time       `json:"updated_at"`
-}
-
-func (SteeringRule) TableName() string { return "steering_rules" }
 
 // Build represents a saved visual builder project
 type Build struct {

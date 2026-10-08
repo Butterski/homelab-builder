@@ -48,7 +48,7 @@ import {
   LayoutGrid,
   Sparkles,
 } from 'lucide-react';
-import type { HardwareType, HardwareNode } from '../../../types';
+import type { EdgePreferences, HardwareType, HardwareNode } from '../../../types';
 import { toPng, toSvg } from 'html-to-image';
 import {
   nodeHasDynamicPorts,
@@ -57,15 +57,16 @@ import {
   canNodeHostVMs,
   isFloorNode,
 } from '../../../lib/hardware-config';
-import { checkConnection } from '../lib/connection-rules';
+import { checkConnection, type LinkEnd } from '../lib/connection-rules';
 import { getNodePortCount } from '../lib/port-count';
 import { polishCanvas } from '../lib/polish';
 import { isNatDownstreamEdge } from '../lib/network-zone';
 import { withFreshChildIds } from '../lib/hardware-instance';
 import { installComponent, placeDevice } from '../../inventory/lib/place';
+import type { InventoryDragData } from '../../inventory/lib/inventory';
 import { useUpgradeHints } from '../../inventory/hooks/use-upgrade-hints';
 import { upgradeHintText } from '../../inventory/lib/upgrade-hints';
-import { useAuth } from '../../admin/hooks/use-auth';
+import { useAuth } from '../../auth/hooks/use-auth';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -118,7 +119,29 @@ function roundedZonePath(width: number, height: number, inset = 14) {
   ].join(' ');
 }
 
-const NetworkZoneNode = React.memo(function NetworkZoneNode({ data }: any) {
+type NetworkZoneData = {
+  kind: 'lan' | 'nat' | 'firewall' | 'wireless';
+  label: string;
+  subLabel: string;
+  width: number;
+  height: number;
+  accent: string;
+  opacity: number;
+  path: string;
+};
+
+const NETWORK_ZONE_KEYS: Array<keyof NetworkZoneData> = [
+  'kind',
+  'path',
+  'width',
+  'height',
+  'label',
+  'subLabel',
+  'accent',
+  'opacity',
+];
+
+const NetworkZoneNode = React.memo(function NetworkZoneNode({ data }: { data: NetworkZoneData }) {
   return (
     <div
       className={`network-zone-node network-zone-${data.kind}`}
@@ -146,11 +169,25 @@ const NetworkZoneNode = React.memo(function NetworkZoneNode({ data }: any) {
     </div>
   );
   // The zones are worked out again whenever a card moves; most come out the same.
-}, (previous, next) =>
-  ['kind', 'path', 'width', 'height', 'label', 'subLabel', 'accent', 'opacity'].every(
-    key => previous.data[key] === next.data[key],
-  ),
-);
+}, (previous, next) => NETWORK_ZONE_KEYS.every(key => previous.data[key] === next.data[key]));
+
+/** The zone overlays the Visual Settings menu switches on and off. */
+const ZONE_TOGGLES = [
+  ['showNetworkZones', 'Show zone overlays'],
+  ['showNatZones', 'NAT / Firewall zones'],
+  ['showLanZones', 'Primary LAN outline'],
+] as const;
+
+/** What the toolbox and the service list put on a drag. */
+type ToolDropData = Partial<Omit<HardwareNode, 'type'>> & {
+  type: HardwareType;
+  /** Set on a service dragged from the catalog. */
+  serviceId?: string;
+  inventory?: undefined;
+};
+
+/** What a drag onto the canvas carries under 'application/reactflow-data'. */
+type CanvasDropData = ToolDropData | InventoryDragData;
 
 /** How long cards glide to their new places after a Polish. Matches `.is-arranging` in index.css. */
 const LAYOUT_GLIDE_MS = 450;
@@ -256,6 +293,31 @@ const shortcuts: Shortcut[] = [
   { combination: 'Esc', name: 'deselect' },
 ];
 
+const TOUR_STEPS: Step[] = [
+  {
+    target: '.tour-toolbox',
+    content:
+      'Welcome to HLBuilder! Drag networking gear and servers from this toolbox onto your canvas.',
+    disableBeacon: true,
+  },
+  {
+    target: '.react-flow__pane',
+    content:
+      'Hover over a device to reveal its network ports. Drag a cable from one port to another to connect them.',
+  },
+  {
+    target: '.tour-toolbox-services',
+    content:
+      'Switch to the Services tab. You can drag applications (like Docker, Nextcloud) directly INTO a Server node to deploy them.',
+  },
+  {
+    target: '.tour-properties',
+    content:
+      'Click any device on the canvas to configure its IPs, hardware specs, and passwords in this properties panel.',
+    placement: 'center',
+  },
+];
+
 const ShortcutHints = React.memo(function ShortcutHints() {
   return (
     <div
@@ -326,34 +388,9 @@ const Flow = React.memo(function Flow() {
       });
   };
 
-  // Joyride Tour State
   const [runTour, setRunTour] = useState(false);
   const [readinessOpen, setReadinessOpen] = useState(false);
   const [gamePlanOpen, setGamePlanOpen] = useState(false);
-  const [tourSteps] = useState<Step[]>([
-    {
-      target: '.tour-toolbox',
-      content:
-        'Welcome to HLBuilder! Drag networking gear and servers from this toolbox onto your canvas.',
-      disableBeacon: true,
-    },
-    {
-      target: '.react-flow__pane',
-      content:
-        'Hover over a device to reveal its network ports. Drag a cable from one port to another to connect them.',
-    },
-    {
-      target: '.tour-toolbox-services',
-      content:
-        'Switch to the Services tab. You can drag applications (like Docker, Nextcloud) directly INTO a Server node to deploy them.',
-    },
-    {
-      target: '.tour-properties',
-      content:
-        'Click any device on the canvas to configure its IPs, hardware specs, and passwords in this properties panel.',
-      placement: 'center',
-    },
-  ]);
 
   // Defensive cleanup: strip any scroll locks left behind by Radix dialogs or Joyride
   useEffect(() => {
@@ -369,7 +406,7 @@ const Flow = React.memo(function Flow() {
 
   const handleJoyrideCallback = (data: CallBackProps) => {
     const { status } = data;
-    if ([STATUS.FINISHED, STATUS.SKIPPED].includes(status as any)) {
+    if (status === STATUS.FINISHED || status === STATUS.SKIPPED) {
       setRunTour(false);
       localStorage.setItem('hlb_has_seen_tour', 'true');
     }
@@ -425,8 +462,15 @@ const Flow = React.memo(function Flow() {
     })),
   );
 
-  const { screenToFlowPosition, getIntersectingNodes, fitView, getNodesBounds, getViewport } =
-    useReactFlow();
+  const {
+    screenToFlowPosition,
+    getIntersectingNodes,
+    fitView,
+    getNodesBounds,
+    getViewport,
+    getEdges,
+    deleteElements,
+  } = useReactFlow();
 
   // LLM proposals: polled from the server and reviewed right here. While one
   // is open the canvas draws the build as it would be instead of the live
@@ -511,7 +555,7 @@ const Flow = React.memo(function Flow() {
     return () => window.clearTimeout(timer);
   }, [layoutMotion, settledMotion]);
 
-  const networkZones = useMemo<ReactFlowNode[]>(() => {
+  const networkZones = useMemo<Array<ReactFlowNode<NetworkZoneData>>>(() => {
     if (!visualPreferences.showNetworkZones) return [];
 
     const hardwareById = new Map(canvasHardware.map(node => [node.id, node]));
@@ -559,7 +603,7 @@ const Flow = React.memo(function Flow() {
       accent: string,
       members: ReactFlowNode[],
       padding: number,
-    ): ReactFlowNode | null => {
+    ): ReactFlowNode<NetworkZoneData> | null => {
       if (members.length === 0) return null;
 
       let minX = Infinity;
@@ -610,7 +654,7 @@ const Flow = React.memo(function Flow() {
       };
     };
 
-    const zoneNodes: ReactFlowNode[] = [];
+    const zoneNodes: Array<ReactFlowNode<NetworkZoneData>> = [];
 
     canvasHardware.filter(isNatProvider).forEach(natNode => {
       if (!visualPreferences.showNatZones) return;
@@ -890,7 +934,6 @@ const Flow = React.memo(function Flow() {
     return () => window.clearTimeout(timer);
   }, [buildReady, cardsMeasured]);
 
-  const { getEdges, deleteElements } = useReactFlow();
   const updateNodeInternals = useUpdateNodeInternals();
 
   const prevPortsRef = useRef<Map<string, number>>(new Map());
@@ -920,7 +963,6 @@ const Flow = React.memo(function Flow() {
   // fires after *all* state updates (including the deleteElements re-render from
   // Effect 1) have settled.
   useEffect(() => {
-    // Combine filter + map into single iteration
     const portNodeIds: string[] = [];
     for (const n of hardwareNodes) {
       if (nodeHasDynamicPorts(n.type)) {
@@ -929,35 +971,28 @@ const Flow = React.memo(function Flow() {
     }
     if (portNodeIds.length === 0) return;
 
-    const r1 = requestAnimationFrame(() => {
-      const r2 = requestAnimationFrame(() => {
-        const r3 = requestAnimationFrame(() => {
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => {
+        frame = requestAnimationFrame(() => {
           portNodeIds.forEach(nid => updateNodeInternals(nid));
         });
-        return () => cancelAnimationFrame(r3);
       });
-      return () => cancelAnimationFrame(r2);
     });
-    return () => cancelAnimationFrame(r1);
+    return () => cancelAnimationFrame(frame);
   }, [hardwareNodes, updateNodeInternals]);
 
-  const handlePrefChange = (key: string, val: any) => {
+  const handlePrefChange = <K extends keyof EdgePreferences>(key: K, val: EdgePreferences[K]) => {
     setEdgePreferences({ [key]: val });
-    // @ts-ignore - useAuth user preferences object might be untyped in this strict context
-    if (updatePreferences)
-      updatePreferences({
-        edgePreferences: {
-          routingEngine: edgePreferences.routingEngine ?? 'direct',
-          connectionStyle: edgePreferences.connectionStyle ?? 'strict',
-          lineStyle: edgePreferences.lineStyle ?? 'step',
-          ignoreNetworkLoops: edgePreferences.ignoreNetworkLoops ?? false,
-          showNetworkZones: visualPreferences.showNetworkZones,
-          showLanZones: visualPreferences.showLanZones,
-          showNatZones: visualPreferences.showNatZones,
-          zoneOpacity: visualPreferences.zoneOpacity,
-          [key]: val,
-        },
-      });
+    void updatePreferences({
+      edgePreferences: {
+        routingEngine: edgePreferences.routingEngine,
+        connectionStyle: edgePreferences.connectionStyle,
+        lineStyle: edgePreferences.lineStyle,
+        ignoreNetworkLoops: edgePreferences.ignoreNetworkLoops,
+        ...visualPreferences,
+        [key]: val,
+      },
+    });
   };
 
   useEffect(() => {
@@ -1066,8 +1101,7 @@ const Flow = React.memo(function Flow() {
         height: 1,
       });
 
-      // Check if dropped on a rack node - auto-mount into the rack
-      let data: any = {};
+      let data: CanvasDropData | null = null;
       const dataStr = event.dataTransfer.getData('application/reactflow-data');
       const type = event.dataTransfer.getData('application/reactflow') as HardwareType;
       if (dataStr) {
@@ -1080,17 +1114,18 @@ const Flow = React.memo(function Flow() {
         data = { type, name: `New ${type}` };
       }
 
-      if (!data.type) return;
+      if (!data?.type) return;
 
       const isServiceDrag = event.dataTransfer.getData('service-drag') === 'true';
 
-      const rackTarget = intersecting.find((n: any) => n.type === 'rack');
+      // Dropped on a rack: a device is mounted in it.
+      const rackTarget = intersecting.find(n => n.type === 'rack');
 
       // Something the owner has. A component goes into the machine it is
       // dropped on; a device becomes a node that is that machine, once.
       if (data.inventory) {
         if (data.inventory.kind !== 'device') {
-          const host = intersecting.find((n: any) => n.type === 'hardware');
+          const host = intersecting.find(n => n.type === 'hardware');
           const result = installComponent(host?.id ?? '', {
             id: crypto.randomUUID(),
             type: data.type,
@@ -1101,19 +1136,21 @@ const Flow = React.memo(function Flow() {
           (result.ok ? toast.success : toast.error)(result.message);
           return;
         }
-        const racked = rackTarget && data.type !== 'rack' && !isFloorNode(data.type);
-        const uSlot = racked
-          ? Math.max(0, Math.round((position.y - rackTarget.position.y - RACK_HEADER_PX) / RACK_U_HEIGHT_PX))
+        const deviceType = data.type as HardwareType;
+        const rack =
+          rackTarget && deviceType !== 'rack' && !isFloorNode(deviceType) ? rackTarget : undefined;
+        const uSlot = rack
+          ? Math.max(0, Math.round((position.y - rack.position.y - RACK_HEADER_PX) / RACK_U_HEIGHT_PX))
           : 0;
-        const result = racked
+        const result = rack
           ? placeDevice(
               data,
               { x: RACK_RAIL_WIDTH, y: RACK_HEADER_PX + uSlot * RACK_U_HEIGHT_PX },
               {
-                parent_id: rackTarget.id,
+                parent_id: rack.id,
                 details: {
-                  ...(data.details || {}),
-                  rack_units: data.details?.rack_units || DEFAULT_DEVICE_U[data.type] || 1,
+                  ...data.details,
+                  rack_units: data.details.rack_units || DEFAULT_DEVICE_U[data.type] || 1,
                   rack_position: uSlot,
                 },
               },
@@ -1131,7 +1168,7 @@ const Flow = React.memo(function Flow() {
 
         const newNode: HardwareNode = {
           id: crypto.randomUUID(),
-          type: data.type as HardwareType,
+          type: data.type,
           name: data.name || `New ${data.type}`,
           // Position relative to rack, snapped to U-slot grid
           x: RACK_RAIL_WIDTH,
@@ -1169,7 +1206,7 @@ const Flow = React.memo(function Flow() {
 
           addVM(targetNode.id, {
             id: crypto.randomUUID(),
-            name: data.name,
+            name: data.name ?? '',
             type: 'container',
             status: 'running',
             details: {
@@ -1207,7 +1244,7 @@ const Flow = React.memo(function Flow() {
 
       const newNode: HardwareNode = {
         id: crypto.randomUUID(),
-        type: data.type as HardwareType,
+        type: data.type,
         name: data.name || `New ${data.type}`,
         x: position.x,
         y: position.y,
@@ -1222,12 +1259,12 @@ const Flow = React.memo(function Flow() {
   );
 
   const onNodeDragStop = useCallback(
-    (_: React.MouseEvent, node: any) => {
+    (_: React.MouseEvent, node: ReactFlowNode) => {
       // Rack nodes manage their own position, don't nest them
       if (node.type === 'rack') return;
 
       const intersectingNodes = getIntersectingNodes(node);
-      const rackTarget = intersectingNodes.find((n: any) => n.type === 'rack');
+      const rackTarget = intersectingNodes.find(n => n.type === 'rack');
       const storeState = useBuilderStore.getState();
 
       if (rackTarget) {
@@ -1241,7 +1278,6 @@ const Flow = React.memo(function Flow() {
         const isCurrentlyInRack = node.parentId === rackTarget.id;
 
         // Node position in React Flow is relative IF it has parentId, or absolute if not
-        let newRelX = RACK_RAIL_WIDTH;
         let newRelY = node.position.y;
 
         if (!isCurrentlyInRack) {
@@ -1253,7 +1289,7 @@ const Flow = React.memo(function Flow() {
 
         storeState.updateHardware(node.id, {
           parent_id: rackTarget.id,
-          x: newRelX,
+          x: RACK_RAIL_WIDTH,
           y: RACK_HEADER_PX + uSlot * RACK_U_HEIGHT_PX,
           details: {
             ...(hardwareNode.details || {}),
@@ -1270,7 +1306,7 @@ const Flow = React.memo(function Flow() {
         const hardwareNode = storeState.hardwareNodes.find(n => n.id === node.id);
         if (!hardwareNode) return;
 
-        // We use undefined to delete the rack_position from details, but TypeScript requires a structural match
+        // A device taken out of a rack has no slot any more.
         const newDetails = { ...hardwareNode.details };
         delete newDetails.rack_position;
 
@@ -1286,7 +1322,7 @@ const Flow = React.memo(function Flow() {
   );
 
   const isValidConnection = useCallback(
-    (connection: any) => {
+    (connection: LinkEnd) => {
       // Always read live state so this never operates on stale closures.
       const {
         edges: currentEdges,
@@ -1327,7 +1363,7 @@ const Flow = React.memo(function Flow() {
       >
         {runTour && (
           <Joyride
-            steps={tourSteps}
+            steps={TOUR_STEPS}
             run
             callback={handleJoyrideCallback}
             locale={{ last: 'Close' }}
@@ -1572,26 +1608,19 @@ const Flow = React.memo(function Flow() {
                   <DropdownMenuLabel className="text-xs text-muted-foreground uppercase">
                     Network Zones
                   </DropdownMenuLabel>
-                  {[
-                    ['showNetworkZones', 'Show zone overlays'],
-                    ['showNatZones', 'NAT / Firewall zones'],
-                    ['showLanZones', 'Primary LAN outline'],
-                  ].map(([key, label]) => (
+                  {ZONE_TOGGLES.map(([key, label]) => (
                     <DropdownMenuItem
                       key={key}
                       onClick={e => {
                         e.preventDefault();
-                        handlePrefChange(
-                          key,
-                          !visualPreferences[key as keyof typeof visualPreferences] as any,
-                        );
+                        handlePrefChange(key, !visualPreferences[key]);
                       }}
                       className="flex items-center justify-between cursor-pointer"
                     >
                       <span>{label}</span>
                       <input
                         type="checkbox"
-                        checked={Boolean(visualPreferences[key as keyof typeof visualPreferences])}
+                        checked={visualPreferences[key]}
                         readOnly
                         className="pointer-events-none"
                       />
@@ -1620,7 +1649,9 @@ const Flow = React.memo(function Flow() {
                   </DropdownMenuLabel>
                   <DropdownMenuRadioGroup
                     value={edgePreferences.routingEngine}
-                    onValueChange={(v: string) => handlePrefChange('routingEngine', v)}
+                    onValueChange={v =>
+                      handlePrefChange('routingEngine', v as EdgePreferences['routingEngine'])
+                    }
                   >
                     <DropdownMenuRadioItem value="smart">
                       Smart (Avoids Nodes)
@@ -1635,7 +1666,9 @@ const Flow = React.memo(function Flow() {
                   </DropdownMenuLabel>
                   <DropdownMenuRadioGroup
                     value={edgePreferences.connectionStyle}
-                    onValueChange={(v: string) => handlePrefChange('connectionStyle', v)}
+                    onValueChange={v =>
+                      handlePrefChange('connectionStyle', v as EdgePreferences['connectionStyle'])
+                    }
                   >
                     <DropdownMenuRadioItem value="floating">
                       Floating (Chassis)
@@ -1650,7 +1683,7 @@ const Flow = React.memo(function Flow() {
                   </DropdownMenuLabel>
                   <DropdownMenuRadioGroup
                     value={edgePreferences.lineStyle}
-                    onValueChange={(v: string) => handlePrefChange('lineStyle', v)}
+                    onValueChange={v => handlePrefChange('lineStyle', v as EdgePreferences['lineStyle'])}
                   >
                     <DropdownMenuRadioItem value="bezier">Bezier (Curve)</DropdownMenuRadioItem>
                     <DropdownMenuRadioItem value="step">Step (Orthogonal)</DropdownMenuRadioItem>
@@ -1664,10 +1697,7 @@ const Flow = React.memo(function Flow() {
                   <DropdownMenuItem
                     onClick={e => {
                       e.preventDefault();
-                      handlePrefChange(
-                        'ignoreNetworkLoops',
-                        !edgePreferences.ignoreNetworkLoops as any,
-                      );
+                      handlePrefChange('ignoreNetworkLoops', !edgePreferences.ignoreNetworkLoops);
                     }}
                     className="flex items-center justify-between cursor-pointer"
                   >

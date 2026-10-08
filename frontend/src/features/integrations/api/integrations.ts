@@ -51,7 +51,7 @@ export type Certificate = {
   not_after: string;
 };
 
-export type IntegrationTestInput = {
+type IntegrationTestInput = {
   integration_id?: string;
   base_url: string;
   token_id: string;
@@ -101,7 +101,7 @@ export type GuestRow = {
   differs: boolean;
 };
 
-export type MatchReason = { signal: string; agrees: boolean; text: string };
+type MatchReason = { signal: string; agrees: boolean; text: string };
 export type MatchSuggestion = {
   item_id: string;
   item_name: string;
@@ -204,7 +204,7 @@ export type ImportResult = {
 
 type IntegrationList = { integrations: Integration[]; availability: IntegrationAvailability };
 
-export const integrationsApi = {
+const integrationsApi = {
   list: () => api.get<IntegrationList>('/api/integrations'),
   test: (input: IntegrationTestInput) =>
     api.post<IntegrationTestResult>('/api/integrations/test', input),
@@ -225,7 +225,7 @@ export const integrationsApi = {
     api.post<ImportResult>(`/api/integrations/${id}/import`, decision),
 };
 
-export const INTEGRATIONS_KEY = ['integrations'];
+const INTEGRATIONS_KEY = ['integrations'];
 const PLAN_KEY = 'integration-plan';
 
 export function useIntegrations(enabled = true) {

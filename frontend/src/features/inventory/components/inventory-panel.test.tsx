@@ -11,9 +11,6 @@ const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi
 vi.mock('@/lib/api', () => ({ api: apiMock, ApiError: class ApiError extends Error {} }));
 vi.mock('@/features/builder/api/builds', () => ({ buildApi: {} }));
 vi.mock('@/features/builder/api/proposals', () => ({ proposalApi: {} }));
-vi.mock('@/services/api', () => ({
-  api: { getServices: vi.fn().mockResolvedValue({ data: [] }) },
-}));
 vi.mock('sonner', () => ({ toast: toastMock }));
 
 import { useBuilderStore } from '@/features/builder/store/builder-store';

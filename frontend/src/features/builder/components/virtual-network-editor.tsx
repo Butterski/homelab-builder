@@ -122,6 +122,16 @@ function Editor({ hostId }: { hostId: string }) {
       selected: node.id === selectedId,
     }));
   }, [host, network, reached, selectedId, dragPositions]);
+  // Kept while unchanged: the editor renders on every frame of a drag.
+  const edges = useMemo(
+    () =>
+      (network?.edges ?? []).map(edge => ({
+        ...edge,
+        selected: edge.id === selectedEdge,
+        type: 'smoothstep',
+      })),
+    [network, selectedEdge],
+  );
   if (!host || !network) return null;
   const selectedVM = host.vms?.find(vm => vm.id === selectedId);
   const selectedSwitch = network.switches.find(sw => sw.id === selectedId);
@@ -194,11 +204,7 @@ function Editor({ hostId }: { hostId: string }) {
         <div className="relative min-h-72 flex-1">
           <ReactFlow
             nodes={nodes}
-            edges={network.edges.map(edge => ({
-              ...edge,
-              selected: edge.id === selectedEdge,
-              type: 'smoothstep',
-            }))}
+            edges={edges}
             nodeTypes={nodeTypes}
             fitView
             fitViewOptions={{ padding: 0.2 }}
@@ -220,16 +226,14 @@ function Editor({ hostId }: { hostId: string }) {
               setSelectedEdge(null);
             }}
             onNodesChange={changes => {
-              const positions = changes.filter(
-                change => change.type === 'position' && change.position,
-              );
-              if (!positions.length) return;
               const next = { ...dragPositions };
-              for (const change of positions) {
+              let moved = false;
+              for (const change of changes) {
                 if (change.type !== 'position' || !change.position) continue;
                 next[change.id] = change.position;
+                moved = true;
               }
-              setDragPositions(next);
+              if (moved) setDragPositions(next);
             }}
             onNodeDragStop={(_, node) => {
               updateVirtualNetwork(hostId, {
@@ -321,11 +325,11 @@ function Editor({ hostId }: { hostId: string }) {
               onSubmit={event => {
                 event.preventDefault();
                 const ip = staticIP.trim();
-                if (ip && !/^(\d{1,3}\.){3}\d{1,3}$/.test(ip)) {
-                  toast.error('Enter an IPv4 address');
-                  return;
-                }
-                if (ip && ip.split('.').some(part => Number(part) > 255)) {
+                if (
+                  ip &&
+                  (!/^(\d{1,3}\.){3}\d{1,3}$/.test(ip) ||
+                    ip.split('.').some(part => Number(part) > 255))
+                ) {
                   toast.error('Enter an IPv4 address');
                   return;
                 }

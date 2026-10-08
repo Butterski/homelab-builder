@@ -7,7 +7,6 @@ import (
 
 	"github.com/Butterski/homelab-builder/backend/internal/services"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 var allowedCategories = map[string]bool{
@@ -42,9 +41,8 @@ func (h *ServiceHandler) GetAll(c *gin.Context) {
 }
 
 func (h *ServiceHandler) GetAllForCurrentUser(c *gin.Context) {
-	userID, err := getServiceUserID(c)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+	userID, ok := currentUser(c)
+	if !ok {
 		return
 	}
 	svcs, err := h.service.GetAllForUser(userID)
@@ -58,45 +56,9 @@ func (h *ServiceHandler) GetAllForCurrentUser(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": svcs})
 }
 
-func (h *ServiceHandler) GetByID(c *gin.Context) {
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid service ID format",
-			"code":  "invalid_id",
-			"field": "id",
-		})
-		return
-	}
-
-	svc, err := h.service.GetByID(id)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"error": "Service not found",
-			"code":  "not_found",
-		})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"data": svc})
-}
-
 func (h *ServiceHandler) Create(c *gin.Context) {
-	var input services.CreateServiceInput
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid request body. Name and category are required.",
-			"code":  "validation_error",
-		})
-		return
-	}
-
-	if errs := validateServiceInput(input.Name, input.Category, input.MinRAMMB, input.RecommendedRAMMB, input.MinCPUCores, input.RecommendedCPUCores, input.MinStorageGB, input.RecommendedStorageGB); len(errs) > 0 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":  "Validation failed",
-			"code":   "validation_error",
-			"errors": errs,
-		})
+	input, ok := bindServiceInput(c)
+	if !ok {
 		return
 	}
 
@@ -119,66 +81,14 @@ func (h *ServiceHandler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"data": svc})
 }
 
-func (h *ServiceHandler) SubmitCommunity(c *gin.Context) {
-	var input services.CreateServiceInput
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid request body. Name and category are required.",
-			"code":  "validation_error",
-		})
-		return
-	}
-
-	if errs := validateServiceInput(input.Name, input.Category, input.MinRAMMB, input.RecommendedRAMMB, input.MinCPUCores, input.RecommendedCPUCores, input.MinStorageGB, input.RecommendedStorageGB); len(errs) > 0 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":  "Validation failed",
-			"code":   "validation_error",
-			"errors": errs,
-		})
-		return
-	}
-
-	svc, err := h.service.CreateCommunitySubmission(input)
-	if err != nil {
-		if strings.Contains(err.Error(), "duplicate") || strings.Contains(err.Error(), "unique") {
-			c.JSON(http.StatusConflict, gin.H{
-				"error": "A service with this name already exists",
-				"code":  "duplicate",
-			})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to submit service. Please try again.",
-			"code":  "internal_error",
-		})
-		return
-	}
-
-	c.JSON(http.StatusCreated, gin.H{"data": svc, "message": "Service submitted for review"})
-}
-
 func (h *ServiceHandler) CreatePrivate(c *gin.Context) {
-	userID, err := getServiceUserID(c)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+	userID, ok := currentUser(c)
+	if !ok {
 		return
 	}
 
-	var input services.CreateServiceInput
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid request body. Name and category are required.",
-			"code":  "validation_error",
-		})
-		return
-	}
-
-	if errs := validateServiceInput(input.Name, input.Category, input.MinRAMMB, input.RecommendedRAMMB, input.MinCPUCores, input.RecommendedCPUCores, input.MinStorageGB, input.RecommendedStorageGB); len(errs) > 0 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":  "Validation failed",
-			"code":   "validation_error",
-			"errors": errs,
-		})
+	input, ok := bindServiceInput(c)
+	if !ok {
 		return
 	}
 
@@ -194,18 +104,12 @@ func (h *ServiceHandler) CreatePrivate(c *gin.Context) {
 }
 
 func (h *ServiceHandler) SubmitPrivateToCommunity(c *gin.Context) {
-	userID, err := getServiceUserID(c)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+	userID, ok := currentUser(c)
+	if !ok {
 		return
 	}
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid service ID format",
-			"code":  "invalid_id",
-			"field": "id",
-		})
+	id, ok := uuidParam(c, "id")
+	if !ok {
 		return
 	}
 
@@ -220,85 +124,27 @@ func (h *ServiceHandler) SubmitPrivateToCommunity(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": svc, "message": "Service submitted for review"})
 }
 
-func (h *ServiceHandler) Update(c *gin.Context) {
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid service ID format",
-			"code":  "invalid_id",
-			"field": "id",
-		})
-		return
-	}
-
-	var input services.UpdateServiceInput
+// bindServiceInput reads and validates a new service. It writes the 400 itself
+// when it returns false.
+func bindServiceInput(c *gin.Context) (services.CreateServiceInput, bool) {
+	var input services.CreateServiceInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid request body",
+			"error": "Invalid request body. Name and category are required.",
 			"code":  "validation_error",
 		})
-		return
+		return input, false
 	}
 
-	// Validate fields that are provided
-	if input.Name != nil && (len(*input.Name) < 2 || len(*input.Name) > 255) {
+	if errs := validateServiceInput(input.Name, input.Category, input.MinRAMMB, input.RecommendedRAMMB, input.MinCPUCores, input.RecommendedCPUCores, input.MinStorageGB, input.RecommendedStorageGB); len(errs) > 0 {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Service name must be between 2 and 255 characters",
-			"code":  "validation_error",
-			"field": "name",
+			"error":  "Validation failed",
+			"code":   "validation_error",
+			"errors": errs,
 		})
-		return
+		return input, false
 	}
-	if input.Category != nil {
-		if !allowedCategories[*input.Category] {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": fmt.Sprintf("Invalid category. Allowed: %s", strings.Join(getAllowedCategories(), ", ")),
-				"code":  "validation_error",
-				"field": "category",
-			})
-			return
-		}
-	}
-
-	svc, err := h.service.Update(id, input)
-	if err != nil {
-		if strings.Contains(err.Error(), "record not found") {
-			c.JSON(http.StatusNotFound, gin.H{
-				"error": "Service not found",
-				"code":  "not_found",
-			})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to update service. Please try again.",
-			"code":  "internal_error",
-		})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"data": svc})
-}
-
-func (h *ServiceHandler) Delete(c *gin.Context) {
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid service ID format",
-			"code":  "invalid_id",
-			"field": "id",
-		})
-		return
-	}
-
-	if err := h.service.Delete(id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to delete service. Please try again.",
-			"code":  "internal_error",
-		})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "Service deleted"})
+	return input, true
 }
 
 type fieldError struct {
@@ -346,16 +192,4 @@ func getAllowedCategories() []string {
 		cats = append(cats, cat)
 	}
 	return cats
-}
-
-func getServiceUserID(c *gin.Context) (uuid.UUID, error) {
-	userIDVal, exists := c.Get("user_id")
-	if !exists {
-		return uuid.Nil, fmt.Errorf("user_id not found in context")
-	}
-	userID, ok := userIDVal.(uuid.UUID)
-	if !ok {
-		return uuid.Nil, fmt.Errorf("invalid user_id type")
-	}
-	return userID, nil
 }

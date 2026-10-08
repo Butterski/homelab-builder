@@ -1,16 +1,13 @@
 /**
  * builder-store.test.ts
  *
- * Tests for the three bugs fixed in builder-store.ts:
+ * The builder store against a mocked build API:
  *
- * 1. reassignAllIPs MUST call buildApi.update (save) BEFORE buildApi.calculateNetwork
- *    - if calculate runs first the backend reads stale/empty relational tables →
- *      "no router found" 500 error.
- *
- * 2. addHardware / addVM / duplicateHardware must NOT trigger reassignAllIPs
- *    - only onConnect should (prevents unnecessary API calls on every node drop).
- *
- * 3. onConnect MUST trigger reassignAllIPs so nodes get IPs when first wired up.
+ * - reassignAllIPs saves through the one atomic topology endpoint and takes the
+ *   addresses and details the server calculated back onto the canvas.
+ * - Adding devices or guests does not save by itself; connecting them does.
+ * - Loading a build keeps its settings, kind and plan, and is not an unsaved change.
+ * - Save state, save conflicts, and what getBuildData sends.
  *
  * Mock strategy: vi.mock buildApi so no real HTTP requests are made.
  * The store is reset before each test via zustand's setState.
@@ -25,7 +22,6 @@ vi.mock('../api/builds', () => ({
       build: { id: 'build-1', name: 'test', revision: 2, nodes: [] },
       validation: { valid: true, errors: [], warnings: [] },
     }),
-    calculateNetwork: vi.fn().mockResolvedValue(undefined),
     get: vi.fn().mockResolvedValue({ id: 'build-1', name: 'test', revision: 2, nodes: [] }),
     validateNetwork: vi.fn().mockResolvedValue({ valid: true, errors: [], warnings: [] }),
     create: vi.fn().mockResolvedValue({ id: 'build-1', revision: 1 }),
@@ -36,9 +32,22 @@ vi.mock('../api/builds', () => ({
 
 // ─── Import AFTER mock is registered ──────────────────────────────────────
 import { BuildConflictError, useBuilderStore } from './builder-store';
-import { buildApi } from '../api/builds';
+import { buildApi, type Build } from '../api/builds';
 import { ApiError } from '../../../lib/api';
-import type { HardwareNode } from '../../../types';
+import type { GamingPlan, HardwareNode } from '../../../types';
+
+/** A build as the server returns it, with the fields a test cares about. */
+function serverBuild(fields: Partial<Build>): Build {
+  return {
+    id: 'build-1',
+    user_id: 'user-1',
+    name: 'test',
+    revision: 1,
+    created_at: '',
+    updated_at: '',
+    ...fields,
+  };
+}
 
 describe('virtual network persistence', () => {
   beforeEach(() => resetStoreWithBuildId());
@@ -55,15 +64,15 @@ describe('virtual network persistence', () => {
     useBuilderStore.getState().addHardware(host);
     useBuilderStore.getState().openVirtualNetwork(host.id);
     expect(
-      useBuilderStore.getState().getBuildData().nodes[0].details.virtual_network.edges,
+      useBuilderStore.getState().getBuildData().nodes[0].details.virtual_network!.edges,
     ).toHaveLength(2);
     useBuilderStore.getState().removeVM(host.id, 'vm');
     expect(
-      useBuilderStore.getState().getBuildData().nodes[0].details.virtual_network.edges,
+      useBuilderStore.getState().getBuildData().nodes[0].details.virtual_network!.edges,
     ).toHaveLength(1);
     useBuilderStore.getState().undo();
     expect(
-      useBuilderStore.getState().getBuildData().nodes[0].details.virtual_network.edges,
+      useBuilderStore.getState().getBuildData().nodes[0].details.virtual_network!.edges,
     ).toHaveLength(2);
     vi.clearAllTimers();
     vi.useRealTimers();
@@ -84,19 +93,22 @@ describe('virtual network persistence', () => {
     vi.mocked(buildApi.updateTopology).mockImplementationOnce(async () => {
       useBuilderStore.getState().updateVirtualNetwork('host', { ...oldNetwork, edges: [] });
       return {
-        build: {
-          id: 'build-1',
+        build: serverBuild({
           revision: 3,
           nodes: [
             {
               id: 'host',
+              type: 'server',
+              name: 'Host',
               ip: '192.168.1.150',
-              virtual_machines: [{ id: 'vm', ip: '' }],
+              virtual_machines: [
+                { id: 'vm', name: 'Guest', type: 'vm', status: 'running', ip: '' },
+              ],
               details: { virtual_network: oldNetwork },
             },
           ],
-        },
-      } as any;
+        }),
+      };
     });
     await useBuilderStore.getState().reassignAllIPs();
     const host = useBuilderStore.getState().hardwareNodes[0];
@@ -152,7 +164,6 @@ describe('reassignAllIPs', () => {
     await useBuilderStore.getState().reassignAllIPs();
 
     expect(buildApi.updateTopology).toHaveBeenCalledTimes(1);
-    expect(buildApi.calculateNetwork).not.toHaveBeenCalled();
     expect(buildApi.get).not.toHaveBeenCalled();
   });
 
@@ -324,13 +335,9 @@ describe('openBuild', () => {
 
   it('loads the server revision even when the build is already open', async () => {
     useBuilderStore.setState({ currentRevision: 3 });
-    vi.mocked(buildApi.get).mockResolvedValueOnce({
-      id: 'build-1',
-      name: 'Renamed',
-      revision: 4,
-      nodes: [],
-      edges: [],
-    } as any);
+    vi.mocked(buildApi.get).mockResolvedValueOnce(
+      serverBuild({ name: 'Renamed', revision: 4, nodes: [], edges: [] }),
+    );
 
     await useBuilderStore.getState().openBuild('build-1');
 
@@ -338,52 +345,45 @@ describe('openBuild', () => {
     expect(useBuilderStore.getState().projectName).toBe('Renamed');
   });
 
-  it('sends back settings keys it does not manage itself', () => {
-    // A save replaces the whole settings object on the server, so a key written
-    // elsewhere (the Guided Planner's answers) must survive a load and a save.
-    useBuilderStore.getState().loadBuild('build-1', 'Planned', {
-      id: 'build-1',
-      name: 'Planned',
-      revision: 1,
-      nodes: [],
-      edges: [],
-      settings: { planner: { goals: ['media'] }, showBought: true, boughtItems: ['Router'] },
-    } as any);
+  it('sends back loaded settings unchanged, keys it does not manage included', () => {
+    // A save replaces the whole settings object on the server, so the Guided
+    // Planner's answers and keys older versions wrote must survive a load and a save.
+    const settings = { planner: { goals: ['media'] }, boughtItems: ['Router'] };
+    useBuilderStore
+      .getState()
+      .loadBuild(
+        'build-1',
+        'Planned',
+        serverBuild({ name: 'Planned', nodes: [], edges: [], settings }),
+      );
 
     const state = useBuilderStore.getState();
     expect(state.getBuildData().settings).toEqual({
       planner: { goals: ['media'] },
-      showBought: true,
       boughtItems: ['Router'],
     });
     // Loading must not look like an unsaved change, or the autosave would loop.
     expect(state.hasUnsavedChanges()).toBe(false);
-
-    state.markAsBought('Switch');
-    expect(useBuilderStore.getState().getBuildData().settings).toEqual({
-      planner: { goals: ['media'] },
-      showBought: true,
-      boughtItems: ['Router', 'Switch'],
-    });
-    expect(useBuilderStore.getState().hasUnsavedChanges()).toBe(true);
   });
 
   it('keeps the kind and the gaming plan of a build across load and save', () => {
-    const plan = {
+    const plan: GamingPlan = {
       uplink: { down_mbps: 300, up_mbps: 30, cgnat: 'no', public_host: 'play.example.org' },
       power: { mains_voltage: 230, circuits: [{ id: 'c1', label: 'Hall', breaker_amps: 16 }] },
       event: { date: '2026-11-14', hours: 24 },
     };
-    useBuilderStore.getState().loadBuild('build-1', 'Party', {
-      id: 'build-1',
-      name: 'Party',
-      kind: 'lan_party',
-      gaming_plan: plan,
-      revision: 1,
-      nodes: [],
-      edges: [],
-      settings: {},
-    } as any);
+    useBuilderStore.getState().loadBuild(
+      'build-1',
+      'Party',
+      serverBuild({
+        name: 'Party',
+        kind: 'lan_party',
+        gaming_plan: plan,
+        nodes: [],
+        edges: [],
+        settings: {},
+      }),
+    );
 
     const data = useBuilderStore.getState().getBuildData();
     expect(data.kind).toBe('lan_party');
@@ -394,22 +394,20 @@ describe('openBuild', () => {
     useBuilderStore.getState().setGamingPlan({
       ...plan,
       uplink: { ...plan.uplink, up_mbps: 50 },
-    } as any);
+    });
     expect(useBuilderStore.getState().hasUnsavedChanges()).toBe(true);
-    expect(useBuilderStore.getState().getBuildData().gaming_plan.uplink.up_mbps).toBe(50);
+    expect(useBuilderStore.getState().getBuildData().gaming_plan!.uplink!.up_mbps).toBe(50);
   });
 
   it('does not send a plan for a build that never had one', () => {
     // Builds saved before 1.3 come back without a kind and with an empty plan.
-    useBuilderStore.getState().loadBuild('build-1', 'Lab', {
-      id: 'build-1',
-      name: 'Lab',
-      gaming_plan: {},
-      revision: 1,
-      nodes: [],
-      edges: [],
-      settings: {},
-    } as any);
+    useBuilderStore
+      .getState()
+      .loadBuild(
+        'build-1',
+        'Lab',
+        serverBuild({ name: 'Lab', gaming_plan: {}, nodes: [], edges: [], settings: {} }),
+      );
 
     const data = useBuilderStore.getState().getBuildData();
     expect(data.kind).toBe('homelab');
@@ -422,14 +420,16 @@ describe('openBuild', () => {
   });
 
   it('forgets the settings of the previous build when the builder is closed', () => {
-    useBuilderStore.getState().loadBuild('build-1', 'Planned', {
-      id: 'build-1',
-      name: 'Planned',
-      revision: 1,
-      nodes: [],
-      edges: [],
-      settings: { planner: { goals: ['media'] } },
-    } as any);
+    useBuilderStore.getState().loadBuild(
+      'build-1',
+      'Planned',
+      serverBuild({
+        name: 'Planned',
+        nodes: [],
+        edges: [],
+        settings: { planner: { goals: ['media'] } },
+      }),
+    );
 
     useBuilderStore.getState().clearCurrentBuild();
 
@@ -441,17 +441,12 @@ describe('openBuild', () => {
     vi.mocked(buildApi.updateTopology).mockImplementationOnce(
       () =>
         new Promise(resolve => {
-          finishSave = () =>
-            resolve({ build: { id: 'build-1', name: 'test', revision: 2, nodes: [] } as any });
+          finishSave = () => resolve({ build: serverBuild({ revision: 2, nodes: [] }) });
         }),
     );
-    vi.mocked(buildApi.get).mockResolvedValueOnce({
-      id: 'build-1',
-      name: 'test',
-      revision: 2,
-      nodes: [],
-      edges: [],
-    } as any);
+    vi.mocked(buildApi.get).mockResolvedValueOnce(
+      serverBuild({ revision: 2, nodes: [], edges: [] }),
+    );
 
     const save = useBuilderStore.getState().reassignAllIPs();
     const open = useBuilderStore.getState().openBuild('build-1');
@@ -543,13 +538,19 @@ describe('gaming nodes', () => {
       details: { dhcp_enabled: false, dhcp_pool: { start: 'a', end: 'b', size: 86, clients: 0 } },
     });
     vi.mocked(buildApi.updateTopology).mockResolvedValueOnce({
-      build: {
-        id: 'build-1',
-        name: 'test',
+      build: serverBuild({
         revision: 2,
-        nodes: [{ id: 'router-1', ip: '192.168.1.1', details: { dhcp_enabled: false } }],
-      },
-    } as any);
+        nodes: [
+          {
+            id: 'router-1',
+            type: 'router',
+            name: 'router-1',
+            ip: '192.168.1.1',
+            details: { dhcp_enabled: false },
+          },
+        ],
+      }),
+    });
 
     await useBuilderStore.getState().reassignAllIPs();
 
@@ -565,15 +566,19 @@ describe('gaming nodes', () => {
     place('router-1', 'router', { details: { dhcp_enabled: true } });
     const pool = { start: '192.168.1.50', end: '192.168.1.149', size: 100, clients: 80 };
     vi.mocked(buildApi.updateTopology).mockResolvedValueOnce({
-      build: {
-        id: 'build-1',
-        name: 'test',
+      build: serverBuild({
         revision: 2,
         nodes: [
-          { id: 'router-1', ip: '192.168.1.1', details: { dhcp_enabled: true, dhcp_pool: pool } },
+          {
+            id: 'router-1',
+            type: 'router',
+            name: 'router-1',
+            ip: '192.168.1.1',
+            details: { dhcp_enabled: true, dhcp_pool: pool },
+          },
         ],
-      },
-    } as any);
+      }),
+    });
 
     await useBuilderStore.getState().reassignAllIPs();
 
@@ -604,14 +609,6 @@ describe('duplicateHardware', () => {
 describe('addHardware - must NOT trigger reassignAllIPs', () => {
   beforeEach(() => resetStoreWithBuildId());
   afterEach(() => vi.clearAllMocks());
-
-  it('does not call calculateNetwork when adding a hardware node', () => {
-    useBuilderStore.getState().addHardware(makeRouter());
-
-    // Immediate (sync) check - reassignAllIPs debounced via setTimeout(0)
-    // but addHardware should not queue it at all
-    expect(buildApi.calculateNetwork).not.toHaveBeenCalled();
-  });
 
   it('does not call buildApi.updateTopology when adding a hardware node', () => {
     useBuilderStore.getState().addHardware(makeRouter());
@@ -759,7 +756,7 @@ describe('getBuildData edge sanitization', () => {
           type: 'custom',
           data: { speed: '10 GbE', subnet: 'VLAN 10' },
         },
-      ] as any,
+      ],
     });
 
     const payload = useBuilderStore.getState().getBuildData();
@@ -798,7 +795,7 @@ describe('getBuildData edge sanitization', () => {
             subnet: 'VLAN 20',
           },
         },
-      ] as any,
+      ],
     });
 
     const payload = useBuilderStore.getState().getBuildData();
@@ -817,7 +814,7 @@ describe('addVM / removeVM', () => {
   beforeEach(() => resetStoreWithBuildId());
   afterEach(() => vi.clearAllMocks());
 
-  it('addVM does not call calculateNetwork', () => {
+  it('addVM does not save', () => {
     const router = makeRouter('r1');
     useBuilderStore.getState().addHardware(router);
 
@@ -832,7 +829,7 @@ describe('addVM / removeVM', () => {
       status: 'stopped',
     });
 
-    expect(buildApi.calculateNetwork).not.toHaveBeenCalled();
+    expect(buildApi.updateTopology).not.toHaveBeenCalled();
   });
 
   it('addVM appends VM to the correct node', () => {
@@ -859,9 +856,8 @@ describe('addVM / removeVM', () => {
 describe('the open project across reloads', () => {
   beforeEach(() => resetStoreWithBuildId());
 
-  const lab = (extra: Record<string, unknown> = {}) =>
-    ({
-      id: 'build-1',
+  const lab = (extra: Partial<Build> = {}) =>
+    serverBuild({
       name: 'Garage Lab',
       revision: 4,
       nodes: [
@@ -871,7 +867,7 @@ describe('the open project across reloads', () => {
       edges: [],
       settings: {},
       ...extra,
-    }) as any;
+    });
 
   it('remembers which project is open, not its canvas', () => {
     useBuilderStore.getState().loadBuild('build-1', 'Garage Lab', lab({ kind: 'lan_party' }));
@@ -896,9 +892,9 @@ describe('the open project across reloads', () => {
 
   it('clears the previous canvas before another project arrives', async () => {
     useBuilderStore.getState().addHardware(makeRouter('old-router'));
-    let arrive!: (build: unknown) => void;
+    let arrive!: (build: Build) => void;
     vi.mocked(buildApi.get).mockImplementationOnce(
-      () => new Promise(resolve => (arrive = resolve)) as any,
+      () => new Promise<Build>(resolve => (arrive = resolve)),
     );
 
     const opening = useBuilderStore.getState().openBuild('build-2');
@@ -912,7 +908,9 @@ describe('the open project across reloads', () => {
     expect(state.hardwareNodes).toEqual([]);
     expect(state.hasUnsavedChanges()).toBe(false);
 
-    arrive({ id: 'build-2', name: 'Other', revision: 9, nodes: [], edges: [], settings: {} });
+    arrive(
+      serverBuild({ id: 'build-2', name: 'Other', revision: 9, nodes: [], edges: [], settings: {} }),
+    );
     await opening;
     state = useBuilderStore.getState();
     expect(state.buildStatus).toBe('ready');
@@ -952,7 +950,7 @@ describe('the open project across reloads', () => {
     useBuilderStore.getState().selectNode('s1');
 
     const withoutSwitch = lab({ revision: 5 });
-    withoutSwitch.nodes = [withoutSwitch.nodes[0]];
+    withoutSwitch.nodes = [withoutSwitch.nodes![0]];
     useBuilderStore.getState().loadBuild('build-1', 'Garage Lab', withoutSwitch);
     expect(useBuilderStore.getState().selectedNodeId).toBeNull();
 
@@ -976,14 +974,13 @@ describe('save state', () => {
   beforeEach(() => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     resetStoreWithBuildId();
-    useBuilderStore.getState().loadBuild('build-1', 'Lab', {
-      id: 'build-1',
-      name: 'Lab',
-      revision: 1,
-      nodes: [],
-      edges: [],
-      settings: {},
-    } as any);
+    useBuilderStore
+      .getState()
+      .loadBuild(
+        'build-1',
+        'Lab',
+        serverBuild({ name: 'Lab', nodes: [], edges: [], settings: {} }),
+      );
   });
 
   it('is unsaved as soon as the canvas differs and saved again after the save', async () => {
@@ -1091,8 +1088,8 @@ describe('save conflicts', () => {
         }),
       )
       .mockResolvedValueOnce({
-        build: { id: 'build-1', name: 'Test Project', revision: 3, nodes: [] },
-      } as any);
+        build: serverBuild({ name: 'Test Project', revision: 3, nodes: [] }),
+      });
 
     await useBuilderStore.getState().reassignAllIPs();
 
@@ -1131,13 +1128,9 @@ describe('save conflicts', () => {
 
   it('fetches the latest build itself when the refusal does not carry it', async () => {
     vi.mocked(buildApi.updateTopology).mockRejectedValueOnce(refusal());
-    vi.mocked(buildApi.get).mockResolvedValueOnce({
-      id: 'build-1',
-      name: 'Latest',
-      revision: 5,
-      nodes: [],
-      edges: [],
-    } as any);
+    vi.mocked(buildApi.get).mockResolvedValueOnce(
+      serverBuild({ name: 'Latest', revision: 5, nodes: [], edges: [] }),
+    );
 
     await expect(useBuilderStore.getState().reassignAllIPs()).rejects.toBeInstanceOf(
       BuildConflictError,
@@ -1164,7 +1157,7 @@ describe('one list of devices', () => {
         { id: 'e1', source: 'switch', target: 'server' },
         { id: 'e2', source: 'switch', target: 'pc' },
         { id: 'e3', source: 'switch', target: 'nas' },
-      ] as any,
+      ],
       selectedNodeId: 'pc',
     });
 

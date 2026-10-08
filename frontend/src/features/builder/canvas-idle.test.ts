@@ -25,6 +25,7 @@ const canvasSources = [
   join(src, 'features/builder/pages/shared-build-page.tsx'),
   join(src, 'features/landing/components/landing-demo.tsx'),
   join(src, 'features/guides/pages/article-visual-page.tsx'),
+  join(src, 'features/guides/lib/article-visuals.ts'),
 ];
 
 const found = (pattern: RegExp) =>

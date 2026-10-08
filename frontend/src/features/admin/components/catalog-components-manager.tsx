@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { api } from "../../../services/api"
+import { api } from "../../../lib/api"
 import { Button } from "../../../components/ui/button"
 import { Input } from "../../../components/ui/input"
 import { Label } from "../../../components/ui/label"
@@ -16,13 +16,15 @@ import {
   DialogTrigger,
 } from "../../../components/ui/dialog"
 
-export interface CatalogComponentRaw {
+interface CatalogComponentRaw {
     id: string
     type: string
     name: string
-    details: any
+    details: Record<string, unknown>
     created_at: string
 }
+
+type CatalogComponentPayload = Pick<CatalogComponentRaw, "type" | "name" | "details">
 
 export function CatalogComponentsManager() {
     const qc = useQueryClient()
@@ -32,11 +34,11 @@ export function CatalogComponentsManager() {
 
     const { data, isLoading } = useQuery({
         queryKey: ["admin-mass-planner"],
-        queryFn: () => api.getCatalogComponents()
+        queryFn: () => api.get<{ data: CatalogComponentRaw[] }>("/api/admin/catalog-components")
     })
 
     const createMut = useMutation({
-        mutationFn: (data: any) => api.createCatalogComponent(data),
+        mutationFn: (payload: CatalogComponentPayload) => api.post("/api/admin/catalog-components", payload),
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ["admin-mass-planner"] })
             setOpen(false)
@@ -44,7 +46,8 @@ export function CatalogComponentsManager() {
     })
 
     const updateMut = useMutation({
-        mutationFn: ({ id, data }: { id: string, data: any }) => api.updateCatalogComponent(id, data),
+        mutationFn: ({ id, payload }: { id: string, payload: CatalogComponentPayload }) =>
+            api.put(`/api/admin/catalog-components/${id}`, payload),
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ["admin-mass-planner"] })
             setOpen(false)
@@ -52,7 +55,7 @@ export function CatalogComponentsManager() {
     })
 
     const deleteMut = useMutation({
-        mutationFn: (id: string) => api.deleteCatalogComponent(id),
+        mutationFn: (id: string) => api.del(`/api/admin/catalog-components/${id}`),
         onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-mass-planner"] })
     })
 
@@ -61,10 +64,10 @@ export function CatalogComponentsManager() {
     const components: CatalogComponentRaw[] = data?.data || []
 
     const handleSave = () => {
-        let parsedDetails = {}
+        let details: Record<string, unknown>
         try {
-            parsedDetails = JSON.parse(formState.details)
-        } catch (e) {
+            details = JSON.parse(formState.details)
+        } catch {
             alert("Invalid JSON in details")
             return
         }
@@ -72,11 +75,11 @@ export function CatalogComponentsManager() {
         const payload = {
             type: formState.type.toLowerCase().trim(),
             name: formState.name,
-            details: parsedDetails
+            details,
         }
 
         if (editingId) {
-            updateMut.mutate({ id: editingId, data: payload })
+            updateMut.mutate({ id: editingId, payload })
         } else {
             createMut.mutate(payload)
         }

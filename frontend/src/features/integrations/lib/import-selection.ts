@@ -1,4 +1,5 @@
 import { formatDistance } from 'date-fns';
+import { plural } from '@/lib/format';
 import type {
   GuestRow,
   ImportDecision,
@@ -50,13 +51,10 @@ export function specsChosen(host: ImportHost, overrides: Overrides): boolean {
   return overrides[specsKey(host)] ?? true;
 }
 
-/** Whether the host is new to the plan and will come in as a device. */
-export const isNewHost = (host: ImportHost) => !host.skipped && !host.planned_id;
-
 /** A host that is already in the plan but does not say yet which Proxmox host it is. */
 const needsLink = (host: ImportHost) => !!host.planned_id && host.paired_by !== 'link';
 
-export type ChangeCount = {
+type ChangeCount = {
   hostsAdded: number;
   hostsUpdated: number;
   guestsAdded: number;
@@ -78,9 +76,9 @@ export function countChanges(plan: ImportPlan, overrides: Overrides): ChangeCoun
   };
   for (const host of plan.hosts) {
     if (host.skipped) continue;
-    if (isNewHost(host)) {
+    if (!host.planned_id) {
       count.hostsAdded += 1;
-      // The device and the cable to the switch.
+      // A host new to the plan comes in as a device, with its cable to the switch.
       count.operations += 2;
     } else if (needsLink(host) || specsChosen(host, overrides)) {
       count.hostsUpdated += 1;
@@ -136,16 +134,14 @@ export function decisionOf(
   return decision;
 }
 
-const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
-
 /** "Proxmox VE 8.4.1, cluster homelab, 3 nodes, 11 VMs, 7 containers". */
 export function summaryLine(summary: ProxmoxSummary): string {
   return [
     summary.version ? `Proxmox VE ${summary.version}` : '',
     summary.cluster ? `cluster ${summary.cluster}` : '',
-    plural(summary.nodes, 'node', 'nodes'),
-    plural(summary.vms, 'VM', 'VMs'),
-    plural(summary.containers, 'container', 'containers'),
+    plural(summary.nodes, 'node'),
+    plural(summary.vms, 'VM'),
+    plural(summary.containers, 'container'),
   ]
     .filter(Boolean)
     .join(', ');
@@ -153,15 +149,7 @@ export function summaryLine(summary: ProxmoxSummary): string {
 
 /** "3 nodes / 18 guests", for the row beside the canvas. */
 export const shortSummary = (summary: ProxmoxSummary) =>
-  `${plural(summary.nodes, 'node', 'nodes')} / ${plural(summary.vms + summary.containers, 'guest', 'guests')}`;
-
-/** Megabytes as the gigabytes people say: 31985 is "31.2 GB", 4096 is "4 GB". */
-export function formatMemory(mb: number): string {
-  if (!Number.isFinite(mb) || mb <= 0) return '0 GB';
-  if (mb < 1024) return `${Math.round(mb)} MB`;
-  const gb = mb / 1024;
-  return `${Number.isInteger(gb) ? gb : gb.toFixed(1)} GB`;
-}
+  `${plural(summary.nodes, 'node')} / ${plural(summary.vms + summary.containers, 'guest')}`;
 
 /** A share of a whole as a percentage for a bar, never over 100. */
 export const share = (part: number, whole: number) =>
@@ -173,11 +161,11 @@ export const freeShare = (used: number, whole: number) => 100 - share(used, whol
 /** In a sentence, what an import with these choices does. */
 export function changeSentence(count: ChangeCount): string {
   const parts = [
-    count.hostsAdded && `${plural(count.hostsAdded, 'host', 'hosts')} added`,
-    count.hostsUpdated && `${plural(count.hostsUpdated, 'host', 'hosts')} updated`,
-    count.guestsAdded && `${plural(count.guestsAdded, 'guest', 'guests')} added`,
-    count.guestsUpdated && `${plural(count.guestsUpdated, 'guest', 'guests')} updated`,
-    count.guestsRemoved && `${plural(count.guestsRemoved, 'guest', 'guests')} removed`,
+    count.hostsAdded && `${plural(count.hostsAdded, 'host')} added`,
+    count.hostsUpdated && `${plural(count.hostsUpdated, 'host')} updated`,
+    count.guestsAdded && `${plural(count.guestsAdded, 'guest')} added`,
+    count.guestsUpdated && `${plural(count.guestsUpdated, 'guest')} updated`,
+    count.guestsRemoved && `${plural(count.guestsRemoved, 'guest')} removed`,
   ].filter(Boolean);
   return parts.length > 0 ? parts.join(', ') : 'Nothing to change';
 }

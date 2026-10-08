@@ -11,7 +11,6 @@ import (
 	"github.com/Butterski/homelab-builder/backend/internal/inventory"
 	"github.com/Butterski/homelab-builder/backend/internal/services"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 // InventoryHandler serves the hardware a user owns. The inventory belongs to
@@ -22,17 +21,6 @@ type InventoryHandler struct {
 
 func NewInventoryHandler(service *services.InventoryService) *InventoryHandler {
 	return &InventoryHandler{service: service}
-}
-
-// currentUser reads the caller. It writes the error response itself when it
-// returns false.
-func currentUser(c *gin.Context) (uuid.UUID, bool) {
-	raw, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return uuid.Nil, false
-	}
-	return raw.(uuid.UUID), true
 }
 
 // readable is an error as its reader is told: without the label the service
@@ -100,9 +88,8 @@ func (h *InventoryHandler) Update(c *gin.Context) {
 	if !ok {
 		return
 	}
-	itemID, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+	itemID, ok := uuidParam(c, "id")
+	if !ok {
 		return
 	}
 	var req services.InventoryInput
@@ -123,9 +110,8 @@ func (h *InventoryHandler) Delete(c *gin.Context) {
 	if !ok {
 		return
 	}
-	itemID, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+	itemID, ok := uuidParam(c, "id")
+	if !ok {
 		return
 	}
 	if err := h.service.Delete(userID, itemID); err != nil {

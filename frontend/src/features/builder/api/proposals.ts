@@ -142,7 +142,7 @@ export const proposalApi = {
     api.post<ProposalSummary>(`/api/builds/${buildId}/proposals/${proposalId}/reject`, { reason }),
 };
 
-export const SYNC_STATE_INTERVAL_MS = 4000;
+const SYNC_STATE_INTERVAL_MS = 4000;
 
 export const syncStateKey = (buildId: string | null | undefined) => ['build-sync-state', buildId];
 

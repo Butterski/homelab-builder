@@ -7,7 +7,6 @@ import (
 
 	"github.com/Butterski/homelab-builder/backend/internal/services"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 type GamingHandler struct {
@@ -21,18 +20,16 @@ func NewGamingHandler(service *services.GamingService) *GamingHandler {
 // Report returns the gaming report of a build: game server sizing, port
 // forwards and uplink, and for LAN parties seats, leases, switch ports and power.
 func (h *GamingHandler) Report(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+	userID, ok := currentUser(c)
+	if !ok {
 		return
 	}
-	buildID, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+	buildID, ok := uuidParam(c, "id")
+	if !ok {
 		return
 	}
 
-	report, err := h.service.Report(buildID, userID.(uuid.UUID))
+	report, err := h.service.Report(buildID, userID)
 	if errors.Is(err, services.ErrBuildNotFound) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Build not found"})
 		return

@@ -13,7 +13,7 @@ import type {
 } from './types';
 import { buildUnits, type UnitGraph } from './units';
 
-export type { LayoutGraph, LayoutMetrics, LayoutResult, LayoutStyle } from './types';
+export type { LayoutMetrics, LayoutResult, LayoutStyle } from './types';
 
 export const LAYOUT_STYLES: Array<{ id: LayoutStyle; label: string; description: string }> = [
   {

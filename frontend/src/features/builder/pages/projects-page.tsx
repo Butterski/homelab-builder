@@ -133,7 +133,7 @@ function ProjectsPage() {
       </div>
 
       <ProjectModals
-        modal={modal as any}
+        modal={modal}
         onConfirmCreate={confirmCreate}
         onConfirmDelete={confirmDelete}
         onConfirmRename={confirmRename}

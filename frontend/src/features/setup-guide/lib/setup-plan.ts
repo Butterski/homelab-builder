@@ -1,5 +1,6 @@
 import { isNetworkNode, isWifiAssociation } from '../../../lib/hardware-config';
 import { hardwareTypeName as typeName } from '../../../lib/hardware-taxonomy';
+import { formatMemory, plural } from '../../../lib/format';
 import type {
   GamingPlan,
   HardwareNode,
@@ -72,7 +73,7 @@ export interface SetupSection {
   note?: string;
 }
 
-export interface SetupInput {
+interface SetupInput {
   nodes: HardwareNode[];
   links: SetupLink[];
   services: Service[];
@@ -158,9 +159,6 @@ function list(names: string[]): string {
   if (names.length <= 1) return names.join('');
   return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
 }
-
-const plural = (count: number, one: string, many = `${one}s`) =>
-  `${count} ${count === 1 ? one : many}`;
 
 /** A short, stable mark of a text, for steps that have nothing else to be known by. */
 function mark(text: string): string {
@@ -583,7 +581,7 @@ function hostSection(
           { text: RUNS_AS[guest.type] ?? guest.type },
           { text: guest.ip ?? '', figure: true },
           { text: guest.cpu_cores ? String(guest.cpu_cores) : '', figure: true },
-          { text: guest.ram_mb ? formatRam(guest.ram_mb) : '', figure: true },
+          { text: guest.ram_mb ? formatMemory(guest.ram_mb) : '', figure: true },
         ],
       };
     });
@@ -613,14 +611,6 @@ function hostSection(
         ? `The generated Compose file publishes the ports of its containers on the host: from the network, reach them at ${host.ip}. The addresses above are the ones they carry inside Docker's own network on that host.`
         : undefined,
   };
-}
-
-function formatRam(mb: number): string {
-  if (mb >= 1024) {
-    const gb = mb / 1024;
-    return `${Number.isInteger(gb) ? gb : gb.toFixed(1)} GB`;
-  }
-  return `${mb} MB`;
 }
 
 /** What the plan says the machine is made of: "8 cores, 32 GB RAM". */
@@ -724,7 +714,7 @@ export function sectionStepIds(section: SetupSection): string[] {
   return [...section.steps.map(step => step.id), ...(section.table?.rows.map(row => row.id) ?? [])];
 }
 
-export interface SetupProgress {
+interface SetupProgress {
   done: number;
   total: number;
   /** Per section id. */

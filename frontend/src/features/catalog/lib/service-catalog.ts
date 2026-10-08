@@ -1,4 +1,5 @@
 import type { Service } from '../../../types';
+import { formatMemory } from '../../../lib/format';
 
 type FilterInput = {
   category: string;
@@ -101,12 +102,7 @@ export function sortServices(services: Service[], { key, descending }: ServiceSo
 }
 
 export function formatRam(mb: number | undefined): string {
-  if (!mb) return '';
-  if (mb >= 1024) {
-    const gb = mb / 1024;
-    return `${Number.isInteger(gb) ? gb : gb.toFixed(1)} GB`;
-  }
-  return `${mb} MB`;
+  return mb ? formatMemory(mb) : '';
 }
 
 export function formatCores(cores: number | undefined): string {

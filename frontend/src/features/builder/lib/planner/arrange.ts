@@ -1,8 +1,7 @@
 import type { HardwareNode } from '../../../../types';
-import type { CreateBuildParams } from '../../api/builds';
 import { computeLayout } from '../layout';
 import { buildLayoutGraph } from '../layout/from-flow';
-import type { PlannedEdge, PlannedNode } from './types';
+import type { Plan } from './types';
 
 /** Where the top-left corner of a planned canvas goes. */
 const ORIGIN = 80;
@@ -12,9 +11,8 @@ const ORIGIN = 80;
  * opens tidy. Nothing has been drawn yet, so card sizes are estimated; devices
  * in a rack keep the slot the planner chose.
  */
-export function arrangePlan(plan: CreateBuildParams): CreateBuildParams {
-  const nodes = plan.nodes as PlannedNode[];
-  const edges = plan.edges as PlannedEdge[];
+export function arrangePlan(plan: Plan): Plan {
+  const { nodes, edges } = plan;
   const graph = buildLayoutGraph(
     nodes.map(node => ({
       hardware: node as unknown as HardwareNode,

@@ -1,4 +1,5 @@
-import type { GameExposure } from '../../../../types';
+import type { GameExposure, HardwareComponent } from '../../../../types';
+import type { CreateBuildParams } from '../../api/builds';
 
 // ─── Homelab ─────────────────────────────────────────────────────────────────
 
@@ -84,7 +85,7 @@ export type PlannedNode = {
   parent_id?: string;
   details: Record<string, unknown>;
   vms: PlannedVM[];
-  internal_components: unknown[];
+  internal_components: HardwareComponent[];
 };
 
 export type PlannedEdge = {
@@ -96,4 +97,10 @@ export type PlannedEdge = {
   speed: string;
   direction: string;
   wireless_standard?: string;
+};
+
+/** What a planner makes: a build to create, with its devices and cables as planned. */
+export type Plan = Omit<CreateBuildParams, 'nodes' | 'edges'> & {
+  nodes: PlannedNode[];
+  edges: PlannedEdge[];
 };

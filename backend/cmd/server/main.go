@@ -64,8 +64,8 @@ func startServer(router *gin.Engine, port string) {
 func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 	router := gin.Default()
 
-	// SECURITY FIX: Prevent IP spoofing in Rate Limiter.
-	// We only trust the X-Forwarded-For header if it comes from our internal Nginx Docker network.
+	// The rate limiter keys on the client IP, so X-Forwarded-For is trusted only
+	// from the internal proxy networks.
 	err := router.SetTrustedProxies([]string{"127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"})
 	if err != nil {
 		log.Printf("Warning: Failed to set trusted proxies: %v", err)
@@ -110,9 +110,6 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 		serviceService := services.NewServiceService(db)
 		serviceHandler := handlers.NewServiceHandler(serviceService)
 		recommendationService := services.NewRecommendationService(db)
-		recommendationHandler := handlers.NewRecommendationHandler(recommendationService)
-		shoppingService := services.NewShoppingListService(db)
-		shoppingHandler := handlers.NewShoppingListHandler(shoppingService)
 		authHandler := handlers.NewAuthHandler(authService, rateLimiter)
 		selectionService := services.NewSelectionService(db)
 		selectionHandler := handlers.NewSelectionHandler(selectionService)
@@ -121,11 +118,8 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 		hardwareHandler := handlers.NewHardwareHandler(hardwareService)
 		hardwareBlueprintService := services.NewHardwareBlueprintService(db)
 		hardwareBlueprintHandler := handlers.NewHardwareBlueprintHandler(hardwareBlueprintService)
-		steeringService := services.NewSteeringService(db)
-		steeringHandler := handlers.NewSteeringHandler(steeringService)
 		catalogCompService := services.NewCatalogComponentService(db)
 		catalogCompHandler := handlers.NewCatalogComponentHandler(catalogCompService)
-		_ = services.NewAnalyticsService(db) // available for future handler integration
 
 		buildService := services.NewBuildService(db)
 		ipService := services.NewIPService(db)
@@ -207,6 +201,8 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 			})
 		}
 
+		requireAuth := middleware.AuthMiddleware(authService, cfg.AuthDisabled)
+
 		// Auth routes (public & protected user)
 		auth := router.Group("/auth")
 		{
@@ -227,38 +223,27 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 			if gin.Mode() != gin.ReleaseMode || cfg.AuthDisabled {
 				auth.POST("/dev", authHandler.DevLogin)
 			}
-			auth.GET("/me", middleware.AuthMiddleware(authService, cfg.AuthDisabled), authHandler.GetCurrentUser)
-			auth.GET("/themes", middleware.AuthMiddleware(authService, cfg.AuthDisabled), authHandler.GetThemeSettings)
-			auth.PUT("/themes", middleware.AuthMiddleware(authService, cfg.AuthDisabled), authHandler.UpdateThemeSettings)
-			auth.PUT("/preferences", middleware.AuthMiddleware(authService, cfg.AuthDisabled), authHandler.UpdatePreferences)
+			auth.GET("/me", requireAuth, authHandler.GetCurrentUser)
+			auth.GET("/themes", requireAuth, authHandler.GetThemeSettings)
+			auth.PUT("/themes", requireAuth, authHandler.UpdateThemeSettings)
+			auth.PUT("/preferences", requireAuth, authHandler.UpdatePreferences)
 		}
 
 		// Public API routes
 		api := router.Group("/api")
 		{
 			api.GET("/services", serviceHandler.GetAll)
-			api.GET("/services/:id", serviceHandler.GetByID)
-			api.POST("/services/community", serviceHandler.SubmitCommunity) // community submission
-
-			api.POST("/recommendations", recommendationHandler.Generate)
-			api.POST("/shopping-list", shoppingHandler.Generate)
 
 			// Hardware catalog (public read)
 			api.GET("/hardware", hardwareHandler.GetAll)
 			api.GET("/hardware/categories", hardwareHandler.GetCategories)
-			api.GET("/hardware/brands", hardwareHandler.GetBrands)
 			api.GET("/hardware/:id", hardwareHandler.GetByID)
-			api.POST("/hardware/:id/like", hardwareHandler.Like)
 			api.POST("/hardware", hardwareHandler.Create) // community submission
-			api.GET("/hardware-blueprints/community", hardwareBlueprintHandler.ListCommunity)
-
-			// Component Catalog
-			api.GET("/catalog-components", catalogCompHandler.GetAll)
 		}
 
 		// Protected API routes (require authentication)
 		protected := api.Group("")
-		protected.Use(middleware.AuthMiddleware(authService, cfg.AuthDisabled))
+		protected.Use(requireAuth)
 		{
 			protected.GET("/selections", selectionHandler.GetSelections)
 			protected.POST("/selections", selectionHandler.AddSelection)
@@ -274,8 +259,6 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 			protected.GET("/hardware-blueprints/:id/export", hardwareBlueprintHandler.Export)
 			protected.POST("/hardware-blueprints/:id/share-code", hardwareBlueprintHandler.CreateShareCode)
 			protected.PATCH("/hardware-blueprints/:id/submit", hardwareBlueprintHandler.Submit)
-			protected.POST("/hardware-blueprints/:id/vote", hardwareBlueprintHandler.Vote)
-			protected.POST("/hardware-blueprints/:id/review", hardwareBlueprintHandler.Review)
 
 			protected.GET("/my-services", serviceHandler.GetAllForCurrentUser)
 			protected.POST("/my-services", serviceHandler.CreatePrivate)
@@ -292,7 +275,6 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 			protected.POST("/builds/:id/share", buildHandler.Share)
 			protected.POST("/builds/:id/unshare", buildHandler.Unshare)
 			protected.PATCH("/builds/:id/share", buildHandler.SetShareEditable)
-			protected.POST("/builds/:id/calculate-network", buildHandler.CalculateNetwork)
 			protected.POST("/builds/:id/validate-network", buildHandler.ValidateNetwork)
 			protected.POST("/builds/:id/generate-config", configHandler.GenerateConfig)
 			protected.GET("/builds/:id/export-bundle", configHandler.DownloadBundle)
@@ -352,8 +334,7 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 
 		// Admin routes (require authentication + admin role)
 		admin := api.Group("/admin")
-		// Use AuthMiddlewareWithUser to load the full User model so is_admin check works
-		admin.Use(middleware.AuthMiddlewareWithUser(authService, db, cfg.AuthDisabled))
+		admin.Use(middleware.AuthMiddlewareWithUser(authService, cfg.AuthDisabled))
 		admin.Use(middleware.AdminRequired())
 		{
 			admin.GET("/dashboard", adminHandler.Dashboard)
@@ -361,10 +342,8 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 			admin.GET("/users", adminHandler.ListUsers)
 			admin.GET("/services", adminHandler.ListAllServices)
 			admin.POST("/services", serviceHandler.Create)
-			admin.POST("/services/:id/toggle", adminHandler.ToggleServiceActive)
 			admin.PUT("/services/:id", adminHandler.UpdateServiceFull)
 			admin.DELETE("/services/:id", adminHandler.DeleteService)
-			admin.GET("/events", adminHandler.RecentEvents)
 
 			// Hardware admin
 			admin.GET("/hardware", hardwareHandler.AdminGetAll)
@@ -372,16 +351,9 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 			admin.PUT("/hardware/:id", hardwareHandler.AdminUpdate)
 			admin.DELETE("/hardware/:id", hardwareHandler.AdminDelete)
 			admin.PATCH("/hardware/:id/approve", hardwareHandler.AdminApprove)
-			admin.PATCH("/hardware/:id/buy-urls", hardwareHandler.AdminUpdateBuyURLs)
 			admin.POST("/hardware/bulk-import", hardwareHandler.AdminBulkImport)
 			admin.GET("/hardware-blueprints", hardwareBlueprintHandler.AdminListPending)
-			admin.PATCH("/hardware-blueprints/:id/visibility", hardwareBlueprintHandler.AdminSetVisibility)
 			admin.PATCH("/hardware-blueprints/:id/moderate", hardwareBlueprintHandler.AdminModerate)
-
-			// Steering rules
-			admin.GET("/steering", steeringHandler.GetAll)
-			admin.PUT("/steering/:category", steeringHandler.Upsert)
-			admin.DELETE("/steering/:category", steeringHandler.Delete)
 
 			// Catalog Components (Mass Planner)
 			admin.GET("/catalog-components", catalogCompHandler.GetAll)

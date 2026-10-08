@@ -3,38 +3,30 @@ package core
 import (
 	"math"
 	"net"
-
-	"github.com/Butterski/hlbipam/internal/utils"
 )
 
 type SubnetAllocator struct {
 	Network   uint32
 	Capacity  uint32
-	Mask      uint32
-	Gateway   uint32
 	Used      map[uint32]bool
 	DHCPStart uint32
 	DHCPEnd   uint32
-	Zones     map[string]ZoneConfig
 }
 
 // NewSubnetAllocator prepares a subnet. With DHCP on it carves the lease pool:
 // a third of the subnet by default, grown to fit dhcpDemand leases plus
 // headroom when the nodes announce more than that.
-func NewSubnetAllocator(subnetStr string, gatewayIP string, zones map[string]ZoneConfig, reqDHCPEnabled bool, dhcpDemand int) *SubnetAllocator {
-	network, capacity, mask, err := utils.ParseCIDR(subnetStr)
+func NewSubnetAllocator(subnetStr string, gatewayIP string, reqDHCPEnabled bool, dhcpDemand int) *SubnetAllocator {
+	network, capacity, _, err := parseCIDR(subnetStr)
 	if err != nil {
-		network, capacity, mask, _ = utils.ParseCIDR(gatewayIP + "/24")
+		network, capacity, _, _ = parseCIDR(gatewayIP + "/24")
 	}
 
-	gwUint := utils.IPToUint32(net.ParseIP(gatewayIP))
+	gwUint := ipToUint32(net.ParseIP(gatewayIP))
 	sa := &SubnetAllocator{
 		Network:  network,
 		Capacity: capacity,
-		Mask:     mask,
-		Gateway:  gwUint,
 		Used:     make(map[uint32]bool),
-		Zones:    zones,
 	}
 
 	sa.Used[network] = true
@@ -81,14 +73,6 @@ func (sa *SubnetAllocator) DHCPPoolSize() int {
 	return int(sa.DHCPEnd-sa.DHCPStart) + 1
 }
 
-func (sa *SubnetAllocator) Reserve(ipUint uint32) bool {
-	if !sa.IsAvailable(ipUint) {
-		return false
-	}
-	sa.Used[ipUint] = true
-	return true
-}
-
 func (sa *SubnetAllocator) IsUsable(ipUint uint32) bool {
 	if sa.Capacity <= 1 {
 		return false
@@ -123,5 +107,5 @@ func (sa *SubnetAllocator) AllocateSlot(baseOffset int) uint32 {
 }
 
 func (sa *SubnetAllocator) FormatIP(ipUint uint32) string {
-	return utils.Uint32ToIP(ipUint)
+	return uint32ToIP(ipUint)
 }

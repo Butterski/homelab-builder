@@ -10,7 +10,6 @@ import (
 
 	"github.com/Butterski/homelab-builder/backend/internal/models"
 	"github.com/google/uuid"
-	"gorm.io/gorm"
 )
 
 const hardwareBlueprintExportKind = "hlbuilder.hardware_blueprint"
@@ -83,7 +82,7 @@ func (s *HardwareBlueprintService) cloneImportedBlueprint(userID uuid.UUID, expo
 		return nil, errors.New("blueprint export is missing a name")
 	}
 
-	imported, err := s.Create(userID, HardwareBlueprintInput{
+	return s.Create(userID, HardwareBlueprintInput{
 		Name:        importedBlueprintName(exported.Name),
 		Description: exported.Description,
 		Category:    exported.Category,
@@ -92,10 +91,6 @@ func (s *HardwareBlueprintService) cloneImportedBlueprint(userID uuid.UUID, expo
 		NodeData:    validRawOrDefault(exported.NodeData, "{}"),
 		Services:    validRawOrDefault(exported.Services, "[]"),
 	})
-	if err != nil {
-		return nil, err
-	}
-	return imported, nil
 }
 
 func (s *HardwareBlueprintService) ensureShareCode(blueprint *models.HardwareBlueprint) error {
@@ -169,8 +164,4 @@ func generateBlueprintShareCode() (string, error) {
 
 func normalizeShareCode(code string) string {
 	return strings.ToUpper(strings.TrimSpace(code))
-}
-
-func IsNotFoundError(err error) bool {
-	return errors.Is(err, gorm.ErrRecordNotFound)
 }

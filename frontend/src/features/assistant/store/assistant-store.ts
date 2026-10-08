@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { ApiError } from '@/lib/api';
+import { errorMessage } from '@/lib/utils';
 import type { ProposalStatus, ProposalSummary } from '@/features/builder/api/proposals';
 import { chatApi, streamChat, type ThreadView } from '../api/chat';
 
@@ -110,10 +111,6 @@ const FOLLOW_INTERVAL_MS = 1200;
 const FOLLOW_LIMIT_MS = 100_000;
 
 const wait = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
-
-function messageOf(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback;
-}
 
 /** Tool steps still marked as running when a turn ends have no known outcome. */
 function settle(items: ChatItem[]): ChatItem[] {
@@ -298,7 +295,7 @@ export const useAssistantStore = create<AssistantState>()((set, get) => {
         }
       } catch (error) {
         if (run !== myRun) return;
-        set({ status: 'idle', loadError: messageOf(error, 'Could not load the conversation.') });
+        set({ status: 'idle', loadError: errorMessage(error, 'Could not load the conversation.') });
       }
     },
 
@@ -362,9 +359,10 @@ export const useAssistantStore = create<AssistantState>()((set, get) => {
             item.kind === 'tool' && item.step.key === key ? { ...item, step: change(item.step) } : item,
           ),
         );
+      const replyItems = () => get().messages.find(entry => entry.id === replyId)?.items ?? [];
+      const hasStep = (key: string) => replyItems().some(item => item.kind === 'tool' && item.step.key === key);
       const stepKeyOf = (id: string): string | undefined => {
-        const reply = get().messages.find(entry => entry.id === replyId);
-        const found = reply?.items.find(item => item.kind === 'tool' && item.step.id === id);
+        const found = replyItems().find(item => item.kind === 'tool' && item.step.id === id);
         return found?.kind === 'tool' ? found.step.key : undefined;
       };
 
@@ -372,13 +370,11 @@ export const useAssistantStore = create<AssistantState>()((set, get) => {
       // parse the whole reply as Markdown again, dozens of times a second, so
       // pieces are collected and shown once per frame.
       let buffered = '';
-      let frame: ReturnType<typeof setTimeout> | number | null = null;
+      // Cancels the flush waiting for the next frame, if one is.
+      let cancelFrame: (() => void) | null = null;
       const flushText = () => {
-        if (frame !== null) {
-          if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(frame as number);
-          else clearTimeout(frame as ReturnType<typeof setTimeout>);
-          frame = null;
-        }
+        cancelFrame?.();
+        cancelFrame = null;
         if (!buffered) return;
         const text = buffered;
         buffered = '';
@@ -390,17 +386,18 @@ export const useAssistantStore = create<AssistantState>()((set, get) => {
         });
       };
       const scheduleText = () => {
-        if (frame !== null) return;
-        frame =
-          typeof requestAnimationFrame === 'function'
-            ? requestAnimationFrame(() => {
-                frame = null;
-                flushText();
-              })
-            : setTimeout(() => {
-                frame = null;
-                flushText();
-              }, 16);
+        if (cancelFrame) return;
+        const onFrame = () => {
+          cancelFrame = null;
+          flushText();
+        };
+        if (typeof requestAnimationFrame === 'function') {
+          const id = requestAnimationFrame(onFrame);
+          cancelFrame = () => cancelAnimationFrame(id);
+        } else {
+          const id = setTimeout(onFrame, 16);
+          cancelFrame = () => clearTimeout(id);
+        }
       };
 
       let accepted = false;
@@ -422,8 +419,7 @@ export const useAssistantStore = create<AssistantState>()((set, get) => {
           switch (event.type) {
             case 'tool_pending': {
               const key = `${event.step}:${event.index}`;
-              const reply = get().messages.find(entry => entry.id === replyId);
-              if (reply?.items.some(item => item.kind === 'tool' && item.step.key === key)) {
+              if (hasStep(key)) {
                 patchStep(key, step => ({ ...step, bytes: event.bytes }));
               } else {
                 patch(items => [
@@ -438,8 +434,7 @@ export const useAssistantStore = create<AssistantState>()((set, get) => {
             }
             case 'tool_call': {
               const key = event.step === undefined ? event.id : `${event.step}:${event.index ?? 0}`;
-              const reply = get().messages.find(entry => entry.id === replyId);
-              const announced = reply?.items.some(item => item.kind === 'tool' && item.step.key === key);
+              const announced = hasStep(key);
               const called = {
                 id: event.id,
                 name: event.name,
@@ -518,8 +513,7 @@ export const useAssistantStore = create<AssistantState>()((set, get) => {
         // The screen may be ahead of or behind what the server stored: a stopped
         // reply is kept there as written, tools it had begun still finish. Show
         // the stored conversation, and keep what only this session knows.
-        const reply = get().messages.find(entry => entry.id === replyId);
-        const keep = (reply?.items ?? []).filter(item => item.kind === 'error');
+        const keep = replyItems().filter(item => item.kind === 'error');
         set({ status: ending === 'stopped' ? 'stopping' : 'following', focusIds: [] });
         await reconcile(buildId, myRun, keep);
       }

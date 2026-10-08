@@ -11,6 +11,8 @@ import (
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 	"github.com/openai/openai-go/v3/shared"
+
+	"github.com/Butterski/homelab-builder/backend/internal/netguard"
 )
 
 // openAIProvider speaks the OpenAI chat completions API. Besides OpenAI it
@@ -265,8 +267,8 @@ func convertOpenAIError(ctx context.Context, err error) error {
 		}
 		return &ProviderError{Kind: classifyStatus(apiErr.StatusCode), Status: apiErr.StatusCode, Message: message}
 	}
-	if errors.Is(err, ErrPrivateEndpoint) {
-		return &ProviderError{Kind: KindNetwork, Message: ErrPrivateEndpoint.Error()}
+	if errors.Is(err, netguard.ErrPrivateEndpoint) {
+		return &ProviderError{Kind: KindNetwork, Message: netguard.ErrPrivateEndpoint.Error()}
 	}
 	return &ProviderError{Kind: KindNetwork, Message: err.Error()}
 }

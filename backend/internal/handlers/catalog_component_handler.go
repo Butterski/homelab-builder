@@ -5,7 +5,6 @@ import (
 
 	"github.com/Butterski/homelab-builder/backend/internal/services"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 type CatalogComponentHandler struct {
@@ -44,9 +43,8 @@ func (h *CatalogComponentHandler) Create(c *gin.Context) {
 
 // PUT /api/admin/catalog-components/:id
 func (h *CatalogComponentHandler) Update(c *gin.Context) {
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+	id, ok := uuidParam(c, "id")
+	if !ok {
 		return
 	}
 
@@ -66,9 +64,8 @@ func (h *CatalogComponentHandler) Update(c *gin.Context) {
 
 // DELETE /api/admin/catalog-components/:id
 func (h *CatalogComponentHandler) Delete(c *gin.Context) {
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+	id, ok := uuidParam(c, "id")
+	if !ok {
 		return
 	}
 

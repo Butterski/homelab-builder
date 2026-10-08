@@ -8,7 +8,7 @@ export const LANDING_DESCRIPTION =
 export const REPOSITORY_URL = 'https://github.com/Butterski/homelab-builder';
 export const DISCORD_URL = 'https://discord.gg/8PQb2M2fBB';
 
-export type Faq = { question: string; answer: string };
+type Faq = { question: string; answer: string };
 
 export const FAQS: Faq[] = [
   {

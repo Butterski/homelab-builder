@@ -76,12 +76,8 @@ func integrationID(c *gin.Context) (userID, id uuid.UUID, ok bool) {
 	if !ok {
 		return
 	}
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
-		return userID, id, false
-	}
-	return userID, id, true
+	id, ok = uuidParam(c, "id")
+	return userID, id, ok
 }
 
 func (h *IntegrationHandler) List(c *gin.Context) {
@@ -116,6 +112,18 @@ func (h *IntegrationHandler) Test(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
+// bindIntegrationInput reads a create or update body; an export can be large,
+// so the body is capped before it is read.
+func bindIntegrationInput(c *gin.Context) (services.IntegrationInput, bool) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxIntegrationBody)
+	var req services.IntegrationInput
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "The request is not valid or too large."})
+		return req, false
+	}
+	return req, true
+}
+
 // Create stores a connection or a pasted export. A connection is read at once,
 // so what comes back already says what is behind it; if that reading fails the
 // integration is kept and carries the reason.
@@ -124,10 +132,8 @@ func (h *IntegrationHandler) Create(c *gin.Context) {
 	if !ok {
 		return
 	}
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxIntegrationBody)
-	var req services.IntegrationInput
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "The request is not valid or too large."})
+	req, ok := bindIntegrationInput(c)
+	if !ok {
 		return
 	}
 	view, err := h.integrations.Create(userID, req)
@@ -159,10 +165,8 @@ func (h *IntegrationHandler) Update(c *gin.Context) {
 	if !ok {
 		return
 	}
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxIntegrationBody)
-	var req services.IntegrationInput
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "The request is not valid or too large."})
+	req, ok := bindIntegrationInput(c)
+	if !ok {
 		return
 	}
 	view, err := h.integrations.Update(userID, id, req)

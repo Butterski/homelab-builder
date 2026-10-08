@@ -1,57 +1,18 @@
-package services_test
+package services
 
 import (
 	"encoding/json"
-	"fmt"
-	"os"
 	"testing"
 
 	"github.com/Butterski/homelab-builder/backend/internal/models"
-	"github.com/Butterski/homelab-builder/backend/internal/services"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
 )
 
-// Update the database hostname for the recommendation service test
-const RecommendationServiceDBHost = "homelab-builder-db"
-
-func setupTestDB(t *testing.T) *gorm.DB {
-	host := os.Getenv("DB_HOST")
-	if host == "" {
-		host = RecommendationServiceDBHost
-	}
-	dbName := os.Getenv("TEST_DB_NAME")
-	if dbName == "" {
-		dbName = "homelab_builder_test"
-	}
-	password := os.Getenv("DB_PASSWORD")
-	if password == "" {
-		password = "homelab_password"
-	}
-
-	dsn := fmt.Sprintf("host=%s user=homelab password=%s dbname=%s port=5432 sslmode=disable", host, password, dbName)
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
-	require.NoError(t, err)
-
-	// Tests run in transaction and rollback to keep DB clean
-	tx := db.Begin()
-	t.Cleanup(func() {
-		tx.Rollback()
-	})
-
-	// Run auto-migration for the test database
-	err = tx.AutoMigrate(&models.HardwareComponent{}, &models.Service{}, &models.ServiceRequirement{})
-	require.NoError(t, err)
-
-	return tx
-}
-
 func TestRecommendationService_Generate(t *testing.T) {
-	db := setupTestDB(t)
-	svcService := services.NewRecommendationService(db)
+	db := testTx(t)
+	svcService := NewRecommendationService(db)
 
 	// Seed Hardware Components
 	approvedTrue := true
@@ -120,7 +81,7 @@ func TestRecommendationService_Generate(t *testing.T) {
 	require.NoError(t, db.Create(&req2).Error)
 
 	t.Run("Valid Recommendation Generation", func(t *testing.T) {
-		req := services.RecommendationRequest{
+		req := RecommendationRequest{
 			ServiceIDs: []uuid.UUID{svc1.ID, svc2.ID},
 		}
 
@@ -155,7 +116,7 @@ func TestRecommendationService_Generate(t *testing.T) {
 	})
 
 	t.Run("Empty Services", func(t *testing.T) {
-		req := services.RecommendationRequest{
+		req := RecommendationRequest{
 			ServiceIDs: []uuid.UUID{},
 		}
 		_, err := svcService.Generate(req)
@@ -164,7 +125,7 @@ func TestRecommendationService_Generate(t *testing.T) {
 	})
 
 	t.Run("Too Many Services", func(t *testing.T) {
-		req := services.RecommendationRequest{}
+		req := RecommendationRequest{}
 		for i := 0; i < 51; i++ {
 			req.ServiceIDs = append(req.ServiceIDs, uuid.New())
 		}

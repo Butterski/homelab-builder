@@ -1,25 +1,12 @@
-import { useEffect, useState } from 'react';
 import { GoogleLogin } from '@react-oauth/google';
-import { useAuth } from '../../features/admin/hooks/use-auth';
-import { getAuthConfig, type AuthConfig } from '../../features/auth/lib/auth-config';
-import { useTheme } from '../theme-provider';
+import { useAuth } from '../../features/auth/hooks/use-auth';
+import { useAuthConfig } from '../../features/auth/lib/auth-config';
+import { useTheme } from '../use-theme';
 
 export function GoogleLoginButton() {
     const { loginWithGoogle, loginWithDev } = useAuth();
     const { resolvedMode } = useTheme();
-    const [authConfig, setAuthConfig] = useState<AuthConfig | null>(null);
-
-    useEffect(() => {
-        let cancelled = false;
-        void getAuthConfig().then(config => {
-            if (!cancelled) {
-                setAuthConfig(config);
-            }
-        });
-        return () => {
-            cancelled = true;
-        };
-    }, []);
+    const authConfig = useAuthConfig();
 
     if (!authConfig) {
         return <div className="min-h-10.5" />;

@@ -17,7 +17,7 @@ func main() {
 	mux := http.NewServeMux()
 	api.RegisterRoutes(mux)
 
-	// Wrap with CORS headers for direct frontend calls (Sprint 7).
+	// Wrap with CORS headers for direct frontend calls.
 	handler := corsMiddleware(mux)
 
 	log.Printf("hlbIPAM starting on :%s", port)

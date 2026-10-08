@@ -125,8 +125,6 @@ describe('catalog mapper', () => {
         internal_components: [{ id: 'disk-1', type: 'disk', name: 'SSD' }],
       },
       services: [makeService({ id: 'svc-1', name: 'Pi-hole', recommended_ram_mb: 256 })],
-      upvotes: 0,
-      downvotes: 0,
       created_at: '',
       updated_at: '',
     };

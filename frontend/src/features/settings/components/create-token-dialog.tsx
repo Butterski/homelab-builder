@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useBuilds } from '@/features/builder/api/use-builds';
+import { errorMessage } from '@/lib/utils';
 import { useCreateApiToken, type CreatedToken, type TokenScope } from '../api/api-tokens';
 import { CopyButton, McpSnippetsView } from './mcp-snippets-view';
 
@@ -74,7 +75,7 @@ export function CreateTokenDialog({ open, onOpenChange, endpoint }: CreateTokenD
       });
       setCreated(result);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not create the token.');
+      toast.error(errorMessage(error, 'Could not create the token.'));
     }
   };
 

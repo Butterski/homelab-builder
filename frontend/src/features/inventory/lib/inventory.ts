@@ -96,7 +96,7 @@ export const keptWhere = (location: string) =>
   KEPT[location] ?? locationLabel(location).toLowerCase();
 
 /** Which figures an item of a type has, and so which fields its form shows. */
-export type SpecField = 'cpu' | 'ram' | 'storage' | 'ports' | 'rack_units' | 'rack_size' | 'macs';
+type SpecField = 'cpu' | 'ram' | 'storage' | 'ports' | 'rack_units' | 'rack_size' | 'macs';
 
 const COMPUTE_TYPES = new Set(['server_v2', 'minipc', 'pc', 'sbc', 'nas']);
 
@@ -167,7 +167,7 @@ export function modelLine(item: Pick<InventoryItem, 'manufacturer' | 'model' | '
 }
 
 /** The threads a host offers its guests; cores where threads are not noted. */
-export const logicalCpus = (specs: InventorySpecs) => specs.cpu_threads || specs.cpu_cores || 0;
+const logicalCpus = (specs: InventorySpecs) => specs.cpu_threads || specs.cpu_cores || 0;
 
 /** An item in two short lines, the way it is listed beside the canvas. */
 export function itemFacts(item: InventoryItem): string[] {
@@ -378,7 +378,7 @@ export function plannableItems(items: InventoryItem[]): InventoryItem[] {
     );
 }
 
-export type ItemFilter = { status?: InventoryStatus | ''; search?: string };
+type ItemFilter = { status?: InventoryStatus | ''; search?: string };
 
 export function filterItems(items: InventoryItem[], filter: ItemFilter): InventoryItem[] {
   const words = (filter.search ?? '').toLowerCase().split(/\s+/).filter(Boolean);
@@ -421,7 +421,7 @@ export function plannedElsewhere(item: InventoryItem, buildId: string | null): s
   return [...new Set(names)];
 }
 
-export type ItemGroup = { id: string; label: string; items: InventoryItem[] };
+type ItemGroup = { id: string; label: string; items: InventoryItem[] };
 
 /** Items under the place they are kept in, or under what they are. Empty groups are left out. */
 export function groupItems(items: InventoryItem[], by: 'location' | 'kind'): ItemGroup[] {

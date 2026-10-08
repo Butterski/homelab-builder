@@ -25,6 +25,109 @@ interface Props {
   nodeId: string;
 }
 
+type VMDraft = Partial<VirtualMachine>;
+
+const EMPTY_VM_DRAFT: VMDraft = {
+  type: 'container',
+  status: 'running',
+  name: '',
+  os: '',
+  ip: '',
+  mac_address: '',
+  cpu_cores: 1,
+  ram_mb: 512,
+};
+
+interface VMFormFieldsProps {
+  draft: VMDraft;
+  setDraft: React.Dispatch<React.SetStateAction<VMDraft>>;
+  namePlaceholder?: string;
+}
+
+/** Shared field set of the add and edit forms. */
+function VMFormFields({ draft, setDraft, namePlaceholder }: VMFormFieldsProps) {
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <Label className="text-[10px]">Name</Label>
+          <Input
+            className="h-7 text-xs"
+            placeholder={namePlaceholder}
+            value={draft.name}
+            onChange={e => setDraft(p => ({ ...p, name: e.target.value }))}
+          />
+        </div>
+        <div>
+          <Label className="text-[10px]">Type</Label>
+          <select
+            className="w-full h-7 text-xs rounded-md border bg-background px-2"
+            value={draft.type}
+            onChange={e => setDraft(p => ({ ...p, type: e.target.value as VMType }))}
+          >
+            <option value="container">Container</option>
+            <option value="vm">VM</option>
+            <option value="lxc">LXC</option>
+          </select>
+        </div>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <div>
+          <Label className="text-[10px]">OS / Image</Label>
+          <Input
+            className="h-7 text-xs"
+            placeholder="Ubuntu 22.04"
+            value={draft.os}
+            onChange={e => setDraft(p => ({ ...p, os: e.target.value }))}
+          />
+        </div>
+        <div>
+          <Label className="text-[10px]">IP (auto if blank)</Label>
+          <Input
+            className="h-7 text-xs"
+            placeholder="auto"
+            value={draft.ip}
+            onChange={e => setDraft(p => ({ ...p, ip: e.target.value }))}
+          />
+        </div>
+        <div>
+          <Label className="text-[10px]">MAC Address</Label>
+          <Input
+            className="h-7 text-xs"
+            placeholder="AA:BB:CC:DD:EE:FF"
+            value={draft.mac_address}
+            onChange={e => setDraft(p => ({ ...p, mac_address: e.target.value }))}
+          />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <Label className="text-[10px]">CPU Cores</Label>
+          <Input
+            className="h-7 text-xs"
+            type="number"
+            min={1}
+            max={32}
+            value={draft.cpu_cores}
+            onChange={e => setDraft(p => ({ ...p, cpu_cores: Number(e.target.value) }))}
+          />
+        </div>
+        <div>
+          <Label className="text-[10px]">RAM (MB)</Label>
+          <Input
+            className="h-7 text-xs"
+            type="number"
+            min={128}
+            step={128}
+            value={draft.ram_mb}
+            onChange={e => setDraft(p => ({ ...p, ram_mb: Number(e.target.value) }))}
+          />
+        </div>
+      </div>
+    </>
+  );
+}
+
 export const VMManager = React.memo(function VMManager({ nodeId }: Props) {
   const { hardwareNodes, addVM, removeVM, updateVM } = useBuilderStore(
     useShallow(state => ({
@@ -39,17 +142,8 @@ export const VMManager = React.memo(function VMManager({ nodeId }: Props) {
 
   const [isAdding, setIsAdding] = useState(false);
   const [editingVmId, setEditingVmId] = useState<string | null>(null);
-  const [editVM, setEditVM] = useState<Partial<VirtualMachine>>({});
-  const [newVM, setNewVM] = useState<Partial<VirtualMachine>>({
-    type: 'container',
-    status: 'running',
-    name: '',
-    os: '',
-    ip: '',
-    mac_address: '',
-    cpu_cores: 1,
-    ram_mb: 512,
-  });
+  const [editVM, setEditVM] = useState<VMDraft>({});
+  const [newVM, setNewVM] = useState<VMDraft>(EMPTY_VM_DRAFT);
 
   const handleAdd = () => {
     if (!newVM.name?.trim()) return;
@@ -66,16 +160,7 @@ export const VMManager = React.memo(function VMManager({ nodeId }: Props) {
       ram_mb: newVM.ram_mb,
     });
     setIsAdding(false);
-    setNewVM({
-      type: 'container',
-      status: 'running',
-      name: '',
-      os: '',
-      ip: '',
-      mac_address: '',
-      cpu_cores: 1,
-      ram_mb: 512,
-    });
+    setNewVM(EMPTY_VM_DRAFT);
   };
 
   const cycleStatus = (vm: VirtualMachine) => {
@@ -140,82 +225,7 @@ export const VMManager = React.memo(function VMManager({ nodeId }: Props) {
       {/* Add form */}
       {isAdding && (
         <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <Label className="text-[10px]">Name</Label>
-              <Input
-                className="h-7 text-xs"
-                placeholder="e.g. nginx"
-                value={newVM.name}
-                onChange={e => setNewVM(p => ({ ...p, name: e.target.value }))}
-              />
-            </div>
-            <div>
-              <Label className="text-[10px]">Type</Label>
-              <select
-                className="w-full h-7 text-xs rounded-md border bg-background px-2"
-                value={newVM.type}
-                onChange={e => setNewVM(p => ({ ...p, type: e.target.value as VMType }))}
-              >
-                <option value="container">Container</option>
-                <option value="vm">VM</option>
-                <option value="lxc">LXC</option>
-              </select>
-            </div>
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            <div>
-              <Label className="text-[10px]">OS / Image</Label>
-              <Input
-                className="h-7 text-xs"
-                placeholder="Ubuntu 22.04"
-                value={newVM.os}
-                onChange={e => setNewVM(p => ({ ...p, os: e.target.value }))}
-              />
-            </div>
-            <div>
-              <Label className="text-[10px]">IP (auto if blank)</Label>
-              <Input
-                className="h-7 text-xs"
-                placeholder="auto"
-                value={newVM.ip}
-                onChange={e => setNewVM(p => ({ ...p, ip: e.target.value }))}
-              />
-            </div>
-            <div>
-              <Label className="text-[10px]">MAC Address</Label>
-              <Input
-                className="h-7 text-xs"
-                placeholder="AA:BB:CC:DD:EE:FF"
-                value={newVM.mac_address}
-                onChange={e => setNewVM(p => ({ ...p, mac_address: e.target.value }))}
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <Label className="text-[10px]">CPU Cores</Label>
-              <Input
-                className="h-7 text-xs"
-                type="number"
-                min={1}
-                max={32}
-                value={newVM.cpu_cores}
-                onChange={e => setNewVM(p => ({ ...p, cpu_cores: Number(e.target.value) }))}
-              />
-            </div>
-            <div>
-              <Label className="text-[10px]">RAM (MB)</Label>
-              <Input
-                className="h-7 text-xs"
-                type="number"
-                min={128}
-                step={128}
-                value={newVM.ram_mb}
-                onChange={e => setNewVM(p => ({ ...p, ram_mb: Number(e.target.value) }))}
-              />
-            </div>
-          </div>
+          <VMFormFields draft={newVM} setDraft={setNewVM} namePlaceholder="e.g. nginx" />
           <div className="flex gap-2 pt-1">
             <Button size="sm" className="h-7 text-xs flex-1" onClick={handleAdd}>
               Add {newVM.type === 'vm' ? 'VM' : newVM.type === 'lxc' ? 'LXC' : 'Container'}
@@ -249,81 +259,7 @@ export const VMManager = React.memo(function VMManager({ nodeId }: Props) {
               key={vm.id}
               className="rounded-lg border border-primary/50 bg-muted/30 p-3 space-y-2"
             >
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <Label className="text-[10px]">Name</Label>
-                  <Input
-                    className="h-7 text-xs"
-                    value={editVM.name}
-                    onChange={e => setEditVM(p => ({ ...p, name: e.target.value }))}
-                  />
-                </div>
-                <div>
-                  <Label className="text-[10px]">Type</Label>
-                  <select
-                    className="w-full h-7 text-xs rounded-md border bg-background px-2"
-                    value={editVM.type}
-                    onChange={e => setEditVM(p => ({ ...p, type: e.target.value as VMType }))}
-                  >
-                    <option value="container">Container</option>
-                    <option value="vm">VM</option>
-                    <option value="lxc">LXC</option>
-                  </select>
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <Label className="text-[10px]">OS / Image</Label>
-                  <Input
-                    className="h-7 text-xs"
-                    placeholder="Ubuntu 22.04"
-                    value={editVM.os}
-                    onChange={e => setEditVM(p => ({ ...p, os: e.target.value }))}
-                  />
-                </div>
-                <div>
-                  <Label className="text-[10px]">IP (auto if blank)</Label>
-                  <Input
-                    className="h-7 text-xs"
-                    placeholder="auto"
-                    value={editVM.ip}
-                    onChange={e => setEditVM(p => ({ ...p, ip: e.target.value }))}
-                  />
-                </div>
-                <div>
-                  <Label className="text-[10px]">MAC Address</Label>
-                  <Input
-                    className="h-7 text-xs"
-                    placeholder="AA:BB:CC:DD:EE:FF"
-                    value={editVM.mac_address}
-                    onChange={e => setEditVM(p => ({ ...p, mac_address: e.target.value }))}
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <Label className="text-[10px]">CPU Cores</Label>
-                  <Input
-                    className="h-7 text-xs"
-                    type="number"
-                    min={1}
-                    max={32}
-                    value={editVM.cpu_cores}
-                    onChange={e => setEditVM(p => ({ ...p, cpu_cores: Number(e.target.value) }))}
-                  />
-                </div>
-                <div>
-                  <Label className="text-[10px]">RAM (MB)</Label>
-                  <Input
-                    className="h-7 text-xs"
-                    type="number"
-                    min={128}
-                    step={128}
-                    value={editVM.ram_mb}
-                    onChange={e => setEditVM(p => ({ ...p, ram_mb: Number(e.target.value) }))}
-                  />
-                </div>
-              </div>
+              <VMFormFields draft={editVM} setDraft={setEditVM} />
               <div className="flex gap-2 pt-1">
                 <Button size="sm" className="h-7 text-xs flex-1" onClick={saveEdit}>
                   <Check className="size-3 mr-1" /> Save

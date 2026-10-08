@@ -12,7 +12,7 @@ import {
 } from './inventory';
 
 /** What placing something from the inventory led to, in words for a toast. */
-export type PlaceResult = { ok: boolean; message: string };
+type PlaceResult = { ok: boolean; message: string };
 
 /** The node on the open canvas that already stands for an item. */
 export function nodeOfItem(itemId: string): HardwareNode | undefined {

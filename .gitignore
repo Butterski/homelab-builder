@@ -28,13 +28,17 @@ Thumbs.db
 
 # Build output
 dist/
+dist-ssr/
 build/
 bin/
+coverage/
 
 # Environment
 .env
 .env.local
 .env.*.local
+*.local
+.npmrc
 
 # Logs
 *.log

@@ -5,12 +5,13 @@ import { toast } from 'sonner';
 import { Page, PageHeader } from '../../../components/layout/page';
 import { Button } from '../../../components/ui/button';
 import { hardwareTypeName } from '../../../lib/hardware-taxonomy';
+import { formatMemory } from '../../../lib/format';
 import { cn } from '../../../lib/utils';
 import type { BuildKind, GameExposure, Service } from '../../../types';
-import { buildApi, type CreateBuildParams } from '../api/builds';
+import { createBuildWithTopology } from '../api/create-build';
 import { useBuilderStore } from '../store/builder-store';
 import { BUILD_KINDS, buildKindInfo } from '../../gaming/lib/kind';
-import { EXPOSURES, formatMemory, sizeServer } from '../../gaming/lib/sizing';
+import { EXPOSURES, sizeServer } from '../../gaming/lib/sizing';
 import { ChoiceCard, NumberField, ToggleRow } from '../components/planner/choice-card';
 import { buildHomelabPlan } from '../lib/planner/homelab-plan';
 import {
@@ -29,7 +30,7 @@ import {
   type GameServerAnswers,
   type Goal,
   type LanPartyAnswers,
-  type PlannedNode,
+  type Plan,
   type PlannerAnswers,
 } from '../lib/planner/types';
 
@@ -115,7 +116,9 @@ const QUESTION_NOTE = 'mt-1.5 max-w-2xl text-sm text-muted-foreground';
 export default function GuidedPlannerPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { availableServices, fetchServices, loadBuild } = useBuilderStore();
+  const availableServices = useBuilderStore(state => state.availableServices);
+  const fetchServices = useBuilderStore(state => state.fetchServices);
+  const loadBuild = useBuilderStore(state => state.loadBuild);
   const presetKind = searchParams.get('kind');
   // A link such as /planner?kind=lan_party goes straight to that plan.
   const [kind, setKind] = useState<BuildKind | null>(isKind(presetKind) ? presetKind : null);
@@ -156,18 +159,19 @@ export default function GuidedPlannerPage() {
   });
 
   useEffect(() => {
-    void fetchServices();
+    // The catalog stays in the store for the session; it is asked for once.
+    if (useBuilderStore.getState().availableServices.length === 0) void fetchServices();
   }, [fetchServices]);
 
   const gameCatalog = useMemo(() => games(availableServices), [availableServices]);
 
-  const preview: CreateBuildParams = useMemo(() => {
+  const preview: Plan = useMemo(() => {
     if (kind === 'lan_party') return buildLanPartyPlan(party, availableServices);
     if (kind === 'game_server') return buildGameServerPlan(server, availableServices);
     return buildHomelabPlan(answers, availableServices);
   }, [kind, answers, party, server, availableServices]);
 
-  const previewNodes = preview.nodes as PlannedNode[];
+  const previewNodes = preview.nodes;
   const serviceCount = previewNodes.reduce((sum, node) => sum + node.vms.length, 0);
   const estimatedWatts = previewNodes.reduce((sum, node) => sum + (node.power_draw || 0), 0);
 
@@ -221,28 +225,14 @@ export default function GuidedPlannerPage() {
 
   const createLab = async () => {
     setCreating(true);
-    let createdID: string | null = null;
     try {
-      const created = await buildApi.create({
-        ...preview,
-        nodes: [],
-        edges: [],
-        services: [],
-      });
-      createdID = created.id;
-      const result = await buildApi.updateTopology(created.id, {
-        ...preview,
-        revision: created.revision,
-      });
-      loadBuild(result.build.id, result.build.name, result.build);
+      const build = await createBuildWithTopology(preview);
+      loadBuild(build.id, build.name, build);
       toast.success(
         kind === 'homelab' ? 'Your guided lab is ready to edit.' : 'Your plan is ready to edit.',
       );
-      navigate(`/builder/${result.build.id}`);
+      navigate(`/builder/${build.id}`);
     } catch (error) {
-      if (createdID) {
-        await buildApi.delete(createdID).catch(() => undefined);
-      }
       console.error('Failed to create guided lab', error);
       toast.error('Could not create the plan. No partial project was kept.');
     } finally {

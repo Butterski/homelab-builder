@@ -3,7 +3,7 @@ import { completePlan } from './kind';
 import { findGameProfile, readGameInstance, resolvePorts } from './sizing';
 import { tableSeats } from './table';
 
-export interface GamingSetupStep {
+interface GamingSetupStep {
   id: 'game-servers' | 'lan-party';
   title: string;
   description: string;

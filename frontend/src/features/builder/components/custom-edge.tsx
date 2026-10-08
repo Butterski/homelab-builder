@@ -156,45 +156,29 @@ export function CustomEdge({
     return { svgPathString: fallbackPath, edgeCenterX: flX, edgeCenterY: flY };
   };
 
-  let finalEdgePath = '';
-  let labelX = 0;
-  let labelY = 0;
-
-  // 3. Determine if A* Node Avoidance is needed
-  if (edgePreferences.routingEngine === 'smart') {
-    // Attempt smart edge pathfinding to avoid nodes
-    const smartEdgeResponse = getSmartEdge({
-      sourceX: sx,
-      sourceY: sy,
-      sourcePosition: sourcePos,
-      targetX: tx,
-      targetY: ty,
-      targetPosition: targetPos,
-      nodes: obstacles,
-      options: {
-        nodePadding: 20,
-        drawEdge: edgePreferences.lineStyle === 'bezier' ? svgDrawSmoothLinePath : undefined,
-      },
-    });
-
-    if (smartEdgeResponse instanceof Error) {
-      // Boxed in, cannot find path around nodes -> Fallback to direct path
-      const fb = getFallbackPathObj();
-      finalEdgePath = fb.svgPathString;
-      labelX = fb.edgeCenterX;
-      labelY = fb.edgeCenterY;
-    } else {
-      finalEdgePath = smartEdgeResponse.svgPathString;
-      labelX = smartEdgeResponse.edgeCenterX;
-      labelY = smartEdgeResponse.edgeCenterY;
-    }
-  } else {
-    // Direct mode (flyover edges with no collision constraints)
-    const fb = getFallbackPathObj();
-    finalEdgePath = fb.svgPathString;
-    labelX = fb.edgeCenterX;
-    labelY = fb.edgeCenterY;
-  }
+  // 3. Smart routing goes around devices; when it is boxed in, or in direct
+  // mode, the cable takes the plain path.
+  const smartPath =
+    edgePreferences.routingEngine === 'smart'
+      ? getSmartEdge({
+          sourceX: sx,
+          sourceY: sy,
+          sourcePosition: sourcePos,
+          targetX: tx,
+          targetY: ty,
+          targetPosition: targetPos,
+          nodes: obstacles,
+          options: {
+            nodePadding: 20,
+            drawEdge: edgePreferences.lineStyle === 'bezier' ? svgDrawSmoothLinePath : undefined,
+          },
+        })
+      : null;
+  const {
+    svgPathString: finalEdgePath,
+    edgeCenterX: labelX,
+    edgeCenterY: labelY,
+  } = smartPath && !(smartPath instanceof Error) ? smartPath : getFallbackPathObj();
 
   const onEdgeClick = (evt: MouseEvent) => {
     evt.stopPropagation();
@@ -220,14 +204,6 @@ export function CustomEdge({
   const edgeColor = isVpn
     ? '#14b8a6'
     : isWireless ? WIRELESS_COLORS[wirelessStandard] || '#22d3ee' : SPEED_COLORS[speed] || '#f97316';
-
-  const handleSpeedChange = (val: string) => {
-    updateEdge(id, { data: { ...(data || {}), speed: val } });
-  };
-
-  const handleSubnetChange = (val: string) => {
-    updateEdge(id, { data: { ...(data || {}), subnet: val } });
-  };
 
   const updateEdgeData = (patch: Record<string, string>) => {
     updateEdge(id, { data: { ...(data || {}), ...patch } });
@@ -416,7 +392,7 @@ export function CustomEdge({
                       </div>
                       <div className="space-y-2">
                         <Label className="text-xs">Connection Speed</Label>
-                        <Select value={speed} onValueChange={handleSpeedChange}>
+                        <Select value={speed} onValueChange={val => updateEdgeData({ speed: val })}>
                           <SelectTrigger className="h-8 text-xs">
                             <SelectValue placeholder="Select speed" />
                           </SelectTrigger>
@@ -487,7 +463,7 @@ export function CustomEdge({
                           placeholder="e.g. VLAN 10 or 192.168.2.0/24"
                           className="h-8 text-xs"
                           value={subnet}
-                          onChange={e => handleSubnetChange(e.target.value)}
+                          onChange={e => updateEdgeData({ subnet: e.target.value })}
                         />
                       </div>
                     </div>

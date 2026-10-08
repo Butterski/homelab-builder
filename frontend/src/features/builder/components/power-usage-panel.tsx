@@ -6,14 +6,38 @@ import { Label } from '../../../components/ui/label';
 import { Button } from '../../../components/ui/button';
 import { Zap, Info, ChevronDown } from 'lucide-react';
 
+type DevicePower = { id: string; name: string; power: number };
+
 interface PieChartStats {
   totalPower: number;
-  devicePowers: Array<{ id: string; name: string; type: string; power: number }>;
-  powerByType: Record<string, number>;
-  monthlyCost: number;
-  yearlyCost: number;
-  dailyCost: number;
+  /** Only devices that draw power, largest first. */
+  devicePowers: DevicePower[];
 }
+
+const PIE_COLORS = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#6366f1', '#84cc16', '#f97316'];
+
+/** Typical [idle, peak] draw in watts per device type. */
+const POWER_TIPS: Record<string, [number, number]> = {
+  router: [15, 150],
+  switch: [5, 300],
+  server: [300, 1200],
+  nas: [30, 150],
+  pc: [150, 400],
+  minipc: [5, 50],
+  sbc: [5, 25],
+  access_point: [10, 30],
+  ups: [50, 500],
+  modem: [5, 20],
+  iot: [1, 20],
+  disk: [0, 0],
+  gpu: [50, 350],
+  hba: [10, 30],
+  pcie: [0, 20],
+  pdu: [10, 50],
+  rack: [0, 0],
+  console: [10, 220],
+  lan_table: [800, 8000],
+};
 
 function PowerPieChart({ stats, colors }: { stats: PieChartStats; colors: string[] }) {
   if (stats.totalPower === 0) {
@@ -27,9 +51,7 @@ function PowerPieChart({ stats, colors }: { stats: PieChartStats; colors: string
   const slices: React.ReactNode[] = [];
   let colorIdx = 0;
 
-  const sortedDevices = stats.devicePowers.filter(d => d.power > 0);
-
-  sortedDevices.forEach(device => {
+  stats.devicePowers.forEach(device => {
     const slicePercent = device.power / stats.totalPower;
     const sliceAngle = slicePercent * 360;
     const startAngle = currentAngle;
@@ -71,7 +93,7 @@ function PowerPieChart({ stats, colors }: { stats: PieChartStats; colors: string
       
       {/* Legend - Compact */}
       <div className="w-full space-y-1 text-[9px]">
-        {sortedDevices.map((device, idx) => (
+        {stats.devicePowers.map((device, idx) => (
           <div key={device.id} className="flex items-center gap-2">
             <div
               className="size-2 rounded-full shrink-0"
@@ -95,42 +117,23 @@ export function PowerUsagePanel() {
   const [expandedNodeId, setExpandedNodeId] = useState<string | null>(null);
   const [showChart, setShowChart] = useState(false);
 
-  // Calculate power statistics
   const stats = useMemo(() => {
     let totalPower = 0;
-    const devicePowers: Array<{ id: string; name: string; type: string; power: number }> = [];
-    const powerByType: Record<string, number> = {};
+    const devicePowers: DevicePower[] = [];
 
     hardwareNodes.forEach(node => {
       const nodePower = node.power_draw || 0;
       totalPower += nodePower;
-      
-      if (nodePower > 0) {
-        devicePowers.push({
-          id: node.id,
-          name: node.name,
-          type: node.type,
-          power: nodePower,
-        });
-      }
 
-      powerByType[node.type] = (powerByType[node.type] || 0) + nodePower;
+      if (nodePower > 0) {
+        devicePowers.push({ id: node.id, name: node.name, power: nodePower });
+      }
     });
 
     devicePowers.sort((a, b) => b.power - a.power);
 
     const monthlyCost = (totalPower / 1000) * 730 * costPerKwh;
-    const yearlyCost = monthlyCost * 12;
-    const dailyCost = monthlyCost / 30;
-
-    return {
-      totalPower,
-      devicePowers,
-      powerByType,
-      monthlyCost,
-      yearlyCost,
-      dailyCost,
-    };
+    return { totalPower, devicePowers, monthlyCost, yearlyCost: monthlyCost * 12 };
   }, [hardwareNodes, costPerKwh]);
 
   const handlePowerUpdate = (nodeId: string, newPower: number) => {
@@ -141,28 +144,6 @@ export function PowerUsagePanel() {
       ...node,
       power_draw: Math.max(0, newPower),
     });
-  };
-
-  const powerTips: Record<string, [number, number]> = {
-    router: [15, 150],
-    switch: [5, 300],
-    server: [300, 1200],
-    nas: [30, 150],
-    pc: [150, 400],
-    minipc: [5, 50],
-    sbc: [5, 25],
-    access_point: [10, 30],
-    ups: [50, 500],
-    modem: [5, 20],
-    iot: [1, 20],
-    disk: [0, 0],
-    gpu: [50, 350],
-    hba: [10, 30],
-    pcie: [0, 20],
-    pdu: [10, 50],
-    rack: [0, 0],
-    console: [10, 220],
-    lan_table: [800, 8000],
   };
 
   return (
@@ -237,7 +218,7 @@ export function PowerUsagePanel() {
         {/* Power Distribution Visualization - Optional */}
         {showChart && stats.totalPower > 0 && (
           <Card className="p-2 border">
-            <PowerPieChart stats={stats} colors={['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#6366f1', '#84cc16', '#f97316']} />
+            <PowerPieChart stats={stats} colors={PIE_COLORS} />
           </Card>
         )}
 
@@ -262,7 +243,7 @@ export function PowerUsagePanel() {
               {hardwareNodes.map(node => {
                 const currentPower = node.power_draw || 0;
                 const isExpanded = expandedNodeId === node.id;
-                const tip = powerTips[node.type as keyof typeof powerTips];
+                const tip = POWER_TIPS[node.type];
                 const [minTip, maxTip] = tip || [0, 0];
                 const avgTip = tip ? Math.round((minTip + maxTip) / 2) : 0;
 
@@ -324,30 +305,17 @@ export function PowerUsagePanel() {
                         {/* Buttons - Stacked if needed */}
                         {tip && tip[0] > 0 && (
                           <div className="flex gap-1 flex-wrap">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handlePowerUpdate(node.id, minTip)}
-                              className="flex-1 min-w-fit text-[9px] h-6 px-2"
-                            >
-                              Min: {minTip}W
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handlePowerUpdate(node.id, avgTip)}
-                              className="flex-1 min-w-fit text-[9px] h-6 px-2"
-                            >
-                              Avg: {avgTip}W
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handlePowerUpdate(node.id, maxTip)}
-                              className="flex-1 min-w-fit text-[9px] h-6 px-2"
-                            >
-                              Max: {maxTip}W
-                            </Button>
+                            {([['Min', minTip], ['Avg', avgTip], ['Max', maxTip]] as const).map(([label, watts]) => (
+                              <Button
+                                key={label}
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handlePowerUpdate(node.id, watts)}
+                                className="flex-1 min-w-fit text-[9px] h-6 px-2"
+                              >
+                                {label}: {watts}W
+                              </Button>
+                            ))}
                           </div>
                         )}
 

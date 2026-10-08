@@ -57,7 +57,7 @@ func TestHardwareBlueprintService_CreateListsPrivateBlueprintForOwnerOnly(t *tes
 	}
 }
 
-func TestHardwareBlueprintService_SubmitAndAdminPublish(t *testing.T) {
+func TestHardwareBlueprintService_SubmitQueuesForModeration(t *testing.T) {
 	tx := testTx(t)
 	svc := NewHardwareBlueprintService(tx)
 	user := models.User{Email: "blueprint_submit@example.com", GoogleID: "blueprint-submit", Name: "Owner"}
@@ -85,28 +85,12 @@ func TestHardwareBlueprintService_SubmitAndAdminPublish(t *testing.T) {
 		t.Fatalf("expected pending moderation status, got %s", submitted.ModerationStatus)
 	}
 
-	pending, err := svc.ListPending()
+	pending, err := svc.ListModerationQueue(BlueprintModerationPending)
 	if err != nil {
 		t.Fatalf("failed to list pending: %v", err)
 	}
 	if len(pending) != 1 || pending[0].ID != created.ID {
 		t.Fatalf("expected submitted blueprint in pending list, got %+v", pending)
-	}
-
-	published, err := svc.SetVisibility(created.ID, BlueprintVisibilityCommunity)
-	if err != nil {
-		t.Fatalf("failed to publish blueprint: %v", err)
-	}
-	if published.Visibility != BlueprintVisibilityCommunity {
-		t.Fatalf("expected community visibility, got %s", published.Visibility)
-	}
-
-	community, err := svc.ListCommunity()
-	if err != nil {
-		t.Fatalf("failed to list community: %v", err)
-	}
-	if len(community) != 1 || community[0].ID != created.ID {
-		t.Fatalf("expected published blueprint in community list, got %+v", community)
 	}
 }
 
@@ -150,86 +134,6 @@ func TestHardwareBlueprintService_ModerateApproveAndReject(t *testing.T) {
 	}
 	if rejected.ModerationNote != "Needs photos" {
 		t.Fatalf("expected moderation note to be saved, got %q", rejected.ModerationNote)
-	}
-}
-
-func TestHardwareBlueprintService_VoteRecalculatesCounts(t *testing.T) {
-	tx := testTx(t)
-	svc := NewHardwareBlueprintService(tx)
-	owner := models.User{Email: "blueprint_vote_owner@example.com", GoogleID: "blueprint-vote-owner", Name: "Owner"}
-	upvoter := models.User{Email: "blueprint_vote_up@example.com", GoogleID: "blueprint-vote-up", Name: "Up"}
-	downvoter := models.User{Email: "blueprint_vote_down@example.com", GoogleID: "blueprint-vote-down", Name: "Down"}
-	if err := tx.Create(&owner).Error; err != nil {
-		t.Fatalf("failed to create owner: %v", err)
-	}
-	if err := tx.Create(&upvoter).Error; err != nil {
-		t.Fatalf("failed to create upvoter: %v", err)
-	}
-	if err := tx.Create(&downvoter).Error; err != nil {
-		t.Fatalf("failed to create downvoter: %v", err)
-	}
-
-	created, err := svc.Create(owner.ID, HardwareBlueprintInput{Name: "Firewall", Category: "router"})
-	if err != nil {
-		t.Fatalf("failed to create blueprint: %v", err)
-	}
-	if _, err := svc.Vote(upvoter.ID, created.ID, 1); err != nil {
-		t.Fatalf("failed to upvote: %v", err)
-	}
-	voted, err := svc.Vote(downvoter.ID, created.ID, -1)
-	if err != nil {
-		t.Fatalf("failed to downvote: %v", err)
-	}
-	if voted.Upvotes != 1 || voted.Downvotes != 1 {
-		t.Fatalf("expected 1 upvote and 1 downvote, got %+v", voted)
-	}
-
-	changed, err := svc.Vote(downvoter.ID, created.ID, 1)
-	if err != nil {
-		t.Fatalf("failed to change vote: %v", err)
-	}
-	if changed.Upvotes != 2 || changed.Downvotes != 0 {
-		t.Fatalf("expected changed vote to recalc to 2/0, got %+v", changed)
-	}
-}
-
-func TestHardwareBlueprintService_ReviewUpsertsStructuredTags(t *testing.T) {
-	tx := testTx(t)
-	svc := NewHardwareBlueprintService(tx)
-	user := models.User{Email: "blueprint_review@example.com", GoogleID: "blueprint-review", Name: "Reviewer"}
-	if err := tx.Create(&user).Error; err != nil {
-		t.Fatalf("failed to create user: %v", err)
-	}
-	created, err := svc.Create(user.ID, HardwareBlueprintInput{Name: "Media Box", Category: "minipc"})
-	if err != nil {
-		t.Fatalf("failed to create blueprint: %v", err)
-	}
-
-	review, err := svc.Review(user.ID, created.ID, HardwareBlueprintReviewInput{
-		UseCase:         "media",
-		Stability:       "good",
-		Noise:           "quiet",
-		Power:           "low",
-		WouldBuildAgain: true,
-		Tags:            json.RawMessage(`["useful","fun"]`),
-	})
-	if err != nil {
-		t.Fatalf("failed to save review: %v", err)
-	}
-
-	updated, err := svc.Review(user.ID, created.ID, HardwareBlueprintReviewInput{
-		UseCase:   "storage",
-		Stability: "okay",
-		Tags:      json.RawMessage(`["cheap"]`),
-	})
-	if err != nil {
-		t.Fatalf("failed to update review: %v", err)
-	}
-	if updated.ID != review.ID {
-		t.Fatalf("expected review upsert to preserve ID")
-	}
-	if updated.UseCase != "storage" || updated.Stability != "okay" {
-		t.Fatalf("expected updated structured review, got %+v", updated)
 	}
 }
 

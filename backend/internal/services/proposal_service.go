@@ -297,19 +297,8 @@ func (s *ProposalService) List(buildID, userID uuid.UUID, limit int) ([]Proposal
 	if limit <= 0 || limit > keptResolvedProposals+1 {
 		limit = keptResolvedProposals + 1
 	}
-	var proposals []models.BuildProposal
-	err := s.db.Select("id", "build_id", "summary", "source", "source_label", "status", "status_reason",
-		"diff", "base_revision", "applied_revision", "created_at", "resolved_at").
-		Where("build_id = ? AND user_id = ?", buildID, userID).
-		Order("created_at desc").Limit(limit).Find(&proposals).Error
-	if err != nil {
-		return nil, err
-	}
-	summaries := make([]ProposalSummary, 0, len(proposals))
-	for i := range proposals {
-		summaries = append(summaries, SummarizeProposal(&proposals[i]))
-	}
-	return summaries, nil
+	return s.summaries(s.db.Where("build_id = ? AND user_id = ?", buildID, userID).
+		Order("created_at desc").Limit(limit))
 }
 
 // SyncState reports the build revision and its proposals with two small queries.
@@ -346,16 +335,8 @@ func (s *ProposalService) Apply(buildID, proposalID, userID uuid.UUID) (*models.
 	var conflict error
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		var proposal models.BuildProposal
-		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			First(&proposal, "id = ? AND build_id = ? AND user_id = ?", proposalID, buildID, userID).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrProposalNotFound
-		}
-		if err != nil {
+		if err := lockPending(tx, &proposal, buildID, proposalID, userID); err != nil {
 			return err
-		}
-		if proposal.Status != ProposalPending {
-			return ErrProposalNotPending
 		}
 		// Lock the build before reading it so a concurrent autosave cannot slip
 		// in between the read and the save below.
@@ -428,16 +409,8 @@ func (s *ProposalService) Reject(buildID, proposalID, userID uuid.UUID, reason s
 	}
 	var proposal models.BuildProposal
 	err := s.db.Transaction(func(tx *gorm.DB) error {
-		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			First(&proposal, "id = ? AND build_id = ? AND user_id = ?", proposalID, buildID, userID).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrProposalNotFound
-		}
-		if err != nil {
+		if err := lockPending(tx, &proposal, buildID, proposalID, userID); err != nil {
 			return err
-		}
-		if proposal.Status != ProposalPending {
-			return ErrProposalNotPending
 		}
 		now := time.Now()
 		proposal.Status, proposal.StatusReason, proposal.ResolvedAt = ProposalRejected, reason, &now
@@ -455,11 +428,32 @@ func (s *ProposalService) Reject(buildID, proposalID, userID uuid.UUID, reason s
 // ResolvedForThread lists proposals of an assistant thread settled after since,
 // so the next chat turn can tell the model what the user decided.
 func (s *ProposalService) ResolvedForThread(threadID uuid.UUID, since time.Time) ([]ProposalSummary, error) {
+	return s.summaries(s.db.Where("thread_id = ? AND status <> ? AND resolved_at > ?", threadID, ProposalPending, since).
+		Order("resolved_at asc").Limit(10))
+}
+
+// lockPending locks a proposal of the build for update and refuses one that
+// is already resolved.
+func lockPending(tx *gorm.DB, proposal *models.BuildProposal, buildID, proposalID, userID uuid.UUID) error {
+	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+		First(proposal, "id = ? AND build_id = ? AND user_id = ?", proposalID, buildID, userID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return ErrProposalNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if proposal.Status != ProposalPending {
+		return ErrProposalNotPending
+	}
+	return nil
+}
+
+// summaries runs query over the summary columns only; the operations stay unread.
+func (s *ProposalService) summaries(query *gorm.DB) ([]ProposalSummary, error) {
 	var proposals []models.BuildProposal
-	err := s.db.Select("id", "build_id", "summary", "source", "source_label", "status", "status_reason",
-		"diff", "base_revision", "applied_revision", "created_at", "resolved_at").
-		Where("thread_id = ? AND status <> ? AND resolved_at > ?", threadID, ProposalPending, since).
-		Order("resolved_at asc").Limit(10).Find(&proposals).Error
+	err := query.Select("id", "build_id", "summary", "source", "source_label", "status", "status_reason",
+		"diff", "base_revision", "applied_revision", "created_at", "resolved_at").Find(&proposals).Error
 	if err != nil {
 		return nil, err
 	}

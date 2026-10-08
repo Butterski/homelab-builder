@@ -28,7 +28,7 @@ function parseCoreCount(value: unknown) {
   return leading ? Number(leading[1]) : undefined;
 }
 
-function parseCapacityGB(value: unknown) {
+export function parseCapacityGB(value: unknown) {
   if (value === undefined || value === null || value === '') return undefined;
   if (typeof value === 'number') return value;
 

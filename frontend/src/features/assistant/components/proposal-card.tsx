@@ -4,9 +4,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { ProposalSummary } from '@/features/builder/api/proposals';
+import { plural } from '@/lib/format';
 import type { ProposalCardStatus } from '../store/assistant-store';
-
-export type { ProposalCardStatus };
 
 const STATUS: Record<ProposalCardStatus, { label: string; variant: 'default' | 'secondary' | 'outline' }> = {
   pending: { label: 'Waiting for you', variant: 'default' },
@@ -19,10 +18,6 @@ const STATUS: Record<ProposalCardStatus, { label: string; variant: 'default' | '
 
 /** How many changes a card spells out before it points at the full list. */
 const SHOWN_CHANGES = 4;
-
-function plural(count: number, noun: string): string {
-  return `${count} ${noun}${count === 1 ? '' : 's'}`;
-}
 
 /** What a proposal touches, as chips: "2 devices", "1 connection". */
 function countChips(proposal: ProposalSummary): string[] {

@@ -4,7 +4,8 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { TickBox } from '@/components/ui/tick-box';
-import { cn } from '@/lib/utils';
+import { formatMemory } from '@/lib/format';
+import { cn, errorMessage } from '@/lib/utils';
 import { useBuilds } from '@/features/builder/api/use-builds';
 import { hardwareTypeName } from '@/lib/hardware-taxonomy';
 import {
@@ -22,7 +23,6 @@ import {
   changeSentence,
   countChanges,
   decisionOf,
-  formatMemory,
   freeShare,
   guestChosen,
   guestKey,
@@ -38,9 +38,6 @@ const SELECT_CLASS =
   'h-9 min-w-0 rounded-md border border-input bg-transparent px-3 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50';
 
 const NEW_PROJECT = 'new';
-
-const messageOf = (error: unknown, fallback: string) =>
-  error instanceof Error && error.message ? error.message : fallback;
 
 const GUEST_KIND: Record<string, string> = { vm: 'VM', lxc: 'LXC', container: 'Container' };
 
@@ -418,7 +415,7 @@ export function ProxmoxImport({ integration, openBuildId, onImported }: ProxmoxI
       );
       onImported(result);
     } catch (cause) {
-      toast.error(messageOf(cause, 'The import could not be made.'));
+      toast.error(errorMessage(cause, 'The import could not be made.'));
     }
   };
 
@@ -466,7 +463,7 @@ export function ProxmoxImport({ integration, openBuildId, onImported }: ProxmoxI
       {planQuery.isLoading && <p className="text-sm text-muted-foreground">Comparing…</p>}
       {planQuery.isError && (
         <p className="text-sm text-destructive" role="alert">
-          {messageOf(planQuery.error, 'The comparison could not be made.')}
+          {errorMessage(planQuery.error, 'The comparison could not be made.')}
         </p>
       )}
 

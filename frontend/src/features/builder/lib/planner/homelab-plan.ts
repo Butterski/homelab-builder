@@ -1,7 +1,13 @@
 import type { Service } from '../../../../types';
-import type { CreateBuildParams } from '../../api/builds';
 import { arrangePlan } from './arrange';
-import { GOAL_LABELS, type Goal, type PlannedNode, type PlannerAnswers } from './types';
+import {
+  GOAL_LABELS,
+  type Goal,
+  type Plan,
+  type PlannedEdge,
+  type PlannedNode,
+  type PlannerAnswers,
+} from './types';
 
 const SERVICE_BY_GOAL: Record<Goal, string[]> = {
   backup: ['restic', 'duplicati', 'syncthing'],
@@ -27,9 +33,9 @@ function chooseService(goal: Goal, services: Service[]): Service | undefined {
 export function buildHomelabPlan(
   answers: PlannerAnswers,
   services: Service[],
-): CreateBuildParams {
+): Plan {
   const nodes: PlannedNode[] = [];
-  const edges: CreateBuildParams['edges'] = [];
+  const edges: PlannedEdge[] = [];
   const routerID = crypto.randomUUID();
   const switchID = crypto.randomUUID();
 
@@ -242,11 +248,7 @@ export function buildHomelabPlan(
   return arrangePlan({
     name: answers.name.trim() || 'Guided Homelab',
     thumbnail: '',
-    settings: {
-      planner: answers,
-      boughtItems: [],
-      showBought: false,
-    },
+    settings: { planner: answers },
     nodes,
     edges,
     services: [],

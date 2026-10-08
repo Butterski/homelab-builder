@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -207,15 +208,7 @@ func focusOn(ids ...string) []string {
 }
 
 func (t *Tool) offeredIn(toolContext string) bool {
-	if len(t.Contexts) == 0 {
-		return true
-	}
-	for _, allowed := range t.Contexts {
-		if allowed == toolContext {
-			return true
-		}
-	}
-	return false
+	return len(t.Contexts) == 0 || slices.Contains(t.Contexts, toolContext)
 }
 
 func (t *Tool) allowedFor(actor Actor, toolContext string) bool {

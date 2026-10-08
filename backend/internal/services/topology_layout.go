@@ -41,25 +41,15 @@ func snapToGrid(value float64) float64 {
 	return math.Round(value/layoutGrid) * layoutGrid
 }
 
-func detailNumber(details map[string]any, key string) (float64, bool) {
-	switch v := details[key].(type) {
-	case float64:
-		return v, true
-	case int:
-		return float64(v), true
-	}
-	return 0, false
-}
-
 func rackSizeOf(rack NodeDTO) int {
-	if size, ok := detailNumber(rack.Details, "rack_size"); ok && size >= 1 {
+	if size, ok := asNumber(rack.Details["rack_size"]); ok && size >= 1 {
 		return int(size)
 	}
 	return defaultRackSizeU
 }
 
 func rackUnitsOf(node NodeDTO) int {
-	if units, ok := detailNumber(node.Details, "rack_units"); ok && units >= 1 {
+	if units, ok := asNumber(node.Details["rack_units"]); ok && units >= 1 {
 		return int(units)
 	}
 	if units, ok := defaultRackUnits[node.Type]; ok {
@@ -70,7 +60,7 @@ func rackUnitsOf(node NodeDTO) int {
 
 // rackSlotOf returns the U slot a racked node occupies (0 = top).
 func rackSlotOf(node NodeDTO) int {
-	if slot, ok := detailNumber(node.Details, "rack_position"); ok && slot >= 0 {
+	if slot, ok := asNumber(node.Details["rack_position"]); ok && slot >= 0 {
 		return int(slot)
 	}
 	slot := int(math.Round((node.Y - rackHeaderPx) / rackUnitHeightPx))

@@ -17,12 +17,12 @@ export interface HardwareComponent {
   created_at: string;
 }
 
-export interface HardwareListResult {
+interface HardwareListResult {
   data: HardwareComponent[];
   total: number;
 }
 
-export interface HardwareFilter {
+interface HardwareFilter {
   category?: string;
   brand?: string;
   search?: string;
@@ -61,16 +61,7 @@ export function useHardwareCategories() {
   });
 }
 
-export function useHardwareBrands(category?: string) {
-  return useQuery<{ data: string[] }>({
-    queryKey: ['hardware-brands', category],
-    queryFn: () =>
-      api.get<{ data: string[] }>(`/api/hardware/brands${category ? `?category=${category}` : ''}`),
-    staleTime: 300_000,
-  });
-}
-
-export interface HardwareFavorite {
+interface HardwareFavorite {
   id: string;
   user_id: string;
   hardware_component_id: string;

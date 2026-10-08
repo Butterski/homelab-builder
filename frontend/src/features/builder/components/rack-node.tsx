@@ -2,14 +2,7 @@ import { memo, useMemo } from 'react';
 import { type NodeProps } from '@xyflow/react';
 import type { HardwareSpec } from '../../../types';
 import { useBuilderStore } from '../store/builder-store';
-import {
-  RACK_U_HEIGHT_PX,
-  RACK_WIDTH_PX,
-  RACK_HEADER_PX,
-  RACK_FOOTER_PX,
-  RACK_RAIL_WIDTH,
-  DEFAULT_DEVICE_U,
-} from './rack-node-constants';
+import { RACK_U_HEIGHT_PX, RACK_WIDTH_PX, RACK_RAIL_WIDTH, DEFAULT_DEVICE_U, rackHeightPx } from './rack-node-constants';
 
 type RackNodeData = {
   label: string;
@@ -23,18 +16,14 @@ type RackNodeData = {
 const RackNode = memo(({ data, selected, id }: NodeProps) => {
   const nodeData = data as unknown as RackNodeData;
   const rackSize = nodeData.details?.rack_size || 24;
-  const hardwareNodes = useBuilderStore(
-    state => state.proposalPreview?.hardwareNodes ?? state.hardwareNodes,
+  // A number, so the card renders again only when its own fill changes.
+  const usedU = useBuilderStore(state =>
+    (state.proposalPreview?.hardwareNodes ?? state.hardwareNodes)
+      .filter(n => n.parent_id === id)
+      .reduce((sum, n) => sum + (n.details?.rack_units || DEFAULT_DEVICE_U[n.type] || 1), 0),
   );
 
-  // Compute usedU dynamically from children in the store
-  const usedU = useMemo(() => {
-    return hardwareNodes
-      .filter(n => n.parent_id === id)
-      .reduce((sum, n) => sum + (n.details?.rack_units || DEFAULT_DEVICE_U[n.type] || 1), 0);
-  }, [hardwareNodes, id]);
-
-  const totalHeight = RACK_HEADER_PX + rackSize * RACK_U_HEIGHT_PX + RACK_FOOTER_PX;
+  const totalHeight = rackHeightPx(rackSize);
 
   // Generate U-slot markers
   const uSlots = useMemo(() => {

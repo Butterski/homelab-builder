@@ -49,7 +49,6 @@ type blueprintFitServiceRequirement struct {
 type blueprintLabProfile struct {
 	HasData      bool
 	TypeCounts   map[string]int
-	NodeCount    int
 	ServiceCount int
 	EdgeCount    int
 	CPUCores     float64
@@ -81,25 +80,42 @@ func (s *HardwareBlueprintService) loadBlueprintLabProfile(userID *uuid.UUID) bl
 	if err := s.db.
 		Preload("Nodes").
 		Preload("Nodes.InternalComponents").
-		Preload("Nodes.ServiceInstances").
-		Preload("Edges").
 		Where("user_id = ?", *userID).
 		Find(&builds).Error; err != nil {
 		return profile
 	}
+	if len(builds) == 0 {
+		return profile
+	}
+	profile.HasData = true
+
+	// Edges and node-bound services only matter as counts.
+	buildIDs := make([]uuid.UUID, 0, len(builds))
+	nodeIDs := make([]uuid.UUID, 0)
+	for _, build := range builds {
+		buildIDs = append(buildIDs, build.ID)
+		for _, node := range build.Nodes {
+			nodeIDs = append(nodeIDs, node.ID)
+		}
+	}
+	var edgeCount, serviceCount int64
+	if err := s.db.Model(&models.Edge{}).Where("build_id IN ?", buildIDs).Count(&edgeCount).Error; err != nil {
+		return blueprintLabProfile{TypeCounts: map[string]int{}}
+	}
+	if len(nodeIDs) > 0 {
+		if err := s.db.Model(&models.ServiceInstance{}).Where("node_id IN ?", nodeIDs).Count(&serviceCount).Error; err != nil {
+			return blueprintLabProfile{TypeCounts: map[string]int{}}
+		}
+	}
+	profile.EdgeCount = int(edgeCount)
+	profile.ServiceCount = int(serviceCount)
 
 	for _, build := range builds {
-		profile.HasData = true
-		profile.EdgeCount += len(build.Edges)
 		for _, node := range build.Nodes {
-			profile.NodeCount++
 			profile.TypeCounts[node.Type]++
-			profile.ServiceCount += len(node.ServiceInstances)
 			profile.PowerW += node.PowerDraw
-			profile.EdgeCount += 0
 
-			var details map[string]any
-			_ = json.Unmarshal(node.Details, &details)
+			details, _ := detailsMap(node.Details)
 			profile.CPUCores += numberFromDetails(details, "cpu", "cpu_cores")
 			profile.RAMGB += capacityGBFromDetails(details, "ram", "memory")
 			profile.StorageGB += capacityGBFromDetails(details, "storage", "capacity")
@@ -108,8 +124,7 @@ func (s *HardwareBlueprintService) loadBlueprintLabProfile(userID *uuid.UUID) bl
 			profile.DriveBays += int(numberFromDetails(details, "drive_bays", "bays", "disk_bays"))
 
 			for _, component := range node.InternalComponents {
-				var componentDetails map[string]any
-				_ = json.Unmarshal(component.Details, &componentDetails)
+				componentDetails, _ := detailsMap(component.Details)
 				profile.PowerW += component.PowerDraw
 				switch component.Type {
 				case "disk":
@@ -152,7 +167,6 @@ func scoreHardwareBlueprintFit(blueprint models.HardwareBlueprint, profile bluep
 	roleScore := scoreRoleFit(blueprint.NodeType, capacity, demand, serviceCount)
 	resilienceScore := scoreResilience(blueprint.NodeType, capacity)
 	confidenceScore := scoreBlueprintConfidence(capacity, serviceCount)
-	communityScore := scoreCommunitySignal(blueprint.Upvotes, blueprint.Downvotes)
 
 	factors := []models.HardwareBlueprintFitFactor{
 		{Key: "headroom", Label: "Resource headroom", Score: headroomScore, Weight: 0.22, Note: headroomNote(utilization)},
@@ -164,7 +178,6 @@ func scoreHardwareBlueprintFit(blueprint models.HardwareBlueprint, profile bluep
 		{Key: "expansion", Label: "Expansion", Score: expansionScore, Weight: 0.06, Note: expansionNote(capacity)},
 		{Key: "resilience", Label: "Resilience", Score: resilienceScore, Weight: 0.04, Note: resilienceNote(blueprint.NodeType, capacity)},
 		{Key: "confidence", Label: "Data confidence", Score: confidenceScore, Weight: 0.03, Note: "more complete specs produce a more reliable fit"},
-		{Key: "community", Label: "Community signal", Score: communityScore, Weight: 0.01, Note: communityNote(blueprint.Upvotes, blueprint.Downvotes)},
 	}
 
 	score := int(math.Round(weightedAverageFromFactors(factors)))
@@ -541,15 +554,6 @@ func scoreBlueprintConfidence(capacity models.HardwareBlueprintFitResource, serv
 	return clamp(score, 35, 100)
 }
 
-func scoreCommunitySignal(upvotes, downvotes int) float64 {
-	total := upvotes + downvotes
-	if total == 0 {
-		return 65
-	}
-	score := 65 + math.Min(18, float64(upvotes-downvotes)*4) + math.Min(8, float64(total)) - math.Min(18, float64(downvotes)*6)
-	return clamp(score, 25, 95)
-}
-
 func utilizationRatio(demand, capacity float64) float64 {
 	if demand <= 0 {
 		return 0
@@ -681,18 +685,8 @@ func resilienceNote(nodeType string, capacity models.HardwareBlueprintFitResourc
 	return "redundancy and expansion signals checked for this role"
 }
 
-func communityNote(upvotes, downvotes int) string {
-	if upvotes+downvotes == 0 {
-		return "not enough votes yet"
-	}
-	return fmt.Sprintf("%d upvotes, %d downvotes", upvotes, downvotes)
-}
-
 func numberFromDetails(details map[string]any, keys ...string) float64 {
 	for _, key := range keys {
-		if details == nil {
-			continue
-		}
 		if value, ok := details[key]; ok {
 			parsed := parseNumber(value)
 			if key == "cpu" || key == "cpu_cores" || key == "cores" {
@@ -706,51 +700,46 @@ func numberFromDetails(details map[string]any, keys ...string) float64 {
 	return 0
 }
 
-func capacityGBFromDetails(details map[string]any, keys ...string) float64 {
+// firstDetail returns the first positive value parse reads under one of keys,
+// and the key it was found under.
+func firstDetail(details map[string]any, parse func(any) float64, keys ...string) (float64, string) {
 	for _, key := range keys {
-		if details == nil {
-			continue
-		}
 		if value, ok := details[key]; ok {
-			if parsed := parseCapacityGB(value); parsed > 0 {
-				return parsed
+			if parsed := parse(value); parsed > 0 {
+				return parsed, key
 			}
 		}
 	}
-	return 0
+	return 0, ""
+}
+
+func capacityGBFromDetails(details map[string]any, keys ...string) float64 {
+	parsed, _ := firstDetail(details, parseCapacityGB, keys...)
+	return parsed
 }
 
 func portCountFromDetails(details map[string]any, keys ...string) float64 {
-	for _, key := range keys {
-		if details == nil {
-			continue
-		}
-		if value, ok := details[key]; ok {
-			if parsed := parsePortCount(value); parsed > 0 {
-				return parsed
-			}
-		}
-	}
-	return 0
+	parsed, _ := firstDetail(details, parsePortCount, keys...)
+	return parsed
 }
 
 func networkGbpsFromDetails(details map[string]any, keys ...string) float64 {
-	for _, key := range keys {
-		if details == nil {
-			continue
-		}
-		if value, ok := details[key]; ok {
-			if parsed := parseNetworkGbps(value); parsed > 0 {
-				ports := portCountFromDetails(details, "ports", "network_ports")
-				if ports > 1 && key != "network_gbps" {
-					return parsed * ports
-				}
-				return parsed
-			}
+	parsed, key := firstDetail(details, parseNetworkGbps, keys...)
+	if parsed > 0 && key != "network_gbps" {
+		if ports := portCountFromDetails(details, "ports", "network_ports"); ports > 1 {
+			return parsed * ports
 		}
 	}
-	return 0
+	return parsed
 }
+
+var (
+	decimalPattern        = regexp.MustCompile(`\d+(?:\.\d+)?`)
+	leadingMultiplier     = regexp.MustCompile(`(?i)^(\d+)\s*x`)
+	coreCountPattern      = regexp.MustCompile(`(\d+(?:\.\d+)?)\s*(?:-|\s)?core`)
+	multiCapacityPattern  = regexp.MustCompile(`(?i)^(\d+)\s*X\s*(\d+(?:\.\d+)?)\s*(TB|GB|MB)`)
+	portMultiplierPattern = regexp.MustCompile(`(\d+)\s*x`)
+)
 
 func parseNumber(value any) float64 {
 	switch typed := value.(type) {
@@ -766,13 +755,13 @@ func parseNumber(value any) float64 {
 		parsed, _ := typed.Float64()
 		return parsed
 	case string:
-		number := regexp.MustCompile(`\d+(?:\.\d+)?`).FindString(typed)
+		number := decimalPattern.FindString(typed)
 		if number == "" {
 			return 0
 		}
 		parsed, _ := strconv.ParseFloat(number, 64)
-		if strings.Contains(strings.ToLower(typed), "x ") || strings.Contains(strings.ToLower(typed), "x") {
-			multiplier := regexp.MustCompile(`(?i)^(\d+)\s*x`).FindStringSubmatch(typed)
+		if strings.Contains(strings.ToLower(typed), "x") {
+			multiplier := leadingMultiplier.FindStringSubmatch(typed)
 			if len(multiplier) == 2 {
 				multi, _ := strconv.ParseFloat(multiplier[1], 64)
 				return parsed * multi
@@ -787,10 +776,10 @@ func parseNumber(value any) float64 {
 func parseCoreCount(value any) float64 {
 	if numeric := parseNumber(value); numeric > 0 {
 		text := strings.ToLower(fmt.Sprint(value))
-		coreMatch := regexp.MustCompile(`(\d+(?:\.\d+)?)\s*(?:-|\s)?core`).FindStringSubmatch(text)
+		coreMatch := coreCountPattern.FindStringSubmatch(text)
 		if len(coreMatch) == 2 {
 			cores, _ := strconv.ParseFloat(coreMatch[1], 64)
-			if multiplier := regexp.MustCompile(`^(\d+)\s*x`).FindStringSubmatch(text); len(multiplier) == 2 {
+			if multiplier := leadingMultiplier.FindStringSubmatch(text); len(multiplier) == 2 {
 				multi, _ := strconv.ParseFloat(multiplier[1], 64)
 				return cores * multi
 			}
@@ -822,7 +811,7 @@ func parseCapacityGB(value any) float64 {
 		return 0
 	}
 
-	multiCapacity := regexp.MustCompile(`(?i)^(\d+)\s*X\s*(\d+(?:\.\d+)?)\s*(TB|GB|MB)`).FindStringSubmatch(text)
+	multiCapacity := multiCapacityPattern.FindStringSubmatch(text)
 	if len(multiCapacity) == 4 {
 		multiplier, _ := strconv.ParseFloat(multiCapacity[1], 64)
 		amount, _ := strconv.ParseFloat(multiCapacity[2], 64)
@@ -835,7 +824,7 @@ func parseCapacityGB(value any) float64 {
 		return multiplier * amount
 	}
 
-	number := regexp.MustCompile(`\d+(?:\.\d+)?`).FindString(text)
+	number := decimalPattern.FindString(text)
 	if number == "" {
 		return 0
 	}
@@ -857,7 +846,7 @@ func parsePortCount(value any) float64 {
 		return float64(typed)
 	case string:
 		text := strings.ToLower(typed)
-		matches := regexp.MustCompile(`(\d+)\s*x`).FindAllStringSubmatch(text, -1)
+		matches := portMultiplierPattern.FindAllStringSubmatch(text, -1)
 		if len(matches) > 0 {
 			var total float64
 			for _, match := range matches {
@@ -888,8 +877,6 @@ func parseNetworkGbps(value any) float64 {
 			return 2.5
 		case strings.Contains(text, "100mb"), strings.Contains(text, "100 mb"):
 			return 0.1
-		case strings.Contains(text, "gbe"), strings.Contains(text, "gb"):
-			return parsed
 		default:
 			return parsed
 		}

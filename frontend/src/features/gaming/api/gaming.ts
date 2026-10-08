@@ -16,7 +16,7 @@ export interface GamingIssue {
   fix?: string;
 }
 
-export interface GamingSizing {
+interface GamingSizing {
   cpu_cores: number;
   ram_mb: number;
   storage_gb: number;
@@ -112,7 +112,7 @@ export interface GamingReport {
   issues: GamingIssue[];
 }
 
-export const gamingApi = {
+const gamingApi = {
   report: (buildId: string) => api.get<GamingReport>(`/api/builds/${buildId}/gaming-report`),
 };
 

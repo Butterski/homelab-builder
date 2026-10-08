@@ -50,8 +50,6 @@ export interface HardwareBlueprint {
   tags: string[];
   node_data: Partial<HardwareNode>;
   services: Service[];
-  upvotes: number;
-  downvotes: number;
   share_code?: string;
   moderation_status?: 'none' | 'pending' | 'approved' | 'rejected';
   moderation_note?: string;
@@ -62,7 +60,7 @@ export interface HardwareBlueprint {
   updated_at: string;
 }
 
-export interface HardwareBlueprintPayload {
+interface HardwareBlueprintPayload {
   name: string;
   description?: string;
   category: string;
@@ -92,14 +90,6 @@ export function useHardwareBlueprints() {
     queryKey: ['hardware-blueprints'],
     queryFn: () => api.get<{ data: HardwareBlueprint[] }>('/api/hardware-blueprints'),
     staleTime: 30_000,
-  });
-}
-
-export function useCommunityHardwareBlueprints() {
-  return useQuery<{ data: HardwareBlueprint[] }>({
-    queryKey: ['hardware-blueprints', 'community'],
-    queryFn: () => api.get<{ data: HardwareBlueprint[] }>('/api/hardware-blueprints/community'),
-    staleTime: 60_000,
   });
 }
 
@@ -170,19 +160,6 @@ export function useModerateHardwareBlueprint() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-hardware-blueprints'] });
       queryClient.invalidateQueries({ queryKey: ['hardware-blueprints'] });
-      queryClient.invalidateQueries({ queryKey: ['hardware-blueprints', 'community'] });
-    },
-  });
-}
-
-export function useVoteHardwareBlueprint() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, value }: { id: string; value: -1 | 0 | 1 }) =>
-      api.post<{ data: HardwareBlueprint }>(`/api/hardware-blueprints/${id}/vote`, { value }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['hardware-blueprints'] });
-      queryClient.invalidateQueries({ queryKey: ['hardware-blueprints', 'community'] });
     },
   });
 }

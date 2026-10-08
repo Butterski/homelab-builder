@@ -1,8 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
-	"fmt"
 	"net/http"
 	"strconv"
 
@@ -21,20 +19,7 @@ func NewHardwareHandler(svc *services.HardwareService) *HardwareHandler {
 
 // GET /api/hardware?category=router&brand=Ubiquiti&search=dream&min_price=100&max_price=500&limit=50&offset=0
 func (h *HardwareHandler) GetAll(c *gin.Context) {
-	minPrice, _ := strconv.ParseFloat(c.Query("min_price"), 64)
-	maxPrice, _ := strconv.ParseFloat(c.Query("max_price"), 64)
-	limit, _ := strconv.Atoi(c.Query("limit"))
-	offset, _ := strconv.Atoi(c.Query("offset"))
-
-	f := services.HardwareFilter{
-		Category: c.Query("category"),
-		Brand:    c.Query("brand"),
-		Search:   c.Query("search"),
-		MinPrice: minPrice,
-		MaxPrice: maxPrice,
-		Limit:    limit,
-		Offset:   offset,
-	}
+	f := hardwareFilter(c)
 
 	result, err := h.svc.GetAll(f)
 	if err != nil {
@@ -44,11 +29,28 @@ func (h *HardwareHandler) GetAll(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
+// hardwareFilter reads the catalog query; malformed numbers count as unset.
+func hardwareFilter(c *gin.Context) services.HardwareFilter {
+	minPrice, _ := strconv.ParseFloat(c.Query("min_price"), 64)
+	maxPrice, _ := strconv.ParseFloat(c.Query("max_price"), 64)
+	limit, _ := strconv.Atoi(c.Query("limit"))
+	offset, _ := strconv.Atoi(c.Query("offset"))
+
+	return services.HardwareFilter{
+		Category: c.Query("category"),
+		Brand:    c.Query("brand"),
+		Search:   c.Query("search"),
+		MinPrice: minPrice,
+		MaxPrice: maxPrice,
+		Limit:    limit,
+		Offset:   offset,
+	}
+}
+
 // GET /api/hardware/:id
 func (h *HardwareHandler) GetByID(c *gin.Context) {
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+	id, ok := uuidParam(c, "id")
+	if !ok {
 		return
 	}
 	comp, err := h.svc.GetByID(id)
@@ -69,41 +71,25 @@ func (h *HardwareHandler) GetCategories(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": cats})
 }
 
-// GET /api/hardware/brands?category=router
-func (h *HardwareHandler) GetBrands(c *gin.Context) {
-	brands, err := h.svc.GetBrands(c.Query("category"))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch brands"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"data": brands})
-}
-
 // POST /api/hardware  (community submission - auto-approve=false)
 func (h *HardwareHandler) Create(c *gin.Context) {
-	var input services.CreateHardwareInput
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
-		return
-	}
-	comp, err := h.svc.Create(input, nil, false)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to submit component"})
-		return
-	}
-	c.JSON(http.StatusCreated, gin.H{"data": comp})
+	h.create(c, false, "Failed to submit component")
 }
 
 // POST /api/admin/hardware  (admin - auto-approve=true)
 func (h *HardwareHandler) AdminCreate(c *gin.Context) {
+	h.create(c, true, "Failed to create component")
+}
+
+func (h *HardwareHandler) create(c *gin.Context, approve bool, failure string) {
 	var input services.CreateHardwareInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
 	}
-	comp, err := h.svc.Create(input, nil, true)
+	comp, err := h.svc.Create(input, nil, approve)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create component"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": failure})
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"data": comp})
@@ -111,9 +97,8 @@ func (h *HardwareHandler) AdminCreate(c *gin.Context) {
 
 // PUT /api/admin/hardware/:id
 func (h *HardwareHandler) AdminUpdate(c *gin.Context) {
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+	id, ok := uuidParam(c, "id")
+	if !ok {
 		return
 	}
 	var input services.CreateHardwareInput
@@ -131,9 +116,8 @@ func (h *HardwareHandler) AdminUpdate(c *gin.Context) {
 
 // DELETE /api/admin/hardware/:id
 func (h *HardwareHandler) AdminDelete(c *gin.Context) {
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+	id, ok := uuidParam(c, "id")
+	if !ok {
 		return
 	}
 	if err := h.svc.Delete(id); err != nil {
@@ -145,9 +129,8 @@ func (h *HardwareHandler) AdminDelete(c *gin.Context) {
 
 // PATCH /api/admin/hardware/:id/approve
 func (h *HardwareHandler) AdminApprove(c *gin.Context) {
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+	id, ok := uuidParam(c, "id")
+	if !ok {
 		return
 	}
 	var body struct {
@@ -189,20 +172,7 @@ func (h *HardwareHandler) AdminBulkImport(c *gin.Context) {
 
 // GET /api/admin/hardware?approved=false  (pending moderation)
 func (h *HardwareHandler) AdminGetAll(c *gin.Context) {
-	minPrice, _ := strconv.ParseFloat(c.Query("min_price"), 64)
-	maxPrice, _ := strconv.ParseFloat(c.Query("max_price"), 64)
-	limit, _ := strconv.Atoi(c.Query("limit"))
-	offset, _ := strconv.Atoi(c.Query("offset"))
-
-	f := services.HardwareFilter{
-		Category: c.Query("category"),
-		Brand:    c.Query("brand"),
-		Search:   c.Query("search"),
-		MinPrice: minPrice,
-		MaxPrice: maxPrice,
-		Limit:    limit,
-		Offset:   offset,
-	}
+	f := hardwareFilter(c)
 
 	// Admin can see unapproved items too
 	if approvedStr := c.Query("approved"); approvedStr != "" {
@@ -218,55 +188,10 @@ func (h *HardwareHandler) AdminGetAll(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
-// POST /api/hardware/:id/like
-func (h *HardwareHandler) Like(c *gin.Context) {
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
-		return
-	}
-	if err := h.svc.Like(id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to like"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"message": "Liked"})
-}
-
-// PATCH /api/admin/hardware/:id/buy-urls
-func (h *HardwareHandler) AdminUpdateBuyURLs(c *gin.Context) {
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
-		return
-	}
-
-	var body struct {
-		BuyURLs      json.RawMessage `json:"buy_urls"`
-		AffiliateTag string          `json:"affiliate_tag"`
-	}
-
-	if err := c.ShouldBindJSON(&body); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
-		return
-	}
-
-	if body.BuyURLs == nil {
-		body.BuyURLs = json.RawMessage("[]")
-	}
-
-	err = h.svc.UpdateBuyURLs(id, body.BuyURLs, body.AffiliateTag)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update BuyURLs"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"message": "Updated"})
-}
-
 // GET /api/hardware/favorites
 func (h *HardwareHandler) GetFavorites(c *gin.Context) {
-	userID, err := getHwUserID(c)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+	userID, ok := currentUser(c)
+	if !ok {
 		return
 	}
 	favs, err := h.svc.GetHardwareFavorites(userID)
@@ -279,9 +204,8 @@ func (h *HardwareHandler) GetFavorites(c *gin.Context) {
 
 // POST /api/hardware/favorites
 func (h *HardwareHandler) AddFavorite(c *gin.Context) {
-	userID, err := getHwUserID(c)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+	userID, ok := currentUser(c)
+	if !ok {
 		return
 	}
 
@@ -303,15 +227,13 @@ func (h *HardwareHandler) AddFavorite(c *gin.Context) {
 
 // DELETE /api/hardware/favorites/:id
 func (h *HardwareHandler) RemoveFavorite(c *gin.Context) {
-	userID, err := getHwUserID(c)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+	userID, ok := currentUser(c)
+	if !ok {
 		return
 	}
 
-	componentID, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid hardware component ID"})
+	componentID, ok := uuidParam(c, "id")
+	if !ok {
 		return
 	}
 
@@ -321,16 +243,3 @@ func (h *HardwareHandler) RemoveFavorite(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Favorite removed"})
 }
-
-func getHwUserID(c *gin.Context) (uuid.UUID, error) {
-	userIDVal, exists := c.Get("user_id")
-	if !exists {
-		return uuid.Nil, fmt.Errorf("user_id not found in context")
-	}
-	userID, ok := userIDVal.(uuid.UUID)
-	if !ok {
-		return uuid.Nil, fmt.Errorf("invalid user_id type")
-	}
-	return userID, nil
-}
-

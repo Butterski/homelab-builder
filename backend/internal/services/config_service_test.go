@@ -38,10 +38,11 @@ func TestConfigService_GenerateDockerCompose_DuplicateKeys(t *testing.T) {
 		t.Fatalf("Create build failed: %v", err)
 	}
 
-	composeStr, err := configSvc.GenerateDockerCompose(build.ID)
+	bundle, err := configSvc.GenerateAll(build.ID, user.ID)
 	if err != nil {
-		t.Fatalf("GenerateDockerCompose failed: %v", err)
+		t.Fatalf("GenerateAll failed: %v", err)
 	}
+	composeStr := bundle.DockerCompose
 
 	// Verify both unique service keys exist in the generated YAML
 	if !strings.Contains(composeStr, "  pi-hole:") {

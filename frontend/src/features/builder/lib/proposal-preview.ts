@@ -13,15 +13,15 @@ export type ProposalPreviewGraph = FlowBuild & {
 };
 
 /** Cables are identified by their node pair; edge ids change on every save. */
-export function connectionKey(a: string, b: string): string {
+function connectionKey(a: string, b: string): string {
   return a < b ? `${a}|${b}` : `${b}|${a}`;
 }
 
 export function validationToIssues(
-  validation: ValidationReport | undefined | null,
+  validation: Partial<ValidationReport> | undefined | null,
 ): HardwareNodeValidationIssue[] {
   if (!validation) return [];
-  const withType = (issues: ValidationReport['errors'], type: 'error' | 'warning') =>
+  const withType = (issues: ValidationReport['errors'] | undefined, type: 'error' | 'warning') =>
     (issues || []).map(issue => ({
       node_id: issue.node_id ?? '',
       message: issue.message,

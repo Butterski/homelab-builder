@@ -1,7 +1,6 @@
 package config
 
 import (
-	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -15,8 +14,6 @@ type Config struct {
 	DBPassword     string
 	DBName         string
 	DBSSLMode      string
-	DBType         string
-	DBFile         string
 	GoogleClientID string
 	AuthDisabled   bool
 
@@ -59,8 +56,6 @@ func Load() *Config {
 		DBPassword:     getEnv("DB_PASSWORD", "homelab_password"),
 		DBName:         getEnv("DB_NAME", "homelab_builder"),
 		DBSSLMode:      getEnv("DB_SSLMODE", "disable"),
-		DBType:         getEnv("DB_TYPE", "postgres"),
-		DBFile:         getEnv("DB_FILE", "homelab.db"),
 		GoogleClientID: clientId,
 		AuthDisabled:   isAuthDisabled,
 
@@ -75,13 +70,6 @@ func Load() *Config {
 		IntegrationsEnabled:               getEnvBool("INTEGRATIONS_ENABLED", true),
 		IntegrationsAllowPrivateEndpoints: getEnvBool("INTEGRATIONS_ALLOW_PRIVATE_ENDPOINTS", allowPrivateEndpoints),
 	}
-}
-
-func (c *Config) DatabaseDSN() string {
-	return fmt.Sprintf(
-		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
-		c.DBHost, c.DBPort, c.DBUser, c.DBPassword, c.DBName, c.DBSSLMode,
-	)
 }
 
 func getEnv(key, defaultValue string) string {
@@ -125,9 +113,3 @@ func getEnvInt(key string, defaultValue int) int {
 	}
 	return parsed
 }
-
-// Update the database hostname for tests
-const TestDBHost = "homelab-builder-db"
-
-// Ensure the IPAM_URL is set for tests
-const TestIPAMURL = "http://hlbipam:8081"

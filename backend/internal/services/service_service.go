@@ -75,12 +75,6 @@ func (s *ServiceService) CreatePrivate(userID uuid.UUID, input CreateServiceInpu
 	return s.create(input, &userID, "private")
 }
 
-func (s *ServiceService) CreateCommunitySubmission(input CreateServiceInput) (*models.Service, error) {
-	isActive := false
-	input.IsActive = &isActive
-	return s.create(input, nil, "pending")
-}
-
 func (s *ServiceService) create(input CreateServiceInput, userID *uuid.UUID, visibility string) (*models.Service, error) {
 	isActive := true
 	if input.IsActive != nil {
@@ -236,12 +230,6 @@ func (s *ServiceService) Update(id uuid.UUID, input UpdateServiceInput) (*models
 	}
 
 	return s.GetByID(id)
-}
-
-func (s *ServiceService) Delete(id uuid.UUID) error {
-	return s.db.Model(&models.Service{}).
-		Where("id = ?", id).
-		Update("is_active", false).Error
 }
 
 func (s *ServiceService) SubmitPrivateToCommunity(id, userID uuid.UUID) (*models.Service, error) {

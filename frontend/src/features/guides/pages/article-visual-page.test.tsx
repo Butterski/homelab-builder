@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { nodeHasDynamicPorts } from '../../../lib/hardware-config';
 import { getNodePortCount } from '../../builder/lib/port-count';
-import { VISUALS, toReactFlowEdges } from './article-visual-page';
+import { VISUALS, toReactFlowEdges } from '../lib/article-visuals';
 
 describe('article visual port assignment', () => {
   it('uses one rendered port per source connection in every article visual', () => {

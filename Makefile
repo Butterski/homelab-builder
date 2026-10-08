@@ -1,19 +1,13 @@
-.PHONY: help setup up down test test-backend test-frontend lint build clean
+.PHONY: help up down test test-backend test-frontend clean
 
 help:
 	@echo "Available commands:"
-	@echo "  make setup          - Start all services"
-	@echo "  make up             - Start Docker Compose services"
-	@echo "  make down           - Stop Docker Compose services"
-	@echo "  make test           - Run all tests (backend + frontend)"
+	@echo "  make up             - Build and start the whole stack (docker-compose.yml)"
+	@echo "  make down           - Stop the stack"
+	@echo "  make test           - Run all tests (backend + frontend) in Docker"
 	@echo "  make test-backend   - Run all backend Go tests in Docker (PostgreSQL + hlbIPAM)"
-	@echo "  make test-frontend  - Run Vitest frontend tests locally (no backend needed)"
-	@echo "  make lint           - Run linters"
-	@echo "  make build          - Build the application"
-	@echo "  make clean          - Clean up containers and volumes"
-
-setup:
-	docker compose up -d --build
+	@echo "  make test-frontend  - Type-check and run the Vitest suite in a Node container"
+	@echo "  make clean          - Stop the stack and delete its volumes"
 
 up:
 	docker compose up -d --build
@@ -21,7 +15,6 @@ up:
 down:
 	docker compose down
 
-# Run all tests
 test: test-backend test-frontend
 
 # Starts a throwaway PostgreSQL and hlbIPAM, then runs `go test ./...` for the
@@ -30,18 +23,10 @@ test-backend:
 	docker compose -f docker-compose.test.yml up --build --abort-on-container-exit --exit-code-from backend-test; \
 	status=$$?; docker compose -f docker-compose.test.yml down; exit $$status
 
-# Frontend Vitest tests run locally. buildApi is fully mocked - no backend needed.
+# node_modules lives in a named volume, so nothing is installed on the host.
 test-frontend:
-	@echo "Running frontend tests..."
-	cd frontend && npm test
-
-lint:
-	@echo "Running linters..."
-	# Add lint commands here
-
-build:
-	@echo "Building application..."
-	# Add build commands here
+	docker run --rm -v "$(CURDIR):/repo" -v hlb-frontend-node-modules:/repo/frontend/node_modules -w /repo/frontend \
+		node:22-alpine sh -c "npm ci --legacy-peer-deps && npx tsc -b && npx vitest run"
 
 clean:
 	docker compose down -v

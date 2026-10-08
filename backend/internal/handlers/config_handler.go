@@ -2,11 +2,11 @@ package handlers
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/Butterski/homelab-builder/backend/internal/services"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 type ConfigHandler struct {
@@ -18,21 +18,19 @@ func NewConfigHandler(service *services.ConfigService) *ConfigHandler {
 }
 
 func (h *ConfigHandler) GenerateConfig(c *gin.Context) {
-	userIDVal, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+	userID, ok := currentUser(c)
+	if !ok {
 		return
 	}
 
-	buildID, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid build ID"})
+	buildID, ok := uuidParam(c, "id")
+	if !ok {
 		return
 	}
 
-	bundle, err := h.service.GenerateAll(buildID, userIDVal.(uuid.UUID))
+	bundle, err := h.service.GenerateAll(buildID, userID)
 	if err != nil {
-		fmt.Printf("Config Generate Error: %v\n", err)
+		log.Printf("Config Generate Error: %v", err)
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 		return
 	}
@@ -41,20 +39,18 @@ func (h *ConfigHandler) GenerateConfig(c *gin.Context) {
 }
 
 func (h *ConfigHandler) DownloadBundle(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+	userID, ok := currentUser(c)
+	if !ok {
 		return
 	}
-	buildID, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid build ID"})
+	buildID, ok := uuidParam(c, "id")
+	if !ok {
 		return
 	}
 
-	archive, filename, err := h.service.GenerateCompleteExport(buildID, userID.(uuid.UUID))
+	archive, filename, err := h.service.GenerateCompleteExport(buildID, userID)
 	if err != nil {
-		fmt.Printf("Complete Export Error: %v\n", err)
+		log.Printf("Complete Export Error: %v", err)
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 		return
 	}

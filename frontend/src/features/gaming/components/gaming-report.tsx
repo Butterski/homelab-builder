@@ -1,7 +1,8 @@
 import { AlertTriangle, CheckCircle2, Info, XCircle } from 'lucide-react';
+import { formatMemory } from '../../../lib/format';
 import { cn } from '../../../lib/utils';
 import type { GamingIssue, GamingReport, IssueSeverity } from '../api/gaming';
-import { EXPOSURES, formatMemory } from '../lib/sizing';
+import { EXPOSURES } from '../lib/sizing';
 
 const SEVERITY: Record<IssueSeverity, { icon: typeof Info; className: string; label: string }> = {
   error: { icon: XCircle, className: 'text-destructive', label: 'Must fix' },

@@ -150,7 +150,7 @@ shared instance that must not become a way to reach the server's own network.
 - A self-hosted instance without login allows private addresses, because that is how a model on
   your own network is reached. `ASSISTANT_ALLOW_PRIVATE_ENDPOINTS` overrides the default either way.
 
-Code: [`backend/internal/llm/ssrf.go`](../backend/internal/llm/ssrf.go).
+Code: [`backend/internal/netguard/netguard.go`](../backend/internal/netguard/netguard.go) holds the address rules; [`backend/internal/llm/ssrf.go`](../backend/internal/llm/ssrf.go) checks the base URL and builds the guarded client.
 
 ## Limits
 
@@ -191,7 +191,7 @@ Behind your own reverse proxy, forward `/api/assistant/` unbuffered so replies s
 | Storing, wiping and resolving the key | [`backend/internal/services/assistant_settings_service.go`](../backend/internal/services/assistant_settings_service.go), tests in [`assistant_settings_service_test.go`](../backend/internal/services/assistant_settings_service_test.go) |
 | The key is never serialised | `json:"-"` on the key fields of `AssistantSettings` in [`backend/internal/models/models.go`](../backend/internal/models/models.go) |
 | Where the key is used | [`backend/internal/llm/anthropic.go`](../backend/internal/llm/anthropic.go), [`backend/internal/llm/openai_compat.go`](../backend/internal/llm/openai_compat.go) |
-| Address checks | [`backend/internal/llm/ssrf.go`](../backend/internal/llm/ssrf.go), tests in [`ssrf_test.go`](../backend/internal/llm/ssrf_test.go) |
+| Address checks | [`backend/internal/netguard/netguard.go`](../backend/internal/netguard/netguard.go), tests in [`netguard_test.go`](../backend/internal/netguard/netguard_test.go); the guarded client in [`backend/internal/llm/ssrf.go`](../backend/internal/llm/ssrf.go) |
 | The chat loop and its limits | [`backend/internal/assistant/agent.go`](../backend/internal/assistant/agent.go) |
 | What a selection on the canvas adds to a request | `selectedNodes` in [`agent.go`](../backend/internal/assistant/agent.go), tests in [`agent_test.go`](../backend/internal/assistant/agent_test.go) |
 | Step texts are short plain lines | `brief` in [`backend/internal/assistant/tools.go`](../backend/internal/assistant/tools.go), tests in [`agent_test.go`](../backend/internal/assistant/agent_test.go) |

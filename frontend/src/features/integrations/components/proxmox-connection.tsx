@@ -6,6 +6,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { errorMessage } from '@/lib/utils';
 import {
   useDeleteIntegration,
   useSaveIntegration,
@@ -19,13 +20,13 @@ import {
 import { summaryLine, timeAgo } from '../lib/import-selection';
 
 /** The commands that make a token which can read and nothing else. */
-export const TOKEN_COMMANDS = [
+const TOKEN_COMMANDS = [
   'pveum user add hlbuilder@pve --comment "HLBuilder, read-only"',
   'pveum user token add hlbuilder@pve hlbuilder',
   "pveum acl modify / --users hlbuilder@pve --tokens 'hlbuilder@pve!hlbuilder' --roles PVEAuditor",
 ].join('\n');
 
-export const EXPORT_COMMAND = 'pvesh get /cluster/resources --output-format json';
+const EXPORT_COMMAND = 'pvesh get /cluster/resources --output-format json';
 
 type Mode = 'api' | 'paste';
 
@@ -36,9 +37,6 @@ type ProxmoxConnectionProps = {
   onSaved: (integration: Integration) => void;
   onRemoved: () => void;
 };
-
-const messageOf = (error: unknown, fallback: string) =>
-  error instanceof Error && error.message ? error.message : fallback;
 
 /** What a host presented as its certificate, for the owner to compare. */
 function CertificateFacts({ certificate }: { certificate: Certificate }) {
@@ -128,7 +126,7 @@ export function ProxmoxConnection({
         setTestedWith(JSON.stringify([baseUrl.trim(), tokenId.trim(), secret, trusted]));
     } catch (cause) {
       setResult(null);
-      setError(messageOf(cause, 'The connection could not be tried.'));
+      setError(errorMessage(cause, 'The connection could not be tried.'));
     }
   };
 
@@ -160,7 +158,7 @@ export function ProxmoxConnection({
       }
       onSaved(saved);
     } catch (cause) {
-      setError(messageOf(cause, 'The integration could not be saved.'));
+      setError(errorMessage(cause, 'The integration could not be saved.'));
     }
   };
 
@@ -171,7 +169,7 @@ export function ProxmoxConnection({
       toast.success(`Removed ${integration.name}.`);
       onRemoved();
     } catch (cause) {
-      setError(messageOf(cause, 'The integration could not be removed.'));
+      setError(errorMessage(cause, 'The integration could not be removed.'));
     }
   };
 

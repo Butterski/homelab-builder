@@ -1,34 +1,55 @@
 import { useState, useEffect, useRef, useReducer, useCallback, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { buildApi, type Build, type CreateBuildParams } from '../api/builds';
+import {
+  buildApi,
+  type Build,
+  type BuildEdgeInput,
+  type BuildNodeInput,
+  type BuildSettings,
+  type CreateBuildParams,
+} from '../api/builds';
+import { createBuildWithTopology } from '../api/create-build';
 import { useBuilds, useUpdateBuilds } from '../api/use-builds';
 import { useBuilderStore } from '../store/builder-store';
-import { useAuth } from '../../admin/hooks/use-auth';
+import { useAuth } from '../../auth/hooks/use-auth';
 import { toast } from 'sonner';
 import { ApiError } from '../../../lib/api';
 import { BUILD_KINDS } from '../../gaming/lib/kind';
-import type { BuildKind, GamingPlan } from '../../../types';
-// ─── Inline helpers (extracted from projects-page.tsx to keep them colocated) ───
-const parseDetailsObject = (value: unknown) => {
-  if (!value) return {};
-  if (typeof value === 'string') {
-    try {
-      const parsed = JSON.parse(value);
-      return parsed && typeof parsed === 'object' ? parsed : {};
-    } catch {
-      return {};
-    }
-  }
-  return typeof value === 'object' ? value : {};
+import { parseDetails } from '../lib/build-mapper';
+import type { BuildKind, GamingPlan, HardwareComponent } from '../../../types';
+
+/** A node of a .homelab.json file: details may still be JSON strings. */
+type ImportedNode = Omit<BuildNodeInput, 'details' | 'internal_components'> & {
+  details?: unknown;
+  internal_components?: Array<Omit<HardwareComponent, 'details'> & { details?: unknown }>;
 };
 
-const normalizeNodesForSync = (nodes: any[] = []) =>
+/** An edge of a .homelab.json file, under the payload's names or the server's. */
+type ImportedEdge = Partial<BuildEdgeInput> & { source_node_id?: string; target_node_id?: string };
+
+/**
+ * A .homelab.json file. Older exports also carry the purchase list; it stays
+ * inside the settings, where the server keeps it untouched.
+ */
+type ImportFile = {
+  nodes?: ImportedNode[];
+  hardwareNodes?: ImportedNode[];
+  edges?: unknown;
+  services?: CreateBuildParams['services'];
+  settings?: BuildSettings;
+  kind?: unknown;
+  gaming_plan?: unknown;
+};
+
+type ImportPayload = Omit<CreateBuildParams, 'name' | 'thumbnail'>;
+
+const normalizeNodesForSync = (nodes: ImportedNode[] = []): BuildNodeInput[] =>
   nodes.map(node => ({
     ...node,
-    details: parseDetailsObject(node.details),
-    internal_components: (node.internal_components || []).map((component: any) => ({
+    details: parseDetails(node.details),
+    internal_components: (node.internal_components || []).map(component => ({
       ...component,
-      details: parseDetailsObject(component.details),
+      details: parseDetails(component.details),
     })),
   }));
 
@@ -48,60 +69,37 @@ const summarizeInvalidEdges = (invalidEdges: Array<{ source: string; target: str
 const isBuildKind = (value: unknown): value is BuildKind =>
   BUILD_KINDS.some(entry => entry.kind === value);
 
-const sanitizeImportPayload = (parsed: any) => {
+const sanitizeImportPayload = (parsed: ImportFile) => {
   const rawNodes = parsed.nodes || parsed.hardwareNodes || [];
   const normalizedNodes = normalizeNodesForSync(rawNodes);
-  const rawEdges = Array.isArray(parsed.edges) ? parsed.edges : [];
+  const rawEdges: ImportedEdge[] = Array.isArray(parsed.edges) ? parsed.edges : [];
   const nodeIdSet = new Set(normalizedNodes.map(node => node.id));
-  const validEdges: any[] = [];
+  const validEdges: BuildEdgeInput[] = [];
   const invalidEdges: Array<{ source: string; target: string }> = [];
 
   for (const edge of rawEdges) {
     const source = edge.source ?? edge.source_node_id;
     const target = edge.target ?? edge.target_node_id;
-    if (nodeIdSet.has(source) && nodeIdSet.has(target)) {
+    if (source && target && nodeIdSet.has(source) && nodeIdSet.has(target)) {
       validEdges.push({ ...edge, source, target });
       continue;
     }
     invalidEdges.push({ source: String(source ?? ''), target: String(target ?? '') });
   }
 
-  const settings = {
-    ...(parsed.settings || {}),
-    ...(parsed.boughtItems !== undefined ? { boughtItems: parsed.boughtItems } : {}),
-    ...(parsed.showBought !== undefined ? { showBought: parsed.showBought } : {}),
+  const payload: ImportPayload = {
+    nodes: normalizedNodes,
+    edges: validEdges,
+    services: parsed.services || [],
+    settings: parsed.settings || {},
+    kind: isBuildKind(parsed.kind) ? parsed.kind : undefined,
+    gaming_plan:
+      parsed.gaming_plan && typeof parsed.gaming_plan === 'object'
+        ? (parsed.gaming_plan as Partial<GamingPlan>)
+        : undefined,
   };
-
-  return {
-    payload: {
-      nodes: normalizedNodes,
-      edges: validEdges,
-      services: parsed.services || [],
-      settings,
-      kind: isBuildKind(parsed.kind) ? parsed.kind : undefined,
-      gaming_plan:
-        parsed.gaming_plan && typeof parsed.gaming_plan === 'object'
-          ? (parsed.gaming_plan as Partial<GamingPlan>)
-          : undefined,
-    },
-    warning: summarizeInvalidEdges(invalidEdges),
-  };
+  return { payload, warning: summarizeInvalidEdges(invalidEdges) };
 };
-
-async function createProjectAtomically(params: CreateBuildParams): Promise<Build> {
-  const created = await buildApi.create({ ...params, nodes: [], edges: [], services: [] });
-  if (params.nodes.length === 0) return created;
-  try {
-    const result = await buildApi.updateTopology(created.id, {
-      ...params,
-      revision: created.revision,
-    });
-    return result.build;
-  } catch (error) {
-    await buildApi.delete(created.id).catch(() => undefined);
-    throw error;
-  }
-}
 
 // ─── Modal state types ────────────────────────────────────────────────────────
 type ModalState = {
@@ -172,7 +170,7 @@ export function useProjectsPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const isAuthenticated = !!user;
-  const { loadBuild } = useBuilderStore();
+  const loadBuild = useBuilderStore(state => state.loadBuild);
 
   // "New project" in the sidebar's switcher leads here with the dialog open.
   const location = useLocation();
@@ -193,14 +191,7 @@ export function useProjectsPage() {
   const [search, setSearch] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const importPayloadRef = useRef<{
-    nodes: any[];
-    edges: any[];
-    services: any[];
-    settings: any;
-    kind?: BuildKind;
-    gaming_plan?: Partial<GamingPlan>;
-  } | null>(null);
+  const importPayloadRef = useRef<ImportPayload | null>(null);
   const importWarningRef = useRef<string | null>(null);
 
   const loadFailed = list.isError;
@@ -225,7 +216,7 @@ export function useProjectsPage() {
     reader.onload = ev => {
       const text = ev.target?.result as string;
       try {
-        const parsed = JSON.parse(text);
+        const parsed: ImportFile = JSON.parse(text);
         if (!parsed.hardwareNodes && !parsed.nodes) {
           toast.error('Invalid .homelab.json file');
           return;
@@ -251,13 +242,13 @@ export function useProjectsPage() {
     try {
       const name =
         modal.create.name.trim() || (importPayloadRef.current ? 'Imported Project' : 'New Project');
-      const payload = importPayloadRef.current || {
+      const payload: ImportPayload = importPayloadRef.current || {
         nodes: [],
         edges: [],
         services: [],
         settings: {},
       };
-      const newBuild = await createProjectAtomically({
+      const newBuild = await createBuildWithTopology({
         name,
         thumbnail: '',
         kind: modal.create.kind,
@@ -293,18 +284,15 @@ export function useProjectsPage() {
     e.stopPropagation();
     try {
       const fullBuild = await buildApi.get(build.id);
-      const rawData = fullBuild;
       const payload = {
         version: 1,
         name: fullBuild.name,
         kind: fullBuild.kind || 'homelab',
         gaming_plan: fullBuild.gaming_plan || {},
         exportedAt: new Date().toISOString(),
-        nodes: rawData.nodes || [],
-        edges: rawData.edges || [],
-        settings: rawData.settings || {},
-        boughtItems: rawData.settings?.boughtItems || [],
-        showBought: rawData.settings?.showBought || false,
+        nodes: fullBuild.nodes || [],
+        edges: fullBuild.edges || [],
+        settings: fullBuild.settings || {},
       };
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);

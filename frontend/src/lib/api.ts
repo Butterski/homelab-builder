@@ -1,8 +1,6 @@
 import { apiUrl } from './api-base';
 import type { ThemeSettings } from './theme-registry';
-
-// Assuming User type is defined elsewhere or needs a placeholder
-
+import type { User } from '../types';
 
 export class ApiError extends Error {
     public status: number;
@@ -18,11 +16,16 @@ export class ApiError extends Error {
     }
 }
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
+/** The Authorization header of the signed-in session, for requests made with fetch directly. */
+export function authHeaders(): Record<string, string> {
     const token = localStorage.getItem('auth_token');
+    return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+async function request<T>(path: string, options?: RequestInit): Promise<T> {
     const headers: HeadersInit = {
         'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...authHeaders(),
         ...options?.headers,
     };
 
@@ -39,23 +42,20 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     return res.json();
 }
 
+async function login(path: string, body: unknown) {
+    const res = await request<{ token: string, user: User }>(path, { method: 'POST', body: JSON.stringify(body) });
+    localStorage.setItem('auth_token', res.token);
+    return res;
+}
+
 export const api = {
     get: <T>(path: string) => request<T>(path, { method: 'GET' }),
     post: <T>(path: string, body: unknown) => request<T>(path, { method: 'POST', body: JSON.stringify(body) }),
     put: <T>(path: string, body: unknown) => request<T>(path, { method: 'PUT', body: JSON.stringify(body) }),
     patch: <T>(path: string, body: unknown) => request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
     del: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
-    async devLogin(email: string) {
-        const res = await this.post<{ token: string, user: any }>('/auth/dev', { email });
-        localStorage.setItem('auth_token', res.token);
-        return res;
-    },
-
-    async googleLogin(credential: string) {
-        const res = await this.post<{ token: string, user: any }>('/auth/google', { credential });
-        localStorage.setItem('auth_token', res.token);
-        return res;
-    },
+    devLogin: (email: string) => login('/auth/dev', { email }),
+    googleLogin: (credential: string) => login('/auth/google', { credential }),
 
     getThemeSettings: () => request<ThemeSettings>('/auth/themes', { method: 'GET' }),
     updateThemeSettings: (themeSettings: ThemeSettings) =>

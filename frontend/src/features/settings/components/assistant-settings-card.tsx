@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { errorMessage } from '@/lib/utils';
 import {
   assistantSettingsApi,
   useAssistantSettings,
@@ -27,10 +28,6 @@ import {
 import { KeyProtectionPanel } from './key-protection-panel';
 
 type Draft = { provider?: string; model?: string; baseUrl?: string; apiKey?: string };
-
-function messageOf(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback;
-}
 
 /** The address a preset suggests, when this instance is allowed to call it. */
 function suggestedBaseUrl(preset: ProviderPreset | undefined, allowPrivate: boolean): string {
@@ -110,7 +107,7 @@ function AssistantSettingsForm({ settings }: { settings: AssistantSettings }) {
     } catch (error) {
       setCheck({
         destination: target,
-        result: { ok: false, models: [], error: messageOf(error, 'Could not reach the provider.') },
+        result: { ok: false, models: [], error: errorMessage(error, 'Could not reach the provider.') },
       });
     }
   };
@@ -132,7 +129,7 @@ function AssistantSettingsForm({ settings }: { settings: AssistantSettings }) {
         void checkConnection(`${saved.provider}|${saved.base_url}`);
       }
     } catch (error) {
-      toast.error(messageOf(error, 'Could not save the assistant settings.'));
+      toast.error(errorMessage(error, 'Could not save the assistant settings.'));
     }
   };
 
@@ -140,7 +137,7 @@ function AssistantSettingsForm({ settings }: { settings: AssistantSettings }) {
     try {
       await toggle.mutateAsync({ enabled });
     } catch (error) {
-      toast.error(messageOf(error, 'Could not change the assistant setting.'));
+      toast.error(errorMessage(error, 'Could not change the assistant setting.'));
     }
   };
 
@@ -149,7 +146,7 @@ function AssistantSettingsForm({ settings }: { settings: AssistantSettings }) {
       await deleteKey.mutateAsync();
       toast.success('The stored key was deleted.');
     } catch (error) {
-      toast.error(messageOf(error, 'Could not delete the key.'));
+      toast.error(errorMessage(error, 'Could not delete the key.'));
     }
   };
 
@@ -353,7 +350,7 @@ export function AssistantSettingsCard() {
       await deleteKey.mutateAsync();
       toast.success('The stored key was deleted.');
     } catch (error) {
-      toast.error(messageOf(error, 'Could not delete the key.'));
+      toast.error(errorMessage(error, 'Could not delete the key.'));
     }
   };
 

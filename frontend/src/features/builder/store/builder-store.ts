@@ -17,15 +17,24 @@ import type {
   VirtualMachine,
   HardwareComponent,
   HardwareNodeValidationIssue,
+  HardwareSpec,
   VirtualNetwork,
   BuildKind,
   GamingPlan,
+  EdgePreferences,
 } from '../../../types';
 import { initialVirtualNetwork, removeVirtualEndpoints } from '../lib/virtual-network';
 import { withFreshChildIds } from '../lib/hardware-instance';
-import { buildApi, type Build } from '../api/builds';
+import {
+  buildApi,
+  type Build,
+  type BuildEdgeInput,
+  type BuildNodeInput,
+  type BuildSettings,
+  type CreateBuildParams,
+} from '../api/builds';
 import { proposalApi, type Proposal } from '../api/proposals';
-import { mapBuildToFlow } from '../lib/build-mapper';
+import { mapBuildToFlow, parseDetails } from '../lib/build-mapper';
 import { requiredConnectionType } from '../lib/connection-rules';
 import { newTableDetails } from '../../gaming/lib/table';
 import { newGameInstance, sizeServer } from '../../gaming/lib/sizing';
@@ -34,31 +43,29 @@ import {
   validationToIssues,
   type ProposalPreviewGraph,
 } from '../lib/proposal-preview';
-import { api } from '../../../services/api';
+import { fetchServices as loadServices } from '../../catalog/api/use-services';
 import { ApiError } from '../../../lib/api';
 import { WORKSPACE_STORAGE_KEY, workspaceStorage } from './workspace-storage';
 import { withoutAssetLink } from '../../../lib/asset-link';
 import { computeLayout, type LayoutResult, type LayoutStyle } from '../lib/layout';
 import { layoutGraphFromFlow } from '../lib/layout/from-flow';
-import {
-  RACK_U_HEIGHT_PX,
-  RACK_WIDTH_PX,
-  RACK_HEADER_PX,
-  RACK_FOOTER_PX,
-} from '../components/rack-node-constants';
+import { RACK_WIDTH_PX, rackHeightPx } from '../components/rack-node-constants';
 
 let topologyMutationQueue: Promise<void> = Promise.resolve();
 
 // Details the server computes. A key that is missing from the server's answer
 // is gone (DHCP was switched off, a gateway stopped routing), so the local copy
 // must not keep it.
-const DERIVED_DETAIL_KEYS = ['dhcp_pool', 'wan_ip', 'lan_gateway_ip', 'lan_subnet', 'interfaces'];
+const DERIVED_DETAIL_KEYS: Array<keyof HardwareSpec> = [
+  'dhcp_pool',
+  'wan_ip',
+  'lan_gateway_ip',
+  'lan_subnet',
+  'interfaces',
+];
 
-function mergeServerDetails(
-  local: Record<string, unknown> | undefined,
-  server: Record<string, unknown>,
-): Record<string, unknown> {
-  const merged: Record<string, unknown> = { ...(local ?? {}) };
+function mergeServerDetails(local: HardwareSpec | undefined, server: HardwareSpec): HardwareSpec {
+  const merged: HardwareSpec = { ...(local ?? {}) };
   for (const key of DERIVED_DETAIL_KEYS) delete merged[key];
   return { ...merged, ...server };
 }
@@ -81,7 +88,7 @@ export class BuildConflictError extends Error {
 }
 
 /** Whether the graph in the store belongs to `currentBuildId`. */
-export type BuildStatus = 'idle' | 'loading' | 'ready' | 'error';
+type BuildStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 /** "unsaved" means the canvas differs from the server and a save is due. */
 export type SaveState = 'saved' | 'unsaved' | 'saving' | 'error';
@@ -114,6 +121,102 @@ type Snapshot = {
   edges: Edge[];
   hardwareNodes: HardwareNode[];
   meta?: SnapshotMeta;
+};
+
+/** How many steps Undo can go back. */
+const HISTORY_LIMIT = 50;
+
+/** The undo stack with `step` on top. A new step drops whatever Redo could bring back. */
+function withStep(past: Snapshot[], step: Snapshot) {
+  return { historyPast: [...past, step].slice(-HISTORY_LIMIT), historyFuture: [] as Snapshot[] };
+}
+
+type Canvas = Pick<Snapshot, 'nodes' | 'edges' | 'hardwareNodes'>;
+
+/** The undo step for an edit of the canvas `state` holds now. */
+function recordEdit(state: Canvas & { historyPast: Snapshot[] }) {
+  return withStep(state.historyPast, {
+    nodes: state.nodes,
+    edges: state.edges,
+    hardwareNodes: state.hardwareNodes,
+  });
+}
+
+/**
+ * Merges what `change` returns into one device, in the device list and in the
+ * data of its card, so the card shows it at once.
+ */
+function changeDevice(
+  state: Canvas,
+  nodeId: string,
+  change: (device: HardwareNode) => Partial<HardwareNode>,
+): Pick<Canvas, 'nodes' | 'hardwareNodes'> {
+  const device = state.hardwareNodes.find(node => node.id === nodeId);
+  if (!device) return { nodes: state.nodes, hardwareNodes: state.hardwareNodes };
+  const patch = change(device);
+  return {
+    hardwareNodes: state.hardwareNodes.map(node => (node === device ? { ...device, ...patch } : node)),
+    nodes: state.nodes.map(node =>
+      node.id === nodeId ? { ...node, data: { ...node.data, ...patch } } : node,
+    ),
+  };
+}
+
+/** The devices, each at the position its canvas node has now. */
+function withNodePositions(hardwareNodes: HardwareNode[], nodes: Node[]): HardwareNode[] {
+  const placed = new Map(nodes.map(node => [node.id, node.position]));
+  return hardwareNodes.map(node => {
+    const position = placed.get(node.id);
+    return position && (position.x !== node.x || position.y !== node.y)
+      ? { ...node, x: position.x, y: position.y }
+      : node;
+  });
+}
+
+/** Recalculates the addresses (a save) once the change being made is in the store. */
+function reassignSoon(store: () => BuilderState) {
+  setTimeout(() => {
+    void store()
+      .reassignAllIPs()
+      .catch(() => undefined);
+  }, 0);
+}
+
+/** The step that undoes `snap`: the canvas now, with the fields `snap` would change. */
+function stepBack(state: BuilderState, snap: Snapshot): Snapshot {
+  return {
+    nodes: state.nodes,
+    edges: state.edges,
+    hardwareNodes: state.hardwareNodes,
+    ...(snap.meta ? { meta: currentMeta(snap.meta, state) } : {}),
+  };
+}
+
+/** What brings back `snap`, keeping the selection and open network where they still exist. */
+function restoreStep(state: BuilderState, snap: Snapshot) {
+  return {
+    virtualHostId: snap.hardwareNodes.some(
+      node => node.id === state.virtualHostId && node.details?.virtual_network,
+    )
+      ? state.virtualHostId
+      : null,
+    nodes: snap.nodes,
+    edges: snap.edges,
+    hardwareNodes: snap.hardwareNodes,
+    selectedNodeId: snap.nodes.some(node => node.id === state.selectedNodeId)
+      ? state.selectedNodeId
+      : null,
+    ...(snap.meta ?? {}),
+  };
+}
+
+/** A node as the store saves it, every field filled in. */
+type SavedNode = Required<Omit<BuildNodeInput, 'parent_id'>> & Pick<BuildNodeInput, 'parent_id'>;
+
+/** What a save sends besides the name and revision. */
+type BuildData = Omit<CreateBuildParams, 'name' | 'thumbnail' | 'nodes' | 'edges'> & {
+  nodes: SavedNode[];
+  edges: Array<Required<BuildEdgeInput>>;
 };
 
 /** The key the store used before 1.3 to keep a whole canvas in the browser. */
@@ -160,7 +263,7 @@ type GraphPayload = {
  * Addresses and other values the server calculates are left out, so a payload
  * we sent and the build the server made of it give the same signature.
  */
-export function graphSignature(payload: GraphPayload): string {
+function graphSignature(payload: GraphPayload): string {
   const nodes = payload.nodes
     .map(node => ({
       id: node.id,
@@ -253,8 +356,6 @@ interface BuilderState {
   removeVM: (nodeId: string, vmId: string) => void;
   updateVM: (nodeId: string, vmId: string, updates: Partial<VirtualMachine>) => void;
 
-  // Actions
-  autoAssignIP: (nodeId?: string) => string | null;
   reassignAllIPs: () => Promise<void>;
 
   // What the open build is planned for, and its gaming plan as loaded. The plan
@@ -267,35 +368,17 @@ interface BuilderState {
 
   // Build settings as loaded from the server. Keys this store does not manage
   // itself are sent back unchanged, because a save replaces the whole object.
-  buildSettings: Record<string, unknown>;
+  buildSettings: BuildSettings;
   /** Which steps of the setup guide are ticked off. Kept in the settings, so it is saved with the build. */
   setSetupDone: (stepIds: string[]) => void;
 
-  // Purchase Tracking
-  boughtItems: string[];
-  markAsBought: (itemName: string) => void;
-  unmarkAsBought: (itemName: string) => void;
-  showBought: boolean;
-  setShowBought: (v: boolean) => void;
-
   // Visual Preferences
-  edgePreferences: {
-    routingEngine: 'smart' | 'direct';
-    connectionStyle: 'floating' | 'strict';
-    lineStyle: 'bezier' | 'step' | 'straight';
-    ignoreNetworkLoops: boolean;
-    showNetworkZones: boolean;
-    showLanZones: boolean;
-    showNatZones: boolean;
-    zoneOpacity: number;
-  };
-  setEdgePreferences: (prefs: Partial<BuilderState['edgePreferences']>) => void;
+  edgePreferences: EdgePreferences;
+  setEdgePreferences: (prefs: Partial<EdgePreferences>) => void;
 
   // Network Validation
   validationIssues: HardwareNodeValidationIssue[];
   validateNetwork: () => Promise<void>;
-
-  clear: () => void;
 
   // ── API Persistence ────────────────────────────────────────────────
   currentBuildId: string | null;
@@ -332,12 +415,11 @@ interface BuilderState {
   layoutMotion: number;
 
   projectName: string;
-  projectThumbnail: string;
   setProjectName: (name: string) => void;
 
   loadBuild: (id: string, name: string, data: Build) => void;
   openBuild: (id: string) => Promise<void>;
-  getBuildData: () => any;
+  getBuildData: () => BuildData;
 
   /** Fingerprint of the topology as last loaded from or saved to the server. */
   lastSyncedFingerprint: string;
@@ -359,11 +441,6 @@ interface BuilderState {
   applyProposal: (proposalId: string) => Promise<void>;
   /** The devices of the proposal applied last, so the canvas can light them up once. */
   appliedGlow: { ids: string[]; nonce: number } | null;
-
-  // Computed getters
-  totalCpu: () => number;
-  totalRam: () => number;
-  totalStorage: () => number;
 
   // Undo / Redo
   historyPast: Snapshot[];
@@ -387,13 +464,7 @@ export const useBuilderStore = create<BuilderState>()(
         const state = get();
         const host = state.hardwareNodes.find(node => node.id === hostId);
         if (!host) return;
-        set({
-          historyPast: [
-            ...state.historyPast,
-            { nodes: state.nodes, edges: state.edges, hardwareNodes: state.hardwareNodes },
-          ].slice(-50),
-          historyFuture: [],
-        });
+        set(recordEdit(state));
         get().updateHardware(hostId, { details: { ...host.details, virtual_network: network } });
       },
       hardwareNodes: [],
@@ -412,8 +483,6 @@ export const useBuilderStore = create<BuilderState>()(
           if (stepIds.length === 0 && !('setupDone' in state.buildSettings)) return state;
           return { buildSettings: { ...state.buildSettings, setupDone: stepIds } };
         }),
-      boughtItems: [],
-      showBought: false,
       historyPast: [],
       historyFuture: [],
       edgePreferences: {
@@ -430,8 +499,7 @@ export const useBuilderStore = create<BuilderState>()(
       availableServices: [],
       fetchServices: async () => {
         try {
-          const res = await api.getServices();
-          set({ availableServices: res.data || [] });
+          set({ availableServices: await loadServices() });
         } catch (e) {
           console.error('Failed to fetch services', e);
         }
@@ -443,7 +511,6 @@ export const useBuilderStore = create<BuilderState>()(
         })),
 
       projectName: 'My Homelab',
-      projectThumbnail: '',
       currentBuildId: null,
       currentRevision: 0,
       buildStatus: 'idle',
@@ -500,20 +567,10 @@ export const useBuilderStore = create<BuilderState>()(
         });
         if (moved === 0) return 0;
 
-        const placed = new Map(nodes.map(node => [node.id, node.position]));
         set({
-          historyPast: [
-            ...state.historyPast,
-            { nodes: state.nodes, edges: state.edges, hardwareNodes: state.hardwareNodes },
-          ].slice(-50),
-          historyFuture: [],
+          ...recordEdit(state),
           nodes,
-          hardwareNodes: state.hardwareNodes.map(node => {
-            const position = placed.get(node.id);
-            return position && (position.x !== node.x || position.y !== node.y)
-              ? { ...node, x: position.x, y: position.y }
-              : node;
-          }),
+          hardwareNodes: withNodePositions(state.hardwareNodes, nodes),
           layoutMotion: state.layoutMotion + 1,
         });
         get().requestCanvasFocus(null);
@@ -524,18 +581,14 @@ export const useBuilderStore = create<BuilderState>()(
 
       onNodesChange: changes => {
         const state = get();
-        const dragEnds = changes.filter(c => c.type === 'position' && !(c as any).dragging);
+        const dragEnds = changes.filter(c => c.type === 'position' && !c.dragging);
         const removals = changes.filter(c => c.type === 'remove');
         if (dragEnds.length === 0 && removals.length === 0) {
           set({ nodes: applyNodeChanges(changes, state.nodes) });
           return;
         }
 
-        const snap: Snapshot = {
-          nodes: state.nodes,
-          edges: state.edges,
-          hardwareNodes: state.hardwareNodes,
-        };
+        const step = recordEdit(state);
         let nodes = applyNodeChanges(changes, state.nodes);
         let hardwareNodes = state.hardwareNodes;
         let edges = state.edges;
@@ -553,18 +606,9 @@ export const useBuilderStore = create<BuilderState>()(
           edges = edges.filter(edge => !gone.has(edge.source) && !gone.has(edge.target));
           if (selectedNodeId && gone.has(selectedNodeId)) selectedNodeId = null;
         }
-        if (dragEnds.length > 0) {
-          const moved = new Map(nodes.map(node => [node.id, node.position]));
-          hardwareNodes = hardwareNodes.map(node => {
-            const position = moved.get(node.id);
-            return position && (position.x !== node.x || position.y !== node.y)
-              ? { ...node, x: position.x, y: position.y }
-              : node;
-          });
-        }
+        if (dragEnds.length > 0) hardwareNodes = withNodePositions(hardwareNodes, nodes);
         set({
-          historyPast: [...state.historyPast, snap].slice(-50),
-          historyFuture: [],
+          ...step,
           nodes,
           hardwareNodes,
           edges,
@@ -575,16 +619,7 @@ export const useBuilderStore = create<BuilderState>()(
         const removals = changes.filter(c => c.type === 'remove');
         if (removals.length > 0) {
           const state = get();
-          const snap: Snapshot = {
-            nodes: state.nodes,
-            edges: state.edges,
-            hardwareNodes: state.hardwareNodes,
-          };
-          set({
-            historyPast: [...state.historyPast, snap].slice(-50),
-            historyFuture: [],
-            edges: applyEdgeChanges(changes, state.edges),
-          });
+          set({ ...recordEdit(state), edges: applyEdgeChanges(changes, state.edges) });
         } else {
           set({ edges: applyEdgeChanges(changes, get().edges) });
         }
@@ -613,11 +648,7 @@ export const useBuilderStore = create<BuilderState>()(
       },
       onConnect: (connection: Connection) => {
         const state = get();
-        const snap: Snapshot = {
-          nodes: state.nodes,
-          edges: state.edges,
-          hardwareNodes: state.hardwareNodes,
-        };
+        const step = recordEdit(state);
         const hardwareById = new Map(state.hardwareNodes.map(n => [n.id, n]));
         const sourceHardware = connection.source ? hardwareById.get(connection.source) : undefined;
         const targetHardware = connection.target ? hardwareById.get(connection.target) : undefined;
@@ -627,7 +658,6 @@ export const useBuilderStore = create<BuilderState>()(
           required !== 'ethernet' &&
           (sourceHardware?.type === 'access_point' || targetHardware?.type === 'access_point');
 
-        // Default new edges to custom type
         const newEdges = addEdge(
           {
             ...connection,
@@ -642,19 +672,9 @@ export const useBuilderStore = create<BuilderState>()(
           },
           state.edges,
         );
-        set({
-          historyPast: [...state.historyPast, snap].slice(-50),
-          historyFuture: [],
-          edges: newEdges,
-          validationIssues: [],
-        });
-
-        // Trigger graph-aware IP recalculation whenever a new edge is drawn
-        setTimeout(() => {
-          void get()
-            .reassignAllIPs()
-            .catch(() => undefined);
-        }, 0);
+        set({ ...step, edges: newEdges, validationIssues: [] });
+        // A new cable can change which network a device is in.
+        reassignSoon(get);
       },
 
       selectNode: nodeId => set({ selectedNodeId: nodeId }),
@@ -671,16 +691,7 @@ export const useBuilderStore = create<BuilderState>()(
               }
             : rawNode;
         set(state => {
-          const snap: Snapshot = {
-            nodes: state.nodes,
-            edges: state.edges,
-            hardwareNodes: state.hardwareNodes,
-          };
-
           const isRack = hardwareNode.type === 'rack';
-          const rackSize = hardwareNode.details?.rack_size || 24;
-          const totalHeight = RACK_HEADER_PX + rackSize * RACK_U_HEIGHT_PX + RACK_FOOTER_PX;
-
           const reactFlowNode: Node = {
             id: hardwareNode.id,
             type: isRack ? 'rack' : 'hardware',
@@ -688,7 +699,10 @@ export const useBuilderStore = create<BuilderState>()(
             data: { label: hardwareNode.name, ...hardwareNode },
             ...(isRack
               ? {
-                  style: { width: RACK_WIDTH_PX, height: totalHeight },
+                  style: {
+                    width: RACK_WIDTH_PX,
+                    height: rackHeightPx(hardwareNode.details?.rack_size),
+                  },
                   zIndex: -1,
                 }
               : {}),
@@ -701,8 +715,7 @@ export const useBuilderStore = create<BuilderState>()(
           };
 
           return {
-            historyPast: [...state.historyPast, snap].slice(-50),
-            historyFuture: [],
+            ...recordEdit(state),
             hardwareNodes: [...state.hardwareNodes, hardwareNode],
             nodes: [...state.nodes, reactFlowNode],
           };
@@ -711,25 +724,17 @@ export const useBuilderStore = create<BuilderState>()(
 
       removeHardware: nodeId =>
         set(state => {
-          const snap: Snapshot = {
-            nodes: state.nodes,
-            edges: state.edges,
-            hardwareNodes: state.hardwareNodes,
-          };
-          // If removing a rack, also remove all children
+          // A rack goes together with what is mounted in it.
           const removedNode = state.hardwareNodes.find(n => n.id === nodeId);
-          const isRack = removedNode?.type === 'rack';
-          const childIds = new Set<string>();
-          if (isRack) {
+          const allRemovedIds = new Set([nodeId]);
+          if (removedNode?.type === 'rack') {
             for (const n of state.hardwareNodes) {
-              if (n.parent_id === nodeId) childIds.add(n.id);
+              if (n.parent_id === nodeId) allRemovedIds.add(n.id);
             }
           }
-          const allRemovedIds = new Set([nodeId, ...childIds]);
 
           return {
-            historyPast: [...state.historyPast, snap].slice(-50),
-            historyFuture: [],
+            ...recordEdit(state),
             hardwareNodes: state.hardwareNodes.filter(n => !allRemovedIds.has(n.id)),
             nodes: state.nodes.filter(n => !allRemovedIds.has(n.id)),
             edges: state.edges.filter(
@@ -799,115 +804,40 @@ export const useBuilderStore = create<BuilderState>()(
           data: { label: dup.name, ...dup },
           ...(dup.parent_id ? { parentId: dup.parent_id, extent: 'parent' as const } : {}),
         };
-        const snap: Snapshot = {
-          nodes: state.nodes,
-          edges: state.edges,
-          hardwareNodes: state.hardwareNodes,
-        };
         set({
-          historyPast: [...state.historyPast, snap].slice(-50),
-          historyFuture: [],
+          ...recordEdit(state),
           hardwareNodes: [...state.hardwareNodes, dup],
           nodes: [...state.nodes, rfNode],
           selectedNodeId: newId,
         });
       },
 
-      addInternalComponent: (nodeId, component) => {
-        set(state => {
-          const snap: Snapshot = {
-            nodes: state.nodes,
-            edges: state.edges,
-            hardwareNodes: state.hardwareNodes,
-          };
-          const updated = state.hardwareNodes.map(n =>
-            n.id === nodeId
-              ? { ...n, internal_components: [...(n.internal_components || []), component] }
-              : n,
-          );
-          return {
-            historyPast: [...state.historyPast, snap].slice(-50),
-            historyFuture: [],
-            hardwareNodes: updated,
-            nodes: state.nodes.map(n =>
-              n.id === nodeId
-                ? {
-                    ...n,
-                    data: {
-                      ...n.data,
-                      internal_components: updated.find(h => h.id === nodeId)?.internal_components,
-                    },
-                  }
-                : n,
-            ),
-          };
-        });
-      },
+      addInternalComponent: (nodeId, component) =>
+        set(state => ({
+          ...recordEdit(state),
+          ...changeDevice(state, nodeId, device => ({
+            internal_components: [...(device.internal_components || []), component],
+          })),
+        })),
 
-      removeInternalComponent: (nodeId, componentId) => {
-        set(state => {
-          const snap: Snapshot = {
-            nodes: state.nodes,
-            edges: state.edges,
-            hardwareNodes: state.hardwareNodes,
-          };
-          const updated = state.hardwareNodes.map(n =>
-            n.id === nodeId
-              ? {
-                  ...n,
-                  internal_components: (n.internal_components || []).filter(
-                    c => c.id !== componentId,
-                  ),
-                }
-              : n,
-          );
-          return {
-            historyPast: [...state.historyPast, snap].slice(-50),
-            historyFuture: [],
-            hardwareNodes: updated,
-            nodes: state.nodes.map(n =>
-              n.id === nodeId
-                ? {
-                    ...n,
-                    data: {
-                      ...n.data,
-                      internal_components: updated.find(h => h.id === nodeId)?.internal_components,
-                    },
-                  }
-                : n,
+      removeInternalComponent: (nodeId, componentId) =>
+        set(state => ({
+          ...recordEdit(state),
+          ...changeDevice(state, nodeId, device => ({
+            internal_components: (device.internal_components || []).filter(
+              c => c.id !== componentId,
             ),
-          };
-        });
-      },
+          })),
+        })),
 
-      updateInternalComponent: (nodeId, componentId, updates) => {
-        set(state => {
-          const updated = state.hardwareNodes.map(n =>
-            n.id === nodeId
-              ? {
-                  ...n,
-                  internal_components: (n.internal_components || []).map(c =>
-                    c.id === componentId ? { ...c, ...updates } : c,
-                  ),
-                }
-              : n,
-          );
-          return {
-            hardwareNodes: updated,
-            nodes: state.nodes.map(n =>
-              n.id === nodeId
-                ? {
-                    ...n,
-                    data: {
-                      ...n.data,
-                      internal_components: updated.find(h => h.id === nodeId)?.internal_components,
-                    },
-                  }
-                : n,
+      updateInternalComponent: (nodeId, componentId, updates) =>
+        set(state =>
+          changeDevice(state, nodeId, device => ({
+            internal_components: (device.internal_components || []).map(c =>
+              c.id === componentId ? { ...c, ...updates } : c,
             ),
-          };
-        });
-      },
+          })),
+        ),
 
       // ── VM Management ──────────────────────────────────────────────────
       addVM: (nodeId, rawVM) => {
@@ -928,163 +858,54 @@ export const useBuilderStore = create<BuilderState>()(
           };
         }
         set(state => {
-          const snap: Snapshot = {
-            nodes: state.nodes,
-            edges: state.edges,
-            hardwareNodes: state.hardwareNodes,
-          };
-          let updatedNodes = [...state.hardwareNodes];
-          const hostIndex = updatedNodes.findIndex(n => n.id === nodeId);
-          if (hostIndex === -1) return state;
-
-          let hostNode = updatedNodes[hostIndex];
-          // Logic removed: Client-side IP assignment.
-          // Just add the VM. Backend will assign IP.
-          const vmWithIP = vm;
-
-          const finalHost = { ...hostNode, vms: [...(hostNode.vms || []), vmWithIP] };
-          updatedNodes[hostIndex] = finalHost;
-
+          if (!state.hardwareNodes.some(n => n.id === nodeId)) return state;
           return {
-            historyPast: [...state.historyPast, snap].slice(-50),
-            historyFuture: [],
-            hardwareNodes: updatedNodes,
-            // Sync React Flow node data so the card re-renders
-            nodes: state.nodes.map(n =>
-              n.id === nodeId
-                ? {
-                    ...n,
-                    data: {
-                      ...n.data,
-                      ip: finalHost.ip,
-                      vms: finalHost.vms,
-                    },
-                  }
-                : n,
-            ),
+            ...recordEdit(state),
+            ...changeDevice(state, nodeId, host => ({ vms: [...(host.vms || []), vm] })),
           };
         });
-
-        // Automatically assign IP when VM is added
-        setTimeout(() => {
-          void get()
-            .reassignAllIPs()
-            .catch(() => undefined);
-        }, 0);
+        // The server gives the new guest its address.
+        reassignSoon(get);
       },
 
       removeVM: (nodeId, vmId) => {
-        set(state => {
-          const snap: Snapshot = {
-            nodes: state.nodes,
-            edges: state.edges,
-            hardwareNodes: state.hardwareNodes,
-          };
-          const updated = state.hardwareNodes.map(n =>
-            n.id === nodeId
-              ? {
-                  ...n,
-                  vms: (n.vms || []).filter(v => v.id !== vmId),
-                  details: {
-                    ...n.details,
-                    ...(n.details?.virtual_network
-                      ? {
-                          virtual_network: removeVirtualEndpoints(
-                            n.details.virtual_network,
-                            new Set([vmId]),
-                          ),
-                        }
-                      : {}),
-                  },
-                }
-              : n,
-          );
-          return {
-            historyPast: [...state.historyPast, snap].slice(-50),
-            historyFuture: [],
-            hardwareNodes: updated,
-            nodes: state.nodes.map(n =>
-              n.id === nodeId
+        set(state => ({
+          ...recordEdit(state),
+          ...changeDevice(state, nodeId, host => ({
+            vms: (host.vms || []).filter(v => v.id !== vmId),
+            details: {
+              ...host.details,
+              ...(host.details?.virtual_network
                 ? {
-                    ...n,
-                    data: {
-                      ...n.data,
-                      vms: updated.find(h => h.id === nodeId)?.vms,
-                      details: updated.find(h => h.id === nodeId)?.details,
-                    },
+                    virtual_network: removeVirtualEndpoints(
+                      host.details.virtual_network,
+                      new Set([vmId]),
+                    ),
                   }
-                : n,
-            ),
-          };
-        });
-
-        // Automatically recalculate IPs when VM is removed
-        setTimeout(() => {
-          void get()
-            .reassignAllIPs()
-            .catch(() => undefined);
-        }, 0);
+                : {}),
+            },
+          })),
+        }));
+        reassignSoon(get);
       },
 
-      updateVM: (nodeId, vmId, updates) => {
-        set(state => {
-          const updated = state.hardwareNodes.map(n =>
-            n.id === nodeId
-              ? { ...n, vms: (n.vms || []).map(v => (v.id === vmId ? { ...v, ...updates } : v)) }
-              : n,
-          );
-          return {
-            historyPast: [
-              ...state.historyPast,
-              { nodes: state.nodes, edges: state.edges, hardwareNodes: state.hardwareNodes },
-            ].slice(-50),
-            historyFuture: [],
-            hardwareNodes: updated,
-            nodes: state.nodes.map(n =>
-              n.id === nodeId
-                ? { ...n, data: { ...n.data, vms: updated.find(h => h.id === nodeId)?.vms } }
-                : n,
-            ),
-          };
-        });
-      },
-
-      autoAssignIP: _nodeId => {
-        // Deprecated. Backend only.
-        void get()
-          .reassignAllIPs()
-          .catch(() => undefined);
-        return null;
-      },
+      updateVM: (nodeId, vmId, updates) =>
+        set(state => ({
+          ...recordEdit(state),
+          ...changeDevice(state, nodeId, host => ({
+            vms: (host.vms || []).map(v => (v.id === vmId ? { ...v, ...updates } : v)),
+          })),
+        })),
 
       undo: () => {
         const state = get();
         if (state.proposalPreview || state.historyPast.length === 0) return;
         const past = [...state.historyPast];
         const snap = past.pop()!;
-        // A step that changed the name, kind or plan takes them back as well;
-        // the step for redo then has to remember what they are now.
-        const current: Snapshot = {
-          nodes: state.nodes,
-          edges: state.edges,
-          hardwareNodes: state.hardwareNodes,
-          ...(snap.meta ? { meta: currentMeta(snap.meta, state) } : {}),
-        };
         set({
           historyPast: past,
-          virtualHostId: snap.hardwareNodes.some(
-            node => node.id === state.virtualHostId && node.details?.virtual_network,
-          )
-            ? state.virtualHostId
-            : null,
-          historyFuture: [current, ...state.historyFuture].slice(0, 50),
-          nodes: snap.nodes,
-          edges: snap.edges,
-          hardwareNodes: snap.hardwareNodes,
-          selectedNodeId: snap.nodes.some(node => node.id === state.selectedNodeId)
-            ? state.selectedNodeId
-            : null,
-          ...(snap.meta ?? {}),
+          historyFuture: [stepBack(state, snap), ...state.historyFuture].slice(0, HISTORY_LIMIT),
+          ...restoreStep(state, snap),
         });
       },
 
@@ -1093,27 +914,10 @@ export const useBuilderStore = create<BuilderState>()(
         if (state.proposalPreview || state.historyFuture.length === 0) return;
         const future = [...state.historyFuture];
         const snap = future.shift()!;
-        const current: Snapshot = {
-          nodes: state.nodes,
-          edges: state.edges,
-          hardwareNodes: state.hardwareNodes,
-          ...(snap.meta ? { meta: currentMeta(snap.meta, state) } : {}),
-        };
         set({
-          historyPast: [...state.historyPast, current].slice(-50),
-          virtualHostId: snap.hardwareNodes.some(
-            node => node.id === state.virtualHostId && node.details?.virtual_network,
-          )
-            ? state.virtualHostId
-            : null,
+          historyPast: [...state.historyPast, stepBack(state, snap)].slice(-HISTORY_LIMIT),
           historyFuture: future,
-          nodes: snap.nodes,
-          edges: snap.edges,
-          hardwareNodes: snap.hardwareNodes,
-          selectedNodeId: snap.nodes.some(node => node.id === state.selectedNodeId)
-            ? state.selectedNodeId
-            : null,
-          ...(snap.meta ?? {}),
+          ...restoreStep(state, snap),
         });
       },
 
@@ -1144,67 +948,43 @@ export const useBuilderStore = create<BuilderState>()(
             if (get().currentBuildId !== currentBuildId) return;
             const build = response.build;
 
-            // Build a lookup: "id" → { nodeIp, vmIps }
-            type VmIpMap = Map<string, string>;
-            interface NodeIpEntry {
-              nodeIp: string;
-              vmMap: VmIpMap;
-              details: Record<string, unknown>;
-            }
-            const parseDetails = (details: unknown): Record<string, unknown> => {
-              if (!details) return {};
-              if (typeof details === 'string') {
-                try {
-                  const parsed = JSON.parse(details);
-                  return parsed && typeof parsed === 'object' ? parsed : {};
-                } catch {
-                  return {};
-                }
-              }
-              return typeof details === 'object' ? (details as Record<string, unknown>) : {};
-            };
-            const ipById = new Map<string, NodeIpEntry>();
-            ((build as any).nodes ?? []).forEach((n: any) => {
-              const vmIps: VmIpMap = new Map();
-              (n.virtual_machines ?? []).forEach((vm: any) => {
-                vmIps.set(vm.id, vm.ip || '');
-              });
-              const details = parseDetails(n.details);
+            // The addresses and derived details the server calculated, by node id.
+            const fromServer = new Map<
+              string,
+              { ip?: string; vmIps: Map<string, string>; details: HardwareSpec }
+            >();
+            for (const node of build.nodes ?? []) {
+              const details = parseDetails(node.details);
               delete details.virtual_network;
-              ipById.set(n.id, { nodeIp: n.ip, vmMap: vmIps, details });
-            });
+              fromServer.set(node.id, {
+                ip: node.ip,
+                vmIps: new Map((node.virtual_machines ?? []).map(vm => [vm.id, vm.ip || ''])),
+                details,
+              });
+            }
 
-            // Patch local state
             const hardwareNodesWithIPs = get().hardwareNodes.map(hn => {
-              const entry = ipById.get(hn.id);
+              const entry = fromServer.get(hn.id);
               if (!entry) return hn;
               return {
                 ...hn,
-                ip: entry.nodeIp,
-                details: mergeServerDetails(
-                  hn.details as Record<string, unknown> | undefined,
-                  entry.details,
-                ),
-                vms: hn.vms?.map(vm => ({ ...vm, ip: entry.vmMap.get(vm.id) ?? vm.ip })),
+                ip: entry.ip,
+                details: mergeServerDetails(hn.details, entry.details),
+                vms: hn.vms?.map(vm => ({ ...vm, ip: entry.vmIps.get(vm.id) ?? vm.ip })),
               };
             });
 
             const reactFlowNodesWithIPs = get().nodes.map(rfn => {
-              const entry = ipById.get(rfn.id);
+              const entry = fromServer.get(rfn.id);
               if (!entry) return rfn;
+              const data: Partial<HardwareNode> = rfn.data;
               return {
                 ...rfn,
                 data: {
                   ...rfn.data,
-                  ip: entry.nodeIp,
-                  details: mergeServerDetails(
-                    rfn.data?.details as Record<string, unknown> | undefined,
-                    entry.details,
-                  ),
-                  vms: (Array.isArray(rfn.data?.vms) ? rfn.data.vms : []).map((vm: any) => ({
-                    ...vm,
-                    ip: entry.vmMap.get(vm.id) ?? vm.ip,
-                  })),
+                  ip: entry.ip,
+                  details: mergeServerDetails(data.details, entry.details),
+                  vms: (data.vms ?? []).map(vm => ({ ...vm, ip: entry.vmIps.get(vm.id) ?? vm.ip })),
                 },
               };
             });
@@ -1212,8 +992,8 @@ export const useBuilderStore = create<BuilderState>()(
             // Edits made while the request was in flight are not on the server yet.
             const editedDuringSave = JSON.stringify(get().getBuildData()) !== sentFingerprint;
             set({
-              hardwareNodes: hardwareNodesWithIPs as HardwareNode[],
-              nodes: reactFlowNodesWithIPs as Node[],
+              hardwareNodes: hardwareNodesWithIPs,
+              nodes: reactFlowNodesWithIPs,
               currentRevision: build.revision,
             });
             if (!editedDuringSave) {
@@ -1227,17 +1007,7 @@ export const useBuilderStore = create<BuilderState>()(
             });
 
             if (response.validation) {
-              const issues: HardwareNodeValidationIssue[] = [
-                ...(response.validation.errors || []).map(issue => ({
-                  ...issue,
-                  type: 'error' as const,
-                })),
-                ...(response.validation.warnings || []).map(issue => ({
-                  ...issue,
-                  type: 'warning' as const,
-                })),
-              ];
-              set({ validationIssues: issues });
+              set({ validationIssues: validationToIssues(response.validation) });
             }
           } catch (e) {
             if (get().currentBuildId !== currentBuildId) throw e;
@@ -1281,7 +1051,7 @@ export const useBuilderStore = create<BuilderState>()(
                 };
                 const past = before.historyPast;
                 get().loadBuild(latest.id, latest.name, latest);
-                set({ historyPast: [...past, mine].slice(-50), historyFuture: [] });
+                set(withStep(past, mine));
                 void get().validateNetwork();
                 throw new BuildConflictError();
               }
@@ -1319,35 +1089,12 @@ export const useBuilderStore = create<BuilderState>()(
           const response = await buildApi.validateNetwork(currentBuildId);
           // The build may have been closed or switched while the check ran.
           if (get().currentBuildId !== currentBuildId) return;
-          // Ensure response is the nested JSON from hlbIPAM (it might be wrapped by our API)
-          const data = response?.data || response || {};
-
-          const issues: HardwareNodeValidationIssue[] = [];
-
-          if (data.errors && Array.isArray(data.errors)) {
-            data.errors.forEach((e: any) => issues.push({ ...e, type: 'error' }));
-          }
-          if (data.warnings && Array.isArray(data.warnings)) {
-            data.warnings.forEach((w: any) => issues.push({ ...w, type: 'warning' }));
-          }
-
-          set({ validationIssues: issues });
+          set({ validationIssues: validationToIssues(response) });
         } catch (e) {
           console.error('Failed to validate network', e);
           set({ validationIssues: [] });
         }
       },
-
-      // ── Purchase Tracking ──────────────────────────────────────────────
-      markAsBought: itemName =>
-        set(state => ({ boughtItems: [...new Set([...state.boughtItems, itemName])] })),
-
-      unmarkAsBought: itemName =>
-        set(state => ({ boughtItems: state.boughtItems.filter(n => n !== itemName) })),
-
-      setShowBought: v => set({ showBought: v }),
-
-      clear: () => set({ hardwareNodes: [], nodes: [], edges: [], boughtItems: [] }),
 
       // ── API Persistence ────────────────────────────────────────────────
       setCurrentBuildId: id => set({ currentBuildId: id }),
@@ -1370,8 +1117,6 @@ export const useBuilderStore = create<BuilderState>()(
           buildKind: 'homelab',
           gamingPlan: {},
           buildSettings: {},
-          boughtItems: [],
-          showBought: false,
           historyPast: [],
           historyFuture: [],
           lastSyncedFingerprint: '',
@@ -1383,7 +1128,6 @@ export const useBuilderStore = create<BuilderState>()(
       setProjectName: name => set({ projectName: name }),
 
       loadBuild: (id, name, build: Build) => {
-        const settings = build.settings || {};
         const previous = get();
         const sameBuild = previous.currentBuildId === id && previous.buildStatus === 'ready';
 
@@ -1409,9 +1153,7 @@ export const useBuilderStore = create<BuilderState>()(
           edges: rfEdges,
           buildKind: build.kind || 'homelab',
           gamingPlan: build.gaming_plan || {},
-          buildSettings: settings,
-          boughtItems: settings.boughtItems || [],
-          showBought: settings.showBought || false,
+          buildSettings: build.settings || {},
           historyPast: [],
           historyFuture: [],
           selectedNodeId: stillThere(previous.selectedNodeId) ? previous.selectedNodeId : null,
@@ -1526,8 +1268,7 @@ export const useBuilderStore = create<BuilderState>()(
           get().loadBuild(result.build.id, result.build.name, result.build);
           // One undo step takes the canvas back to how it was before the proposal.
           set({
-            historyPast: [...past, snapshot].slice(-50),
-            historyFuture: [],
+            ...withStep(past, snapshot),
             proposalPreview: null,
             validationIssues: validationToIssues(result.validation),
           });
@@ -1586,24 +1327,25 @@ export const useBuilderStore = create<BuilderState>()(
 
       getBuildData: () => {
         const state = get();
-        const hwMap = new Map<string, HardwareNode>(state.hardwareNodes.map(n => [n.id, n]));
+        const hwMap = new Map(state.hardwareNodes.map(n => [n.id, n]));
 
         // Construct the payload structure exactly matching backend DTO definitions
-        const nodesPayload = state.nodes.map(rfn => {
-          const hw = hwMap.get(rfn.id) || ({} as any);
+        const nodesPayload = state.nodes.map((rfn): SavedNode => {
+          const hw = hwMap.get(rfn.id);
+          const data: Partial<HardwareNode> = rfn.data ?? {};
           return {
             id: rfn.id,
-            type: rfn.data?.type || hw.type,
-            name: rfn.data?.name || hw.name,
+            type: data.type || hw?.type || '',
+            name: data.name || hw?.name || '',
             x: rfn.position.x,
             y: rfn.position.y,
-            power_draw: Number(rfn.data?.power_draw ?? hw.power_draw ?? 0) || 0,
-            ip: rfn.data?.ip || hw.ip || '',
-            mac_address: rfn.data?.mac_address || hw.mac_address || '',
-            details: rfn.data?.details || hw.details || {},
-            vms: rfn.data?.vms || hw.vms || [],
-            internal_components: rfn.data?.internal_components || hw.internal_components || [],
-            parent_id: hw.parent_id || undefined,
+            power_draw: Number(data.power_draw ?? hw?.power_draw ?? 0) || 0,
+            ip: data.ip || hw?.ip || '',
+            mac_address: data.mac_address || hw?.mac_address || '',
+            details: data.details || hw?.details || {},
+            vms: data.vms || hw?.vms || [],
+            internal_components: data.internal_components || hw?.internal_components || [],
+            parent_id: hw?.parent_id || undefined,
           };
         });
 
@@ -1631,29 +1373,9 @@ export const useBuilderStore = create<BuilderState>()(
           nodes: nodesPayload,
           edges: sanitizedEdgesPayload,
           services: [],
-          settings: {
-            ...state.buildSettings,
-            boughtItems: state.boughtItems,
-            showBought: state.showBought,
-          },
+          settings: state.buildSettings,
         };
       },
-
-      totalCpu: () => {
-        const { hardwareNodes } = get();
-        return hardwareNodes.reduce(
-          (acc, node) => acc + (node.vms?.reduce((vAcc, vm) => vAcc + (vm.cpu_cores || 0), 0) || 0),
-          0,
-        );
-      },
-      totalRam: () => {
-        const { hardwareNodes } = get();
-        return hardwareNodes.reduce(
-          (acc, node) => acc + (node.vms?.reduce((vAcc, vm) => vAcc + (vm.ram_mb || 0), 0) || 0),
-          0,
-        );
-      },
-      totalStorage: () => 0,
     }),
     {
       // Only which project is open survives a reload. Its canvas is read from

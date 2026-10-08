@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { GameProfile, Service } from '../../../../types';
+import type { GameInstance, GameProfile, Service } from '../../../../types';
 import { checkConnection } from '../connection-rules';
 import { buildGameServerPlan } from './game-server-plan';
 import { buildHomelabPlan } from './homelab-plan';
@@ -9,7 +9,7 @@ import {
   seatsPerTable,
   tableSizes,
 } from './lan-party-plan';
-import type { GameServerAnswers, LanPartyAnswers, PlannedEdge, PlannedNode } from './types';
+import type { GameServerAnswers, LanPartyAnswers, Plan } from './types';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -140,17 +140,13 @@ const friends = (overrides: Partial<GameServerAnswers> = {}): GameServerAnswers 
   ...overrides,
 });
 
-const nodesOf = (plan: { nodes: unknown[] }) => plan.nodes as PlannedNode[];
-const edgesOf = (plan: { edges: unknown[] }) => plan.edges as PlannedEdge[];
-const ofType = (plan: { nodes: unknown[] }, type: string) =>
-  nodesOf(plan).filter(node => node.type === type);
+const ofType = (plan: Plan, type: string) => plan.nodes.filter(node => node.type === type);
 
 /**
  * What the wizard generates must be drawable by hand: every link has to pass
  * the same rules the canvas applies, on ports that exist.
  */
-function expectDrawable(plan: { nodes: unknown[]; edges: unknown[] }) {
-  const nodes = nodesOf(plan);
+function expectDrawable({ nodes, edges }: Plan) {
   const ids = new Set(nodes.map(node => node.id));
   expect(ids.size).toBe(nodes.length);
 
@@ -160,7 +156,7 @@ function expectDrawable(plan: { nodes: unknown[]; edges: unknown[] }) {
     sourceHandle: string;
     targetHandle: string;
   }> = [];
-  for (const edge of edgesOf(plan)) {
+  for (const edge of edges) {
     const source = nodes.find(node => node.id === edge.source)!;
     expect(source, `edge from unknown node ${edge.source}`).toBeDefined();
     expect(ids.has(edge.target)).toBe(true);
@@ -238,7 +234,7 @@ describe('buildLanPartyPlan', () => {
       event: { date: '', hours: 24 },
     });
     // Every powered device names a circuit that exists.
-    for (const node of nodesOf(plan)) {
+    for (const node of plan.nodes) {
       expect(['c1', 'c2']).toContain(node.details.circuit);
     }
   });
@@ -277,7 +273,7 @@ describe('buildLanPartyPlan', () => {
     expectDrawable(plan);
 
     expect(ofType(plan, 'console')).toHaveLength(2);
-    const host = nodesOf(plan).find(node => node.vms.length > 0)!;
+    const host = plan.nodes.find(node => node.vms.length > 0)!;
     expect(host.name).toBe('Party Server');
     expect(host.vms.map(vm => vm.name)).toEqual(['Counter-Strike 2 Server', 'LANCache']);
     // Everyone in the room plays on it, and nobody outside.
@@ -294,7 +290,7 @@ describe('buildLanPartyPlan', () => {
 
   it('never plans more players on a server than the estimate covers', () => {
     const plan = buildLanPartyPlan(party({ seats: 40, games: ['valheim'] }), catalog);
-    const host = nodesOf(plan).find(node => node.vms.length > 0)!;
+    const host = plan.nodes.find(node => node.vms.length > 0)!;
     expect((host.vms[0].details.game as { players: number }).players).toBe(10);
   });
 
@@ -320,7 +316,7 @@ describe('buildLanPartyPlan', () => {
     expect(buildLanPartyPlan(party({ name: '  ' }), catalog).name).toBe('LAN Party');
     // Unknown games are left out instead of becoming placeholders.
     const plan = buildLanPartyPlan(party({ games: ['pong'] }), catalog);
-    expect(nodesOf(plan).every(node => node.vms.length === 0)).toBe(true);
+    expect(plan.nodes.every(node => node.vms.length === 0)).toBe(true);
   });
 });
 
@@ -332,8 +328,8 @@ describe('buildGameServerPlan', () => {
 
     expect(plan.kind).toBe('game_server');
     expectDrawable(plan);
-    expect(nodesOf(plan).map(node => node.type)).toEqual(['modem', 'router', 'minipc']);
-    const host = nodesOf(plan)[2];
+    expect(plan.nodes.map(node => node.type)).toEqual(['modem', 'router', 'minipc']);
+    const host = plan.nodes[2];
     // Valheim for 10 needs 4608 MB and 2.5 cores: an 8 GB, 4-core mini PC has room.
     expect(host.details).toMatchObject({ ram: 8, cpu: 4 });
     expect(host.vms[0]).toMatchObject({ name: 'Valheim Server', ram_mb: 4608, cpu_cores: 2.5 });
@@ -356,7 +352,7 @@ describe('buildGameServerPlan', () => {
       friends({ games: [{ slug: 'palworld', players: 16 }, { slug: 'valheim', players: 10 }] }),
       catalog,
     );
-    const host = nodesOf(plan)[2];
+    const host = plan.nodes[2];
     // 16384 + 4608 MB with a quarter of headroom needs a 32 GB box, and
     // 7 cores with headroom need more than the 8 a mini PC has.
     expect(host.type).toBe('server_v2');
@@ -371,10 +367,10 @@ describe('buildGameServerPlan', () => {
       }),
       catalog,
     );
-    expect(nodesOf(bigger)[2].type).toBe('server_v2');
+    expect(bigger.nodes[2].type).toBe('server_v2');
     expectDrawable(bigger);
     // Two servers of the same game on one host cannot share a port.
-    const offsets = nodesOf(bigger)[2].vms.map(vm => (vm.details.game as any).port_offset);
+    const offsets = bigger.nodes[2].vms.map(vm => (vm.details.game as GameInstance).port_offset);
     expect(offsets).toEqual([0, 1]);
   });
 
@@ -382,12 +378,12 @@ describe('buildGameServerPlan', () => {
     const plan = buildGameServerPlan(friends({ location: 'vps', exposure: 'vpn' }), catalog);
     expectDrawable(plan);
 
-    const vps = nodesOf(plan).find(node => node.type === 'vps')!;
+    const vps = plan.nodes.find(node => node.type === 'vps')!;
     expect(vps.details.network_zone).toBe('cloud');
     expect(vps.power_draw).toBe(0);
     // On a VPS the server is open on its public address, whatever was picked for home.
-    expect((vps.vms[0].details.game as any).exposure).toBe('port_forward');
-    expect(edgesOf(plan).find(edge => edge.target === vps.id)?.type).toBe('vpn');
+    expect((vps.vms[0].details.game as GameInstance).exposure).toBe('port_forward');
+    expect(plan.edges.find(edge => edge.target === vps.id)?.type).toBe('vpn');
   });
 
   it('adds voice chat sized for the largest group', () => {
@@ -395,13 +391,13 @@ describe('buildGameServerPlan', () => {
       friends({ voice: true, games: [{ slug: 'valheim', players: 10 }, { slug: 'cs2', players: 20 }] }),
       catalog,
     );
-    const voice = nodesOf(plan)[2].vms.find(vm => vm.name === 'Mumble Server')!;
-    expect((voice.details.game as any).players).toBe(20);
+    const voice = plan.nodes[2].vms.find(vm => vm.name === 'Mumble Server')!;
+    expect((voice.details.game as GameInstance).players).toBe(20);
   });
 
   it('keeps the chosen way in for a server at home', () => {
     const plan = buildGameServerPlan(friends({ exposure: 'vpn', cgnat: 'yes' }), catalog);
-    expect((nodesOf(plan)[2].vms[0].details.game as any).exposure).toBe('vpn');
+    expect((plan.nodes[2].vms[0].details.game as GameInstance).exposure).toBe('vpn');
     expect(plan.gaming_plan?.uplink?.cgnat).toBe('yes');
   });
 });
@@ -423,17 +419,17 @@ describe('buildHomelabPlan', () => {
     expect(plan.name).toBe('My Guided Homelab');
     // No kind is set, so the server keeps its default: a homelab.
     expect(plan.kind).toBeUndefined();
-    expect(nodesOf(plan).map(node => node.type)).toEqual([
+    expect(plan.nodes.map(node => node.type)).toEqual([
       'router',
       'switch',
       'minipc',
       'nas',
       'access_point',
     ]);
-    expect(nodesOf(plan)[2].vms.map(vm => vm.name)).toEqual([
+    expect(plan.nodes[2].vms.map(vm => vm.name)).toEqual([
       'Backups & storage',
       'Better networking',
     ]);
-    expect(plan.settings.planner.goals).toEqual(['backup', 'network']);
+    expect(plan.settings.planner?.goals).toEqual(['backup', 'network']);
   });
 });

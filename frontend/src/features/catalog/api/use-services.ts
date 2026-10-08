@@ -1,8 +1,23 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { api } from "../../../lib/api"
+import { api, ApiError } from "../../../lib/api"
 import type { Service } from "../../../types"
 
-export interface UserSelection {
+/**
+ * The services the caller can plan with: their own ones too when signed in (or
+ * on an instance without login), the public catalog for a visitor.
+ */
+export async function fetchServices(): Promise<Service[]> {
+    try {
+        return (await api.get<{ data?: Service[] }>("/api/my-services")).data ?? []
+    } catch (error) {
+        if (error instanceof ApiError && error.status === 401) {
+            return (await api.get<{ data?: Service[] }>("/api/services")).data ?? []
+        }
+        throw error
+    }
+}
+
+interface UserSelection {
     id: string
     service_id: string
     service: Service

@@ -24,7 +24,7 @@ vi.mock('../api/proposals', () => ({
 }));
 
 import { useBuilderStore } from './builder-store';
-import { buildApi, type Build } from '../api/builds';
+import { buildApi, type Build, type BuildEdge, type BuildNode } from '../api/builds';
 import { proposalApi, type Proposal } from '../api/proposals';
 import { mapBuildToFlow } from '../lib/build-mapper';
 
@@ -34,11 +34,11 @@ const NAS = '33333333-3333-4333-8333-333333333333';
 const OLD_AP = '44444444-4444-4444-8444-444444444444';
 
 function serverBuild(revision: number, extra: { nas?: boolean; ap?: boolean } = {}): Build {
-  const nodes: any[] = [
+  const nodes: BuildNode[] = [
     { id: ROUTER, type: 'router', name: 'Router', x: 80, y: 80, ip: '192.168.1.1', power_draw: 12, details: { ports: 4 } },
     { id: SWITCH, type: 'switch', name: 'Switch', x: 80, y: 340, ip: '192.168.1.10', details: { ports: 8 } },
   ];
-  const edges: any[] = [
+  const edges: BuildEdge[] = [
     { id: `e-${revision}-1`, source_node_id: ROUTER, source_handle: 'eth0', target_node_id: SWITCH, target_handle: 'target-0', type: 'ethernet', speed: '1 GbE', direction: 'auto' },
   ];
   if (extra.ap) {
@@ -135,8 +135,8 @@ describe('saved-state tracking', () => {
     const { hardwareNodes, getBuildData } = useBuilderStore.getState();
     expect(hardwareNodes.find(node => node.id === ROUTER)?.power_draw).toBe(12);
     const payload = getBuildData();
-    expect(payload.nodes.find((node: any) => node.id === ROUTER).power_draw).toBe(12);
-    expect(payload.nodes.find((node: any) => node.id === SWITCH).power_draw).toBe(0);
+    expect(payload.nodes.find(node => node.id === ROUTER)?.power_draw).toBe(12);
+    expect(payload.nodes.find(node => node.id === SWITCH)?.power_draw).toBe(0);
   });
 });
 
@@ -186,7 +186,7 @@ describe('proposal preview', () => {
     expect(byId.get(OLD_AP)?.className).toContain('proposal-diff-removed');
     expect(preview.nodes.every(node => node.draggable === false && node.selectable === false)).toBe(true);
 
-    const statuses = preview.edges.map(edge => [edge.source, edge.target, (edge.data as any).proposalDiff]);
+    const statuses = preview.edges.map(edge => [edge.source, edge.target, edge.data?.proposalDiff]);
     expect(statuses).toContainEqual([SWITCH, NAS, 'added']);
     expect(statuses).toContainEqual([SWITCH, OLD_AP, 'removed']);
     expect(statuses).toContainEqual([ROUTER, SWITCH, undefined]);
@@ -368,7 +368,7 @@ describe('applyProposal', () => {
     await useBuilderStore.getState().applyProposal('proposal-1');
 
     expect(order).toEqual(['save', 'apply']);
-    expect(vi.mocked(buildApi.updateTopology).mock.calls[0][1].nodes.find((node: any) => node.id === ROUTER).name).toBe('Edge Router');
+    expect(vi.mocked(buildApi.updateTopology).mock.calls[0][1].nodes.find(node => node.id === ROUTER)?.name).toBe('Edge Router');
   });
 
   it('leaves the canvas and the preview alone when applying fails', async () => {
@@ -390,7 +390,7 @@ describe('mapBuildToFlow', () => {
   it('puts racks first and keeps handles, addresses and services', () => {
     const build = serverBuild(1, { nas: true });
     build.nodes!.push({ id: 'rack-1', type: 'rack', name: 'Rack', x: 600, y: 80, details: '{"rack_size":12}' });
-    build.nodes!.find((node: any) => node.id === NAS).parent_id = 'rack-1';
+    build.nodes!.find(node => node.id === NAS)!.parent_id = 'rack-1';
 
     const flow = mapBuildToFlow(build);
 

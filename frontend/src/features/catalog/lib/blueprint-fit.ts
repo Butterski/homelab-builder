@@ -1,4 +1,6 @@
 import type { HardwareComponent, HardwareNode, Service } from '../../../types';
+import { parseCapacityGB } from '../../builder/lib/catalog-mapper';
+import { parsePortCount } from '../../builder/lib/port-count';
 import type { HardwareBlueprintFit, HardwareBlueprintFitResource } from '../api/use-hardware-blueprints';
 
 export type BlueprintMetric = {
@@ -20,10 +22,10 @@ export function estimateBlueprintFit(
 
   const capacity: HardwareBlueprintFitResource = {
     cpu_cores: parseNumber(details.cpu ?? details.cpu_cores),
-    ram_gb: parseCapacityGB(details.ram),
-    storage_gb: parseCapacityGB(details.storage),
+    ram_gb: parseCapacityGB(details.ram) ?? 0,
+    storage_gb: parseCapacityGB(details.storage) ?? 0,
     power_w: parseNumber(nodeData.power_draw ?? detailsRecord.power_w ?? detailsRecord.tdp_w),
-    ports: parsePortCount(details.ports),
+    ports: parsePortCount(details.ports) ?? 0,
     network_gbps: parseNetworkGbps(detailsRecord.network_gbps ?? detailsRecord.port_speed ?? detailsRecord.speed),
     drive_bays: parseNumber(detailsRecord.drive_bays ?? detailsRecord.bays ?? detailsRecord.disk_bays),
     disks: 0,
@@ -35,13 +37,13 @@ export function estimateBlueprintFit(
     capacity.power_w += parseNumber(component.power_draw ?? componentDetails.power_w ?? componentDetails.tdp_w);
     if (component.type === 'disk') {
       capacity.disks += 1;
-      capacity.storage_gb += parseCapacityGB(component.details?.storage ?? componentDetails.capacity);
+      capacity.storage_gb += parseCapacityGB(component.details?.storage ?? componentDetails.capacity) ?? 0;
     }
     if (component.type === 'gpu') {
       capacity.gpus += 1;
     }
     if (component.type === 'hba' || component.type === 'pcie') {
-      capacity.ports += parsePortCount(component.details?.ports);
+      capacity.ports += parsePortCount(component.details?.ports) ?? 0;
       capacity.network_gbps += parseNetworkGbps(componentDetails.network_gbps ?? componentDetails.port_speed ?? componentDetails.speed);
     }
   });
@@ -159,37 +161,6 @@ function parseNumber(value: unknown): number {
   }
   const number = text.match(/\d+(?:\.\d+)?/);
   return number ? Number(number[0]) : 0;
-}
-
-function parseCapacityGB(value: unknown): number {
-  if (value === undefined || value === null || value === '') return 0;
-  if (typeof value === 'number') return value;
-  const text = String(value).toUpperCase();
-  const multi = text.match(/^(\d+)\s*X\s*(\d+(?:\.\d+)?)\s*(TB|GB|MB)/);
-  if (multi) {
-    const multiplier = Number(multi[1]);
-    let amount = Number(multi[2]);
-    if (multi[3] === 'TB') amount *= 1024;
-    if (multi[3] === 'MB') amount /= 1024;
-    return multiplier * amount;
-  }
-  const number = text.match(/\d+(?:\.\d+)?/);
-  if (!number) return 0;
-  let amount = Number(number[0]);
-  if (text.includes('TB')) amount *= 1024;
-  if (text.includes('MB')) amount /= 1024;
-  return amount;
-}
-
-function parsePortCount(value: unknown): number {
-  if (value === undefined || value === null || value === '') return 0;
-  if (typeof value === 'number') return value;
-  const text = String(value);
-  const matches = [...text.matchAll(/(\d+)\s*x/gi)];
-  if (matches.length > 0) {
-    return matches.reduce((total, match) => total + Number(match[1]), 0);
-  }
-  return parseNumber(value);
 }
 
 function parseNetworkGbps(value: unknown): number {

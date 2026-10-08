@@ -97,25 +97,11 @@ func TestNodeDetailsDescribeTheMachine(t *testing.T) {
 	}
 }
 
-func TestComponentNodeType(t *testing.T) {
-	for itemType, want := range map[string]string{"ram": "ram", "disk": "disk", "gpu": "gpu", "nic": "pcie", "hba": "hba"} {
-		if got, ok := ComponentNodeType(itemType); !ok || got != want {
-			t.Errorf("%s -> %q, %v; want %q", itemType, got, ok, want)
-		}
-	}
-	if _, ok := ComponentNodeType("cpu"); ok {
-		t.Error("a processor is kept, not placed inside a host")
-	}
-}
-
 func TestEveryKindHasTypes(t *testing.T) {
 	for _, kind := range []string{KindDevice, KindComponent, KindAccessory} {
-		if len(Types(kind)) == 0 {
+		if len(typesByKind[kind]) == 0 {
 			t.Errorf("%s has no types", kind)
 		}
-	}
-	if len(Types("nothing")) != 0 {
-		t.Error("an unknown kind has no types")
 	}
 }
 

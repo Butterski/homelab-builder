@@ -26,8 +26,8 @@ import {
   DialogDescription,
   DialogTitle,
 } from './ui/dialog';
-import { cn } from '../lib/utils';
-import { useAuth } from '../features/admin/hooks/use-auth';
+import { cn, errorMessage } from '../lib/utils';
+import { useAuth } from '../features/auth/hooks/use-auth';
 import { useBuilderStore } from '../features/builder/store/builder-store';
 import { LAYOUT_STYLES } from '../features/builder/lib/layout';
 import { polishCanvas } from '../features/builder/lib/polish';
@@ -229,8 +229,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           await toast.promise(reassignAllIPs(), {
             loading: 'Recalculating network IPs...',
             success: 'Network IPs recalculated',
-            error: (err: unknown) =>
-              err instanceof Error && err.message ? err.message : 'Failed to recalculate network IPs',
+            error: (err: unknown) => errorMessage(err, 'Failed to recalculate network IPs'),
           });
         },
       },

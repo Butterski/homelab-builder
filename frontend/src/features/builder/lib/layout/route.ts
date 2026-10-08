@@ -13,13 +13,13 @@ import type { Point, Side } from './types';
  */
 
 /** React Flow keeps a cable straight for this long after a handle before it may turn. */
-export const HANDLE_GAP = 20;
+const HANDLE_GAP = 20;
 
 /** How far under its port a cable runs sideways. */
 export const CABLE_BUS_OFFSET = 30;
 
 /** A cable leaves a port and enters a top handle cleanly only if they are further apart than this. */
-export const MIN_CLEAN_DROP = 2 * HANDLE_GAP;
+const MIN_CLEAN_DROP = 2 * HANDLE_GAP;
 
 /**
  * The y of the sideways run for a cable between a bottom port and a top handle,

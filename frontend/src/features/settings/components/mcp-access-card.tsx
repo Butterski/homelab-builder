@@ -1,17 +1,19 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
-import { ExternalLink, KeyRound, Plug, Trash2 } from 'lucide-react';
+import { KeyRound, Plug, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { getAuthConfig } from '@/features/auth/lib/auth-config';
+import { useAuthConfig } from '@/features/auth/lib/auth-config';
+import { errorMessage } from '@/lib/utils';
 import { useBuilds } from '@/features/builder/api/use-builds';
 import { useApiTokens, useRevokeApiToken, type ApiToken } from '../api/api-tokens';
 import { mcpEndpointUrl } from '../lib/mcp-snippets';
-import { SOURCE_PATHS, sourceUrl } from '../lib/source-links';
+import { SOURCE_PATHS } from '../lib/source-links';
 import { CreateTokenDialog } from './create-token-dialog';
+import { SourceLink } from './source-link';
 import { CopyButton, McpSnippetsView } from './mcp-snippets-view';
 
 function relative(date: string | undefined, fallback: string): string {
@@ -26,20 +28,6 @@ function expiryText(token: ApiToken): string {
     : `Expires ${formatDistanceToNow(expires, { addSuffix: true })}`;
 }
 
-function SourceLink({ path, children }: { path: string; children: string }) {
-  return (
-    <a
-      href={sourceUrl(path)}
-      target="_blank"
-      rel="noreferrer"
-      className="inline-flex items-center gap-1 text-primary underline-offset-4 hover:underline"
-    >
-      {children}
-      <ExternalLink className="size-3" aria-hidden="true" />
-    </a>
-  );
-}
-
 /** Settings card for connecting MCP clients with personal access tokens. */
 export function McpAccessCard() {
   const endpoint = mcpEndpointUrl();
@@ -48,17 +36,7 @@ export function McpAccessCard() {
   const { data: builds } = useBuilds();
   const [createOpen, setCreateOpen] = useState(false);
   const [revoking, setRevoking] = useState<ApiToken | null>(null);
-  const [mcpEnabled, setMcpEnabled] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    void getAuthConfig().then(config => {
-      if (!cancelled) setMcpEnabled(config.mcp_enabled);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const mcpEnabled = useAuthConfig()?.mcp_enabled ?? true;
 
   const tokens = data?.tokens ?? [];
   const limit = data?.limit ?? 20;
@@ -69,7 +47,7 @@ export function McpAccessCard() {
       await revokeToken.mutateAsync(token.id);
       toast.success(`Revoked "${token.name}".`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not revoke the token.');
+      toast.error(errorMessage(error, 'Could not revoke the token.'));
     }
   };
 

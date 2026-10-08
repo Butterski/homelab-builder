@@ -1,109 +1,67 @@
 package middleware
 
 import (
-	"fmt"
 	"net/http"
 	"strings"
 
-	"github.com/Butterski/homelab-builder/backend/internal/models"
 	"github.com/Butterski/homelab-builder/backend/internal/services"
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 )
 
+// AuthMiddleware puts the caller's id into the context as "user_id".
 func AuthMiddleware(authService *services.AuthService, authDisabled bool) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		if authDisabled {
-			user, err := authService.GetOrCreateLocalAdmin()
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to provision local admin"})
-				c.Abort()
-				return
-			}
-			c.Set("user_id", user.ID)
-			c.Set("email", user.Email)
-			c.Next()
-			return
-		}
-
-		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
-			c.Abort()
-			return
-		}
-
-		parts := strings.SplitN(authHeader, " ", 2)
-		if len(parts) != 2 || parts[0] != "Bearer" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid authorization format. Use: Bearer <token>"})
-			c.Abort()
-			return
-		}
-
-		claims, err := authService.ValidateToken(parts[1])
-		if err != nil {
-			fmt.Printf("AuthMiddleware: Token validation error: %v\n", err)
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token"})
-			c.Abort()
-			return
-		}
-
-		c.Set("user_id", claims.UserID)
-		c.Set("email", claims.Email)
-		c.Next()
-	}
+	return authenticate(authService, authDisabled, false)
 }
 
-// AuthMiddlewareWithUser is like AuthMiddleware but also loads the full User model
-// into context. Required for admin checks and role-based access.
-func AuthMiddlewareWithUser(authService *services.AuthService, db *gorm.DB, authDisabled bool) gin.HandlerFunc {
+// AuthMiddlewareWithUser also loads the full User model into the context as
+// "user", which the admin check needs.
+func AuthMiddlewareWithUser(authService *services.AuthService, authDisabled bool) gin.HandlerFunc {
+	return authenticate(authService, authDisabled, true)
+}
+
+func authenticate(authService *services.AuthService, authDisabled, withUser bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if authDisabled {
 			user, err := authService.GetOrCreateLocalAdmin()
 			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to provision local admin"})
-				c.Abort()
+				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Failed to provision local admin"})
 				return
 			}
 			c.Set("user_id", user.ID)
-			c.Set("email", user.Email)
-			c.Set("user", user)
+			if withUser {
+				c.Set("user", user)
+			}
 			c.Next()
 			return
 		}
 
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
-			c.Abort()
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
 			return
 		}
 
 		parts := strings.SplitN(authHeader, " ", 2)
 		if len(parts) != 2 || parts[0] != "Bearer" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid authorization format"})
-			c.Abort()
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid authorization format. Use: Bearer <token>"})
 			return
 		}
 
 		claims, err := authService.ValidateToken(parts[1])
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token"})
-			c.Abort()
-			return
-		}
-
-		// Load full user model from DB for role checks
-		var user models.User
-		if err := db.First(&user, "id = ?", claims.UserID).Error; err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "User account not found"})
-			c.Abort()
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token"})
 			return
 		}
 
 		c.Set("user_id", claims.UserID)
-		c.Set("email", claims.Email)
-		c.Set("user", &user)
+		if withUser {
+			user, err := authService.GetCurrentUser(claims.UserID)
+			if err != nil {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "User account not found"})
+				return
+			}
+			c.Set("user", user)
+		}
 		c.Next()
 	}
 }

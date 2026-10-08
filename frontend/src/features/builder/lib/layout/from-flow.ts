@@ -5,18 +5,13 @@ import {
   nodeHasDynamicPorts,
 } from '../../../../lib/hardware-config';
 import type { HardwareNode, HardwareType } from '../../../../types';
-import {
-  RACK_FOOTER_PX,
-  RACK_HEADER_PX,
-  RACK_U_HEIGHT_PX,
-  RACK_WIDTH_PX,
-} from '../../components/rack-node-constants';
+import { RACK_WIDTH_PX, rackHeightPx } from '../../components/rack-node-constants';
 import { getNodePortCount } from '../port-count';
 import type { LayoutEdge, LayoutGraph, LayoutNode, Medium } from './types';
 import { TOP_HANDLE } from './units';
 
 /** A card on the canvas, with what the layout needs to know about it. */
-export interface CanvasCard {
+interface CanvasCard {
   hardware: HardwareNode;
   x: number;
   y: number;
@@ -26,7 +21,7 @@ export interface CanvasCard {
 }
 
 /** A cable on the canvas. */
-export interface CanvasCable {
+interface CanvasCable {
   id: string;
   source: string;
   target: string;
@@ -42,11 +37,6 @@ const CARD_WIDTH_WITH_GUESTS = 244;
 const PORTS_WIDEN_FROM = 192;
 const PORT_PITCH = 16;
 
-export function rackHeight(node: HardwareNode): number {
-  const size = Number(node.details?.rack_size) || 24;
-  return RACK_HEADER_PX + size * RACK_U_HEIGHT_PX + RACK_FOOTER_PX;
-}
-
 function portCount(node: HardwareNode): number {
   if (!nodeHasDynamicPorts(node.type)) return 1;
   return Math.max(1, getNodePortCount(node.type, node.details?.ports));
@@ -59,7 +49,9 @@ function portCount(node: HardwareNode): number {
  * guess that is too small makes cards overlap.
  */
 export function estimateNodeSize(node: HardwareNode): { width: number; height: number } {
-  if (node.type === 'rack') return { width: RACK_WIDTH_PX, height: rackHeight(node) };
+  if (node.type === 'rack') {
+    return { width: RACK_WIDTH_PX, height: rackHeightPx(Number(node.details?.rack_size)) };
+  }
 
   const details = node.details ?? {};
   const guests = node.vms?.length ?? 0;

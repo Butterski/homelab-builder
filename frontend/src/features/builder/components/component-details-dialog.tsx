@@ -19,7 +19,7 @@ interface Props {
   initialType: ComponentType;
   initialName?: string;
   initialDetails?: HardwareSpec;
-  title?: string; // Added optional title prop as it's used in VisualBuilder
+  title?: string;
 }
 
 // ─── Form state reducer ──────────────────────────────────────────────────────
@@ -53,6 +53,23 @@ function formReducer(state: FormState, action: FormAction): FormState {
   }
 }
 
+/**
+ * A stored size as the form shows it. A number is in GB; with `wholeTerabytes`
+ * a whole number of terabytes is shown in TB.
+ */
+function sizeField(val: number | string | undefined, wholeTerabytes: boolean): FormField {
+  if (val === undefined || val === null || val === '') return { value: '', unit: 'GB' };
+  if (typeof val === 'number') {
+    return wholeTerabytes && val >= 1000 && val % 1000 === 0
+      ? { value: String(val / 1000), unit: 'TB' }
+      : { value: String(val), unit: 'GB' };
+  }
+  const match = val.match(/^(\d+(?:\.\d+)?)\s*(MB|GB|TB)?$/i);
+  return match
+    ? { value: String(parseFloat(match[1])), unit: (match[2] || 'GB').toUpperCase() }
+    : { value: '', unit: 'GB' };
+}
+
 export function ComponentDetailsDialog({
   open,
   onOpenChange,
@@ -62,39 +79,12 @@ export function ComponentDetailsDialog({
   initialDetails,
   title,
 }: Props) {
-  const formatStorageForDisplay = (val?: number | string): [string, string] => {
-    if (val === undefined || val === null || val === '') return ['', 'GB'];
-    if (typeof val === 'number') {
-      if (val >= 1000 && val % 1000 === 0) return [String(val / 1000), 'TB'];
-      return [String(val), 'GB'];
-    }
-    const match = val.match(/^(\d+(?:\.\d+)?)\s*(MB|GB|TB)?$/i);
-    if (match) {
-      const n = parseFloat(match[1]);
-      const unit = (match[2] || 'GB').toUpperCase();
-      return [String(n), unit];
-    }
-    return ['', 'GB'];
-  };
-
-  const formatRamForDisplay = (val?: number | string): [string, string] => {
-    if (val === undefined || val === null || val === '') return ['', 'GB'];
-    if (typeof val === 'number') return [String(val), 'GB'];
-    const match = val.match(/^(\d+(?:\.\d+)?)\s*(MB|GB|TB)?$/i);
-    if (match) {
-      const n = parseFloat(match[1]);
-      const unit = (match[2] || 'GB').toUpperCase();
-      return [String(n), unit];
-    }
-    return ['', 'GB'];
-  };
-
   const [form, dispatch] = useReducer(formReducer, {
     name: initialName || '',
     model: initialDetails?.model || '',
     cpuCores: initialDetails?.cpu?.toString() || initialDetails?.cpu_cores?.toString() || '',
-    ram: { value: formatRamForDisplay(initialDetails?.ram)[0], unit: formatRamForDisplay(initialDetails?.ram)[1] || 'GB' },
-    storage: { value: formatStorageForDisplay(initialDetails?.storage)[0], unit: formatStorageForDisplay(initialDetails?.storage)[1] || 'GB' },
+    ram: sizeField(initialDetails?.ram, false),
+    storage: sizeField(initialDetails?.storage, true),
   });
 
   // A memory module is a component only: it has memory and nothing else.

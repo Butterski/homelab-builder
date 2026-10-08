@@ -88,10 +88,7 @@ func TestSeedDefaultHardware_KeepsAnExistingListing(t *testing.T) {
 
 func TestModels_CoverEveryCatalogTable(t *testing.T) {
 	tx := testTx(t)
-	// Both tables were once missing from database.Models(), which only showed on a fresh install.
-	if err := tx.Create(&models.SteeringRule{Category: "seed-check"}).Error; err != nil {
-		t.Fatalf("steering_rules is not migrated: %v", err)
-	}
+	// A table missing from database.Models() only shows on a fresh install.
 	if err := tx.Create(&models.CatalogComponent{Type: "disk", Name: "seed-check"}).Error; err != nil {
 		t.Fatalf("catalog_components is not migrated: %v", err)
 	}

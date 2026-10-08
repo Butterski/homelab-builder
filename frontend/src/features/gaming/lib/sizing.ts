@@ -3,7 +3,7 @@ import type { GameInstance, GamePort, GameProfile, Service } from '../../../type
 // Mirrors backend/internal/gaming/sizing.go. The backend report is the
 // authority; this copy gives instant feedback while editing.
 
-export const MAX_PORT_OFFSET = 1000;
+const MAX_PORT_OFFSET = 1000;
 export const MAX_INSTANCE_PLAYERS = 1000;
 
 export const EXPOSURES: Array<{ value: GameInstance['exposure']; label: string; hint: string }> = [
@@ -25,14 +25,14 @@ export const EXPOSURES: Array<{ value: GameInstance['exposure']; label: string; 
   },
 ];
 
-export interface GameSizing {
+interface GameSizing {
   cpu_cores: number;
   ram_mb: number;
   storage_gb: number;
   upload_kbps: number;
 }
 
-export function playersOrDefault(profile: GameProfile, players: number | undefined): number {
+function playersOrDefault(profile: GameProfile, players: number | undefined): number {
   if (players && players > 0) return players;
   return profile.default_players > 0 ? profile.default_players : 1;
 }
@@ -90,12 +90,4 @@ export function readGameInstance(
 
 export function findGameProfile(services: Service[], slug: string): GameProfile | undefined {
   return services.find(service => service.game?.slug === slug)?.game;
-}
-
-export function formatMemory(mb: number): string {
-  if (mb >= 1024) {
-    const gb = mb / 1024;
-    return `${Number.isInteger(gb) ? gb : gb.toFixed(1)} GB`;
-  }
-  return `${mb} MB`;
 }

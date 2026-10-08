@@ -29,7 +29,6 @@ import type {
   VirtualMachine,
   HardwareComponent,
   HardwareSpec,
-  HardwareNodeValidationIssue,
 } from '../../../types';
 import {
   isComputeNode,
@@ -38,7 +37,7 @@ import {
   canNodeHostVMs,
 } from '../../../lib/hardware-config';
 import { useBuilderStore } from '../store/builder-store';
-import { getVmResourceUsage } from '../lib/resource-usage';
+import { getHostLoad } from '../lib/resource-usage';
 import { getNodePortCount } from '../lib/port-count';
 import { tableSeats, tableSwitchPorts } from '../../gaming/lib/table';
 
@@ -55,170 +54,121 @@ type HardwareNodeData = {
 
 // ─── Per-type icon + color ─────────────────────────────────────────────────────
 const TYPE_CONFIG: Partial<
-  Record<
-    HardwareType,
-    { icon: React.ElementType; border: string; bg: string; iconColor: string; color: string }
-  >
+  Record<HardwareType, { icon: React.ElementType; iconColor: string; color: string }>
 > = {
   router: {
     icon: Router,
-    border: 'border-border',
-    bg: 'bg-purple-500',
     iconColor: 'text-purple-400',
     color: '#a855f7',
   },
   switch: {
     icon: CircuitBoard,
-    border: 'border-border',
-    bg: 'bg-blue-500',
     iconColor: 'text-blue-400',
     color: '#3b82f6',
   },
   server: {
     icon: Server,
-    border: 'border-border',
-    bg: 'bg-orange-500',
     iconColor: 'text-orange-400',
     color: '#f97316',
   },
   server_v2: {
     icon: Server,
-    border: 'border-border',
-    bg: 'bg-orange-500',
     iconColor: 'text-orange-400',
     color: '#f97316',
   },
   firewall: {
     icon: Shield,
-    border: 'border-border',
-    bg: 'bg-red-500',
     iconColor: 'text-red-400',
     color: '#ef4444',
   },
   vps: {
     icon: Cloud,
-    border: 'border-border',
-    bg: 'bg-sky-500',
     iconColor: 'text-sky-400',
     color: '#38bdf8',
   },
   nas: {
     icon: HardDrive,
-    border: 'border-border',
-    bg: 'bg-green-500',
     iconColor: 'text-green-400',
     color: '#22c55e',
   },
   pc: {
     icon: Monitor,
-    border: 'border-border',
-    bg: 'bg-cyan-500',
     iconColor: 'text-cyan-400',
     color: '#06b6d4',
   },
   minipc: {
     icon: Monitor,
-    border: 'border-border',
-    bg: 'bg-sky-500',
     iconColor: 'text-sky-400',
     color: '#0ea5e9',
   },
   sbc: {
     icon: Cpu,
-    border: 'border-border',
-    bg: 'bg-lime-500',
     iconColor: 'text-lime-400',
     color: '#84cc16',
   },
   access_point: {
     icon: Wifi,
-    border: 'border-border',
-    bg: 'bg-yellow-500',
     iconColor: 'text-yellow-400',
     color: '#eab308',
   },
   gpu: {
     icon: Layers,
-    border: 'border-border',
-    bg: 'bg-pink-500',
     iconColor: 'text-pink-400',
     color: '#ec4899',
   },
   hba: {
     icon: Plug,
-    border: 'border-border',
-    bg: 'bg-indigo-500',
     iconColor: 'text-indigo-400',
     color: '#6366f1',
   },
   disk: {
     icon: HardDrive,
-    border: 'border-border',
-    bg: 'bg-gray-500',
     iconColor: 'text-gray-400',
     color: '#6b7280',
   },
   ups: {
     icon: Battery,
-    border: 'border-border',
-    bg: 'bg-emerald-500',
     iconColor: 'text-emerald-400',
     color: '#10b981',
   },
   pcie: {
     icon: Plug,
-    border: 'border-border',
-    bg: 'bg-violet-500',
     iconColor: 'text-violet-400',
     color: '#8b5cf6',
   },
   pdu: {
     icon: Plug,
-    border: 'border-border',
-    bg: 'bg-rose-500',
     iconColor: 'text-rose-400',
     color: '#f43f5e',
   },
   iot: {
     icon: Printer,
-    border: 'border-border',
-    bg: 'bg-yellow-600',
     iconColor: 'text-yellow-600',
     color: '#ca8a04',
   },
   modem: {
     icon: Globe,
-    border: 'border-border',
-    bg: 'bg-blue-600',
     iconColor: 'text-blue-600',
     color: '#2563eb',
   },
   rack: {
     icon: Server,
-    border: 'border-border',
-    bg: 'bg-violet-600',
     iconColor: 'text-violet-400',
     color: '#7c3aed',
   },
   console: {
     icon: Gamepad2,
-    border: 'border-border',
-    bg: 'bg-fuchsia-500',
     iconColor: 'text-fuchsia-400',
     color: '#d946ef',
   },
   lan_table: {
     icon: Armchair,
-    border: 'border-border',
-    bg: 'bg-amber-500',
     iconColor: 'text-amber-400',
     color: '#f59e0b',
   },
 };
 const FALLBACK_CONFIG = {
   icon: Server,
-  border: 'border-border',
-  bg: 'bg-gray-500',
   iconColor: 'text-gray-400',
   color: '#6b7280',
 };
@@ -389,9 +339,9 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
   const validationIssues = useBuilderStore(
     s => s.proposalPreview?.validationIssues ?? s.validationIssues,
   );
-  const nodeIssues = validationIssues.filter((i: HardwareNodeValidationIssue) => i.node_id === id);
-  const hasIpError = nodeIssues.some((i: HardwareNodeValidationIssue) => i.type === 'error');
-  const hasIpWarning = nodeIssues.some((i: HardwareNodeValidationIssue) => i.type === 'warning');
+  const nodeIssues = validationIssues.filter(issue => issue.node_id === id);
+  const hasIpError = nodeIssues.some(issue => issue.type === 'error');
+  const hasIpWarning = nodeIssues.some(issue => issue.type === 'warning');
 
   // React flow handles dynamically
   const updateNodeInternals = useUpdateNodeInternals();
@@ -399,15 +349,14 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
     ? Math.max(1, getNodePortCount(nodeData.type, nodeData.details?.ports))
     : 1;
 
-  // Resource calculations
-  const { cpu: usedCpu, ramMb: usedRam } = getVmResourceUsage(vms);
-
-  const totalCpu = Number(nodeData.details?.cpu) || 0;
-  const totalRamGB = Number(nodeData.details?.ram) || 0;
-  const totalRamMB = totalRamGB < 1000 ? totalRamGB * 1024 : totalRamGB;
-
-  const cpuWarning = totalCpu > 0 && usedCpu > totalCpu;
-  const ramWarning = totalRamMB > 0 && usedRam > totalRamMB;
+  const {
+    usedCpu,
+    usedRamMb: usedRam,
+    totalCpu,
+    totalRamMb: totalRamMB,
+    cpuWarning,
+    ramWarning,
+  } = getHostLoad(nodeData.details, vms);
   const hasResourceWarning = cpuWarning || ramWarning;
 
   const cpuUsageRatio = totalCpu > 0 ? usedCpu / totalCpu : 0;
@@ -422,32 +371,20 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
 
   if (nodeData.status === 'offline') {
     lightColor = 'bg-gray-500';
-  } else if (
-    maxResourceUsage >= 1 ||
-    hasResourceWarning ||
-    nodeIssues.some((i: HardwareNodeValidationIssue) => i.type === 'error')
-  ) {
+  } else if (maxResourceUsage >= 1 || hasResourceWarning || hasIpError) {
     lightColor = 'bg-red-500';
-  } else if (
-    maxResourceUsage >= 0.8 ||
-    nodeIssues.some((i: HardwareNodeValidationIssue) => i.type === 'warning') ||
-    nodeData.status === 'warning'
-  ) {
+  } else if (maxResourceUsage >= 0.8 || hasIpWarning || nodeData.status === 'warning') {
     lightColor = 'bg-orange-500';
   } else if (maxResourceUsage >= 0.6) {
     lightColor = 'bg-yellow-500';
   }
 
   let tooltipLabel = '';
-  if (hasResourceWarning) {
-    tooltipLabel += `Resource limit exceeded!\nCPU: ${usedCpu}/${totalCpu}\nRAM: ${Math.round(usedRam / 1024)}GB/${Math.round(totalRamMB / 1024)}GB\n`;
-  } else if (maxResourceUsage >= 0.8) {
-    tooltipLabel += `High resource usage\nCPU: ${usedCpu}/${totalCpu}\nRAM: ${Math.round(usedRam / 1024)}GB/${Math.round(totalRamMB / 1024)}GB\n`;
+  if (hasResourceWarning || maxResourceUsage >= 0.8) {
+    tooltipLabel += `${hasResourceWarning ? 'Resource limit exceeded!' : 'High resource usage'}\nCPU: ${usedCpu}/${totalCpu}\nRAM: ${Math.round(usedRam / 1024)}GB/${Math.round(totalRamMB / 1024)}GB\n`;
   }
   if (nodeIssues.length > 0) {
-    tooltipLabel += nodeIssues
-      .map((i: HardwareNodeValidationIssue) => `${i.type.toUpperCase()}: ${i.message}`)
-      .join('\n');
+    tooltipLabel += nodeIssues.map(issue => `${issue.type.toUpperCase()}: ${issue.message}`).join('\n');
   }
 
   // Count edges connected to this node so updateNodeInternals re-fires when
@@ -464,13 +401,10 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
   // reads stale handle positions on the first change. By waiting two frames
   // we guarantee ReactFlow has settled and getBoundingClientRect is correct.
   useEffect(() => {
-    const raf1 = requestAnimationFrame(() => {
-      const raf2 = requestAnimationFrame(() => {
-        updateNodeInternals(id);
-      });
-      return () => cancelAnimationFrame(raf2);
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => updateNodeInternals(id));
     });
-    return () => cancelAnimationFrame(raf1);
+    return () => cancelAnimationFrame(frame);
   }, [id, numPorts, connectedEdgeCount, updateNodeInternals, hasVMs, hasComponents, hasWarning]);
 
   // Container pool range hint

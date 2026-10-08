@@ -18,7 +18,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import { useAuth } from '../../features/admin/hooks/use-auth';
+import { useAuth } from '../../features/auth/hooks/use-auth';
 import { GoogleLoginButton } from '../auth/google-login-button';
 import { Logo } from '../ui/logo';
 import { UserAvatar } from '../ui/user-avatar';

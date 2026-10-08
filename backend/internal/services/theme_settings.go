@@ -95,8 +95,13 @@ func normalizeThemeID(value string) string {
 }
 
 func defaultThemeSettings() ThemeSettings {
+	return themeSettingsFor(defaultThemeID)
+}
+
+// themeSettingsFor is the settings of a user who picked a built-in theme and has no custom ones.
+func themeSettingsFor(themeID string) ThemeSettings {
 	return ThemeSettings{
-		ActiveThemeID: defaultThemeID,
+		ActiveThemeID: themeID,
 		CustomThemes:  []StoredTheme{},
 	}
 }
@@ -150,12 +155,6 @@ func normalizeThemeSettingsInput(input ThemeSettings) (ThemeSettings, error) {
 			normalizedTokens[key] = trimmedValue
 		}
 
-		for _, key := range allowedThemeTokenKeys {
-			if _, ok := normalizedTokens[key]; !ok {
-				return ThemeSettings{}, fmt.Errorf("%w: missing theme token %q", ErrInvalidThemeSettings, key)
-			}
-		}
-
 		customThemes = append(customThemes, StoredTheme{
 			ID:          normalizedThemeID,
 			Name:        name,
@@ -197,12 +196,8 @@ func extractThemeSettings(preferences map[string]interface{}) ThemeSettings {
 	}
 
 	if rawThemeID, ok := preferences["theme"].(string); ok {
-		normalizedThemeID := normalizeThemeID(rawThemeID)
-		if normalizedThemeID != "" {
-			return ThemeSettings{
-				ActiveThemeID: normalizedThemeID,
-				CustomThemes:  []StoredTheme{},
-			}
+		if normalizedThemeID := normalizeThemeID(rawThemeID); normalizedThemeID != "" {
+			return themeSettingsFor(normalizedThemeID)
 		}
 	}
 
@@ -232,10 +227,7 @@ func normalizeThemePreferences(preferences map[string]interface{}) error {
 		if normalizedThemeID == "" {
 			return fmt.Errorf("%w: theme is required", ErrInvalidThemeSettings)
 		}
-		themeSettings = ThemeSettings{
-			ActiveThemeID: normalizedThemeID,
-			CustomThemes:  []StoredTheme{},
-		}
+		themeSettings = themeSettingsFor(normalizedThemeID)
 	}
 
 	preferences["theme"] = themeSettings.ActiveThemeID
@@ -266,7 +258,7 @@ func (s *AuthService) saveUserPreferences(user *models.User, preferences map[str
 	}
 
 	user.Preferences = rawPreferences
-	if err := s.db.Save(user).Error; err != nil {
+	if err := s.db.Model(user).Update("preferences", user.Preferences).Error; err != nil {
 		return fmt.Errorf("failed to save preferences: %w", err)
 	}
 

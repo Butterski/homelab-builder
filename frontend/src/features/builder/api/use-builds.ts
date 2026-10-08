@@ -3,7 +3,7 @@ import { useCallback } from 'react';
 import { buildApi, type Build } from './builds';
 
 /** The one cache entry for the user's projects. */
-export const buildsKey = ['builds'] as const;
+const buildsKey = ['builds'] as const;
 
 /**
  * The user's projects. Every place that lists them (the Projects page, the

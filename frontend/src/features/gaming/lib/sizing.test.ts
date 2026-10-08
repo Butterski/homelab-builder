@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { GameProfile } from '../../../types';
 import {
-  formatMemory,
   maxPortOffset,
   newGameInstance,
   readGameInstance,
@@ -90,11 +89,5 @@ describe('ports and instances', () => {
     expect(readGameInstance({ catalog_service_id: 'x' })).toBeNull();
     expect(readGameInstance({ game: 'valheim' })).toBeNull();
     expect(readGameInstance(undefined)).toBeNull();
-  });
-
-  it('formats memory the way the report does', () => {
-    expect(formatMemory(512)).toBe('512 MB');
-    expect(formatMemory(4096)).toBe('4 GB');
-    expect(formatMemory(4608)).toBe('4.5 GB');
   });
 });

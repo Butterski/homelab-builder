@@ -2,7 +2,7 @@ import { apiUrl } from '@/lib/api-base';
 
 export const TOKEN_PLACEHOLDER = '<your-token>';
 
-export type McpSnippet = {
+type McpSnippet = {
   id: string;
   label: string;
   /** Where the snippet goes or how it is used. */

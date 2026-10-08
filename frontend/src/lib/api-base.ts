@@ -1,6 +1,6 @@
 const DEFAULT_DEV_API_BASE = 'http://localhost:8080';
 
-export function resolveApiBase(): string {
+function resolveApiBase(): string {
     const rawApiUrl = import.meta.env.VITE_API_URL?.trim();
     if (rawApiUrl) {
         return rawApiUrl.replace(/\/+$/, '');

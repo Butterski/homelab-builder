@@ -1,4 +1,5 @@
 import type { Position } from '@xyflow/react';
+import type { ThemeSettings } from '../lib/theme-registry';
 
 export interface ServiceRequirement {
   id: string;
@@ -10,16 +11,6 @@ export interface ServiceRequirement {
   min_storage_gb: number;
   recommended_storage_gb: number;
 }
-
-export type ServiceCategory =
-  | 'media'
-  | 'networking'
-  | 'monitoring'
-  | 'storage'
-  | 'management'
-  | 'home_automation'
-  | 'gaming'
-  | 'other';
 
 export interface Service {
   id: string;
@@ -97,88 +88,33 @@ export interface GameInstance {
   port_offset: number;
 }
 
-export interface CatalogComponent {
-  id: string;
-  category: string;
-  brand: string;
-  model: string;
-  spec: Record<string, any>;
-  price_est: number;
-  currency: string;
-  affiliate_tag: string;
-  buy_urls: PurchaseLink[];
-  image_url: string;
-  submitted_by?: string;
-  approved: boolean;
-  likes: number;
-  created_at: string;
-  updated_at: string;
+/** How cables and network zones are drawn. Saved to the account, not with the build. */
+export interface EdgePreferences {
+  routingEngine: 'smart' | 'direct';
+  connectionStyle: 'floating' | 'strict';
+  lineStyle: 'bezier' | 'step' | 'straight';
+  ignoreNetworkLoops: boolean;
+  showNetworkZones: boolean;
+  showLanZones: boolean;
+  showNatZones: boolean;
+  zoneOpacity: number;
 }
 
-export interface Spec {
-  total_ram_mb: number;
-  total_cpu_cores: number;
-  total_storage_gb: number;
-  cpu_suggestion: string;
-  ram_suggestion: string;
-  storage_suggestion: string;
-  network_suggestion: string;
-  rationale: string;
-  estimated_cost_min: number;
-  estimated_cost_max: number;
-  hardware_matches?: CatalogComponent[];
-}
-
-export interface ServiceInsight {
-  name: string;
-  note: string;
-  ram_percentage: number;
-}
-
-export interface RecommendationResponse {
-  minimal_spec: Spec;
-  recommended_spec: Spec;
-  optimal_spec: Spec;
-  selected_services: Service[];
-  summary: string;
-  insights: ServiceInsight[];
-  heaviest_service: string;
-  tier_comparison: string;
-}
-
-export interface PurchaseLink {
-  store: string;
-  url: string;
-}
-
-export interface ShoppingListItem {
-  name: string;
-  category: string;
-  estimated_price: number;
-  priority: string;
-  purchase_links: PurchaseLink[];
-}
-
-export interface ShoppingListResponse {
-  items: ShoppingListItem[];
-  total_estimated_cost: number;
-  recommendation_id: string;
+/** Stored on the account as JSON; older accounts may lack any of these. */
+export interface UserPreferences {
+  /** Theme id from before themeSettings existed; read only when themeSettings is missing. */
+  theme?: string;
+  themeSettings?: ThemeSettings;
+  edgePreferences?: Partial<EdgePreferences>;
 }
 
 export interface User {
   id: string;
   email: string;
   name: string;
-  avatar_url: string;
+  avatar_url?: string;
   is_admin?: boolean;
-}
-
-export interface UserSelection {
-  id: string;
-  user_id: string;
-  service_id: string;
-  service: Service;
-  created_at: string;
+  preferences?: UserPreferences;
 }
 
 export type HardwareType =
