@@ -26,10 +26,12 @@ import {
   Shield,
   Cloud,
   Plus,
+  Trash2,
+  Tag as TagIcon,
   Gamepad2,
   Armchair,
 } from 'lucide-react';
-import type { HardwareNode, HardwareSpec, HardwareType } from '../../../types';
+import type { BuilderTag, HardwareNode, HardwareSpec, HardwareType } from '../../../types';
 import { Card } from '../../../components/ui/card';
 import { canNodeHostVMs } from '../../../lib/hardware-config';
 import { useUserSelections } from '../../catalog/api/use-services';
@@ -675,6 +677,9 @@ export const HardwareToolbox = React.memo(function HardwareToolbox({
     selectedNodeId,
     hardwareNodes,
     buildKind,
+    tags,
+    addTag,
+    deleteTag,
   } = useBuilderStore(
     useShallow(state => ({
       availableServices: state.availableServices,
@@ -684,6 +689,9 @@ export const HardwareToolbox = React.memo(function HardwareToolbox({
       selectedNodeId: state.selectedNodeId,
       hardwareNodes: state.hardwareNodes,
       buildKind: state.buildKind,
+      tags: state.tags,
+      addTag: state.addTag,
+      deleteTag: state.deleteTag,
     })),
   );
   const { data: selectionsData } = useUserSelections();
@@ -695,9 +703,9 @@ export const HardwareToolbox = React.memo(function HardwareToolbox({
     if (useBuilderStore.getState().availableServices.length === 0) void fetchServices();
   }, [fetchServices]);
 
-  const [activeTab, setActiveTab] = useState<'components' | 'presets' | 'services' | 'power'>(
-    'components',
-  );
+  const [activeTab, setActiveTab] = useState<
+    'components' | 'presets' | 'services' | 'power' | 'tags'
+  >('components');
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
     new Set(['My Blueprints', 'My Favorites', 'Single Board Computers', 'Mini PCs']),
   );
@@ -707,6 +715,8 @@ export const HardwareToolbox = React.memo(function HardwareToolbox({
   const [position, setPosition] = useState({ x: 16, y: 80 });
   const [isDragging, setIsDragging] = useState(false);
   const [creatorOpen, setCreatorOpen] = useState(false);
+  const [newTagName, setNewTagName] = useState('');
+  const [newTagColor, setNewTagColor] = useState('#3b82f6');
   // Ref for drag offset tracking
   const dragOffset = useRef({ x: 0, y: 0 });
   const isDraggingRef = useRef(false);
@@ -946,13 +956,14 @@ export const HardwareToolbox = React.memo(function HardwareToolbox({
         {!isMinimized && (
           <>
             {/* Tab bar */}
-            <div className="grid grid-cols-4 border-b shrink-0 bg-card px-2 pt-2 gap-1">
+            <div className="grid grid-cols-5 border-b shrink-0 bg-card px-2 pt-2 gap-1">
               {(
                 [
                   { id: 'components', label: 'Types', icon: LayoutGrid },
                   { id: 'presets', label: 'Presets', icon: Package },
                   { id: 'services', label: 'Services', icon: AppWindow },
                   { id: 'power', label: 'Power', icon: Zap },
+                  { id: 'tags', label: 'Tags', icon: TagIcon },
                 ] as const
               ).map(tab => {
                 const Icon = tab.icon;
@@ -1257,6 +1268,89 @@ export const HardwareToolbox = React.memo(function HardwareToolbox({
 
               {/* ── Power tab ── */}
               {activeTab === 'power' && <PowerUsagePanel />}
+
+              {/* ── Tags tab ── */}
+              {activeTab === 'tags' && (
+                <div className="space-y-3">
+                  <p className="text-[11px] text-muted-foreground">
+                    Create reusable tags, then assign them to devices in Node Properties.
+                  </p>
+                  <form
+                    className="space-y-2 rounded-md border p-3"
+                    onSubmit={event => {
+                      event.preventDefault();
+                      const name = newTagName.trim();
+                      if (!name) return;
+                      if (tags.some(tag => tag.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+                        toast.error('A tag with that name already exists.');
+                        return;
+                      }
+                      const tag: BuilderTag = { id: crypto.randomUUID(), name, color: newTagColor };
+                      addTag(tag);
+                      setNewTagName('');
+                      toast.success(`Created tag “${name}”.`);
+                    }}
+                  >
+                    <label className="block text-xs font-medium" htmlFor="library-tag-name">
+                      Tag name
+                    </label>
+                    <input
+                      id="library-tag-name"
+                      value={newTagName}
+                      onChange={event => setNewTagName(event.target.value)}
+                      placeholder="e.g. Production"
+                      maxLength={40}
+                      className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
+                    />
+                    <div className="flex items-center gap-2">
+                      <label className="flex-1 text-xs text-muted-foreground" htmlFor="library-tag-color">
+                        Tag color
+                      </label>
+                      <input
+                        id="library-tag-color"
+                        aria-label="Tag color"
+                        type="color"
+                        value={newTagColor}
+                        onChange={event => setNewTagColor(event.target.value)}
+                        className="size-8 cursor-pointer rounded border bg-transparent p-0.5"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={!newTagName.trim()}
+                      className="flex h-8 w-full items-center justify-center gap-1.5 rounded-md bg-primary px-2 text-xs font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Plus className="size-3.5" /> Create tag
+                    </button>
+                  </form>
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      Tag library
+                    </p>
+                    {tags.length === 0 ? (
+                      <p className="rounded-md border border-dashed p-3 text-center text-xs text-muted-foreground">
+                        No tags yet.
+                      </p>
+                    ) : tags.map(tag => (
+                      <div key={tag.id} className="flex items-center justify-between rounded-md border px-2.5 py-2">
+                        <span className="flex min-w-0 items-center gap-2 text-xs">
+                          <span className="size-3 shrink-0 rounded-full" style={{ backgroundColor: tag.color }} />
+                          <span className="truncate">{tag.name}</span>
+                        </span>
+                        <button
+                          type="button"
+                          className="ml-2 rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                          aria-label={`Delete ${tag.name} tag from library and all devices`}
+                          title="Delete tag from library and all devices"
+                          onClick={() => deleteTag(tag.id)}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* What the owner has, and what runs on it: always beside the canvas,

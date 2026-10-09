@@ -29,6 +29,7 @@ import type {
   VirtualMachine,
   HardwareComponent,
   HardwareSpec,
+  BuilderTag,
 } from '../../../types';
 import {
   isComputeNode,
@@ -313,6 +314,8 @@ const POOL_HINT_NODE_TYPES: HardwareType[] = [
 export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
   const nodeData = data as unknown as HardwareNodeData;
   const details = nodeData.details ?? {};
+  const availableTags = useBuilderStore(state => state.tags ?? []);
+  const nodeTags = availableTags.filter(tag => (details.tags ?? []).includes(tag.id));
   const displayLabel = humanizeNodeLabel(nodeData.label);
   const cfg = TYPE_CONFIG[nodeData.type] ?? FALLBACK_CONFIG;
   const Icon = cfg.icon;
@@ -538,6 +541,20 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
             title={nodeData.status ?? 'online'}
           />
         </div>
+
+        {nodeTags.length > 0 && (
+          <div className="flex flex-wrap gap-1 border-b border-border/70 px-3 py-2">
+            {nodeTags.map((tag: BuilderTag) => (
+              <span
+                key={tag.id}
+                className="rounded-full px-2 py-0.5 text-[9px] font-medium leading-tight text-white"
+                style={{ backgroundColor: tag.color }}
+              >
+                {tag.name}
+              </span>
+            ))}
+          </div>
+        )}
 
         {/* Body */}
         {shouldShowBody && (

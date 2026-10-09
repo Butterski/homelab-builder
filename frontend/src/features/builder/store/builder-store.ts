@@ -22,6 +22,7 @@ import type {
   BuildKind,
   GamingPlan,
   EdgePreferences,
+  BuilderTag,
 } from '../../../types';
 import { initialVirtualNetwork, removeVirtualEndpoints } from '../lib/virtual-network';
 import { withFreshChildIds } from '../lib/hardware-instance';
@@ -324,6 +325,9 @@ interface BuilderState {
   availableServices: Service[];
   fetchServices: () => Promise<void>;
   hardwareNodes: HardwareNode[];
+  tags: BuilderTag[];
+  addTag: (tag: BuilderTag) => void;
+  deleteTag: (tagId: string) => void;
 
   // Visual Logic (React Flow Source of Truth)
   nodes: Node[];
@@ -468,6 +472,38 @@ export const useBuilderStore = create<BuilderState>()(
         get().updateHardware(hostId, { details: { ...host.details, virtual_network: network } });
       },
       hardwareNodes: [],
+      tags: [],
+      addTag: tag =>
+        set(state => {
+          const tags = [...state.tags, tag];
+          return { tags, buildSettings: { ...state.buildSettings, tags } };
+        }),
+      deleteTag: tagId =>
+        set(state => {
+          const tags = state.tags.filter(tag => tag.id !== tagId);
+          const hardwareNodes = state.hardwareNodes.map(node => {
+            const nodeTags = node.details?.tags ?? [];
+            return nodeTags.includes(tagId)
+              ? { ...node, details: { ...node.details, tags: nodeTags.filter(id => id !== tagId) } }
+              : node;
+          });
+          const changed = new Map(
+            hardwareNodes
+              .filter((node, index) => node !== state.hardwareNodes[index])
+              .map(node => [node.id, node]),
+          );
+          return {
+            tags,
+            hardwareNodes,
+            nodes: state.nodes.map(node => {
+              const hardware = changed.get(node.id);
+              return hardware
+                ? { ...node, data: { ...node.data, details: hardware.details } }
+                : node;
+            }),
+            buildSettings: { ...state.buildSettings, tags },
+          };
+        }),
       nodes: [],
       edges: [],
       selectedNodeId: null,
@@ -1112,6 +1148,7 @@ export const useBuilderStore = create<BuilderState>()(
           nodes: [],
           edges: [],
           hardwareNodes: [],
+          tags: [],
           selectedNodeId: null,
           validationIssues: [],
           buildKind: 'homelab',
@@ -1149,6 +1186,7 @@ export const useBuilderStore = create<BuilderState>()(
           currentRevision: build.revision,
           projectName: name,
           hardwareNodes,
+          tags: build.settings?.tags || [],
           nodes: rfNodes,
           edges: rfEdges,
           buildKind: build.kind || 'homelab',
@@ -1307,7 +1345,13 @@ export const useBuilderStore = create<BuilderState>()(
               saveState: 'saved',
               saveError: null,
               ...(opened.currentBuildId !== id
-                ? { projectName: '', buildKind: 'homelab' as BuildKind, gamingPlan: {}, buildSettings: {} }
+                ? {
+                    projectName: '',
+                    buildKind: 'homelab' as BuildKind,
+                    gamingPlan: {},
+                    buildSettings: {},
+                    tags: [],
+                  }
                 : {}),
             });
           }
