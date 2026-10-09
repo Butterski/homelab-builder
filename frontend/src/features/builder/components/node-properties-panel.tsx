@@ -17,7 +17,7 @@ import {
   Save,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import type { HardwareNode, HardwareSpec } from '../../../types';
+import type { BuilderTag, HardwareNode, HardwareSpec } from '../../../types';
 import { VMManager } from './vm-manager';
 import { InternalComponentManager } from './internal-component-manager';
 import { GamingNodeFields } from '../../gaming/components/gaming-node-fields';
@@ -68,6 +68,7 @@ export const NodePropertiesPanel = memo(function NodePropertiesPanel() {
     updateHardware,
     removeHardware,
     reassignAllIPs,
+    tags,
   } = useBuilderStore(
     useShallow(state => ({
       selectedNodeId: state.selectedNodeId,
@@ -76,6 +77,7 @@ export const NodePropertiesPanel = memo(function NodePropertiesPanel() {
       updateHardware: state.updateHardware,
       removeHardware: state.removeHardware,
       reassignAllIPs: state.reassignAllIPs,
+      tags: state.tags,
     })),
   );
 
@@ -101,6 +103,7 @@ export const NodePropertiesPanel = memo(function NodePropertiesPanel() {
   const [publicIP, setPublicIP] = useState('');
   const [provider, setProvider] = useState('');
   const [region, setRegion] = useState('');
+  const [tagToAdd, setTagToAdd] = useState('');
 
   const [ramUnit, setRamUnit] = useState<'GB' | 'TB'>('GB');
   const [storageUnit, setStorageUnit] = useState<'GB' | 'TB'>('GB');
@@ -330,6 +333,13 @@ export const NodePropertiesPanel = memo(function NodePropertiesPanel() {
     selectNode(null);
   };
 
+  const assignedTagIds = selectedNode.details?.tags ?? [];
+  const updateNodeTags = (next: string[]) => {
+    updateHardware(selectedNode.id, {
+      details: { ...selectedNode.details, tags: next },
+    });
+  };
+
   // The server hands out addresses with every save; the field follows when it answers.
   const handleAutoIP = () => {
     void reassignAllIPs().catch(() =>
@@ -454,6 +464,49 @@ export const NodePropertiesPanel = memo(function NodePropertiesPanel() {
           )}
 
           <NodeAssetField node={selectedNode} />
+
+          <div className="space-y-2 rounded-md border p-3">
+            <Label>Tags</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {tags
+                .filter(tag => assignedTagIds.includes(tag.id))
+                .map((tag: BuilderTag) => (
+                  <button
+                    key={tag.id}
+                    type="button"
+                    onClick={() => updateNodeTags(assignedTagIds.filter(id => id !== tag.id))}
+                    className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs text-white"
+                    style={{ backgroundColor: tag.color }}
+                    title={`Remove ${tag.name}`}
+                  >
+                    {tag.name}<X className="size-3" />
+                  </button>
+                ))}
+              {assignedTagIds.length === 0 && (
+                <span className="text-xs text-muted-foreground">No tags assigned.</span>
+              )}
+            </div>
+            <select
+              aria-label="Add tag to device"
+              value={tagToAdd}
+              onChange={event => {
+                const tagId = event.target.value;
+                setTagToAdd('');
+                if (tagId && !assignedTagIds.includes(tagId)) {
+                  updateNodeTags([...assignedTagIds, tagId]);
+                }
+              }}
+              className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
+            >
+              <option value="">Add a tag…</option>
+              {tags
+                .filter(tag => !assignedTagIds.includes(tag.id))
+                .map(tag => <option key={tag.id} value={tag.id}>{tag.name}</option>)}
+            </select>
+            {tags.length === 0 && (
+              <span className="text-[10px] text-muted-foreground">Create tags in the Toolbox → Tags tab.</span>
+            )}
+          </div>
 
           <GamingNodeFields node={selectedNode} />
 
