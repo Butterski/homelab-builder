@@ -14,7 +14,7 @@ import {
 } from '@xyflow/react';
 import { toast } from 'sonner';
 import '@xyflow/react/dist/style.css';
-import Joyride, { type CallBackProps, STATUS, type Step } from 'react-joyride';
+import { Joyride, type EventData, STATUS, type Step } from 'react-joyride';
 import { BuildConflictError, useBuilderStore } from '../store/builder-store';
 import { useShallow } from 'zustand/react/shallow';
 import { startAutosave } from '../store/autosave';
@@ -298,7 +298,7 @@ const TOUR_STEPS: Step[] = [
     target: '.tour-toolbox',
     content:
       'Welcome to HLBuilder! Drag networking gear and servers from this toolbox onto your canvas.',
-    disableBeacon: true,
+    skipBeacon: true,
   },
   {
     target: '.react-flow__pane',
@@ -404,7 +404,7 @@ const Flow = React.memo(function Flow() {
     };
   }, []);
 
-  const handleJoyrideCallback = (data: CallBackProps) => {
+  const handleJoyrideCallback = (data: EventData) => {
     const { status } = data;
     if (status === STATUS.FINISHED || status === STATUS.SKIPPED) {
       setRunTour(false);
@@ -1259,7 +1259,7 @@ const Flow = React.memo(function Flow() {
   );
 
   const onNodeDragStop = useCallback(
-    (_: React.MouseEvent, node: ReactFlowNode) => {
+    (_: MouseEvent | TouchEvent, node: ReactFlowNode) => {
       // Rack nodes manage their own position, don't nest them
       if (node.type === 'rack') return;
 
@@ -1365,16 +1365,14 @@ const Flow = React.memo(function Flow() {
           <Joyride
             steps={TOUR_STEPS}
             run
-            callback={handleJoyrideCallback}
+            onEvent={handleJoyrideCallback}
             locale={{ last: 'Close' }}
             continuous
-            showProgress
-            showSkipButton
-            styles={{
-              options: {
-                primaryColor: 'var(--primary)',
-                zIndex: 10000,
-              },
+            options={{
+              buttons: ['back', 'close', 'primary', 'skip'],
+              primaryColor: 'var(--primary)',
+              showProgress: true,
+              zIndex: 10000,
             }}
           />
         )}
