@@ -314,7 +314,7 @@ const POOL_HINT_NODE_TYPES: HardwareType[] = [
 export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
   const nodeData = data as unknown as HardwareNodeData;
   const details = nodeData.details ?? {};
-  const availableTags = useBuilderStore(state => state.tags);
+  const availableTags = useBuilderStore(state => state.tags ?? []);
   const nodeTags = availableTags.filter(tag => (details.tags ?? []).includes(tag.id));
   const displayLabel = humanizeNodeLabel(nodeData.label);
   const cfg = TYPE_CONFIG[nodeData.type] ?? FALLBACK_CONFIG;
