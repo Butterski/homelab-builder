@@ -12,6 +12,7 @@ const COMPONENT_ICONS: Partial<Record<ComponentType, React.ElementType>> = {
     ram: Layers,
     disk: HardDrive,
     gpu: ScanLine,
+    cpu: Cpu,
     hba: CircuitBoard,
     pcie: Component,
     ups: Zap,
@@ -71,6 +72,7 @@ export function InternalComponentManager({ nodeId }: Props) {
                                 </div>
                                 <div className="flex flex-wrap gap-x-2 text-[10px] text-muted-foreground truncate">
                                     {comp.details?.model && <span>{comp.details.model}</span>}
+                                    {comp.details?.cpu && <span>{comp.details.cpu} cores</span>}
                                     {comp.details?.ram && <span>{comp.details.ram} {comp.type === 'gpu' ? 'VRAM' : ''}</span>}
                                     {comp.details?.storage && <span>{comp.details.storage}</span>}
                                 </div>

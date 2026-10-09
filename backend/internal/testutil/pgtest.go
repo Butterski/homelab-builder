@@ -155,7 +155,7 @@ func User(t testing.TB, db *gorm.DB) models.User {
 // t.Setenv("IPAM_URL", url).
 func IPAMStub(t testing.TB) string {
 	t.Helper()
-	offline := map[string]bool{"disk": true, "gpu": true, "hba": true, "pcie": true, "pdu": true, "ups": true, "rack": true, "lan_table": true}
+	offline := map[string]bool{"disk": true, "gpu": true, "cpu": true, "hba": true, "pcie": true, "pdu": true, "ups": true, "rack": true, "lan_table": true}
 	type guest struct {
 		ID         string `json:"id"`
 		ExistingIP string `json:"existing_ip,omitempty"`

@@ -71,7 +71,8 @@ const TYPE_ORDER: Partial<Record<HardwareType, number>> = {
   lan_table: 14,
   ups: 15,
   pdu: 16,
-  rack: 17,
+  cpu: 17,
+  rack: 18,
 };
 
 /** A cable beats Wi-Fi, Wi-Fi beats a tunnel, and a power feed comes last. */

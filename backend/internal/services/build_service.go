@@ -331,7 +331,7 @@ func validateEdgeEndpoints(nodes []NodeDTO, edges []EdgeDTO) error {
 		"router": true, "switch": true, "access_point": true, "modem": true, "firewall": true,
 		"server": true, "server_v2": true, "vps": true, "pc": true, "minipc": true,
 		"sbc": true, "nas": true, "iot": true, "ups": true, "pdu": true, "rack": true,
-		"disk": true, "gpu": true, "hba": true, "pcie": true,
+		"disk": true, "gpu": true, "cpu": true, "hba": true, "pcie": true,
 		nodeTypeConsole: true, nodeTypeLANTable: true,
 	}
 	vmHostTypes := map[string]bool{"server": true, "server_v2": true, "vps": true, "pc": true, "minipc": true, "sbc": true, "nas": true, "iot": true}
@@ -395,7 +395,7 @@ func validateEdgeEndpoints(nodes []NodeDTO, edges []EdgeDTO) error {
 		"router": true, "switch": true, "modem": true, "firewall": true,
 		"server_v2": true, "vps": true, "iot": true, "ups": true,
 	}
-	nestedOnly := map[string]bool{"disk": true, "gpu": true, "hba": true, "pcie": true, "pdu": true, "rack": true}
+	nestedOnly := map[string]bool{"disk": true, "gpu": true, "cpu": true, "hba": true, "pcie": true, "pdu": true, "rack": true}
 	seenPairs := make(map[string]struct{}, len(edges))
 	usedPorts := make(map[string]struct{})
 	tableUplinks := make(map[string]int)

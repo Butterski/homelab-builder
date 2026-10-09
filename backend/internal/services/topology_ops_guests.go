@@ -320,7 +320,7 @@ func (ed *topologyEditor) addComponent(op TopologyOp) (TopologyOp, error) {
 		component.Details, component.PowerDraw = catalogHardwareDetails(hardware)
 	}
 	if !componentTypes[component.Type] {
-		return op, fmt.Errorf("unsupported component type %q; use disk, gpu, hba or pcie", component.Type)
+		return op, fmt.Errorf("unsupported component type %q; use disk, cpu, gpu, hba or pcie", component.Type)
 	}
 	if op.Name != nil {
 		component.Name = *op.Name

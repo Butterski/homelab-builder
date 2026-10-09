@@ -38,7 +38,7 @@ var componentHostNodeTypes = map[string]bool{
 	"minipc": true, "sbc": true, "iot": true, "nas": true,
 }
 
-var componentTypes = map[string]bool{"disk": true, "gpu": true, "hba": true, "pcie": true}
+var componentTypes = map[string]bool{"disk": true, "gpu": true, "cpu": true, "hba": true, "pcie": true}
 
 // hubNodeTypes may be cabled to anything; every other pair needs one of them.
 var hubNodeTypes = map[string]bool{
@@ -47,7 +47,7 @@ var hubNodeTypes = map[string]bool{
 }
 
 var uncabledNodeTypes = map[string]bool{
-	"disk": true, "gpu": true, "hba": true, "pcie": true, "pdu": true, "rack": true,
+	"disk": true, "gpu": true, "cpu": true, "hba": true, "pcie": true, "pdu": true, "rack": true,
 }
 
 var multiplierPattern = regexp.MustCompile(`(?i)(\d+)\s*[x×]`)

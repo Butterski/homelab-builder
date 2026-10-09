@@ -24,7 +24,7 @@ Topology rules
 - A firewall, server_v2 or vps with details.nat_enabled (or routing_enabled plus dhcp_enabled) is a gateway: devices cabled to its ports get their own downstream subnet.
 - Racks hold devices: set parent to the rack. Racks are never cabled. details.rack_size is a rack's height in U, details.rack_units a device's height.
 - VMs, containers and services run on server_v2, minipc, pc, nas, sbc, vps and iot nodes (add_vm). A service from list_services is added with catalog_service_id.
-- Disks, GPUs, HBAs and PCIe cards are internal components of a host (add_component), not nodes.
+- Disks, GPUs, HBAs and PCIe cards are internal components of a host (add_component), not nodes. A CPU can be added as a component or as an unconnected, non-network CPU node.
 - Useful details keys: model, cpu (cores), ram (GB), storage (GB), ports, price_est, notes, dhcp_enabled, subnet_mask, nat_enabled, routing_enabled, firewall_enabled, network_zone (lan, wan, dmz, cloud), public_ip, server_profile (general, hypervisor, storage, gateway), rack_size, rack_units, capacity_va.
 - Prefer real hardware: search_hardware returns catalog items whose hardware_id fills in specs, power draw and price.
 

@@ -22,6 +22,7 @@ var DefaultDeviceZones = map[string]ZoneConfig{
 	"minipc":       {BaseOffset: 170, Step: 10, CanHostVMs: true},
 	"sbc":          {BaseOffset: 180, Step: 10, CanHostVMs: true},
 	"gpu":          {BaseOffset: 190, Step: 1, CanHostVMs: false},
+	"cpu":          {BaseOffset: 199, Step: 1, CanHostVMs: false},
 	"hba":          {BaseOffset: 195, Step: 1, CanHostVMs: false},
 	"pcie":         {BaseOffset: 198, Step: 1, CanHostVMs: false},
 	"iot":          {BaseOffset: 200, Step: 10, CanHostVMs: true},
@@ -35,7 +36,7 @@ var VMHostTypeOrder = []string{"nas", "vps", "server_v2", "server", "pc", "minip
 
 // A lan_table has no address of its own: its seats take leases from the pool.
 var NonNetworkTypes = map[string]bool{
-	"disk": true, "gpu": true, "hba": true, "pcie": true, "pdu": true, "ups": true, "rack": true,
+	"disk": true, "gpu": true, "cpu": true, "hba": true, "pcie": true, "pdu": true, "ups": true, "rack": true,
 	"lan_table": true,
 }
 
