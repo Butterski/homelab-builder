@@ -237,6 +237,8 @@ func TestAllocate_NonNetworkTypesSkipped(t *testing.T) {
 		},
 		Nodes: []models.NodeDTO{
 			{ID: "gpu1", Type: "gpu", Connections: []string{"r1"}},
+			{ID: "cpu1", Type: "cpu", Connections: []string{"r1"}},
+			{ID: "pcie1", Type: "pcie", Connections: []string{"r1"}},
 			{ID: "hba1", Type: "hba", Connections: []string{"r1"}},
 		},
 	}
@@ -246,6 +248,16 @@ func TestAllocate_NonNetworkTypesSkipped(t *testing.T) {
 		if n.AssignedIP != "" {
 			t.Errorf("non-network device %s should not have IP, got %s", n.ID, n.AssignedIP)
 		}
+	}
+}
+
+func TestCPUZoneAndNetworkClassification(t *testing.T) {
+	zone := GetZone("cpu", nil)
+	if zone.BaseOffset != 199 || zone.Step != 1 || zone.CanHostVMs {
+		t.Fatalf("unexpected CPU allocation zone: %+v", zone)
+	}
+	if !NonNetworkTypes["cpu"] {
+		t.Fatal("CPU must be classified as a non-network device")
 	}
 }
 

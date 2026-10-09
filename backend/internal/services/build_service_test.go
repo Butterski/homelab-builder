@@ -571,6 +571,18 @@ func TestValidateTopologyRules(t *testing.T) {
 	}
 }
 
+func TestValidateTopologyRules_CPUIsNonNetwork(t *testing.T) {
+	cpu := NodeDTO{ID: "cpu", Type: "cpu", Name: "CPU"}
+	if err := validateEdgeEndpoints([]NodeDTO{cpu}, nil); err != nil {
+		t.Fatalf("standalone CPU node should be valid: %v", err)
+	}
+	router := NodeDTO{ID: "router", Type: "router", Name: "Router"}
+	err := validateEdgeEndpoints([]NodeDTO{cpu, router}, []EdgeDTO{{Source: "router", Target: "cpu"}})
+	if !errors.Is(err, ErrInvalidTopology) || !strings.Contains(err.Error(), "nested-only component") {
+		t.Fatalf("CPU cable should be rejected as a nested-only component, got %v", err)
+	}
+}
+
 func TestBuildService_RenamePreservesTopologyAndRejectsStaleRevision(t *testing.T) {
 	tx := testTx(t)
 	svc := NewBuildService(tx)

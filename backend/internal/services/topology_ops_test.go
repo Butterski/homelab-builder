@@ -696,12 +696,27 @@ func TestApplyOps_ComponentRules(t *testing.T) {
 	f := newOpsFixture()
 	result := mustApply(t, f.base,
 		TopologyOp{Op: "add_component", Ref: "gpu", Node: f.server, Type: "gpu", Name: strPtr("Arc A380"), PowerDraw: numPtr(75)},
+		TopologyOp{Op: "add_component", Ref: "cpu", Node: f.server, Type: "cpu", Name: strPtr("Xeon Silver"), Details: map[string]any{"cpu": float64(16)}},
+		TopologyOp{Op: "add_component", Ref: "pcie", Node: f.server, Type: "pcie", Name: strPtr("10GbE NIC"), Details: map[string]any{"model": "PCIe 3.0 x8"}},
 		TopologyOp{Op: "add_component", Ref: "disk", Node: f.server, Type: "disk", Name: strPtr("Exos 8TB"), Details: map[string]any{"storage": float64(8000)}},
 		TopologyOp{Op: "remove_component", Component: "gpu"},
 	)
 	components := findNode(t, result.Input, f.server).InternalComponents
-	if len(components) != 1 || components[0].ID != result.Refs["disk"] || components[0].Details["storage"] != float64(8000) {
+	if len(components) != 3 {
 		t.Fatalf("unexpected components: %+v", components)
+	}
+	byID := make(map[string]ComponentDTO, len(components))
+	for _, component := range components {
+		byID[component.ID] = component
+	}
+	if cpu := byID[result.Refs["cpu"]]; cpu.Type != "cpu" || cpu.Name != "Xeon Silver" || cpu.Details["cpu"] != float64(16) {
+		t.Errorf("CPU component was not retained: %+v", cpu)
+	}
+	if pcie := byID[result.Refs["pcie"]]; pcie.Type != "pcie" || pcie.Name != "10GbE NIC" || pcie.Details["model"] != "PCIe 3.0 x8" {
+		t.Errorf("PCIe component was not retained: %+v", pcie)
+	}
+	if disk := byID[result.Refs["disk"]]; disk.Type != "disk" || disk.Details["storage"] != float64(8000) {
+		t.Errorf("disk component changed while adding CPU: %+v", disk)
 	}
 
 	if opErr := applyError(t, f.base, ApplyOptions{}, TopologyOp{Op: "add_component", Node: f.sw, Type: "disk", Name: strPtr("x")}); !strings.Contains(opErr.Message, "cannot hold internal components") {
@@ -709,6 +724,18 @@ func TestApplyOps_ComponentRules(t *testing.T) {
 	}
 	if opErr := applyError(t, f.base, ApplyOptions{}, TopologyOp{Op: "add_component", Node: f.server, Type: "ram", Name: strPtr("x")}); !strings.Contains(opErr.Message, "unsupported component type") {
 		t.Fatalf("unexpected error: %+v", opErr)
+	}
+}
+
+func TestApplyOps_CPUNodeAndRackSize(t *testing.T) {
+	f := newOpsFixture()
+	result := mustApply(t, f.base, TopologyOp{Op: "add_node", Ref: "cpu", Type: "cpu"})
+	cpu := findNode(t, result.Input, result.Refs["cpu"])
+	if cpu.Type != "cpu" || cpu.Name != "CPU" {
+		t.Fatalf("unexpected CPU node: %+v", cpu)
+	}
+	if got := rackUnitsOf(NodeDTO{Type: "cpu", Details: map[string]any{}}); got != 1 {
+		t.Fatalf("CPU default rack size = %dU, want 1U", got)
 	}
 }
 
