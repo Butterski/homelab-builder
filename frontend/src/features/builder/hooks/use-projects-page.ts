@@ -290,7 +290,12 @@ export function useProjectsPage() {
         kind: fullBuild.kind || 'homelab',
         gaming_plan: fullBuild.gaming_plan || {},
         exportedAt: new Date().toISOString(),
-        nodes: fullBuild.nodes || [],
+        // Node notes live in details.notes. Normalize details to an object in
+        // the file so all node specs, including notes, round-trip as JSON data.
+        nodes: (fullBuild.nodes || []).map(node => ({
+          ...node,
+          ...(node.details == null ? {} : { details: parseDetails(node.details) }),
+        })),
         edges: fullBuild.edges || [],
         settings: fullBuild.settings || {},
       };
