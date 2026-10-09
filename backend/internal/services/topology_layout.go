@@ -28,7 +28,7 @@ const (
 var defaultRackUnits = map[string]int{
 	"server": 2, "server_v2": 2, "firewall": 1, "vps": 1, "switch": 1, "router": 2,
 	"nas": 2, "pc": 4, "minipc": 1, "sbc": 1, "access_point": 1, "ups": 4, "pdu": 1,
-	"hba": 1, "gpu": 2, "disk": 1, "pcie": 1, "iot": 1, "modem": 1,
+	"hba": 1, "gpu": 2, "cpu": 1, "disk": 1, "pcie": 1, "iot": 1, "modem": 1,
 }
 
 type layoutBox struct{ x, y, w, h float64 }

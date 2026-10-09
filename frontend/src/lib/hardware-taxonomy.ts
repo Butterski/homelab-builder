@@ -15,6 +15,7 @@ const HARDWARE_CATEGORY_LABELS: Record<string, string> = {
   disk: 'Storage',
   ram: 'RAM',
   gpu: 'GPUs',
+  cpu: 'CPUs',
   hba: 'HBA Cards',
   nic: 'NICs',
   pcie: 'PCIe Cards',
@@ -50,6 +51,7 @@ const HARDWARE_TYPE_NAMES: Partial<Record<HardwareType, string>> = {
   rack: 'Rack',
   disk: 'Disk',
   gpu: 'GPU',
+  cpu: 'CPU',
   hba: 'HBA card',
   pcie: 'PCIe card',
 };
@@ -105,6 +107,8 @@ export function normalizeHardwareCategory(category: string) {
       return 'hba';
     case 'gpus':
       return 'gpu';
+    case 'cpus':
+      return 'cpu';
     case 'routers':
       return 'router';
     case 'switches':

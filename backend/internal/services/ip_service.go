@@ -133,7 +133,7 @@ type ipamResponse struct {
 // ─── Non-network types that don't receive IPs ───────────────────────────────
 
 var nonNetworkTypes = map[string]bool{
-	"disk": true, "gpu": true, "hba": true, "pcie": true, "pdu": true, "ups": true, "rack": true,
+	"disk": true, "gpu": true, "cpu": true, "hba": true, "pcie": true, "pdu": true, "ups": true, "rack": true,
 	// A LAN table has no address of its own: its seats take leases from the pool.
 	nodeTypeLANTable: true,
 }

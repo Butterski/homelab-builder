@@ -22,6 +22,8 @@ func NormalizeHardwareCategory(category string) string {
 		return "hba"
 	case "gpus":
 		return "gpu"
+	case "cpus":
+		return "cpu"
 	case "routers":
 		return "router"
 	case "switches":

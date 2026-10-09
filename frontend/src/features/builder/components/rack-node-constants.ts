@@ -27,6 +27,7 @@ export const DEFAULT_DEVICE_U: Record<string, number> = {
   pdu: 1,
   hba: 1,
   gpu: 2,
+  cpu: 1,
   disk: 1,
   pcie: 1,
   iot: 1,
