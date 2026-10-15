@@ -36,7 +36,7 @@ var VMHostTypeOrder = []string{"nas", "vps", "server_v2", "server", "pc", "minip
 
 // A lan_table has no address of its own: its seats take leases from the pool.
 var NonNetworkTypes = map[string]bool{
-	"disk": true, "gpu": true, "cpu": true, "hba": true, "pcie": true, "pdu": true, "ups": true, "rack": true,
+	"disk": true, "gpu": true, "cpu": true, "hba": true, "pcie": true, "pdu": true, "power_outlet": true, "ups": true, "rack": true,
 	"lan_table": true,
 }
 

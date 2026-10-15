@@ -941,6 +941,14 @@
   width: 1rem !important;
 }
 
+/* A power input or socket: a small square in the colour set through --node-accent. */
+.node-power-handle {
+  width: 0.5rem !important;
+  height: 0.5rem !important;
+  border-width: 1px !important;
+  border-radius: 1px !important;
+}
+
 .edge-radial-menu {
   position: absolute;
   left: 50%;

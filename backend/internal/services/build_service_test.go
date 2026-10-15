@@ -539,6 +539,9 @@ func TestValidateTopologyRules(t *testing.T) {
 	switchOne := NodeDTO{ID: "switch-1", Type: "switch"}
 	switchTwo := NodeDTO{ID: "switch-2", Type: "switch"}
 	server := NodeDTO{ID: "server", Type: "server"}
+	dualPSU := NodeDTO{ID: "server", Type: "server", Details: map[string]any{"psu_count": float64(2)}}
+	ups := NodeDTO{ID: "ups", Type: "ups"}
+	pdu := NodeDTO{ID: "pdu", Type: "pdu"}
 	nas := NodeDTO{ID: "nas", Type: "nas"}
 
 	tests := []struct {
@@ -553,6 +556,16 @@ func TestValidateTopologyRules(t *testing.T) {
 		{"wireless without radio endpoint", []NodeDTO{router, switchOne}, []EdgeDTO{{Source: "router", Target: "switch-1", Type: "wireless"}}},
 		{"unsupported node type", []NodeDTO{{ID: "unknown", Type: "banana"}}, nil},
 		{"service on non-compute node", []NodeDTO{{ID: "switch", Type: "switch", VMs: []VMDTO{{ID: "service"}}}}, nil},
+		{"reused socket", []NodeDTO{ups, server, nas}, []EdgeDTO{
+			{Source: "ups", SourceHandle: "pwr-out-0", Target: "server", TargetHandle: "pwr-in-0", Type: "power"},
+			{Source: "ups", SourceHandle: "pwr-out-0", Target: "nas", TargetHandle: "pwr-in-0", Type: "power"},
+		}},
+		{"missing power input", []NodeDTO{ups, server}, []EdgeDTO{{Source: "ups", SourceHandle: "pwr-out-0", Target: "server", TargetHandle: "pwr-in-1", Type: "power"}}},
+		{"power loop", []NodeDTO{ups, pdu}, []EdgeDTO{
+			{Source: "ups", SourceHandle: "pwr-out-0", Target: "pdu", TargetHandle: "pwr-in-0", Type: "power"},
+			{Source: "pdu", SourceHandle: "pwr-out-0", Target: "ups", TargetHandle: "pwr-in-0", Type: "power"},
+		}},
+		{"ethernet to a ups", []NodeDTO{switchOne, ups}, []EdgeDTO{{Source: "switch-1", SourceHandle: "eth0", Target: "ups", TargetHandle: "target-0"}}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -568,6 +581,22 @@ func TestValidateTopologyRules(t *testing.T) {
 	}
 	if err := validateEdgeEndpoints([]NodeDTO{router, switchOne, server}, validEdges); err != nil {
 		t.Fatalf("expected valid topology, got %v", err)
+	}
+
+	powerEdges := []EdgeDTO{
+		{Source: "pdu", SourceHandle: "pwr-out-0", Target: "server", TargetHandle: "pwr-in-1", Type: "power"},
+		{Source: "pdu", SourceHandle: "pwr-out-1", Target: "server", TargetHandle: "pwr-in-0", Type: "power"},
+		{Source: "ups", SourceHandle: "pwr-out-0", Target: "pdu", TargetHandle: "pwr-in-0", Type: "power"},
+	}
+	if err := validateEdgeEndpoints([]NodeDTO{dualPSU, ups, pdu}, powerEdges); err != nil {
+		t.Fatalf("expected valid power wiring, got %v", err)
+	}
+
+	// The reason reaches the user: devices are named, not identified.
+	named := []NodeDTO{{ID: "sw-id", Type: "switch", Name: "Core"}, {ID: "ups-id", Type: "ups", Name: "Rack UPS"}}
+	err := validateEdgeEndpoints(named, []EdgeDTO{{Source: "sw-id", SourceHandle: "eth0", Target: "ups-id", TargetHandle: "target-0"}})
+	if err == nil || !strings.Contains(err.Error(), "Rack UPS is a ups and has no network port") {
+		t.Fatalf("expected the UPS by name, got %v", err)
 	}
 }
 

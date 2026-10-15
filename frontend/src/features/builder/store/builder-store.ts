@@ -22,6 +22,7 @@ import type {
   BuildKind,
   GamingPlan,
   EdgePreferences,
+  BuilderTag,
 } from '../../../types';
 import { initialVirtualNetwork, removeVirtualEndpoints } from '../lib/virtual-network';
 import { withFreshChildIds } from '../lib/hardware-instance';
@@ -36,6 +37,7 @@ import {
 import { proposalApi, type Proposal } from '../api/proposals';
 import { mapBuildToFlow, parseDetails } from '../lib/build-mapper';
 import { requiredConnectionType } from '../lib/connection-rules';
+import { isPowerHandle, normalizePowerConnection } from '../lib/power-ports';
 import { newTableDetails } from '../../gaming/lib/table';
 import { newGameInstance, sizeServer } from '../../gaming/lib/sizing';
 import {
@@ -62,6 +64,8 @@ const DERIVED_DETAIL_KEYS: Array<keyof HardwareSpec> = [
   'lan_gateway_ip',
   'lan_subnet',
   'interfaces',
+  'power_load',
+  'port_networks',
 ];
 
 function mergeServerDetails(local: HardwareSpec | undefined, server: HardwareSpec): HardwareSpec {
@@ -324,6 +328,9 @@ interface BuilderState {
   availableServices: Service[];
   fetchServices: () => Promise<void>;
   hardwareNodes: HardwareNode[];
+  tags: BuilderTag[];
+  addTag: (tag: BuilderTag) => void;
+  deleteTag: (tagId: string) => void;
 
   // Visual Logic (React Flow Source of Truth)
   nodes: Node[];
@@ -468,6 +475,38 @@ export const useBuilderStore = create<BuilderState>()(
         get().updateHardware(hostId, { details: { ...host.details, virtual_network: network } });
       },
       hardwareNodes: [],
+      tags: [],
+      addTag: tag =>
+        set(state => {
+          const tags = [...state.tags, tag];
+          return { tags, buildSettings: { ...state.buildSettings, tags } };
+        }),
+      deleteTag: tagId =>
+        set(state => {
+          const tags = state.tags.filter(tag => tag.id !== tagId);
+          const hardwareNodes = state.hardwareNodes.map(node => {
+            const nodeTags = node.details?.tags ?? [];
+            return nodeTags.includes(tagId)
+              ? { ...node, details: { ...node.details, tags: nodeTags.filter(id => id !== tagId) } }
+              : node;
+          });
+          const changed = new Map(
+            hardwareNodes
+              .filter((node, index) => node !== state.hardwareNodes[index])
+              .map(node => [node.id, node]),
+          );
+          return {
+            tags,
+            hardwareNodes,
+            nodes: state.nodes.map(node => {
+              const hardware = changed.get(node.id);
+              return hardware
+                ? { ...node, data: { ...node.data, details: hardware.details } }
+                : node;
+            }),
+            buildSettings: { ...state.buildSettings, tags },
+          };
+        }),
       nodes: [],
       edges: [],
       selectedNodeId: null,
@@ -631,6 +670,11 @@ export const useBuilderStore = create<BuilderState>()(
             edges: state.edges.map(e => {
               if (e.id !== id) return e;
               const next = { ...e, ...updates };
+              // A power cable stays a power cable whatever was picked.
+              if (isPowerHandle(next.sourceHandle) || isPowerHandle(next.targetHandle)) {
+                next.data = { ...next.data, connection_type: 'power' };
+                return next;
+              }
               // Some links have only one valid medium: keep it whatever was picked.
               const required = requiredConnectionType(types.get(next.source), types.get(next.target));
               if (required && next.data && next.data.connection_type !== required) {
@@ -648,6 +692,20 @@ export const useBuilderStore = create<BuilderState>()(
       },
       onConnect: (connection: Connection) => {
         const state = get();
+        if (isPowerHandle(connection.sourceHandle) || isPowerHandle(connection.targetHandle)) {
+          const cable = normalizePowerConnection(connection);
+          if (!cable) return;
+          set({
+            ...recordEdit(state),
+            edges: addEdge(
+              { ...cable, type: 'custom', data: { connection_type: 'power' } },
+              state.edges,
+            ),
+            validationIssues: [],
+          });
+          reassignSoon(get);
+          return;
+        }
         const step = recordEdit(state);
         const hardwareById = new Map(state.hardwareNodes.map(n => [n.id, n]));
         const sourceHardware = connection.source ? hardwareById.get(connection.source) : undefined;
@@ -1112,6 +1170,7 @@ export const useBuilderStore = create<BuilderState>()(
           nodes: [],
           edges: [],
           hardwareNodes: [],
+          tags: [],
           selectedNodeId: null,
           validationIssues: [],
           buildKind: 'homelab',
@@ -1149,6 +1208,7 @@ export const useBuilderStore = create<BuilderState>()(
           currentRevision: build.revision,
           projectName: name,
           hardwareNodes,
+          tags: build.settings?.tags || [],
           nodes: rfNodes,
           edges: rfEdges,
           buildKind: build.kind || 'homelab',
@@ -1307,7 +1367,13 @@ export const useBuilderStore = create<BuilderState>()(
               saveState: 'saved',
               saveError: null,
               ...(opened.currentBuildId !== id
-                ? { projectName: '', buildKind: 'homelab' as BuildKind, gamingPlan: {}, buildSettings: {} }
+                ? {
+                    projectName: '',
+                    buildKind: 'homelab' as BuildKind,
+                    gamingPlan: {},
+                    buildSettings: {},
+                    tags: [],
+                  }
                 : {}),
             });
           }
@@ -1349,17 +1415,20 @@ export const useBuilderStore = create<BuilderState>()(
           };
         });
 
-        const edgesPayload = state.edges.map(e => ({
-          source: e.source,
-          source_handle: e.sourceHandle || '',
-          target: e.target,
-          target_handle: e.targetHandle || '',
-          type: (e.data?.connection_type as string) || 'ethernet',
-          speed: (e.data?.speed as string) || '1 GbE',
-          subnet: (e.data?.subnet as string) || '',
-          wireless_standard: (e.data?.wireless_standard as string) || '',
-          direction: (e.data?.direction as string) || 'auto',
-        }));
+        const edgesPayload = state.edges.map(e => {
+          const power = e.data?.connection_type === 'power';
+          return {
+            source: e.source,
+            source_handle: e.sourceHandle || '',
+            target: e.target,
+            target_handle: e.targetHandle || '',
+            type: (e.data?.connection_type as string) || 'ethernet',
+            speed: power ? '' : (e.data?.speed as string) || '1 GbE',
+            subnet: power ? '' : (e.data?.subnet as string) || '',
+            wireless_standard: power ? '' : (e.data?.wireless_standard as string) || '',
+            direction: power ? 'auto' : (e.data?.direction as string) || 'auto',
+          };
+        });
 
         const validNodeIDs = new Set(nodesPayload.map(n => n.id));
         const sanitizedEdgesPayload = edgesPayload.filter(

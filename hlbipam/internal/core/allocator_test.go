@@ -161,6 +161,27 @@ func TestAllocate_SyntheticNATRouterNeverClaimsOwnerWAN(t *testing.T) {
 	assertPrefix(t, findNodeIP(resp, "pc1"), "192.168.1.")
 }
 
+func TestAllocate_PortGatewayNeverClaimsOwner(t *testing.T) {
+	req := models.AllocateRequest{
+		Routers: []models.RouterDTO{
+			{ID: "srv1:eth2", GatewayIP: "192.168.10.1", Subnet: "192.168.10.1/26", DHCPEnabled: true},
+			{ID: "r1", GatewayIP: "192.168.0.1", Subnet: "192.168.0.1/24", DHCPEnabled: true},
+		},
+		Nodes: []models.NodeDTO{
+			{ID: "srv1", Type: "firewall", Connections: []string{"r1", "srv1:eth2"}},
+			{ID: "pc1", Type: "pc", Connections: []string{"srv1:eth2"}},
+		},
+	}
+
+	resp := Allocate(req)
+
+	assertPrefix(t, findNodeIP(resp, "srv1"), "192.168.0.")
+	assertPrefix(t, findNodeIP(resp, "pc1"), "192.168.10.")
+	if resp.Routers[0].Subnet != "192.168.10.1/26" {
+		t.Fatalf("port subnet changed: got %s", resp.Routers[0].Subnet)
+	}
+}
+
 func TestAllocate_ClassAMaskUsesThe10Network(t *testing.T) {
 	req := models.AllocateRequest{
 		Routers: []models.RouterDTO{

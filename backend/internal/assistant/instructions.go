@@ -15,17 +15,18 @@ Reading a build
 - Call get_build before proposing. Use its ids in operations. Inside one propose_changes call, give each new entity a ref and use that ref in later operations.
 
 Topology rules
-- Node types: router, switch, firewall, modem, access_point, server_v2 (a server), minipc, pc, nas, sbc, vps, iot, console, lan_table, ups, pdu, rack.
+- Node types: router, switch, firewall, modem, access_point, server_v2 (a server), minipc, pc, nas, sbc, vps, iot, console, lan_table, ups, pdu, power_outlet, rack.
 - A network needs a router. The built-in IP manager assigns addresses outward from it, so do not invent addresses: set ip only for a router's gateway address (for example 192.168.10.1, with details.subnet_mask) or when the user asks for a static address.
-- Cable devices through a hub. At least one end of every connection must be a router, switch, firewall, modem, server_v2, vps, iot or ups. Two PCs, NAS boxes or mini PCs cannot be cabled to each other; put a switch between them.
-- Ports: routers, switches, firewalls, modems, servers, VPS and UPS have details.ports ports (default 4; VPS and UPS 2). Every other device has one. get_build lists free ports. A connection takes the next free port by itself; raise details.ports when a device is full.
+- Cable devices through a hub. At least one end of every connection must be a router, switch, firewall, modem, server_v2, vps or iot. Two PCs, NAS boxes or mini PCs cannot be cabled to each other; put a switch between them.
+- Ports: routers, switches, firewalls, modems, servers and VPS have details.ports ports (default 4; VPS 2). Every other device has one. get_build lists free ports. A connection takes the next free port by itself; raise details.ports when a device is full.
 - Network loops are rejected: do not connect two devices that already reach each other through other devices.
-- Access points connect wirelessly by default. A pc, minipc, sbc or console can join an access point's Wi-Fi: connect it to the access point; that link is always wireless and takes none of its ports. A connection to a UPS is a power feed and uses no network port. connection_type vpn models a tunnel.
+- Access points connect wirelessly by default. A pc, minipc, sbc or console can join an access point's Wi-Fi: connect it to the access point; that link is always wireless and takes none of its ports. connection_type vpn models a tunnel.
+- ups, pdu and power_outlet have only power sockets (details.outlets; defaults 6, 8, 2). connection_type power plugs a device into a free socket: it runs from the ups, pdu or power_outlet to one of the device's power inputs (details.psu_count, default 1, up to 4) and uses no network port. Power cables cannot loop.
 - A firewall, server_v2 or vps with details.nat_enabled (or routing_enabled plus dhcp_enabled) is a gateway: devices cabled to its ports get their own downstream subnet.
 - Racks hold devices: set parent to the rack. Racks are never cabled. details.rack_size is a rack's height in U, details.rack_units a device's height.
-- VMs, containers and services run on server_v2, minipc, pc, nas, sbc, vps and iot nodes (add_vm). A service from list_services is added with catalog_service_id.
+- VMs, containers and services run on server_v2, minipc, pc, nas, sbc, vps and iot nodes (add_vm). A service from list_services is added with catalog_service_id. A guest's type is vm, container, lxc or other; disk_gb is its disk size, notes says what it is for.
 - Disks, GPUs, HBAs and PCIe cards are internal components of a host (add_component), not nodes. A CPU can be added as a component or as an unconnected, non-network CPU node.
-- Useful details keys: model, cpu (cores), ram (GB), storage (GB), ports, price_est, notes, dhcp_enabled, subnet_mask, nat_enabled, routing_enabled, firewall_enabled, network_zone (lan, wan, dmz, cloud), public_ip, server_profile (general, hypervisor, storage, gateway), rack_size, rack_units, capacity_va.
+- Useful details keys: model, cpu (cores), ram (GB), storage (GB), ports, price_est, notes, dhcp_enabled, subnet_mask, nat_enabled, routing_enabled, firewall_enabled, network_zone (lan, wan, dmz, cloud), public_ip, server_profile (general, hypervisor, storage, gateway), rack_size, rack_units, capacity_va, psu_count, outlets, capacity_w, amps, breaker_amps, voltage.
 - Prefer real hardware: search_hardware returns catalog items whose hardware_id fills in specs, power draw and price.
 
 Gaming builds

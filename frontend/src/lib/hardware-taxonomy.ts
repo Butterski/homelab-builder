@@ -11,6 +11,7 @@ const HARDWARE_CATEGORY_LABELS: Record<string, string> = {
   access_point: 'Access Points',
   ups: 'UPS',
   pdu: 'PDUs',
+  power_outlet: 'Power outlets',
   storage: 'Storage',
   disk: 'Storage',
   ram: 'RAM',
@@ -47,6 +48,7 @@ const HARDWARE_TYPE_NAMES: Partial<Record<HardwareType, string>> = {
   console: 'Console',
   ups: 'UPS',
   pdu: 'PDU',
+  power_outlet: 'Power outlet',
   lan_table: 'LAN table',
   rack: 'Rack',
   disk: 'Disk',
@@ -130,6 +132,14 @@ export function normalizeHardwareCategory(category: string) {
     case 'handheld':
     case 'handhelds':
       return 'console';
+    case 'power_outlets':
+    case 'outlet':
+    case 'outlets':
+    case 'wall_outlet':
+    case 'wall_outlets':
+    case 'socket':
+    case 'sockets':
+      return 'power_outlet';
     default:
       return normalized;
   }

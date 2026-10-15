@@ -81,13 +81,16 @@ export function mapBuildToFlow(build: Build): FlowBuild {
     target: String(e.target_node_id),
     targetHandle: e.target_handle || undefined,
     type: 'custom',
-    data: {
-      connection_type: e.type || 'ethernet',
-      speed: e.speed || '1 GbE',
-      subnet: e.subnet || '',
-      wireless_standard: e.wireless_standard || 'Wi-Fi 6',
-      direction: e.direction || 'auto',
-    },
+    data:
+      e.type === 'power'
+        ? { connection_type: 'power' }
+        : {
+            connection_type: e.type || 'ethernet',
+            speed: e.speed || '1 GbE',
+            subnet: e.subnet || '',
+            wireless_standard: e.wireless_standard || 'Wi-Fi 6',
+            direction: e.direction || 'auto',
+          },
   }));
 
   return { hardwareNodes, nodes, edges };

@@ -212,6 +212,17 @@ func applyVMFields(vm *VMDTO, op TopologyOp) error {
 		}
 		vm.MacAddress = mac
 	}
+	if op.Notes != nil {
+		notes, err := cleanText("notes", *op.Notes, maxDetailStringLength)
+		if err != nil {
+			return err
+		}
+		if notes == "" {
+			delete(vm.Details, "notes")
+		} else {
+			vm.Details["notes"] = notes
+		}
+	}
 	if op.DiskGB != nil {
 		if err := checkRange("disk_gb", *op.DiskGB, 0, 4_000_000); err != nil {
 			return err

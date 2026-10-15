@@ -47,6 +47,12 @@ describe('estimateNodeSize', () => {
   it('errs on the tall side: a bare switch is still a card', () => {
     expect(estimateNodeSize(device('sw', 'switch')).height).toBeGreaterThanOrEqual(60);
   });
+
+  it('widens a power source with many sockets and leaves room for its load', () => {
+    const pdu = estimateNodeSize(device('pdu', 'pdu', { details: { outlets: 24 } }));
+    expect(pdu.width).toBe(24 * 16);
+    expect(estimateNodeSize(device('ups', 'ups')).height).toBeGreaterThanOrEqual(58 + 24 + 52);
+  });
 });
 
 describe('buildLayoutGraph', () => {
@@ -71,7 +77,7 @@ describe('buildLayoutGraph', () => {
     expect(byId.rack).toMatchObject({ height: 40 + 6 * 90 + 8, estimated: false });
   });
 
-  it('reads the medium of every cable, and power off anything a UPS is on', () => {
+  it('reads the medium of every cable and the power handles of every card', () => {
     const cards = ['router', 'ups', 'server', 'laptop', 'site'].map((id, index) => ({
       hardware: device(id, (['router', 'ups', 'server_v2', 'pc', 'vps'] as HardwareType[])[index]),
       x: 0,
@@ -79,7 +85,7 @@ describe('buildLayoutGraph', () => {
     }));
     const graph = buildLayoutGraph(cards, [
       { id: 'a', source: 'router', target: 'server', sourceHandle: 'eth0', targetHandle: 'target-0', type: 'ethernet' },
-      { id: 'b', source: 'ups', target: 'server', sourceHandle: 'eth0', targetHandle: 'target-0', type: 'ethernet' },
+      { id: 'b', source: 'ups', target: 'server', sourceHandle: 'pwr-out-0', targetHandle: 'pwr-in-0', type: 'power' },
       { id: 'c', source: 'router', target: 'laptop', sourceHandle: 'eth1', targetHandle: 'target-0', type: 'wireless' },
       { id: 'd', source: 'router', target: 'site', type: 'vpn' },
       { id: 'e', source: 'router', target: 'gone', type: 'ethernet' },
@@ -92,6 +98,9 @@ describe('buildLayoutGraph', () => {
     ]);
     // A cable saved without handles runs from a port to the handle on top.
     expect(graph.edges[3]).toMatchObject({ sourceHandle: 'eth0', targetHandle: 'target-0' });
+    const byId = Object.fromEntries(graph.nodes.map(node => [node.id, node]));
+    expect(byId.ups).toMatchObject({ powerInputs: 1, powerOutputs: 6, networkPorts: false });
+    expect(byId.server).toMatchObject({ powerInputs: 1, powerOutputs: 0, networkPorts: true });
   });
 
   it('marks the devices whose branch the canvas outlines', () => {

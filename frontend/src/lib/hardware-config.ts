@@ -26,11 +26,12 @@ const HARDWARE_FEATURES: Record<HardwareType, HardwareFeatures> = {
   router:       { hasCPU: false, hasRAM: false, hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: true,  isNetworked: true,  canBeNested: false, canHostNested: false, canConnectToAny: true },
   switch:       { hasCPU: false, hasRAM: false, hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: true,  isNetworked: true,  canBeNested: false, canHostNested: false, canConnectToAny: true },
   modem:        { hasCPU: false, hasRAM: false, hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: true,  isNetworked: true,  canBeNested: false, canHostNested: false, canConnectToAny: true },
-  ups:          { hasCPU: false, hasRAM: false, hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: true,  isNetworked: false, canBeNested: false, canHostNested: false, canConnectToAny: true },
+  ups:          { hasCPU: false, hasRAM: false, hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: false, isNetworked: false, canBeNested: false, canHostNested: false, canConnectToAny: false },
   disk:         { hasCPU: false, hasRAM: false, hasStorage: true,  canHostVMs: false, isCompute: false, hasDynamicPorts: false, isNetworked: false, canBeNested: true,  canHostNested: false, canConnectToAny: false },
   gpu:          { hasCPU: false, hasRAM: true,  hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: false, isNetworked: false, canBeNested: true,  canHostNested: false, canConnectToAny: false },
   cpu:          { hasCPU: true,  hasRAM: false, hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: false, isNetworked: false, canBeNested: true,  canHostNested: false, canConnectToAny: false },
   pdu:          { hasCPU: false, hasRAM: false, hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: false, isNetworked: false, canBeNested: false, canHostNested: false, canConnectToAny: false },
+  power_outlet: { hasCPU: false, hasRAM: false, hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: false, isNetworked: false, canBeNested: false, canHostNested: false, canConnectToAny: false },
   access_point: { hasCPU: false, hasRAM: false, hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: false, isNetworked: true,  canBeNested: false, canHostNested: false, canConnectToAny: false },
   hba:          { hasCPU: false, hasRAM: false, hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: false, isNetworked: false, canBeNested: true,  canHostNested: false, canConnectToAny: true },
   pcie:         { hasCPU: false, hasRAM: false, hasStorage: false, canHostVMs: false, isCompute: false, hasDynamicPorts: false, isNetworked: false, canBeNested: true,  canHostNested: false, canConnectToAny: false },
@@ -51,6 +52,18 @@ export const canNodeBeNested = (type: HardwareType) => HARDWARE_FEATURES[type]?.
 export const canNodeHostNested = (type: HardwareType) => HARDWARE_FEATURES[type]?.canHostNested ?? false;
 export const canNodeConnectToAny = (type: HardwareType) => HARDWARE_FEATURES[type]?.canConnectToAny ?? false;
 
+// ─── Power wiring ───────────────────────────────────────────────────────────
+// Mirrors backend/internal/wiring/power.go.
+
+/** Devices that hand out power through sockets. They have no network port. */
+const POWER_SOURCE_TYPES: Record<string, true> = { ups: true, pdu: true, power_outlet: true };
+
+export const isPowerSource = (type: HardwareType | string | undefined | null) =>
+  !!type && POWER_SOURCE_TYPES[type] === true;
+
+/** Whether a device has an uplink and ethernet ports on its card. */
+export const hasNetworkPorts = (type: HardwareType | string | undefined | null) => !isPowerSource(type);
+
 // ─── Gaming build rules ─────────────────────────────────────────────────────
 // Mirrors backend/internal/services/topology_gaming.go.
 
@@ -58,7 +71,7 @@ export const canNodeConnectToAny = (type: HardwareType) => HARDWARE_FEATURES[typ
 const WIFI_CLIENT_TYPES = new Set<HardwareType>(['pc', 'minipc', 'sbc', 'console']);
 
 /** Devices that stand on a desk or the floor and cannot be mounted in a rack. */
-const FLOOR_TYPES = new Set<HardwareType>(['console', 'lan_table']);
+const FLOOR_TYPES = new Set<HardwareType>(['console', 'lan_table', 'power_outlet']);
 
 export const isFloorNode = (type: HardwareType) => FLOOR_TYPES.has(type);
 

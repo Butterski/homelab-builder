@@ -59,6 +59,13 @@ import {
 } from '../../../lib/hardware-config';
 import { checkConnection, type LinkEnd } from '../lib/connection-rules';
 import { getNodePortCount } from '../lib/port-count';
+import {
+  POWER_IN_PREFIX,
+  POWER_OUT_PREFIX,
+  powerHandleIndex,
+  powerInputCount,
+  powerOutputCount,
+} from '../lib/power-ports';
 import { polishCanvas } from '../lib/polish';
 import { isNatDownstreamEdge } from '../lib/network-zone';
 import { withFreshChildIds } from '../lib/hardware-instance';
@@ -564,7 +571,7 @@ const Flow = React.memo(function Flow() {
     const natChildIds = new Set<string>();
 
     canvasEdges.forEach(edge => {
-      if (edge.data?.connection_type === 'vpn') return;
+      if (edge.data?.connection_type === 'vpn' || edge.data?.connection_type === 'power') return;
       edgeByNode.set(edge.source, [...(edgeByNode.get(edge.source) || []), edge]);
       edgeByNode.set(edge.target, [...(edgeByNode.get(edge.target) || []), edge]);
     });
@@ -936,40 +943,52 @@ const Flow = React.memo(function Flow() {
 
   const updateNodeInternals = useUpdateNodeInternals();
 
-  const prevPortsRef = useRef<Map<string, number>>(new Map());
+  const prevPortsRef = useRef<Map<string, string>>(new Map());
+  // Cards whose power handles changed since Effect 2 last ran.
+  const powerResyncRef = useRef<Set<string>>(new Set());
 
-  // Effect 1 - delete orphaned edges when port count shrinks.
-  // Does NOT call updateNodeInternals here; that happens in Effect 2.
+  // Effect 1 - delete orphaned edges when the ports or power handles of a card
+  // shrink. Does NOT call updateNodeInternals here; that happens in Effect 2.
   useEffect(() => {
     hardwareNodes.forEach(node => {
-      if (!nodeHasDynamicPorts(node.type)) return;
-      const numPorts = Math.max(1, getNodePortCount(node.type, node.details?.ports));
+      const dynamic = nodeHasDynamicPorts(node.type);
+      const ports = dynamic ? Math.max(1, getNodePortCount(node.type, node.details?.ports)) : 0;
+      const inputs = powerInputCount(node.type, node.details);
+      const outputs = powerOutputCount(node.type, node.details);
+      const signature = `${ports}|${inputs}|${outputs}`;
       const prev = prevPortsRef.current.get(node.id);
-      if (prev !== undefined && prev !== numPorts) {
+      if (prev !== undefined && prev !== signature) {
         const orphaned = edges.filter(e => {
+          if (e.target === node.id && powerHandleIndex(e.targetHandle, POWER_IN_PREFIX) >= inputs) {
+            return true;
+          }
           if (e.source !== node.id || !e.sourceHandle) return false;
-          const match = e.sourceHandle.match(/^eth(\d+)$/);
-          return match !== null && parseInt(match[1], 10) >= numPorts;
+          if (powerHandleIndex(e.sourceHandle, POWER_OUT_PREFIX) >= outputs) return true;
+          const match = dynamic ? e.sourceHandle.match(/^eth(\d+)$/) : null;
+          return match !== null && parseInt(match[1], 10) >= ports;
         });
         if (orphaned.length > 0) deleteElements({ edges: orphaned });
+        if (!prev.endsWith(`|${inputs}|${outputs}`)) powerResyncRef.current.add(node.id);
       }
-      prevPortsRef.current.set(node.id, numPorts);
+      prevPortsRef.current.set(node.id, signature);
     });
   }, [hardwareNodes, edges, deleteElements]);
 
   // Effect 2 - always resync handle positions for port-bearing nodes whenever
-  // hardwareNodes changes (covers increases, decreases, and first render).
+  // hardwareNodes changes (covers increases, decreases, and first render), and
+  // for cards whose power handles changed.
   // Running after every hardwareNodes change is cheap and ensures the triple-rAF
   // fires after *all* state updates (including the deleteElements re-render from
   // Effect 1) have settled.
   useEffect(() => {
-    const portNodeIds: string[] = [];
+    const portNodeIds = new Set(powerResyncRef.current);
+    powerResyncRef.current.clear();
     for (const n of hardwareNodes) {
       if (nodeHasDynamicPorts(n.type)) {
-        portNodeIds.push(n.id);
+        portNodeIds.add(n.id);
       }
     }
-    if (portNodeIds.length === 0) return;
+    if (portNodeIds.size === 0) return;
 
     let frame = requestAnimationFrame(() => {
       frame = requestAnimationFrame(() => {
@@ -1370,10 +1389,10 @@ const Flow = React.memo(function Flow() {
             locale={{ last: 'Close' }}
             continuous
             options={{
-              buttons: ['back', 'close', 'primary', 'skip'],
               primaryColor: 'var(--primary)',
-              showProgress: true,
               zIndex: 10000,
+              showProgress: true,
+              buttons: ['back', 'close', 'primary', 'skip'],
             }}
           />
         )}

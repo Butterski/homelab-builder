@@ -4,15 +4,17 @@ import { useShallow } from 'zustand/react/shallow';
 import type { VirtualMachine, VMType } from '../../../types';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
+import { Textarea } from '../../../components/ui/textarea';
 import { Label } from '../../../components/ui/label';
 import { Badge } from '../../../components/ui/badge';
-import { Plus, Trash2, Cpu, Box, Container, Wifi, Pencil, Check, X } from 'lucide-react';
+import { Plus, Trash2, Cpu, Box, Container, Server, Wifi, Pencil, Check, X } from 'lucide-react';
 import { GameServerSettings } from '../../gaming/components/game-server-settings';
 
 const VM_TYPE_ICONS: Record<VMType, React.ElementType> = {
   vm: Cpu,
   container: Container,
   lxc: Box,
+  other: Server,
 };
 
 const STATUS_COLORS = {
@@ -25,7 +27,8 @@ interface Props {
   nodeId: string;
 }
 
-type VMDraft = Partial<VirtualMachine>;
+/** The form state of a guest. The disk size is kept as typed; empty means not set. */
+type VMDraft = Partial<VirtualMachine> & { disk_gb?: string; notes?: string };
 
 const EMPTY_VM_DRAFT: VMDraft = {
   type: 'container',
@@ -36,6 +39,8 @@ const EMPTY_VM_DRAFT: VMDraft = {
   mac_address: '',
   cpu_cores: 1,
   ram_mb: 512,
+  disk_gb: '',
+  notes: '',
 };
 
 interface VMFormFieldsProps {
@@ -68,6 +73,7 @@ function VMFormFields({ draft, setDraft, namePlaceholder }: VMFormFieldsProps) {
             <option value="container">Container</option>
             <option value="vm">VM</option>
             <option value="lxc">LXC</option>
+            <option value="other">Other</option>
           </select>
         </div>
       </div>
@@ -124,6 +130,30 @@ function VMFormFields({ draft, setDraft, namePlaceholder }: VMFormFieldsProps) {
           />
         </div>
       </div>
+      <div className="grid grid-cols-3 gap-2">
+        <div>
+          <Label className="text-[10px]">Disk (GB)</Label>
+          <Input
+            className="h-7 text-xs"
+            type="number"
+            min={0}
+            placeholder="not set"
+            value={draft.disk_gb ?? ''}
+            onChange={e => setDraft(p => ({ ...p, disk_gb: e.target.value }))}
+          />
+        </div>
+        <div className="col-span-2">
+          <Label className="text-[10px]">Notes</Label>
+          <Textarea
+            className="min-h-0 text-xs"
+            rows={2}
+            maxLength={2000}
+            placeholder="What it is for, ports, backups"
+            value={draft.notes ?? ''}
+            onChange={e => setDraft(p => ({ ...p, notes: e.target.value }))}
+          />
+        </div>
+      </div>
     </>
   );
 }
@@ -146,6 +176,8 @@ export const VMManager = React.memo(function VMManager({ nodeId }: Props) {
   const [newVM, setNewVM] = useState<VMDraft>(EMPTY_VM_DRAFT);
 
   const handleAdd = () => {
+    const disk = Number(newVM.disk_gb) || 0;
+    const notes = newVM.notes?.trim() ?? '';
     if (!newVM.name?.trim()) return;
     addVM(nodeId, {
       id: crypto.randomUUID(),
@@ -153,7 +185,7 @@ export const VMManager = React.memo(function VMManager({ nodeId }: Props) {
       type: (newVM.type as VMType) || 'container',
       status: (newVM.status as VirtualMachine['status']) || 'running',
       ip: newVM.ip || undefined,
-      details: { static_ip: newVM.ip || '' },
+      details: { static_ip: newVM.ip || '', ...(disk > 0 && { disk_gb: disk }), ...(notes ? { notes } : {}) },
       mac_address: newVM.mac_address || undefined,
       os: newVM.os || undefined,
       cpu_cores: newVM.cpu_cores,
@@ -182,17 +214,29 @@ export const VMManager = React.memo(function VMManager({ nodeId }: Props) {
       mac_address: vm.mac_address || '',
       cpu_cores: vm.cpu_cores || 1,
       ram_mb: vm.ram_mb || 512,
+      disk_gb: Number(vm.details?.disk_gb) > 0 ? String(vm.details?.disk_gb) : '',
+      notes: typeof vm.details?.notes === 'string' ? vm.details.notes : '',
     });
   };
 
   const saveEdit = () => {
     if (!editingVmId || !editVM.name?.trim()) return;
+    const details: Record<string, unknown> = {
+      ...vms.find(vm => vm.id === editingVmId)?.details,
+      static_ip: editVM.ip || '',
+    };
+    const disk = Number(editVM.disk_gb) || 0;
+    const notes = editVM.notes?.trim() ?? '';
+    if (disk > 0) details.disk_gb = disk;
+    else delete details.disk_gb;
+    if (notes) details.notes = notes;
+    else delete details.notes;
     updateVM(nodeId, editingVmId, {
       name: editVM.name!,
       type: (editVM.type as VMType) || 'container',
       os: editVM.os || undefined,
       ip: editVM.ip || undefined,
-      details: { ...vms.find(vm => vm.id === editingVmId)?.details, static_ip: editVM.ip || '' },
+      details,
       mac_address: editVM.mac_address || undefined,
       cpu_cores: editVM.cpu_cores,
       ram_mb: editVM.ram_mb,
@@ -228,7 +272,14 @@ export const VMManager = React.memo(function VMManager({ nodeId }: Props) {
           <VMFormFields draft={newVM} setDraft={setNewVM} namePlaceholder="e.g. nginx" />
           <div className="flex gap-2 pt-1">
             <Button size="sm" className="h-7 text-xs flex-1" onClick={handleAdd}>
-              Add {newVM.type === 'vm' ? 'VM' : newVM.type === 'lxc' ? 'LXC' : 'Container'}
+              Add{' '}
+              {newVM.type === 'vm'
+                ? 'VM'
+                : newVM.type === 'lxc'
+                  ? 'LXC'
+                  : newVM.type === 'other'
+                    ? 'Other'
+                    : 'Container'}
             </Button>
             <Button
               size="sm"
@@ -301,7 +352,15 @@ export const VMManager = React.memo(function VMManager({ nodeId }: Props) {
                     {vm.ram_mb >= 1024 ? `${vm.ram_mb / 1024}GB` : `${vm.ram_mb}MB`} RAM
                   </span>
                 )}
+                {Number(vm.details?.disk_gb) > 0 && (
+                  <span className="text-[10px] text-muted-foreground">{Number(vm.details?.disk_gb)} GB disk</span>
+                )}
               </div>
+              {typeof vm.details?.notes === 'string' && vm.details.notes && (
+                <p className="mt-1 text-[10px] text-muted-foreground whitespace-pre-wrap line-clamp-3">
+                  {vm.details.notes}
+                </p>
+              )}
             </div>
             <div className="flex items-center gap-1 shrink-0">
               {/* Status toggle */}

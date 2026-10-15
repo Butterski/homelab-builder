@@ -12,6 +12,7 @@ import {
   Container,
   Layers,
   Plug,
+  PlugZap,
   Battery,
   AlertTriangle,
   Printer,
@@ -29,17 +30,29 @@ import type {
   VirtualMachine,
   HardwareComponent,
   HardwareSpec,
+  BuilderTag,
 } from '../../../types';
 import {
   isComputeNode,
   nodeHasDynamicPorts,
   isNetworkNode,
   canNodeHostVMs,
+  hasNetworkPorts,
+  isPowerSource,
 } from '../../../lib/hardware-config';
 import { useBuilderStore } from '../store/builder-store';
 import { getHostLoad } from '../lib/resource-usage';
 import { getNodePortCount } from '../lib/port-count';
 import { tableSeats, tableSwitchPorts } from '../../gaming/lib/table';
+import {
+  POWER_IN_PREFIX,
+  POWER_OUT_PREFIX,
+  powerInputCount,
+  powerInputLeft,
+  powerOutputCount,
+  powerOutputLeft,
+} from '../lib/power-ports';
+import { defaultRole, readPortConfig, readVlans, type PortRole } from '../lib/port-config';
 
 type HardwareNodeData = {
   onOpenVirtualNetwork?: () => void;
@@ -146,6 +159,11 @@ const TYPE_CONFIG: Partial<
     iconColor: 'text-rose-400',
     color: '#f43f5e',
   },
+  power_outlet: {
+    icon: PlugZap,
+    iconColor: 'text-red-400',
+    color: '#ef4444',
+  },
   iot: {
     icon: Printer,
     iconColor: 'text-yellow-600',
@@ -195,6 +213,7 @@ const TYPE_LABEL: Record<HardwareType, string> = {
   pcie: 'PCIe',
   ups: 'Power',
   pdu: 'PDU',
+  power_outlet: 'Outlet',
   sbc: 'SBC',
   minipc: 'Mini PC',
   iot: 'IoT',
@@ -233,11 +252,13 @@ const VM_TYPE_ICON: Record<string, React.ElementType> = {
   vm: Cpu,
   container: Container,
   lxc: Box,
+  other: Server,
 };
 const VM_TYPE_COLOR: Record<string, string> = {
   vm: 'bg-orange-500/10 text-orange-400 border-orange-500/30',
   container: 'bg-blue-500/10 text-blue-400 border-blue-500/30',
   lxc: 'bg-green-500/10 text-green-400 border-green-500/30',
+  other: 'bg-zinc-500/10 text-zinc-300 border-zinc-500/30',
 };
 
 function VmChip({ vm }: { vm: VirtualMachine }) {
@@ -304,6 +325,16 @@ function ComponentChip({ component }: { component: HardwareComponent }) {
   );
 }
 
+const POWER_COLOR = '#ef4444';
+
+const ROLE_COLORS: Record<PortRole, string> = {
+  wan: '#f59e0b',
+  lan: '#10b981',
+  dmz: '#f97316',
+  vpn: '#14b8a6',
+  unused: '#52525b',
+};
+
 // ─── Main node card ────────────────────────────────────────────────────────────
 const CONTAINER_STEP = 10; // mirrors ROLE_ZONE step for compute types
 const POOL_HINT_NODE_TYPES: HardwareType[] = [
@@ -319,6 +350,8 @@ const POOL_HINT_NODE_TYPES: HardwareType[] = [
 export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
   const nodeData = data as unknown as HardwareNodeData;
   const details = nodeData.details ?? {};
+  const availableTags = useBuilderStore(state => state.tags ?? []);
+  const nodeTags = availableTags.filter(tag => (details.tags ?? []).includes(tag.id));
   const displayLabel = humanizeNodeLabel(nodeData.label);
   const cfg = TYPE_CONFIG[nodeData.type] ?? FALLBACK_CONFIG;
   const Icon = cfg.icon;
@@ -354,19 +387,61 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
   const numPorts = nodeHasDynamicPorts(nodeData.type)
     ? Math.max(1, getNodePortCount(nodeData.type, nodeData.details?.ports))
     : 1;
+  const networkPorts = hasNetworkPorts(nodeData.type);
+  const isSource = isPowerSource(nodeData.type);
+  const powerInputs = powerInputCount(nodeData.type, nodeData.details);
+  const powerOutputs = powerOutputCount(nodeData.type, nodeData.details);
+  const powerLoad = isSource ? details.power_load : undefined;
+  const powerOverloaded =
+    !!powerLoad && powerLoad.capacity_w !== null && powerLoad.load_w > powerLoad.capacity_w;
+
+  // Router and firewall ports take the colour of their role, switch ports the
+  // colour of their untagged VLAN.
+  const hasPortSettings =
+    nodeData.type === 'router' || nodeData.type === 'firewall' || nodeData.type === 'switch';
+  const portConfig = hasPortSettings ? readPortConfig(details) : {};
+  const vlanColors =
+    nodeData.type === 'switch'
+      ? new Map(readVlans(details).map(vlan => [vlan.id, vlan.color]))
+      : undefined;
+  const portStyle = (handle: string): React.CSSProperties | undefined => {
+    const settings = portConfig[handle];
+    if (!settings) return undefined;
+    const color = vlanColors
+      ? settings.untagged_vlan !== undefined
+        ? vlanColors.get(settings.untagged_vlan)
+        : undefined
+      : ROLE_COLORS[settings.role ?? defaultRole(handle)];
+    return color ? ({ '--node-accent': color } as React.CSSProperties) : undefined;
+  };
+  const portTitle = (handle: string) => {
+    const settings = portConfig[handle];
+    if (!settings) return handle;
+    const parts = [handle];
+    if (!vlanColors) parts.push((settings.role ?? defaultRole(handle)).toUpperCase());
+    if (settings.address) parts.push(settings.address);
+    if (settings.untagged_vlan !== undefined) parts.push(`VLAN ${settings.untagged_vlan}`);
+    if (settings.tagged_vlans?.length) parts.push(`tagged ${settings.tagged_vlans.join(', ')}`);
+    if (settings.comment) parts.push(settings.comment);
+    return parts.join(' · ');
+  };
 
   const {
     usedCpu,
     usedRamMb: usedRam,
     totalCpu,
     totalRamMb: totalRamMB,
+    usedStorageGb,
+    totalStorageGb,
     cpuWarning,
     ramWarning,
-  } = getHostLoad(nodeData.details, vms);
-  const hasResourceWarning = cpuWarning || ramWarning;
+    storageWarning,
+  } = getHostLoad(nodeData.details, vms, components);
+  const hasResourceWarning = cpuWarning || ramWarning || storageWarning;
 
   const cpuUsageRatio = totalCpu > 0 ? usedCpu / totalCpu : 0;
   const ramUsageRatio = totalRamMB > 0 ? usedRam / totalRamMB : 0;
+  const storageUsageRatio = totalStorageGb > 0 ? usedStorageGb / totalStorageGb : 0;
   const maxResourceUsage = Math.max(cpuUsageRatio, ramUsageRatio);
 
   const hasWarning = hasResourceWarning || maxResourceUsage >= 0.8 || hasIpError || hasIpWarning;
@@ -388,6 +463,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
   let tooltipLabel = '';
   if (hasResourceWarning || maxResourceUsage >= 0.8) {
     tooltipLabel += `${hasResourceWarning ? 'Resource limit exceeded!' : 'High resource usage'}\nCPU: ${usedCpu}/${totalCpu}\nRAM: ${Math.round(usedRam / 1024)}GB/${Math.round(totalRamMB / 1024)}GB\n`;
+    if (totalStorageGb > 0) tooltipLabel += `Disk: ${usedStorageGb}/${totalStorageGb} GB\n`;
   }
   if (nodeIssues.length > 0) {
     tooltipLabel += nodeIssues.map(issue => `${issue.type.toUpperCase()}: ${issue.message}`).join('\n');
@@ -411,7 +487,17 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
       frame = requestAnimationFrame(() => updateNodeInternals(id));
     });
     return () => cancelAnimationFrame(frame);
-  }, [id, numPorts, connectedEdgeCount, updateNodeInternals, hasVMs, hasComponents, hasWarning]);
+  }, [
+    id,
+    numPorts,
+    powerInputs,
+    powerOutputs,
+    connectedEdgeCount,
+    updateNodeInternals,
+    hasVMs,
+    hasComponents,
+    hasWarning,
+  ]);
 
   // Container pool range hint
   const poolBaseIP = isDualHomedGateway && lanGatewayIP ? lanGatewayIP : nodeData.ip;
@@ -431,7 +517,8 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
     : '';
 
   // Calculate dynamic width for high-port-count switches/routers/etc
-  const dynamicMinWidth = nodeHasDynamicPorts(nodeData.type) ? numPorts * 16 : 0;
+  const dynamicMinWidth =
+    (nodeHasDynamicPorts(nodeData.type) ? numPorts * 16 : 0) + (isSource ? powerOutputs * 16 : 0);
   const shouldShowBody =
     canNodeHostVMs(nodeData.type) ||
     nodeData.details?.model ||
@@ -441,6 +528,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
     nodeData.details?.cpu ||
     nodeData.details?.ram ||
     nodeData.details?.storage ||
+    nodeData.details?.notes ||
     (isNetworkNode(nodeData.type) && !!nodeData.ip);
 
   const hasSpecs = !!(
@@ -449,7 +537,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
     nodeData.details?.storage ||
     nodeData.details?.ports
   );
-  const showResourceBars = isCompute && hasVMs && (totalCpu > 0 || totalRamMB > 0);
+  const showResourceBars = isCompute && hasVMs && (totalCpu > 0 || totalRamMB > 0 || totalStorageGb > 0);
   const cpuPercent = clampPercent(cpuUsageRatio);
   const ramPercent = clampPercent(ramUsageRatio);
 
@@ -545,6 +633,20 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
           />
         </div>
 
+        {nodeTags.length > 0 && (
+          <div className="flex flex-wrap gap-1 border-b border-border/70 px-3 py-2">
+            {nodeTags.map((tag: BuilderTag) => (
+              <span
+                key={tag.id}
+                className="rounded-full px-2 py-0.5 text-[9px] font-medium leading-tight text-white"
+                style={{ backgroundColor: tag.color }}
+              >
+                {tag.name}
+              </span>
+            ))}
+          </div>
+        )}
+
         {/* Body */}
         {shouldShowBody && (
           <div className="node-body p-3 space-y-2.5">
@@ -552,6 +654,12 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
             {nodeData.details?.model && (
               <p className="node-model text-[10px] text-muted-foreground/80 truncate -mt-0.5">
                 {nodeData.details.model}
+              </p>
+            )}
+
+            {nodeData.details?.notes?.trim() && (
+              <p className="whitespace-pre-wrap break-words text-[10px] leading-snug text-muted-foreground">
+                {nodeData.details.notes}
               </p>
             )}
 
@@ -573,6 +681,32 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
                 <div className="node-telemetry-cell">
                   <span className="node-telemetry-label">IP:</span>
                   <span className="node-telemetry-value italic text-muted-foreground">DHCP</span>
+                </div>
+              </div>
+            )}
+
+            {isSource && (
+              <div className="node-telemetry-grid">
+                <div className="node-telemetry-cell">
+                  <span className="node-telemetry-label">Load:</span>
+                  <span
+                    className={cn(
+                      'node-telemetry-value font-mono',
+                      powerOverloaded ? 'text-red-300' : 'text-foreground',
+                    )}
+                  >
+                    {powerLoad
+                      ? powerLoad.capacity_w !== null
+                        ? `${powerLoad.load_w}/${powerLoad.capacity_w} W`
+                        : `${powerLoad.load_w} W`
+                      : '—'}
+                  </span>
+                </div>
+                <div className="node-telemetry-cell">
+                  <span className="node-telemetry-label">Sockets:</span>
+                  <span className="node-telemetry-value font-mono text-foreground">
+                    {powerLoad ? `${powerLoad.sockets_used}/${powerLoad.sockets}` : `—/${powerOutputs}`}
+                  </span>
                 </div>
               </div>
             )}
@@ -738,6 +872,22 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
                     </div>
                   </div>
                 )}
+                {totalStorageGb > 0 && (
+                  <div className="node-resource-row">
+                    <div className="flex items-center justify-between">
+                      <span>Disk</span>
+                      <span className={storageWarning ? 'text-red-300' : ''}>
+                        {usedStorageGb}/{totalStorageGb} GB - {formatPercent(storageUsageRatio)}
+                      </span>
+                    </div>
+                    <div className="node-resource-track">
+                      <div
+                        className={cn('node-resource-bar', storageWarning ? 'node-resource-over' : '')}
+                        style={{ width: `${clampPercent(storageUsageRatio)}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -791,40 +941,83 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
         )}
       </Card>
 
-      {/* Target Port (Top, for incoming cables) */}
-      <Handle
-        type="target"
-        position={Position.Top}
-        id="target-0"
-        className="node-flow-handle node-flow-handle-target bg-muted-foreground! w-3 h-1.5 border! border-background! rounded-sm! hover:scale-125 transition-all"
-      />
+      {networkPorts && (
+        <>
+          {/* Target Port (Top, for incoming cables) */}
+          <Handle
+            type="target"
+            position={Position.Top}
+            id="target-0"
+            style={portStyle('target-0')}
+            className="node-flow-handle node-flow-handle-target bg-muted-foreground! w-3 h-1.5 border! border-background! rounded-sm! hover:scale-125 transition-all"
+            title={portTitle('target-0')}
+          />
 
-      {/* Source Ports (Bottom, for outgoing cables) */}
-      {nodeHasDynamicPorts(nodeData.type) ? (
-        (() => {
-          const portSpacing = 100 / (numPorts + 1);
-          return Array.from({ length: numPorts }).map((_, i) => (
+          {/* Source Ports (Bottom, for outgoing cables) */}
+          {nodeHasDynamicPorts(nodeData.type) ? (
+            (() => {
+              const portSpacing = 100 / (numPorts + 1);
+              return Array.from({ length: numPorts }).map((_, i) => (
+                <Handle
+                  key={`port-eth${i}`}
+                  id={`eth${i}`}
+                  type="source"
+                  position={Position.Bottom}
+                  style={{ left: `${portSpacing * (i + 1)}%`, ...portStyle(`eth${i}`) }}
+                  className="node-flow-handle bg-muted-foreground! size-2 border! border-background! rounded-sm! hover:scale-125 transition-all"
+                  title={portTitle(`eth${i}`)}
+                />
+              ));
+            })()
+          ) : (
+            // 1 Port for all other components (servers, PCs, HBA, GPU)
             <Handle
-              key={`port-eth${i}`}
-              id={`eth${i}`}
+              id="eth0"
               type="source"
               position={Position.Bottom}
-              style={{ left: `${portSpacing * (i + 1)}%` }}
-              className="node-flow-handle bg-muted-foreground! size-2 border! border-background! rounded-sm! hover:scale-125 transition-all"
-              title={`eth${i}`}
+              style={portStyle('eth0')}
+              className="node-flow-handle bg-muted-foreground! size-3 border-2! border-background! rounded-sm! hover:scale-125 transition-all"
+              title={portTitle('eth0')}
             />
-          ));
-        })()
-      ) : (
-        // 1 Port for all other components (servers, PCs, UPS, HBA, GPU)
+          )}
+        </>
+      )}
+
+      {/* Power inputs (Top), one per power supply */}
+      {Array.from({ length: powerInputs }).map((_, i) => (
         <Handle
-          id="eth0"
+          key={`pwr-in-${i}`}
+          id={`${POWER_IN_PREFIX}${i}`}
+          type="target"
+          position={Position.Top}
+          style={
+            {
+              left: `${powerInputLeft(i, powerInputs, networkPorts)}%`,
+              '--node-accent': POWER_COLOR,
+            } as React.CSSProperties
+          }
+          className="node-flow-handle node-power-handle"
+          title={`PSU ${i + 1}`}
+        />
+      ))}
+
+      {/* Sockets (Bottom) of a UPS, PDU or power outlet */}
+      {Array.from({ length: powerOutputs }).map((_, i) => (
+        <Handle
+          key={`pwr-out-${i}`}
+          id={`${POWER_OUT_PREFIX}${i}`}
           type="source"
           position={Position.Bottom}
-          className="node-flow-handle bg-muted-foreground! size-3 border-2! border-background! rounded-sm! hover:scale-125 transition-all"
-          title="eth0"
+          style={
+            {
+              left: `${powerOutputLeft(i, powerOutputs)}%`,
+              '--node-accent': POWER_COLOR,
+            } as React.CSSProperties
+          }
+          className="node-flow-handle node-power-handle"
+          title={`Socket ${i + 1}`}
         />
-      )}
+      ))}
     </div>
   );
   // React Flow also hands a node its position and whether it is being dragged.

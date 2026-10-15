@@ -8,6 +8,7 @@ import (
 
 	"github.com/Butterski/homelab-builder/backend/internal/gaming"
 	"github.com/Butterski/homelab-builder/backend/internal/models"
+	"github.com/Butterski/homelab-builder/backend/internal/wiring"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -129,7 +130,10 @@ func (s *BuildService) saveRevisionTx(tx *gorm.DB, build *models.Build, input Sy
 	if err := s.syncGraph(tx, build.ID, input); err != nil {
 		return err
 	}
-	return ipService.WithDB(tx).CalculateNetwork(build.ID)
+	if err := ipService.WithDB(tx).CalculateNetwork(build.ID); err != nil {
+		return err
+	}
+	return writePowerLoads(tx, build.ID)
 }
 
 // applyKindAndPlan copies the build kind and the gaming plan from a save onto
@@ -160,6 +164,9 @@ func applyKindAndPlan(build *models.Build, input SyncGraphInput) error {
 
 func (s *BuildService) syncGraph(tx *gorm.DB, buildID uuid.UUID, input SyncGraphInput) error {
 	if err := validateVirtualNetworks(input.Nodes); err != nil {
+		return err
+	}
+	if err := validateWiringDetails(input.Nodes); err != nil {
 		return err
 	}
 	if err := validateEdgeEndpoints(input.Nodes, input.Edges); err != nil {
@@ -330,12 +337,20 @@ func validateEdgeEndpoints(nodes []NodeDTO, edges []EdgeDTO) error {
 	knownNodeTypes := map[string]bool{
 		"router": true, "switch": true, "access_point": true, "modem": true, "firewall": true,
 		"server": true, "server_v2": true, "vps": true, "pc": true, "minipc": true,
-		"sbc": true, "nas": true, "iot": true, "ups": true, "pdu": true, "rack": true,
+		"sbc": true, "nas": true, "iot": true, "ups": true, "pdu": true, "power_outlet": true, "rack": true,
 		"disk": true, "gpu": true, "cpu": true, "hba": true, "pcie": true,
 		nodeTypeConsole: true, nodeTypeLANTable: true,
 	}
 	vmHostTypes := map[string]bool{"server": true, "server_v2": true, "vps": true, "pc": true, "minipc": true, "sbc": true, "nas": true, "iot": true}
 	vmIDs := make(map[string]struct{})
+	// A message names a device as the user sees it; the id stands in only for
+	// a device without a name.
+	nameOf := func(id string) string {
+		if node, ok := nodesByID[id]; ok && strings.TrimSpace(node.Name) != "" {
+			return node.Name
+		}
+		return id
+	}
 	for _, node := range nodes {
 		if strings.TrimSpace(node.ID) == "" {
 			issues = append(issues, "node has an empty id")
@@ -345,16 +360,17 @@ func validateEdgeEndpoints(nodes []NodeDTO, edges []EdgeDTO) error {
 			issues = append(issues, fmt.Sprintf("duplicate node id %q", node.ID))
 			continue
 		}
+		nodesByID[node.ID] = node
 		if !knownNodeTypes[node.Type] {
-			issues = append(issues, fmt.Sprintf("node %s has unsupported type %q", node.ID, node.Type))
+			issues = append(issues, fmt.Sprintf("%s has unsupported type %q", nameOf(node.ID), node.Type))
 		}
 		if len(node.VMs) > 0 && !vmHostTypes[node.Type] {
-			issues = append(issues, fmt.Sprintf("%s nodes cannot host virtual machines or services", node.Type))
+			issues = append(issues, fmt.Sprintf("%s: %s nodes cannot host virtual machines or services", nameOf(node.ID), node.Type))
 		}
 		issues = append(issues, gamingNodeIssues(node)...)
 		for _, vm := range node.VMs {
 			if strings.TrimSpace(vm.ID) == "" {
-				issues = append(issues, fmt.Sprintf("service on %s has an empty id", node.ID))
+				issues = append(issues, fmt.Sprintf("service on %s has an empty id", nameOf(node.ID)))
 				continue
 			}
 			if _, exists := vmIDs[vm.ID]; exists {
@@ -363,7 +379,6 @@ func validateEdgeEndpoints(nodes []NodeDTO, edges []EdgeDTO) error {
 				vmIDs[vm.ID] = struct{}{}
 			}
 		}
-		nodesByID[node.ID] = node
 	}
 
 	for _, node := range nodes {
@@ -371,31 +386,31 @@ func validateEdgeEndpoints(nodes []NodeDTO, edges []EdgeDTO) error {
 			continue
 		}
 		if *node.ParentID == node.ID {
-			issues = append(issues, fmt.Sprintf("%s cannot contain itself", node.ID))
+			issues = append(issues, fmt.Sprintf("%s cannot contain itself", nameOf(node.ID)))
 			continue
 		}
 		parent, exists := nodesByID[*node.ParentID]
 		if !exists {
-			issues = append(issues, fmt.Sprintf("%s references missing parent %s", node.ID, *node.ParentID))
+			issues = append(issues, fmt.Sprintf("%s references missing parent %s", nameOf(node.ID), *node.ParentID))
 			continue
 		}
 		if parent.Type != "rack" {
-			issues = append(issues, fmt.Sprintf("%s can only be placed inside a rack", node.ID))
+			issues = append(issues, fmt.Sprintf("%s can only be placed inside a rack", nameOf(node.ID)))
 		}
 		if node.Type == "rack" {
-			issues = append(issues, fmt.Sprintf("rack %s cannot be nested", node.ID))
+			issues = append(issues, fmt.Sprintf("rack %s cannot be nested", nameOf(node.ID)))
 		}
 		if floorNodeTypes[node.Type] {
-			issues = append(issues, fmt.Sprintf("%s nodes cannot be mounted in a rack", node.Type))
+			issues = append(issues, fmt.Sprintf("%s: %s nodes cannot be mounted in a rack", nameOf(node.ID), node.Type))
 		}
 	}
 
-	allowedEdgeTypes := map[string]bool{"": true, "ethernet": true, "wireless": true, "vpn": true}
+	allowedEdgeTypes := map[string]bool{"": true, "ethernet": true, "wireless": true, "vpn": true, wiring.EdgeTypePower: true}
 	connectsFreely := map[string]bool{
 		"router": true, "switch": true, "modem": true, "firewall": true,
-		"server_v2": true, "vps": true, "iot": true, "ups": true,
+		"server_v2": true, "vps": true, "iot": true,
 	}
-	nestedOnly := map[string]bool{"disk": true, "gpu": true, "cpu": true, "hba": true, "pcie": true, "pdu": true, "rack": true}
+	nestedOnly := map[string]bool{"disk": true, "gpu": true, "cpu": true, "hba": true, "pcie": true, "rack": true}
 	seenPairs := make(map[string]struct{}, len(edges))
 	usedPorts := make(map[string]struct{})
 	tableUplinks := make(map[string]int)
@@ -415,11 +430,38 @@ func validateEdgeEndpoints(nodes []NodeDTO, edges []EdgeDTO) error {
 			continue
 		}
 		if edge.Source == edge.Target {
-			issues = append(issues, fmt.Sprintf("self connection on %s", edge.Source))
+			issues = append(issues, fmt.Sprintf("self connection on %s", nameOf(edge.Source)))
 			continue
 		}
 		if !allowedEdgeTypes[edge.Type] {
-			issues = append(issues, fmt.Sprintf("%s->%s uses unsupported connection type %q", edge.Source, edge.Target, edge.Type))
+			issues = append(issues, fmt.Sprintf("%s->%s uses unsupported connection type %q", nameOf(edge.Source), nameOf(edge.Target), edge.Type))
+		}
+
+		if edge.Type == wiring.EdgeTypePower {
+			if !wiring.IsPowerSource(source.Type) || wiring.PowerHandleIndex(edge.SourceHandle, wiring.PowerOutPrefix) < 0 ||
+				wiring.PowerHandleIndex(edge.SourceHandle, wiring.PowerOutPrefix) >= wiring.PowerOutputCount(source.Type, source.Details) {
+				issues = append(issues, fmt.Sprintf("%s->%s: a power cable starts at a socket (pwr-out-N) of a UPS, PDU or power outlet", nameOf(edge.Source), nameOf(edge.Target)))
+			}
+			if index := wiring.PowerHandleIndex(edge.TargetHandle, wiring.PowerInPrefix); index < 0 || index >= wiring.PowerInputCount(target.Type, target.Details) {
+				issues = append(issues, fmt.Sprintf("%s has no power input %q", nameOf(edge.Target), edge.TargetHandle))
+			}
+			for _, endpoint := range []struct{ nodeID, handle string }{{edge.Source, edge.SourceHandle}, {edge.Target, edge.TargetHandle}} {
+				port := endpoint.nodeID + "\x00" + endpoint.handle
+				if _, used := usedPorts[port]; used {
+					issues = append(issues, fmt.Sprintf("port %s on %s is used more than once", endpoint.handle, nameOf(endpoint.nodeID)))
+				} else {
+					usedPorts[port] = struct{}{}
+				}
+			}
+			continue
+		}
+		if strings.HasPrefix(edge.SourceHandle, "pwr-") || strings.HasPrefix(edge.TargetHandle, "pwr-") {
+			issues = append(issues, fmt.Sprintf("%s->%s plugs a network cable into a power port", nameOf(edge.Source), nameOf(edge.Target)))
+		}
+		for _, endpoint := range []NodeDTO{source, target} {
+			if wiring.IsPowerSource(endpoint.Type) {
+				issues = append(issues, fmt.Sprintf("%s is a %s and has no network port", nameOf(endpoint.ID), endpoint.Type))
+			}
 		}
 
 		left, right := edge.Source, edge.Target
@@ -428,44 +470,41 @@ func validateEdgeEndpoints(nodes []NodeDTO, edges []EdgeDTO) error {
 		}
 		pair := left + "\x00" + right
 		if _, duplicate := seenPairs[pair]; duplicate {
-			issues = append(issues, fmt.Sprintf("duplicate connection between %s and %s", left, right))
+			issues = append(issues, fmt.Sprintf("duplicate connection between %s and %s", nameOf(left), nameOf(right)))
 		} else {
 			seenPairs[pair] = struct{}{}
 		}
 
-		isPower := source.Type == "ups" || target.Type == "ups"
 		isLogical := edge.Type == "vpn"
 		// A client on an access point's Wi-Fi: no cable, and the access point's
 		// port stays free for its uplink.
 		isWifiClient := isWifiAssociation(source.Type, target.Type)
-		if !isPower && (nestedOnly[source.Type] || nestedOnly[target.Type]) {
-			issues = append(issues, fmt.Sprintf("%s->%s connects a nested-only component", edge.Source, edge.Target))
+		if nestedOnly[source.Type] || nestedOnly[target.Type] {
+			issues = append(issues, fmt.Sprintf("%s->%s connects a nested-only component", nameOf(edge.Source), nameOf(edge.Target)))
 		}
-		if !isPower && !isWifiClient && !connectsFreely[source.Type] && !connectsFreely[target.Type] {
-			issues = append(issues, fmt.Sprintf("%s and %s must connect through a router, switch, firewall, modem, or gateway", edge.Source, edge.Target))
+		if !isWifiClient && !connectsFreely[source.Type] && !connectsFreely[target.Type] {
+			issues = append(issues, fmt.Sprintf("%s and %s must connect through a router, switch, firewall, modem, or gateway", nameOf(edge.Source), nameOf(edge.Target)))
 		}
 		if isWifiClient && edge.Type != "wireless" {
-			issues = append(issues, fmt.Sprintf("%s->%s joins an access point and must be a wireless connection", edge.Source, edge.Target))
+			issues = append(issues, fmt.Sprintf("%s->%s joins an access point and must be a wireless connection", nameOf(edge.Source), nameOf(edge.Target)))
 		}
-		if !isPower {
-			for _, endpoint := range []NodeDTO{source, target} {
-				if endpoint.Type != nodeTypeLANTable {
-					continue
-				}
-				if edge.Type == "wireless" || edge.Type == "vpn" {
-					issues = append(issues, fmt.Sprintf("LAN table %s needs a cabled uplink", endpoint.ID))
-				}
-				tableUplinks[endpoint.ID]++
-				if tableUplinks[endpoint.ID] == 2 {
-					issues = append(issues, fmt.Sprintf("LAN table %s has more than one uplink", endpoint.ID))
-				}
+		for _, endpoint := range []NodeDTO{source, target} {
+			if endpoint.Type != nodeTypeLANTable {
+				continue
+			}
+			if edge.Type == "wireless" || edge.Type == "vpn" {
+				issues = append(issues, fmt.Sprintf("LAN table %s needs a cabled uplink", nameOf(endpoint.ID)))
+			}
+			tableUplinks[endpoint.ID]++
+			if tableUplinks[endpoint.ID] == 2 {
+				issues = append(issues, fmt.Sprintf("LAN table %s has more than one uplink", nameOf(endpoint.ID)))
 			}
 		}
 		if edge.Type == "wireless" && source.Type != "access_point" && target.Type != "access_point" && source.Type != "iot" && target.Type != "iot" {
-			issues = append(issues, fmt.Sprintf("wireless connection %s->%s requires an access point or IoT endpoint", edge.Source, edge.Target))
+			issues = append(issues, fmt.Sprintf("wireless connection %s->%s requires an access point or IoT endpoint", nameOf(edge.Source), nameOf(edge.Target)))
 		}
 
-		if !isPower && !isLogical {
+		if !isLogical {
 			for _, endpoint := range []struct{ nodeID, handle string }{{edge.Source, edge.SourceHandle}, {edge.Target, edge.TargetHandle}} {
 				if endpoint.handle == "" {
 					continue
@@ -475,12 +514,15 @@ func validateEdgeEndpoints(nodes []NodeDTO, edges []EdgeDTO) error {
 				}
 				port := endpoint.nodeID + "\x00" + endpoint.handle
 				if _, used := usedPorts[port]; used {
-					issues = append(issues, fmt.Sprintf("port %s on %s is used more than once", endpoint.handle, endpoint.nodeID))
+					issues = append(issues, fmt.Sprintf("port %s on %s is used more than once", endpoint.handle, nameOf(endpoint.nodeID)))
 				} else {
 					usedPorts[port] = struct{}{}
 				}
 			}
 		}
+	}
+	if node := powerLoopNode(edges); node != "" {
+		issues = append(issues, fmt.Sprintf("power cables form a loop through %s", nameOf(node)))
 	}
 
 	if len(missingRefs) > 0 {
@@ -490,6 +532,51 @@ func validateEdgeEndpoints(nodes []NodeDTO, edges []EdgeDTO) error {
 		return fmt.Errorf("%w: %s", ErrInvalidTopology, summarizeTopologyIssues(issues))
 	}
 	return nil
+}
+
+// powerLoopNode returns a node that power cables lead back into, or "".
+func powerLoopNode(edges []EdgeDTO) string {
+	next := map[string][]string{}
+	var order []string
+	for _, edge := range edges {
+		if edge.Type != wiring.EdgeTypePower {
+			continue
+		}
+		if _, seen := next[edge.Source]; !seen {
+			order = append(order, edge.Source)
+		}
+		next[edge.Source] = append(next[edge.Source], edge.Target)
+	}
+	const (
+		unvisited = iota
+		active
+		done
+	)
+	state := map[string]int{}
+	var visit func(id string) string
+	visit = func(id string) string {
+		state[id] = active
+		for _, n := range next[id] {
+			switch state[n] {
+			case active:
+				return n
+			case unvisited:
+				if found := visit(n); found != "" {
+					return found
+				}
+			}
+		}
+		state[id] = done
+		return ""
+	}
+	for _, id := range order {
+		if state[id] == unvisited {
+			if found := visit(id); found != "" {
+				return found
+			}
+		}
+	}
+	return ""
 }
 
 func summarizeTopologyIssues(issues []string) string {
