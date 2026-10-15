@@ -435,6 +435,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
     nodeData.details?.cpu ||
     nodeData.details?.ram ||
     nodeData.details?.storage ||
+    nodeData.details?.notes ||
     (isNetworkNode(nodeData.type) && !!nodeData.ip);
 
   const hasSpecs = !!(
@@ -546,6 +547,12 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
             {nodeData.details?.model && (
               <p className="node-model text-[10px] text-muted-foreground/80 truncate -mt-0.5">
                 {nodeData.details.model}
+              </p>
+            )}
+
+            {nodeData.details?.notes?.trim() && (
+              <p className="whitespace-pre-wrap break-words text-[10px] leading-snug text-muted-foreground">
+                {nodeData.details.notes}
               </p>
             )}
 

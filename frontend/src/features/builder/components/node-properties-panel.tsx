@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useBuilderStore } from '../store/builder-store';
 import { useShallow } from 'zustand/react/shallow';
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card';
@@ -36,6 +36,7 @@ import { getNodePortCount, parsePortCount } from '../lib/port-count';
 import { DEFAULT_DEVICE_U } from './rack-node-constants';
 import { useHardware } from '../../catalog/api/use-hardware';
 import { HardwareBlueprintCreator } from '../../catalog/components/hardware-blueprint-creator';
+import { Textarea } from '../../../components/ui/textarea';
 
 const IP_REGEX =
   /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
@@ -101,6 +102,7 @@ export const NodePropertiesPanel = memo(function NodePropertiesPanel() {
   const [publicIP, setPublicIP] = useState('');
   const [provider, setProvider] = useState('');
   const [region, setRegion] = useState('');
+  const [notes, setNotes] = useState('');
 
   const [ramUnit, setRamUnit] = useState<'GB' | 'TB'>('GB');
   const [storageUnit, setStorageUnit] = useState<'GB' | 'TB'>('GB');
@@ -195,6 +197,7 @@ export const NodePropertiesPanel = memo(function NodePropertiesPanel() {
   // The form follows the device in the store: another selection, or a change
   // made elsewhere (undo, a reload, addresses from a save).
   const [syncedNode, setSyncedNode] = useState<HardwareNode | undefined>(undefined);
+  const notesDirty = useRef(false);
   if (selectedNode !== syncedNode) {
     setSyncedNode(selectedNode);
     if (selectedNode) {
@@ -237,6 +240,12 @@ export const NodePropertiesPanel = memo(function NodePropertiesPanel() {
       setPublicIP(details?.public_ip || '');
       setProvider(details?.provider || '');
       setRegion(details?.region || '');
+      // Keep an in-progress note edit while other updates replace this node
+      // in the store (for example, a save response that recalculates IPs).
+      if (!notesDirty.current || selectedNode.id !== syncedNode?.id) {
+        setNotes(details?.notes || '');
+        notesDirty.current = false;
+      }
       setErrors({});
     }
   }
@@ -288,8 +297,10 @@ export const NodePropertiesPanel = memo(function NodePropertiesPanel() {
           public_ip: selectedType === 'vps' ? publicIP : undefined,
           provider: selectedType === 'vps' ? provider : undefined,
           region: selectedType === 'vps' ? region : undefined,
+          notes,
         },
       });
+      notesDirty.current = false;
     }, 500);
     return () => clearTimeout(timer);
   }, [
@@ -321,6 +332,7 @@ export const NodePropertiesPanel = memo(function NodePropertiesPanel() {
     publicIP,
     provider,
     region,
+    notes,
   ]);
 
   if (!selectedNode) return null;
@@ -454,6 +466,21 @@ export const NodePropertiesPanel = memo(function NodePropertiesPanel() {
           )}
 
           <NodeAssetField node={selectedNode} />
+
+          <div className="space-y-2">
+            <Label htmlFor="node-notes">Notes</Label>
+            <Textarea
+              id="node-notes"
+              value={notes}
+              onChange={event => {
+                notesDirty.current = true;
+                setNotes(event.target.value);
+              }}
+              placeholder="Add notes about this node…"
+              rows={3}
+              className="resize-y text-xs"
+            />
+          </div>
 
           <GamingNodeFields node={selectedNode} />
 

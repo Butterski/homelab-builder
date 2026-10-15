@@ -142,6 +142,7 @@ export type HardwareType =
   | 'lan_table';
 
 export interface HardwareSpec {
+  notes?: string;
   virtual_network?: VirtualNetwork;
   model?: string;
   cpu?: string | number;
