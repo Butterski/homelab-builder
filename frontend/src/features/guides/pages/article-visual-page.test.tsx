@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { nodeHasDynamicPorts } from '../../../lib/hardware-config';
 import { getNodePortCount } from '../../builder/lib/port-count';
+import { POWER_OUT_PREFIX, powerHandleIndex, powerOutputCount } from '../../builder/lib/power-ports';
 import { VISUALS, toReactFlowEdges } from '../lib/article-visuals';
 
 describe('article visual port assignment', () => {
@@ -13,11 +14,15 @@ describe('article visual port assignment', () => {
         const sourceHandle = edge.sourceHandle ?? 'eth0';
         const sourceNode = nodesById.get(edge.source);
         const sourcePort = `${edge.source}:${sourceHandle}`;
-        const sourcePortIndex = Number(String(sourceHandle).replace('eth', ''));
+        const socket = powerHandleIndex(sourceHandle, POWER_OUT_PREFIX);
+        const sourcePortIndex =
+          socket >= 0 ? socket : Number(String(sourceHandle).replace('eth', ''));
         const renderedPortCount =
-          sourceNode && nodeHasDynamicPorts(sourceNode.type)
-            ? getNodePortCount(sourceNode.type, sourceNode.details?.ports)
-            : 1;
+          socket >= 0
+            ? powerOutputCount(sourceNode?.type, sourceNode?.details)
+            : sourceNode && nodeHasDynamicPorts(sourceNode.type)
+              ? getNodePortCount(sourceNode.type, sourceNode.details?.ports)
+              : 1;
 
         expect(usedSourcePorts.has(sourcePort), `${slug} reuses ${sourcePort}`).toBe(false);
         expect(sourcePortIndex, `${slug} uses invalid source handle ${sourcePort}`).toBeLessThan(

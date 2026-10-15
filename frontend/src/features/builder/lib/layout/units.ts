@@ -1,5 +1,12 @@
 import type { HardwareType } from '../../../../types';
 import type { LayoutEdge, LayoutGraph, LayoutNode, Medium, Point, Rect, Side } from './types';
+import {
+  POWER_IN_PREFIX,
+  POWER_OUT_PREFIX,
+  powerHandleIndex,
+  powerInputLeft,
+  powerOutputLeft,
+} from '../power-ports';
 
 /**
  * A unit is what the layout moves as one piece: a card, or a rack together
@@ -55,7 +62,7 @@ export interface UnitGraph {
   unitOf: Map<string, string>;
 }
 
-/** The handle on top of a card; every other handle is a port on the bottom edge. */
+/** The handle on top of a card. Power inputs sit on top too; every other handle is on the bottom edge. */
 export const TOP_HANDLE = 'target-0';
 
 /** Distance of a cable's end from the card edge, from the size of the handle elements. */
@@ -64,16 +71,29 @@ const HUB_PORT_ANCHOR = 4;
 const SINGLE_PORT_ANCHOR = 6;
 
 function sideOfHandle(handle: string): Side {
-  return handle === TOP_HANDLE ? 'top' : 'bottom';
+  return handle === TOP_HANDLE || handle.startsWith(POWER_IN_PREFIX) ? 'top' : 'bottom';
 }
 
 function portOfHandle(handle: string): number {
+  const socket = powerHandleIndex(handle, POWER_OUT_PREFIX);
+  if (socket >= 0) return socket;
   const match = /^eth(\d+)$/.exec(handle);
   return match ? Number(match[1]) : 0;
 }
 
 /** Where a cable attached to `handle` ends, relative to the card's top-left corner. */
 function handleAnchor(node: LayoutNode, handle: string): Point {
+  const input = powerHandleIndex(handle, POWER_IN_PREFIX);
+  if (input >= 0) {
+    const count = Math.max(node.powerInputs ?? 0, input + 1);
+    const left = powerInputLeft(input, count, node.networkPorts ?? true);
+    return { x: (node.width * left) / 100, y: -TOP_ANCHOR };
+  }
+  const socket = powerHandleIndex(handle, POWER_OUT_PREFIX);
+  if (socket >= 0) {
+    const count = Math.max(node.powerOutputs ?? 0, socket + 1);
+    return { x: (node.width * powerOutputLeft(socket, count)) / 100, y: node.height + HUB_PORT_ANCHOR };
+  }
   if (sideOfHandle(handle) === 'top') return { x: node.width / 2, y: -TOP_ANCHOR };
   if (!node.spreadPorts) return { x: node.width / 2, y: node.height + SINGLE_PORT_ANCHOR };
   const port = Math.min(portOfHandle(handle), Math.max(0, node.ports - 1));

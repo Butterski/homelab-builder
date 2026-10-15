@@ -244,7 +244,7 @@ type VirtualMachine struct {
 	ID         uuid.UUID       `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
 	NodeID     uuid.UUID       `gorm:"type:uuid;not null;index" json:"node_id"`
 	Name       string          `gorm:"not null" json:"name"`
-	Type       string          `gorm:"not null" json:"type"` // vm, container, lxc
+	Type       string          `gorm:"not null" json:"type"` // vm, container, lxc, other
 	IP         string          `gorm:"default:''" json:"ip"`
 	MacAddress string          `gorm:"default:''" json:"mac_address"`
 	OS         string          `gorm:"default:''" json:"os"`

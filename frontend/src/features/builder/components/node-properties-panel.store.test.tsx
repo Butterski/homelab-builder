@@ -25,7 +25,10 @@ const nas: HardwareNode = {
   details: { model: 'Synology DS923+', ram: 4, storage: 12000 },
 };
 
-const stored = () => useBuilderStore.getState().hardwareNodes.find(node => node.id === 'nas');
+// A router saved without the form's switches: the form shows DHCP on for it.
+const router: HardwareNode = { id: 'router', type: 'router', name: 'Router', x: 0, y: 0, details: {} };
+
+const stored = (id = 'nas') => useBuilderStore.getState().hardwareNodes.find(node => node.id === id);
 
 // The form writes itself back to the store half a second after it changes. It
 // changes when a device is selected too, and that write must carry the
@@ -34,7 +37,7 @@ describe('NodePropertiesPanel on the builder store', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     useBuilderStore.getState().clearCurrentBuild();
-    useBuilderStore.setState({ hardwareNodes: [nas], selectedNodeId: null });
+    useBuilderStore.setState({ hardwareNodes: [nas, router], selectedNodeId: null });
     render(
       <QueryClientProvider client={new QueryClient()}>
         <NodePropertiesPanel />
@@ -50,22 +53,22 @@ describe('NodePropertiesPanel on the builder store', () => {
     act(() => useBuilderStore.getState().selectNode('nas'));
     act(() => vi.advanceTimersByTime(1000));
 
-    expect(stored()).toMatchObject({
-      name: 'Storage NAS',
-      ip: '192.168.1.100',
-      details: { model: 'Synology DS923+', ram: 4, storage: 12000 },
-    });
+    expect(stored()).toBe(nas);
   });
 
-  it('saves an edit of the form to the selected device', () => {
+  it('does not write the form defaults into a device that lacks them', () => {
+    act(() => useBuilderStore.getState().selectNode('router'));
+    act(() => vi.advanceTimersByTime(1000));
+
+    expect(stored('router')).toBe(router);
+  });
+
+  it('saves an edit of the form to the selected device, and nothing else', () => {
     act(() => useBuilderStore.getState().selectNode('nas'));
     fireEvent.change(screen.getByDisplayValue('Storage NAS'), { target: { value: 'Backup NAS' } });
     act(() => vi.advanceTimersByTime(1000));
 
-    expect(stored()).toMatchObject({
-      name: 'Backup NAS',
-      ip: '192.168.1.100',
-      details: { model: 'Synology DS923+', storage: 12000 },
-    });
+    expect(stored()).toMatchObject({ name: 'Backup NAS', ip: '192.168.1.100' });
+    expect(stored()?.details).toEqual({ model: 'Synology DS923+', ram: 4, storage: 12000 });
   });
 });

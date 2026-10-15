@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react';
 import type { Edge, Node } from '@xyflow/react';
 import type { HardwareNode, HardwareNodeValidationIssue } from '../../../types';
-import type { Proposal, ValidationReport } from '../api/proposals';
+import type { ConnectionDiff, Proposal, ValidationReport } from '../api/proposals';
 import { mapBuildToFlow, type FlowBuild } from './build-mapper';
 
 export type DiffStatus = 'added' | 'changed' | 'removed';
@@ -12,9 +12,20 @@ export type ProposalPreviewGraph = FlowBuild & {
   changedNodeIds: string[];
 };
 
-/** Cables are identified by their node pair; edge ids change on every save. */
-function connectionKey(a: string, b: string): string {
-  return a < b ? `${a}|${b}` : `${b}|${a}`;
+/**
+ * Cables are identified by their node pair; edge ids change on every save. Two
+ * power cables can join the same pair (a dual PSU on one PDU), so a power
+ * cable adds the input it feeds. The backend builds the same key
+ * (topology_diff.go: connectionKey).
+ */
+function connectionKey(
+  source: string,
+  target: string,
+  type: unknown,
+  targetHandle: string | null | undefined,
+): string {
+  const pair = source < target ? `${source}|${target}` : `${target}|${source}`;
+  return type === 'power' ? `${pair}|power|${target}:${targetHandle ?? ''}` : pair;
 }
 
 export function validationToIssues(
@@ -99,16 +110,12 @@ export function buildProposalPreview(proposal: Proposal, live: FlowBuild): Propo
   // React Flow needs a parent before its children.
   nodes.sort((a, b) => (a.type === 'rack' ? 0 : 1) - (b.type === 'rack' ? 0 : 1));
 
+  const linkKey = (link: ConnectionDiff) =>
+    connectionKey(link.source, link.target, link.type, link.target_handle);
   const edgeStatus = new Map<string, DiffStatus>();
-  for (const link of diff.connections.added) {
-    edgeStatus.set(connectionKey(link.source, link.target), 'added');
-  }
-  for (const link of diff.connections.changed) {
-    edgeStatus.set(connectionKey(link.source, link.target), 'changed');
-  }
-  const removedLinks = new Set(
-    diff.connections.removed.map(link => connectionKey(link.source, link.target)),
-  );
+  for (const link of diff.connections.added) edgeStatus.set(linkKey(link), 'added');
+  for (const link of diff.connections.changed) edgeStatus.set(linkKey(link), 'changed');
+  const removedLinks = new Set(diff.connections.removed.map(linkKey));
 
   const previewEdge = (edge: Edge, status: DiffStatus | undefined): Edge => ({
     ...edge,
@@ -123,12 +130,14 @@ export function buildProposalPreview(proposal: Proposal, live: FlowBuild): Propo
     data: { ...edge.data, proposalDiff: status },
   });
 
+  const edgeKey = (edge: Edge) =>
+    connectionKey(edge.source, edge.target, edge.data?.connection_type, edge.targetHandle);
   const visibleIds = new Set(nodes.map(node => node.id));
   const edges: Edge[] = proposed.edges
     .filter(edge => visibleIds.has(edge.source) && visibleIds.has(edge.target))
-    .map(edge => previewEdge(edge, edgeStatus.get(connectionKey(edge.source, edge.target))));
+    .map(edge => previewEdge(edge, edgeStatus.get(edgeKey(edge))));
   for (const edge of live.edges) {
-    if (!removedLinks.has(connectionKey(edge.source, edge.target))) continue;
+    if (!removedLinks.has(edgeKey(edge))) continue;
     if (!visibleIds.has(edge.source) || !visibleIds.has(edge.target)) continue;
     edges.push(previewEdge({ ...edge, id: `removed-${edge.id}` }, 'removed'));
   }

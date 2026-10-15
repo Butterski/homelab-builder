@@ -4,9 +4,8 @@ import { Card, CardContent } from '../../../components/ui/card';
 import { Progress } from '../../../components/ui/progress';
 import { Activity, ChevronDown, ChevronUp, Cpu, HardDrive, Package } from 'lucide-react';
 import { cn } from '../../../lib/utils';
-import type { HardwareType } from '../../../types';
-import { isComputeNode, nodeHasStorage } from '../../../lib/hardware-config';
-import { getVmResourceUsage } from '../lib/resource-usage';
+import { isComputeNode } from '../../../lib/hardware-config';
+import { getVmResourceUsage, hostStorageGb } from '../lib/resource-usage';
 
 // Helper to safely parse strings like "16GB" to numbers
 const parseSpec = (val?: string | number): number => {
@@ -80,24 +79,18 @@ export const LiveResourceDashboard = memo(function LiveResourceDashboard() {
         const ram = parseSpec(String(node.details.ram));
         totalRamMb += ram < 1024 ? ram * 1024 : ram;
 
-        const storage = parseSpec(String(node.details.storage));
-        totalStorageGb += storage;
+        totalStorageGb += hostStorageGb(node.details, node.internal_components);
       } else {
         // Generous default if no details provided yet
         totalCpuThreads += 4;
         totalRamMb += 8192;
-        totalStorageGb += 256;
+        totalStorageGb += 256 + hostStorageGb(undefined, node.internal_components);
       }
 
-      // Aggregate internal components (disks, NAS drives, GPUs) into totals
+      // GPUs contribute VRAM as dedicated RAM
       if (node.internal_components) {
         node.internal_components.forEach(comp => {
           if (!comp.details) return;
-          // Disks, NAS, etc contribute storage
-          if (nodeHasStorage(comp.type as HardwareType)) {
-            totalStorageGb += parseSpec(String(comp.details.storage));
-          }
-          // GPUs contribute VRAM as dedicated RAM
           if (comp.type === 'gpu') {
             const vram = parseSpec(String(comp.details.ram));
             totalRamMb += vram < 1024 ? vram * 1024 : vram;

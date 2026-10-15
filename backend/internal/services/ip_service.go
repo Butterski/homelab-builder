@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Butterski/homelab-builder/backend/internal/models"
+	"github.com/Butterski/homelab-builder/backend/internal/wiring"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -103,18 +104,47 @@ func withDHCPPool(raw json.RawMessage, pool *ipamRouterResult) (json.RawMessage,
 	_, had := details["dhcp_pool"]
 	// With DHCP off there is no pool, but devices may still expect a lease:
 	// that count is kept so the gaming report can say so.
-	if pool == nil || (pool.DHCPStart == "" && pool.DHCPClients == 0) {
+	if entry := dhcpPoolOf(pool); entry == nil {
 		if !had {
 			return raw, nil
 		}
 		delete(details, "dhcp_pool")
 	} else {
-		details["dhcp_pool"] = map[string]any{
-			"start":   pool.DHCPStart,
-			"end":     pool.DHCPEnd,
-			"size":    pool.DHCPSize,
-			"clients": pool.DHCPClients,
+		details["dhcp_pool"] = entry
+	}
+	return json.Marshal(details)
+}
+
+// dhcpPoolOf is the dhcp_pool entry for a gateway, nil when it hands out no
+// leases and no device expects one.
+func dhcpPoolOf(pool *ipamRouterResult) map[string]any {
+	if pool == nil || (pool.DHCPStart == "" && pool.DHCPClients == 0) {
+		return nil
+	}
+	return map[string]any{
+		"start":   pool.DHCPStart,
+		"end":     pool.DHCPEnd,
+		"size":    pool.DHCPSize,
+		"clients": pool.DHCPClients,
+	}
+}
+
+// withPortNetworks writes the subnets hlbIPAM confirmed for the ports of a
+// router or firewall into its details, or removes a stale entry.
+func withPortNetworks(raw json.RawMessage, networks map[string]any) (json.RawMessage, error) {
+	details := map[string]any{}
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &details); err != nil || details == nil {
+			return raw, nil
 		}
+	}
+	if len(networks) == 0 {
+		if _, had := details["port_networks"]; !had {
+			return raw, nil
+		}
+		delete(details, "port_networks")
+	} else {
+		details["port_networks"] = networks
 	}
 	return json.Marshal(details)
 }
@@ -133,7 +163,7 @@ type ipamResponse struct {
 // ─── Non-network types that don't receive IPs ───────────────────────────────
 
 var nonNetworkTypes = map[string]bool{
-	"disk": true, "gpu": true, "hba": true, "pcie": true, "pdu": true, "ups": true, "rack": true,
+	"disk": true, "gpu": true, "hba": true, "pcie": true, "pdu": true, "power_outlet": true, "ups": true, "rack": true,
 	// A LAN table has no address of its own: its seats take leases from the pool.
 	nodeTypeLANTable: true,
 }
@@ -211,6 +241,60 @@ type ipamPlan struct {
 	// opens; natNodeByRouterID is the reverse.
 	natGatewayIDs     map[string]string
 	natNodeByRouterID map[string]string
+	// portByRouterID maps the id of a gateway opened by a router or firewall
+	// port ("<node>:eth1") back to that node and handle.
+	portByRouterID map[string]portRef
+}
+
+// portRef names one port of a node.
+type portRef struct {
+	nodeID, handle string
+}
+
+// portGateway is a router or firewall port that serves its own subnet.
+type portGateway struct {
+	routerID, handle, ip, subnet string
+	dhcp                         bool
+}
+
+// portGateways lists the LAN and DMZ ports of a router or firewall that carry
+// an address, the uplink first and then by port number.
+func portGateways(n models.Node) []portGateway {
+	if n.Type != "router" && n.Type != "firewall" {
+		return nil
+	}
+	details, _ := detailsMap(n.Details)
+	config := wiring.ReadPortConfig(details)
+	handles := make([]string, 0, len(config))
+	for handle := range config {
+		handles = append(handles, handle)
+	}
+	sort.Slice(handles, func(i, j int) bool {
+		if (handles[i] == "target-0") != (handles[j] == "target-0") {
+			return handles[i] == "target-0"
+		}
+		return handleNumber(handles[i]) < handleNumber(handles[j])
+	})
+	out := make([]portGateway, 0, len(handles))
+	for _, handle := range handles {
+		settings := config[handle]
+		role := settings.Role
+		if role == "" {
+			role = wiring.DefaultRole(handle)
+		}
+		if (role != "lan" && role != "dmz") || !wiring.IsIPv4CIDR(settings.Address) {
+			continue
+		}
+		ip, _, _ := strings.Cut(settings.Address, "/")
+		out = append(out, portGateway{
+			routerID: n.ID.String() + ":" + handle,
+			handle:   handle,
+			ip:       ip,
+			subnet:   settings.Address,
+			dhcp:     settings.DHCP,
+		})
+	}
+	return out
 }
 
 // handleNumber reads the digits of a handle as one number ("eth10" is 10,
@@ -249,6 +333,24 @@ func planIPAM(nodes []models.Node, edges []models.Edge) ipamPlan {
 		}
 	}
 
+	// Router and firewall ports with their own subnet become gateways of
+	// their own: the devices behind such a port take addresses from it.
+	portRouterIDs := make(map[string]map[string]string)
+	portByRouterID := make(map[string]portRef)
+	var portRouters []portGateway
+	for _, n := range nodes {
+		nid := n.ID.String()
+		for _, gateway := range portGateways(n) {
+			handle := gateway.handle
+			if portRouterIDs[nid] == nil {
+				portRouterIDs[nid] = make(map[string]string)
+			}
+			portRouterIDs[nid][handle] = gateway.routerID
+			portByRouterID[gateway.routerID] = portRef{nodeID: nid, handle: handle}
+			portRouters = append(portRouters, gateway)
+		}
+	}
+
 	isUpstreamAnchor := func(id string) bool {
 		n, ok := nodeByID[id]
 		if !ok {
@@ -281,7 +383,7 @@ func planIPAM(nodes []models.Node, edges []models.Edge) ipamPlan {
 	}
 
 	for _, e := range edges {
-		if e.Type == "vpn" {
+		if e.Type == "vpn" || e.Type == wiring.EdgeTypePower {
 			continue
 		}
 		src := e.SourceNodeID.String()
@@ -291,6 +393,27 @@ func planIPAM(nodes []models.Node, edges []models.Edge) ipamPlan {
 			direction = "auto"
 		}
 		sourcePort, targetPort := handleNumber(e.SourceHandle), handleNumber(e.TargetHandle)
+
+		srcHandle, tgtHandle := e.SourceHandle, e.TargetHandle
+		if srcHandle == "" {
+			srcHandle = "eth0"
+		}
+		if tgtHandle == "" {
+			tgtHandle = "target-0"
+		}
+		srcID, srcPortRouter := portRouterIDs[src][srcHandle]
+		tgtID, tgtPortRouter := portRouterIDs[tgt][tgtHandle]
+		if srcPortRouter || tgtPortRouter {
+			if !srcPortRouter {
+				srcID = src
+			}
+			if !tgtPortRouter {
+				tgtID = tgt
+			}
+			addConnection(srcID, tgtID, sourcePort)
+			addConnection(tgtID, srcID, targetPort)
+			continue
+		}
 
 		if natRouterID, ok := natGatewayIDs[src]; ok {
 			if direction == "lan" || (direction == "auto" && isAutoLANPort(e.SourceHandle, true) && !isUpstreamAnchor(tgt)) {
@@ -335,6 +458,9 @@ func planIPAM(nodes []models.Node, edges []models.Edge) ipamPlan {
 		if details := detailsByID[n.ID.String()]; details.LANGatewayIP != "" {
 			usedGatewayIPs[details.LANGatewayIP] = true
 		}
+	}
+	for _, gateway := range portRouters {
+		usedGatewayIPs[gateway.ip] = true
 	}
 	nextNATLAN := func(nid string) (string, string) {
 		details := detailsByID[nid]
@@ -405,6 +531,14 @@ func planIPAM(nodes []models.Node, edges []models.Edge) ipamPlan {
 			DHCPEnabled: details.DHCPEnabled || details.NATEnabled,
 		})
 	}
+	for _, gateway := range portRouters {
+		req.Routers = append(req.Routers, ipamRouter{
+			ID:          gateway.routerID,
+			GatewayIP:   gateway.ip,
+			Subnet:      gateway.subnet,
+			DHCPEnabled: gateway.dhcp,
+		})
+	}
 
 	for _, n := range nodes {
 		nid := n.ID.String()
@@ -450,6 +584,7 @@ func planIPAM(nodes []models.Node, edges []models.Edge) ipamPlan {
 		realGatewayIDs:    realGatewayIDs,
 		natGatewayIDs:     natGatewayIDs,
 		natNodeByRouterID: natNodeByRouterID,
+		portByRouterID:    portByRouterID,
 	}
 }
 
@@ -497,7 +632,19 @@ func (s *IPService) CalculateNetwork(buildID uuid.UUID) error {
 		}
 		natLANByNodeID := make(map[string]natInterfaceAllocation, len(natGatewayIDs))
 		poolByNodeID := make(map[string]ipamRouterResult, len(result.Routers))
+		portNetworks := make(map[string]map[string]any)
 		for _, rr := range result.Routers {
+			if port, ok := plan.portByRouterID[rr.ID]; ok {
+				network := map[string]any{"ip": rr.GatewayIP, "subnet": rr.Subnet}
+				if pool := dhcpPoolOf(&rr); pool != nil {
+					network["dhcp_pool"] = pool
+				}
+				if portNetworks[port.nodeID] == nil {
+					portNetworks[port.nodeID] = make(map[string]any)
+				}
+				portNetworks[port.nodeID][port.handle] = network
+				continue
+			}
 			if rr.GatewayIP != "" {
 				routerIPByID[rr.ID] = rr.GatewayIP
 			}
@@ -581,6 +728,13 @@ func (s *IPService) CalculateNetwork(buildID uuid.UUID) error {
 				return fmt.Errorf("marshal node details: %w", err)
 			}
 			nodes[i].Details = withPool
+			if nodes[i].Type == "router" || nodes[i].Type == "firewall" {
+				withPorts, err := withPortNetworks(nodes[i].Details, portNetworks[nid])
+				if err != nil {
+					return fmt.Errorf("marshal node details: %w", err)
+				}
+				nodes[i].Details = withPorts
+			}
 			for j := range nodes[i].VirtualMachines {
 				vmid := nodes[i].VirtualMachines[j].ID.String()
 				nodes[i].VirtualMachines[j].IP = vmIPByID[vmid]
@@ -646,8 +800,15 @@ func (s *IPService) callIPAM(req ipamRequest) (*ipamResponse, error) {
 	return &result, nil
 }
 
+// validationIssue is one hlbIPAM or wiring finding, attached to a node.
+type validationIssue struct {
+	NodeID  string `json:"node_id,omitempty"`
+	Message string `json:"message"`
+}
+
 // ValidateNetwork sends the current topology to the hlbIPAM validate endpoint
-// and returns the raw validation response directly to the caller.
+// and adds the wiring warnings (power, port roles, VLANs). Issue node ids are
+// plain node ids: hlbIPAM's ":lan" and ":ethN" suffixes are cut off.
 func (s *IPService) ValidateNetwork(buildID uuid.UUID) (json.RawMessage, error) {
 	nodes, edges, err := loadTopology(s.db, buildID)
 	if err != nil {
@@ -670,10 +831,37 @@ func (s *IPService) ValidateNetwork(buildID uuid.UUID) (json.RawMessage, error) 
 		return nil, fmt.Errorf("ipam service returned %d: %s", resp.StatusCode, string(body))
 	}
 
-	rawResp, err := io.ReadAll(resp.Body)
-	if err != nil {
+	var result struct {
+		Valid    bool              `json:"valid"`
+		Errors   []validationIssue `json:"errors"`
+		Warnings []validationIssue `json:"warnings"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("failed to read validation response: %w", err)
 	}
+	for _, list := range [][]validationIssue{result.Errors, result.Warnings} {
+		for i := range list {
+			list[i].NodeID, _, _ = strings.Cut(list[i].NodeID, ":")
+		}
+	}
 
-	return json.RawMessage(rawResp), nil
+	wiringNodes, wiringEdges, err := wiringInput(s.db, buildID)
+	if err != nil {
+		return nil, err
+	}
+	for _, issue := range wiring.Warnings(wiringNodes, wiringEdges) {
+		result.Warnings = append(result.Warnings, validationIssue{NodeID: issue.NodeID, Message: issue.Message})
+	}
+	if result.Errors == nil {
+		result.Errors = []validationIssue{}
+	}
+	if result.Warnings == nil {
+		result.Warnings = []validationIssue{}
+	}
+
+	out, err := json.Marshal(result)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode validation response: %w", err)
+	}
+	return out, nil
 }

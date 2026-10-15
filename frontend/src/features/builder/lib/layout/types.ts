@@ -3,7 +3,7 @@ import type { HardwareType } from '../../../../types';
 export type Point = { x: number; y: number };
 export type Rect = { x: number; y: number; width: number; height: number };
 
-/** How a link is carried. A power feed is any link with a UPS or PDU at one end. */
+/** How a link is carried. A power feed runs from a socket of a UPS, PDU or outlet to a power input. */
 export type Medium = 'ethernet' | 'wireless' | 'vpn' | 'power';
 
 /** Which edge of a card a cable is attached to: the uplink handle is on top, ports are below. */
@@ -30,13 +30,19 @@ export interface LayoutNode {
   spreadPorts: boolean;
   /** Everything behind this device is drawn inside one zone outline (NAT, firewall). */
   zoneRoot: boolean;
+  /** Power inputs on the top edge, one per power supply. Default 0. */
+  powerInputs?: number;
+  /** Sockets on the bottom edge of a UPS, PDU or outlet. Default 0. */
+  powerOutputs?: number;
+  /** Whether the card has the uplink and ethernet ports; power sources do not. Default true. */
+  networkPorts?: boolean;
 }
 
 export interface LayoutEdge {
   id: string;
   source: string;
   target: string;
-  /** Handle ids as React Flow stores them: `target-0` is the top, `ethN` a port. */
+  /** Handle ids as React Flow stores them: `target-0` is the top, `ethN` a port, `pwr-in-N`/`pwr-out-N` power. */
   sourceHandle: string;
   targetHandle: string;
   medium: Medium;

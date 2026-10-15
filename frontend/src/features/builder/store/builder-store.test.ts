@@ -713,6 +713,54 @@ describe('onConnect - MUST trigger reassignAllIPs', () => {
     expect(edges[0].data?.connection_type).toBe('wireless');
     expect(edges[0].data?.wireless_standard).toBe('Wi-Fi 6');
   });
+
+  it('stores a power cable from the socket to the power input, whichever end was dragged', () => {
+    const device = (id: string, type: HardwareNode['type']): HardwareNode => ({
+      id,
+      type,
+      name: id,
+      ip: '',
+      x: 0,
+      y: 0,
+      vms: [],
+      internal_components: [],
+      details: {},
+    });
+    useBuilderStore.setState({
+      nodes: [
+        { id: 'srv', type: 'hardware', position: { x: 0, y: 0 }, data: { type: 'server' } },
+        { id: 'ups', type: 'hardware', position: { x: 100, y: 0 }, data: { type: 'ups' } },
+      ],
+      hardwareNodes: [device('srv', 'server'), device('ups', 'ups')],
+      edges: [],
+    });
+
+    useBuilderStore.getState().onConnect({
+      source: 'srv',
+      sourceHandle: 'pwr-in-0',
+      target: 'ups',
+      targetHandle: 'pwr-out-2',
+    });
+
+    const { edges } = useBuilderStore.getState();
+    expect(edges).toHaveLength(1);
+    expect(edges[0]).toMatchObject({
+      source: 'ups',
+      sourceHandle: 'pwr-out-2',
+      target: 'srv',
+      targetHandle: 'pwr-in-0',
+      data: { connection_type: 'power' },
+    });
+    expect(useBuilderStore.getState().getBuildData().edges[0]).toMatchObject({
+      source: 'ups',
+      source_handle: 'pwr-out-2',
+      target: 'srv',
+      target_handle: 'pwr-in-0',
+      type: 'power',
+      speed: '',
+      subnet: '',
+    });
+  });
 });
 
 describe('removeHardware', () => {

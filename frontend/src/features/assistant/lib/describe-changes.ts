@@ -10,6 +10,7 @@ const TYPE_NAMES: Record<string, string> = {
   vps: 'VPS',
   ups: 'UPS',
   pdu: 'PDU',
+  power_outlet: 'power outlet',
   iot: 'IoT device',
   lan_table: 'LAN table',
 };

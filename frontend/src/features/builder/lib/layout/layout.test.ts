@@ -63,11 +63,34 @@ text{font:16px system-ui;fill:#1c2330}polyline{fill:none;stroke-width:3;stroke-l
 
 // ─── Building canvases ───────────────────────────────────────────────────────
 
-const HUBS = new Set<HardwareType>(['router', 'switch', 'firewall', 'modem', 'server_v2', 'vps', 'ups']);
+const HUBS = new Set<HardwareType>(['router', 'switch', 'firewall', 'modem', 'server_v2', 'vps']);
+const DEFAULT_SOCKETS: Partial<Record<HardwareType, number>> = { ups: 6, pdu: 8, power_outlet: 2 };
 const RACK_WIDTH = 280;
 const rackHeight = (units: number) => 40 + units * 90 + 8;
 
 function card(id: string, type: HardwareType, extra: Partial<LayoutNode> = {}): LayoutNode {
+  const sockets = DEFAULT_SOCKETS[type];
+  if (sockets !== undefined) {
+    // A power source: sockets along the bottom, no network port.
+    const outputs = extra.powerOutputs ?? sockets;
+    return {
+      id,
+      type,
+      name: id,
+      x: 0,
+      y: 0,
+      width: outputs * 16 > 192 ? Math.max(220, outputs * 16) : 220,
+      height: 100,
+      estimated: false,
+      ports: 1,
+      spreadPorts: false,
+      zoneRoot: false,
+      powerInputs: type === 'power_outlet' ? 0 : 1,
+      powerOutputs: outputs,
+      networkPorts: false,
+      ...extra,
+    };
+  }
   const hub = HUBS.has(type);
   const ports = extra.ports ?? (hub ? (type === 'switch' ? 8 : 4) : 1);
   return {
@@ -106,8 +129,8 @@ function cable(
     id: `edge-${nextEdge}`,
     source,
     target,
-    sourceHandle: handles.source ?? `eth${port}`,
-    targetHandle: handles.target ?? 'target-0',
+    sourceHandle: handles.source ?? (medium === 'power' ? `pwr-out-${port}` : `eth${port}`),
+    targetHandle: handles.target ?? (medium === 'power' ? 'pwr-in-0' : 'target-0'),
     medium,
   };
 }
@@ -196,7 +219,7 @@ function homelab(): LayoutGraph {
       card('ap', 'access_point', { height: 110 }),
       card('console', 'console', { height: 110 }),
       card('laptop', 'pc'),
-      card('ups', 'ups', { ports: 2 }),
+      card('ups', 'ups', { powerOutputs: 2 }),
       card('spare', 'sbc'),
     ],
     edges: [
@@ -279,7 +302,7 @@ describe('hierarchy', () => {
         card('switch', 'switch'),
         card('server-a', 'server_v2', { height: 300 }),
         card('server-b', 'server_v2', { height: 300 }),
-        card('ups', 'ups', { ports: 4 }),
+        card('ups', 'ups', { powerOutputs: 4 }),
         card('pdu', 'pdu', { height: 90 }),
       ],
       edges: [
@@ -306,7 +329,7 @@ describe('hierarchy', () => {
         card('switch', 'switch', { height: 60 }),
         card('server-a', 'server_v2', { height: 300 }),
         card('server-b', 'server_v2', { height: 300 }),
-        card('ups', 'ups', { ports: 4, height: 180 }),
+        card('ups', 'ups', { powerOutputs: 4, height: 180 }),
       ],
       edges: [
         cable('router', 'switch', 0),
@@ -328,7 +351,7 @@ describe('hierarchy', () => {
 
   it('puts a UPS that feeds the root in a row above it', () => {
     const graph: LayoutGraph = {
-      nodes: [card('router', 'router'), card('pc', 'pc'), card('ups', 'ups', { ports: 2 })],
+      nodes: [card('router', 'router'), card('pc', 'pc'), card('ups', 'ups', { powerOutputs: 2 })],
       edges: [cable('router', 'pc', 0), cable('ups', 'router', 0, 'power')],
     };
     const { hierarchy } = expectTidy(graph, 'UPS over the root');

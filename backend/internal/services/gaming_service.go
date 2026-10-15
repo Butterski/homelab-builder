@@ -10,6 +10,7 @@ import (
 
 	"github.com/Butterski/homelab-builder/backend/internal/gaming"
 	"github.com/Butterski/homelab-builder/backend/internal/models"
+	"github.com/Butterski/homelab-builder/backend/internal/wiring"
 	"github.com/google/uuid"
 )
 
@@ -92,10 +93,7 @@ func gamingReportInput(build *models.Build) (gaming.ReportInput, error) {
 		stored[node.ID.String()] = node
 	}
 	usage := NodePortUsage(graph)
-	types := make(map[string]string, len(graph.Nodes))
-
 	for _, node := range graph.Nodes {
-		types[node.ID] = node.Type
 		power := node.PowerDraw
 		for _, component := range node.InternalComponents {
 			power += component.PowerDraw
@@ -152,7 +150,7 @@ func gamingReportInput(build *models.Build) (gaming.ReportInput, error) {
 	for _, edge := range graph.Edges {
 		kind := edge.Type
 		switch {
-		case isPowerEdge(types[edge.Source], types[edge.Target]):
+		case kind == wiring.EdgeTypePower:
 			kind = gaming.LinkPower
 		case kind == "":
 			kind = gaming.LinkEthernet
