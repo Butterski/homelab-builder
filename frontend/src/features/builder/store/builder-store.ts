@@ -23,6 +23,7 @@ import type {
   GamingPlan,
   EdgePreferences,
   BuilderTag,
+  HardwareType,
 } from '../../../types';
 import { initialVirtualNetwork, removeVirtualEndpoints } from '../lib/virtual-network';
 import { withFreshChildIds } from '../lib/hardware-instance';
@@ -320,6 +321,19 @@ export type ProposalPreviewState = ProposalPreviewGraph & {
   focus: { ids: string[]; nonce: number } | null;
 };
 
+/**
+ * Where the camera goes once a build is opened and drawn: devices by id, or
+ * the devices of some types. Set before navigating to the build ("Show" in
+ * What's new); the canvas takes it when that build is ready and measured.
+ */
+export type PendingFocus = {
+  buildId: string;
+  ids?: string[];
+  types?: HardwareType[];
+  /** Select the first device found, so its fields show in the properties panel. */
+  select?: boolean;
+};
+
 interface BuilderState {
   virtualHostId: string | null;
   openVirtualNetwork: (hostId: string | null) => void;
@@ -408,6 +422,15 @@ interface BuilderState {
   /** Nodes the canvas should bring into view (null: everything); nonce re-triggers. */
   canvasFocus: { ids: string[] | null; nonce: number } | null;
   requestCanvasFocus: (ids?: string[] | null) => void;
+  /** Survives `openBuild` emptying the graph; cleared with the build. */
+  pendingFocus: PendingFocus | null;
+  setPendingFocus: (focus: PendingFocus | null) => void;
+  /**
+   * Turns the pending focus of `buildId` into `canvasFocus` on the devices of
+   * it that exist (the whole canvas when none does). Call it only once that
+   * build is loaded and its cards are measured.
+   */
+  takePendingFocus: (buildId: string) => void;
 
   // ── Layout ─────────────────────────────────────────────────────────
   /**
@@ -576,6 +599,24 @@ export const useBuilderStore = create<BuilderState>()(
       canvasFocus: null,
       requestCanvasFocus: (ids = null) =>
         set(state => ({ canvasFocus: { ids, nonce: (state.canvasFocus?.nonce ?? 0) + 1 } })),
+      pendingFocus: null,
+      setPendingFocus: focus => set({ pendingFocus: focus }),
+      takePendingFocus: buildId => {
+        const { pendingFocus, currentBuildId, buildStatus, hardwareNodes } = get();
+        if (!pendingFocus || pendingFocus.buildId !== buildId) return;
+        if (currentBuildId !== buildId || buildStatus !== 'ready') return;
+        const wanted = new Set(pendingFocus.ids ?? []);
+        const ids = pendingFocus.types
+          ? pendingFocus.types.flatMap(type =>
+              hardwareNodes.filter(node => node.type === type).map(node => node.id),
+            )
+          : hardwareNodes.filter(node => wanted.has(node.id)).map(node => node.id);
+        set({
+          pendingFocus: null,
+          ...(pendingFocus.select && ids.length > 0 ? { selectedNodeId: ids[0] } : {}),
+        });
+        get().requestCanvasFocus(ids.length > 0 ? ids : null);
+      },
 
       layoutMotion: 0,
       polishLayout: style => {
@@ -1181,6 +1222,7 @@ export const useBuilderStore = create<BuilderState>()(
           lastSyncedFingerprint: '',
           proposalPreview: null,
           canvasFocus: null,
+          pendingFocus: null,
           appliedGlow: null,
         });
       },

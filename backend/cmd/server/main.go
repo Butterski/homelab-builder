@@ -328,6 +328,12 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 			protected.POST("/integrations/:id/inventory", integrationHandler.CreateItem)
 			protected.POST("/integrations/:id/import", integrationHandler.Import)
 
+			// What's new: the release notes an account has seen, and what an
+			// upgrade changed in its builds.
+			whatsNewHandler := handlers.NewWhatsNewHandler(services.NewWhatsNewService(db))
+			protected.GET("/whats-new", whatsNewHandler.Get)
+			protected.POST("/whats-new/seen", whatsNewHandler.MarkSeen)
+
 			// Public shared build viewer / editor (no auth required)
 			api.GET("/shared/:token", buildHandler.GetShared)
 			api.PUT("/shared/:token", buildHandler.UpdateShared)

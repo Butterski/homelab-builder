@@ -86,5 +86,6 @@ func Models() []any {
 		&models.InventoryItem{},
 		&models.Integration{},
 		&models.SystemSetting{},
+		&models.UserNotice{},
 	}
 }

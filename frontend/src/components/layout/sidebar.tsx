@@ -34,6 +34,7 @@ import { ProjectCard } from './project-card';
 import { Sheet, SheetClose, SheetContent, SheetTitle, SheetTrigger } from '../ui/sheet';
 import { useSurvey } from '../../features/survey/api/use-survey';
 import { SurveyModal } from '../../features/survey/components/survey-modal';
+import { useWhatsNewStore } from '../../features/whats-new/store/whats-new-store';
 
 const STORAGE_KEY = 'sidebar-collapsed';
 
@@ -74,6 +75,7 @@ export const MobileNavigation = React.memo(function MobileNavigation({
   const { user } = useAuth();
   const { pathname } = useLocation();
   const [open, setOpen] = useState(false);
+  const openWhatsNew = useWhatsNewStore(state => state.open);
   const items = [
     PROJECTS_ITEM,
     ...(user ? [INVENTORY_ITEM] : []),
@@ -156,6 +158,18 @@ export const MobileNavigation = React.memo(function MobileNavigation({
                 </button>
               </SheetClose>
             )}
+            {user && (
+              <SheetClose asChild>
+                <button
+                  type="button"
+                  onClick={() => openWhatsNew('hand')}
+                  // In line with the labels of the places above, which have an icon.
+                  className="flex min-h-11 items-center rounded-lg pl-10 pr-3 text-sm font-medium text-sidebar-foreground/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+                >
+                  What's new
+                </button>
+              </SheetClose>
+            )}
           </nav>
         </SheetContent>
       </Sheet>
@@ -175,6 +189,7 @@ export const Sidebar = React.memo(function Sidebar({
   const [showSurvey, setShowSurvey] = useState(false);
   const { data: survey } = useSurvey({ enabled: !!user });
   const surveyDone = !!survey;
+  const openWhatsNew = useWhatsNewStore(state => state.open);
 
   const [collapsed, setCollapsed] = useState(() => {
     try {
@@ -362,6 +377,9 @@ export const Sidebar = React.memo(function Sidebar({
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
                     <Link to="/profile">Profile</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => openWhatsNew('hand')}>
+                    What's new
                   </DropdownMenuItem>
                   {surveyDone && (
                     <DropdownMenuItem onSelect={() => setShowSurvey(true)}>

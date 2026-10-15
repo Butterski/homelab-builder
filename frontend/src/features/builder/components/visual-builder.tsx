@@ -924,22 +924,39 @@ const Flow = React.memo(function Flow() {
     return () => cancelAnimationFrame(frame);
   }, [previewFocus, previewFocusMeasured, fitView, getNodesBounds, getViewport]);
 
-  // A build opens shown whole. React Flow's own first fit does not know about
-  // the panels that float over the canvas, so once the cards are measured the
-  // view is fitted again around them.
+  // A build opens shown whole, or on what "Show" in What's new asked for
+  // (`pendingFocus`, set before navigating here). React Flow's own first fit
+  // does not know about the panels that float over the canvas, so once the
+  // cards are measured the view is fitted again around them.
   const fittedOnOpen = useRef(false);
-  const cardsMeasured = useBuilderStore(
-    state => state.nodes.length > 0 && state.nodes.every(node => !!node.measured?.width),
+  const cards = useBuilderStore(state =>
+    state.nodes.length === 0
+      ? 'none'
+      : state.nodes.every(node => !!node.measured?.width)
+        ? 'measured'
+        : 'measuring',
   );
+  const focusPending = useBuilderStore(state => !!id && state.pendingFocus?.buildId === id);
   useEffect(() => {
-    if (!buildReady || !cardsMeasured || fittedOnOpen.current) return;
+    if (!buildReady || !id) return;
+    // An empty build has nothing to measure, nor to show.
+    if (cards === 'none') {
+      if (focusPending) useBuilderStore.getState().takePendingFocus(id);
+      return;
+    }
+    if (cards !== 'measured' || (fittedOnOpen.current && !focusPending)) return;
     // A moment later than React Flow's own fit, which would otherwise undo this one.
-    const timer = window.setTimeout(() => {
-      fittedOnOpen.current = true;
-      useBuilderStore.getState().requestCanvasFocus(null);
-    }, 200);
+    const timer = window.setTimeout(
+      () => {
+        fittedOnOpen.current = true;
+        const store = useBuilderStore.getState();
+        if (store.pendingFocus?.buildId === id) store.takePendingFocus(id);
+        else store.requestCanvasFocus(null);
+      },
+      fittedOnOpen.current ? 0 : 200,
+    );
     return () => window.clearTimeout(timer);
-  }, [buildReady, cardsMeasured]);
+  }, [buildReady, cards, focusPending, id]);
 
   const updateNodeInternals = useUpdateNodeInternals();
 

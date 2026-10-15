@@ -3,10 +3,12 @@ package services
 import (
 	"encoding/json"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/Butterski/homelab-builder/backend/internal/models"
+	"github.com/Butterski/homelab-builder/backend/internal/version"
 	"github.com/google/uuid"
 )
 
@@ -143,6 +145,49 @@ func TestConvertLegacyPowerCables_BuildSavesAgain(t *testing.T) {
 	}
 	if report, err := ConvertLegacyPowerCables(tx); err != nil || report != (LegacyPowerReport{}) {
 		t.Fatalf("second run changed something: %+v, %v", report, err)
+	}
+
+	// The owner is told once what became of each old cable, by the names the
+	// devices had.
+	whatsNew := NewWhatsNewService(tx)
+	state, err := whatsNew.Get(user.ID)
+	if err != nil {
+		t.Fatalf("what's new: %v", err)
+	}
+	if len(state.Notices) != 1 {
+		t.Fatalf("expected one notice, got %+v", state.Notices)
+	}
+	notice := state.Notices[0]
+	if notice.Kind != NoticePowerCables || notice.Version != version.Version || notice.SeenAt != nil ||
+		notice.BuildID == nil || *notice.BuildID != build.ID || notice.BuildName != "Old rack" {
+		t.Fatalf("unexpected notice: %+v", notice)
+	}
+	var told PowerCablesNotice
+	if err := json.Unmarshal(notice.Details, &told); err != nil {
+		t.Fatalf("decode notice: %v", err)
+	}
+	var lines []string
+	for _, cable := range told.Converted {
+		lines = append(lines, cable.Source+" > "+cable.Target)
+	}
+	for _, cable := range told.Dropped {
+		lines = append(lines, cable.Source+" > "+cable.Target+": "+cable.Reason)
+	}
+	wantLines := []string{"UPS > Switch", "UPS > PDU", "UPS > Router: " + DropAlreadyJoined, "UPS > VPS: " + DropNoPowerInput}
+	if !slices.Equal(lines, wantLines) {
+		t.Fatalf("notice says %q, want %q", lines, wantLines)
+	}
+	if told.Converted[0].SourceID != id["UPS"].String() || told.Converted[0].TargetID != id["Switch"].String() {
+		t.Fatalf("notice cables lost their devices: %+v", told.Converted[0])
+	}
+
+	// A deleted build is still named, and offers nothing to open.
+	if err := builds.Delete(build.ID, user.ID); err != nil {
+		t.Fatalf("delete build: %v", err)
+	}
+	state, err = whatsNew.Get(user.ID)
+	if err != nil || len(state.Notices) != 1 || state.Notices[0].BuildID != nil || state.Notices[0].BuildName != "Old rack" {
+		t.Fatalf("notice of a deleted build: %+v, %v", state, err)
 	}
 }
 

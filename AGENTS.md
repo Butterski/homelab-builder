@@ -47,6 +47,7 @@ Remember - I don't want migrations scripts or Legacy things support. If somethin
 - **Inventory**: the hardware a user owns belongs to the account, not to a build. An owned device dragged onto the canvas is that machine: it keeps its link to the item
 - **Proxmox import**: a read-only connection to Proxmox VE, or a pasted export, says what really runs on that hardware. What differs from a build becomes a proposal the owner reviews; nothing is imported by itself
 - **App pages**: every screen outside the canvas follows one design contract, `frontend/DESIGN.md` (see [App Pages](#app-pages))
+- **What's new (1.4)**: once per account per release, a dialog with the release notes and what an upgrade changed in the user's builds; "Show me" takes the user to the feature in their own project (see [What's New](#whats-new))
 - **Infrastructure**: Docker Compose (postgres + backend + hlbipam + frontend)
 
 ---
@@ -110,7 +111,8 @@ homelab-builder/
 │   │   │   ├── legal/          # privacy policy, terms of service
 │   │   │   ├── settings/       # settings page: appearance, AI assistant, MCP access
 │   │   │   ├── setup-guide/    # the setup guide of a build: cables, addresses, hosts; ticked off and printed
-│   │   │   └── survey/         # beta survey
+│   │   │   ├── survey/         # beta survey
+│   │   │   └── whats-new/      # the What's new dialog: release notes, what an upgrade changed, "Show me"
 │   │   ├── components/         # shared UI components
 │   │   │   ├── auth/           # auth guards (RequireAuth)
 │   │   │   ├── icons/          # icon components
@@ -187,6 +189,7 @@ HTTP Request → Gin Router → Middleware → Handler → Service → GORM → 
 | `assistant_handler.go` | Assistant settings, provider test, chat thread, chat stream (SSE) |
 | `inventory_handler.go` | Inventory CRUD (`/api/inventory`); session only |
 | `integration_handler.go` | Proxmox integrations (`/api/integrations`): test, save, read again, link hosts to items, compare with a build, import; session only |
+| `whats_new_handler.go` | The What's new dialog: `GET /api/whats-new` (last release seen, notices), `POST /api/whats-new/seen` |
 
 ### Key Services
 
@@ -213,6 +216,7 @@ HTTP Request → Gin Router → Middleware → Handler → Service → GORM → 
 | `inventory_service.go` | Owned hardware per account; where each item is planned (read from the builds) and what its integration reports |
 | `integration_service.go` | Proxmox connections: encrypted token secret, trusted certificate, the last snapshot, host-to-item links, outbound rate limit |
 | `proxmox_import.go` | Compares a snapshot with a build (`Plan`) and turns the owner's choices into a proposal, or into a new build (`Import`) |
+| `whats_new_service.go` | The release an account saw last (`users.whats_new_seen`) and its `UserNotice`s; `MarkSeen` never moves the seen release back |
 
 ### Build Save Flow
 
@@ -472,7 +476,7 @@ Three things a cable can say besides its speed: where a device gets its power, w
 - A power cable is an edge of type `power` that always runs **from** a socket `pwr-out-N` **to** an input `pwr-in-N` (0-based). The store, the shared page and the change-set engine turn a drag the other way round. It takes no network port, and two power cables between one pair are allowed (a dual PSU on one PDU). Power cables may not loop.
 - `details.power_load` `{load_w, capacity_w, sockets_used, sockets}` on every power source is derived: `writePowerLoads` (`services/power_service.go`) writes it at the end of every save. A device's draw (its own plus its components') is split evenly over its plugged-in inputs. Capacity: UPS `capacity_w`, else 60% of `capacity_va`; PDU `amps` × the voltage of the outlet above it (230 by default); outlet `breaker_amps` × `voltage` (16 A, 230 V).
 - `wiring.Warnings` adds to `ValidateNetwork`: an overloaded source, a source with every socket used, a device with some of its power supplies unplugged, two power supplies that depend on the same source or circuit (`details.circuit`).
-- Before power wiring a UPS had network ports, and any cable with a UPS at one end was its feed, stored as an `ethernet` edge between `ethN` and `target-0`. The canvas cannot draw such an edge on a UPS any more, and the save validation refuses it, so `ConvertLegacyPowerCables` (`services/legacy_power_cables.go`) runs at every startup and rewrites them: the power source feeds the other end (outlet, then UPS, then PDU when both are sources) from its first free socket into the first free input. A cable is dropped when the device has no power input or none free, when a power cable already joins the two, or when it would close a loop; a source with too few sockets gets more (up to 48). Each changed build gets a new revision, so an open canvas loads it again; `updated_at` is left alone. A build without such cables is not touched.
+- Before power wiring a UPS had network ports, and any cable with a UPS at one end was its feed, stored as an `ethernet` edge between `ethN` and `target-0`. The canvas cannot draw such an edge on a UPS any more, and the save validation refuses it, so `ConvertLegacyPowerCables` (`services/legacy_power_cables.go`) runs at every startup and rewrites them: the power source feeds the other end (outlet, then UPS, then PDU when both are sources) from its first free socket into the first free input. A cable is dropped when the device has no power input or none free, when a power cable already joins the two, or when it would close a loop; a source with too few sockets gets more (up to 48). Each changed build gets a new revision, so an open canvas loads it again; `updated_at` is left alone. A build without such cables is not touched. The owner is told in the What's new dialog: one `UserNotice` (kind `power_cables`) per changed build lists every cable by the names its devices had, converted or removed and why (`PowerCablesNotice`).
 
 ### Ports of a router, firewall or switch
 
@@ -517,7 +521,7 @@ The builder feature uses a single Zustand store at `features/builder/store/build
 
 **Changes from elsewhere:** `useSyncState` polls `GET /builds/:id/sync-state` every 4 s. `hooks/use-proposals.ts` calls `syncWithServer` on every poll result and whenever the save state changes, so a reload that had to wait for unsaved edits is not forgotten. Three failed polls in a row set `serverReachable` to false; a 404 closes the build.
 
-**Camera:** `requestCanvasFocus(ids)` sets `canvasFocus {ids, nonce}`, and one effect in `visual-builder.tsx` fits the view to those nodes (to everything for `null`), clear of the floating panels (`paddingClearOfPanels`). An applied proposal, Polish and "Show" after a reload from another session use it. `minZoom` is 0.15, or a wide build could not be shown whole.
+**Camera:** `requestCanvasFocus(ids)` sets `canvasFocus {ids, nonce}`, and one effect in `visual-builder.tsx` fits the view to those nodes (to everything for `null`), clear of the floating panels (`paddingClearOfPanels`). An applied proposal, Polish and "Show" after a reload from another session use it. `minZoom` is 0.15, or a wide build could not be shown whole. To show something in a build that is not open yet, set `pendingFocus {buildId, ids | types, select?}` before navigating there: the fit-on-open effect calls `takePendingFocus` once that build is `ready` and its cards are measured, instead of fitting the whole canvas. It keeps the ids that still exist (or finds the devices of the types), and with `select` selects the first. `openBuild` leaves `pendingFocus` alone, so the switch to another build does not lose it; only `clearCurrentBuild` drops it. What's new uses it.
 
 **Reviewing a proposal:**
 - There is one React Flow. While `proposalPreview` is set it draws `proposalPreview.nodes/edges` (built by `lib/proposal-preview.ts`) instead of the live arrays, read-only, with the class `is-reviewing`. The live `nodes` and `edges` are never replaced, so a preview cannot be saved. Undo, redo and Polish do nothing during a review.
@@ -628,7 +632,7 @@ Every screen outside the canvas is built to one contract, `frontend/DESIGN.md`. 
 | `UserAvatar` | `components/ui/user-avatar.tsx`, `lib/avatar.ts` | A picture or initials. The backend gives accounts made without Google the address of a generated cartoon (DiceBear); it is not fetched. |
 | `@media print` | end of `index.css` | Dark ink on white whatever the theme, the page at its full length (on screen the app scrolls inside `<main>`), and `print:hidden` on what is only for a screen. |
 
-**Sidebar** (`components/layout/sidebar.tsx`). The work is at the top: Projects, the open project as a card with its pages (Canvas, Config Generator, Setup Guide), then Inventory (what the user owns, whichever project is open), then what is looked up (Hardware Catalog, Service Library, Homelab Guide). The app itself is at the foot: the command menu, Settings, Admin for an admin, the usage survey until it is answered, Support. Under that the account, whose menu holds what is rarely needed: profile, docs, GitHub, Discord, privacy, terms. The guided planner is not a place in the sidebar: it is reached from the Projects page, the project switcher and the command menu. The mobile menu is a sheet with the same places.
+**Sidebar** (`components/layout/sidebar.tsx`). The work is at the top: Projects, the open project as a card with its pages (Canvas, Config Generator, Setup Guide), then Inventory (what the user owns, whichever project is open), then what is looked up (Hardware Catalog, Service Library, Homelab Guide). The app itself is at the foot: the command menu, Settings, Admin for an admin, the usage survey until it is answered, Support. Under that the account, whose menu holds what is rarely needed: profile, What's new, docs, GitHub, Discord, privacy, terms. The guided planner is not a place in the sidebar: it is reached from the Projects page, the project switcher and the command menu. The mobile menu is a sheet with the same places, What's new among them.
 
 **Setup Guide** (`features/setup-guide/`, route `/checklist`). The guide is worked out from the open build by a pure function, `buildSetupPlan` in `lib/setup-plan.ts`, so it always says what the canvas says:
 - sections in the order the work is done: mount the rack, run the cables (a schedule: from, port, to, link), set up the network (the router's LAN address and DHCP range, then the address of every device), one section per host (BIOS, system, static address and gateway, SSH, Docker, and a table of what runs on it), start the services, and the steps of a gaming build (`gaming/lib/setup-steps.ts`);
@@ -643,6 +647,16 @@ Every screen outside the canvas is built to one contract, `frontend/DESIGN.md`. 
 **Projects page**. Each card shows the build in miniature (`LayoutThumbnail` over `pictureOf`, the same drawing as in the sidebar), from the nodes and edges of the list. Card sizes are estimated there, since the list carries no guests.
 
 **Homelab Guide** (`features/guides/pages/homelab-guide-page.tsx`, public, `/how-to-build-a-homelab`). One article in `PageRow` sections. The part about Google sign-in is for whoever runs the instance: it is folded away in a `<details>` and opens when a link points at `#google-sso` or `#sso-env`.
+
+### What's New
+
+`features/whats-new/` tells an account what changed since it was last here, once per release.
+
+- **The notes** are data in the frontend: `RELEASES` in `lib/releases.ts`, newest first, one entry per feature with its text and where "Show me" goes (`{kind: 'route', to}`, or `{kind: 'canvas', types}` on the open project). A release that should be announced needs an entry at the top of `RELEASES`, and the version moves in `frontend/package.json` and `backend/internal/version/version.go` together (a test keeps the two equal). Without an entry, nobody is shown anything for that version.
+- **Who sees what.** `users.whats_new_seen` is the last release an account was shown. A new account starts at the running release (`User.BeforeCreate`), so someone who just arrived gets no list of changes. `releasesToShow(seen, APP_VERSION)` gives the releases after `seen`, up to the running one; an account that never saw any (`""`, the accounts from before 1.4) gets the running release only.
+- **What changed in the user's builds** comes from the server as `UserNotice` rows (`GET /api/whats-new`), written by a startup step that changed a build: today `ConvertLegacyPowerCables`. The dialog lists them under "In your projects", each build with a Show button that opens it and fits the view to the devices concerned (`pendingFocus`). A notice keeps the build's name, so it still reads after the build is deleted; the API then sends `build_id: null`.
+- **When it opens.** `WhatsNew` (mounted in `AppContent` for a signed-in user only, so not on a shared build or for a guest) opens by itself once per page load when the account's `seen` differs from `APP_VERSION` or a notice is unseen, and there is something to show. "What's new" in the account menu opens it by hand: the running release and every notice, seen ones included. Whichever way it closes (Done, Escape, a Show button), `POST /api/whats-new/seen` records `APP_VERSION` and marks every notice seen, once. The server never moves `seen` back, so a tab still running an older release cannot undo it.
+- **The dialog** follows `frontend/DESIGN.md`: a rail of entries at the left (a row of filters on a phone), the selected entry at the right, Previous / Next to step through, one primary Done. No motion.
 
 ### Feature Structure
 
@@ -677,6 +691,7 @@ feature/
 | `gaming/` | Game plan dialog and report, game server settings, LAN table / console / circuit fields, setup steps for gaming builds |
 | `inventory/` | What the user owns: the panel beside the canvas, the inventory page (a table grouped by where things are kept), the item form, the "Physical machine" block of a device |
 | `integrations/` | Proxmox: connecting, matching hosts to the inventory, comparing a project with what runs, importing the differences as a proposal |
+| `whats-new/` | The What's new dialog: release notes as data, what an upgrade changed in the user's builds, "Show me" into the user's own project |
 
 ### Routing (App.tsx)
 
@@ -715,6 +730,7 @@ User ──< InventoryItem             (owned hardware; a Node points at one thr
 User ──< Integration               (Proxmox: encrypted token secret, trusted certificate, last snapshot)
 Build ──< BuildProposal
 User ──1 AssistantSettings         (encrypted provider key)
+User ──< UserNotice                (what an upgrade changed in one of the user's builds; users.whats_new_seen is the last release shown)
 User + Build ──1 AssistantThread ──< AssistantMessage
 SystemSetting                      (key/value, instance-wide)
 ```
@@ -875,6 +891,7 @@ hasPrefix(s, prefix string) bool
 | `backend/internal/wiring/*_test.go` | `wiring` | Power loads through outlet, UPS and PDU; every power warning; port settings and VLAN validation; the VLAN of a cable and mismatches |
 | `internal/services/power_service_test.go`, `wiring_validation_test.go` | `services` | `power_load` written on save; `ValidateNetwork` adds wiring warnings with plain node ids; invalid port settings and undefined VLANs refused |
 | `internal/services/legacy_power_cables_test.go` | `services` | Cables stored before power wiring: refused before, power cables after, the build saves again; direction, sockets, dropped cables, loops; a second run changes nothing |
+| `internal/services/whats_new_service_test.go` | `services` | A new account starts at the running release; seen is recorded, never moves back, marks only the account's own notices; a notice whose build is gone offers nothing to open |
 | `hlbipam/internal/core/validator_test.go` | `core` | IPAM validator tests |
 | `frontend/src/features/builder/store/builder-store.test.ts` | - | The save path, both kinds of conflict, a reload that keeps what was measured, what the browser remembers, deleting devices and racks |
 | `frontend/src/features/builder/store/autosave.test.ts` | - | Fake timers: the wait, retries, no save when in sync, during a review or before the canvas is loaded |
@@ -899,6 +916,8 @@ hasPrefix(s, prefix string) bool
 | `frontend/src/features/builder/components/node-properties-panel.store.test.tsx` | - | Selecting a device leaves it as it is; an edit of the form is saved to that device (pitfall 43) |
 | `frontend/src/features/inventory/**/*.test.ts(x)` | - | Items as nodes and components, what a canvas uses, state, spare memory for a host; placing; the panel; the inventory page and the item form |
 | `frontend/src/features/integrations/**/*.test.ts(x)` | - | What an import does unless told otherwise, and counts; the Proxmox dialog: connection, certificate trust, hosts, compare, import |
+| `frontend/src/features/whats-new/**/*.test.ts(x)` | - | Which releases an account is shown (never seen, older, equal, several); the dialog opens by itself only for something new, posts seen once, lists converted and removed cables with why, and Show opens the build; the account menu opens it |
+| `frontend/src/features/builder/store/builder-store.pending-focus.test.ts` | - | A pending focus survives opening another build, waits for it to be ready, keeps the ids that exist, finds devices by type and selects the first |
 | `frontend/src/features/builder/lib/planner/planner.test.ts`, `lib/connection-rules.test.ts` | - | Plan builders for the three kinds; canvas connection rules, power cables included |
 | `frontend/src/features/builder/lib/power-ports.test.ts`, `lib/port-config.test.ts` | - | Power handle counts, geometry and orientation; port count against cabled ports, address checks, the VLAN colour of a cable |
 | `frontend/src/features/builder/components/port-settings-editor.store.test.tsx` | - | The port editor on the real store: roles, addresses, ports added and removed, VLANs deleted from ports, nothing lost to the panel's own save |
@@ -1204,6 +1223,10 @@ Take one value with a selector and several with `useShallow`; in a cable use `us
 ### 43. The properties form saves through a plain effect
 
 `NodePropertiesPanel` copies the selected device into its form while rendering and writes the form back half a second after it changes. Do not move that write into `useEffectEvent`: with state set during render (React 19.2), the effect event kept a closure from before the copy, so selecting a device wrote the empty form over it, and an edit was saved with the old values. The write is an ordinary effect with all its dependencies that reads the device from the store by id. `node-properties-panel.store.test.tsx` runs the panel on the real store.
+
+### 44. A release is announced in two places
+
+The version is in `frontend/package.json` and `backend/internal/version/version.go` (a test keeps them equal), and the notes of a release are an entry in `RELEASES` (`features/whats-new/lib/releases.ts`). Move the version without adding notes and the What's new dialog shows nothing for it; add notes without moving the version and nobody is shown them. A startup step that changes users' builds writes a `UserNotice` for each build it changed, so the owner is told what happened and why.
 
 ---
 

@@ -9,6 +9,7 @@ import { RequireAuth } from './components/auth/require-auth';
 import { MobileNavigation, Sidebar } from './components/layout/sidebar';
 import { Toaster } from './components/ui/sonner';
 import { CommandPalette } from './components/command-palette';
+import { WhatsNew } from './features/whats-new/components/whats-new';
 import { useAuth } from './features/auth/hooks/use-auth';
 import { useBuilderStore } from './features/builder/store/builder-store';
 import { themeSettingsFromPreferences } from './lib/theme-registry';
@@ -130,6 +131,7 @@ function AppContent() {
           <MobileNavigation onOpenCommandPalette={() => setCommandOpen(true)} />
           <Sidebar onOpenCommandPalette={() => setCommandOpen(true)} />
           <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} />
+          {user && <WhatsNew />}
         </>
       )}
       <main

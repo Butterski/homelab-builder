@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/Butterski/homelab-builder/backend/internal/models"
+	"github.com/Butterski/homelab-builder/backend/internal/version"
 	"github.com/Butterski/homelab-builder/backend/internal/wiring"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -71,7 +72,8 @@ func ConvertLegacyPowerCables(db *gorm.DB) (LegacyPowerReport, error) {
 
 func convertLegacyPowerCablesTx(tx *gorm.DB, buildID uuid.UUID) (legacyPowerPlan, error) {
 	// The same lock a save takes: the plan is made from what is stored now.
-	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id").First(&models.Build{}, "id = ?", buildID).Error; err != nil {
+	var build models.Build
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id", "user_id", "name").First(&build, "id = ?", buildID).Error; err != nil {
 		return legacyPowerPlan{}, err
 	}
 	nodes, edges, err := loadTopology(tx, buildID)
@@ -120,9 +122,49 @@ func convertLegacyPowerCablesTx(tx *gorm.DB, buildID uuid.UUID) (legacyPowerPlan
 	if err := writePowerLoads(tx, buildID); err != nil {
 		return plan, err
 	}
+	// The owner is told in the What's new dialog.
+	details, err := json.Marshal(plan.notice)
+	if err != nil {
+		return plan, err
+	}
+	notice := models.UserNotice{
+		UserID: build.UserID, BuildID: build.ID, BuildName: build.Name,
+		Kind: NoticePowerCables, Version: version.Version, Details: details,
+	}
+	if err := tx.Create(&notice).Error; err != nil {
+		return plan, err
+	}
 	// updated_at stays: the owner did not edit the build.
 	return plan, tx.Model(&models.Build{}).Where("id = ?", buildID).
 		UpdateColumn("revision", gorm.Expr("revision + 1")).Error
+}
+
+// NoticePowerCables is the kind of the UserNotice the conversion writes.
+const NoticePowerCables = "power_cables"
+
+// Why an old cable was removed instead of converted.
+const (
+	DropNoPowerInput  = "no_power_input"    // the device takes no power cable
+	DropInputsInUse   = "inputs_in_use"     // every power input is plugged in already
+	DropAlreadyJoined = "already_connected" // a power cable joins the two already
+	DropLoop          = "loop"              // it would close a power loop
+	DropNoSocket      = "no_socket"         // the source has every socket it can have in use
+)
+
+// PowerCablesNotice is the Details of a "power_cables" notice.
+type PowerCablesNotice struct {
+	Converted []NoticeCable `json:"converted"`
+	Dropped   []NoticeCable `json:"dropped"`
+}
+
+// NoticeCable names a cable by its two devices as they were named then. The
+// source is the end that feeds.
+type NoticeCable struct {
+	SourceID string `json:"source_id"`
+	Source   string `json:"source"`
+	TargetID string `json:"target_id"`
+	Target   string `json:"target"`
+	Reason   string `json:"reason,omitempty"`
 }
 
 // legacyPowerPlan is what becomes of the old cables of one build.
@@ -130,6 +172,7 @@ type legacyPowerPlan struct {
 	converted []models.Edge     // rewritten as power cables, same ids
 	dropped   []uuid.UUID       // removed
 	outlets   map[uuid.UUID]int // sources that need more sockets: the new count
+	notice    PowerCablesNotice // what the owner is told
 }
 
 func (p legacyPowerPlan) empty() bool {
@@ -143,7 +186,10 @@ var feedOrder = []string{"power_outlet", "ups", "pdu"}
 // planLegacyPowerCables works out the plan from a build's nodes and its edges
 // in stored order. Power cables already drawn keep their sockets and inputs.
 func planLegacyPowerCables(nodes []models.Node, edges []models.Edge) legacyPowerPlan {
-	plan := legacyPowerPlan{outlets: map[uuid.UUID]int{}}
+	plan := legacyPowerPlan{
+		outlets: map[uuid.UUID]int{},
+		notice:  PowerCablesNotice{Converted: []NoticeCable{}, Dropped: []NoticeCable{}},
+	}
 	byID := make(map[uuid.UUID]models.Node, len(nodes))
 	details := make(map[uuid.UUID]map[string]any, len(nodes))
 	for _, node := range nodes {
@@ -186,14 +232,30 @@ func planLegacyPowerCables(nodes []models.Node, edges []models.Edge) legacyPower
 		if feedsInstead(target.Type, source.Type) {
 			feeder, fed = target, source
 		}
-		input := firstFree(usedIn[fed.ID], wiring.PowerInputCount(fed.Type, details[fed.ID]))
-		if input < 0 || slices.Contains(feeds[feeder.ID], fed.ID) || powerReaches(feeds, fed.ID, feeder.ID) {
+		cable := NoticeCable{SourceID: feeder.ID.String(), Source: feeder.Name, TargetID: fed.ID.String(), Target: fed.Name}
+		drop := func(reason string) {
+			cable.Reason = reason
 			plan.dropped = append(plan.dropped, edge.ID)
-			continue
+			plan.notice.Dropped = append(plan.notice.Dropped, cable)
 		}
+		inputs := wiring.PowerInputCount(fed.Type, details[fed.ID])
+		input := firstFree(usedIn[fed.ID], inputs)
 		socket := firstFree(usedOut[feeder.ID], wiring.MaxPowerOutputs)
-		if socket < 0 {
-			plan.dropped = append(plan.dropped, edge.ID)
+		switch {
+		case inputs == 0:
+			drop(DropNoPowerInput)
+			continue
+		case slices.Contains(feeds[feeder.ID], fed.ID):
+			drop(DropAlreadyJoined)
+			continue
+		case input < 0:
+			drop(DropInputsInUse)
+			continue
+		case powerReaches(feeds, fed.ID, feeder.ID):
+			drop(DropLoop)
+			continue
+		case socket < 0:
+			drop(DropNoSocket)
 			continue
 		}
 		sockets := wiring.PowerOutputCount(feeder.Type, details[feeder.ID])
@@ -209,6 +271,7 @@ func planLegacyPowerCables(nodes []models.Node, edges []models.Edge) legacyPower
 		converted.SourceNodeID, converted.SourceHandle = feeder.ID, wiring.PowerOutPrefix+strconv.Itoa(socket)
 		converted.TargetNodeID, converted.TargetHandle = fed.ID, wiring.PowerInPrefix+strconv.Itoa(input)
 		plan.converted = append(plan.converted, converted)
+		plan.notice.Converted = append(plan.notice.Converted, cable)
 	}
 	return plan
 }

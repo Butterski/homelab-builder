@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/Butterski/homelab-builder/backend/internal/gaming"
+	"github.com/Butterski/homelab-builder/backend/internal/version"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -17,9 +18,21 @@ type User struct {
 	AvatarURL   string          `gorm:"default:''" json:"avatar_url,omitempty"`
 	IsAdmin     bool            `gorm:"default:false" json:"is_admin"`
 	Preferences json.RawMessage `gorm:"type:jsonb;default:'{}'" json:"preferences"`
-	CreatedAt   time.Time       `json:"created_at"`
-	UpdatedAt   time.Time       `json:"updated_at"`
-	DeletedAt   gorm.DeletedAt  `gorm:"index" json:"-"`
+	// WhatsNewSeen is the last release whose notes the account was shown, ""
+	// for none. A new account starts at the running release (BeforeCreate).
+	WhatsNewSeen string         `gorm:"not null;default:''" json:"-"`
+	CreatedAt    time.Time      `json:"created_at"`
+	UpdatedAt    time.Time      `json:"updated_at"`
+	DeletedAt    gorm.DeletedAt `gorm:"index" json:"-"`
+}
+
+// BeforeCreate keeps the notes of the running release from a new account:
+// they say what changed, and nothing changed for someone who just arrived.
+func (u *User) BeforeCreate(*gorm.DB) error {
+	if u.WhatsNewSeen == "" {
+		u.WhatsNewSeen = version.Version
+	}
+	return nil
 }
 
 type Service struct {
@@ -503,3 +516,22 @@ type SystemSetting struct {
 }
 
 func (SystemSetting) TableName() string { return "system_settings" }
+
+// UserNotice tells an account what an upgrade of the server changed in one of
+// its builds (Kind "power_cables": cables saved before power wiring). The
+// What's new dialog lists them.
+type UserNotice struct {
+	ID        uuid.UUID       `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
+	UserID    uuid.UUID       `gorm:"type:uuid;not null;index"`
+	BuildID   uuid.UUID       `gorm:"type:uuid;not null"`
+	BuildName string          `gorm:"not null;default:''"` // as it was, for a build deleted since
+	Kind      string          `gorm:"not null"`
+	Version   string          `gorm:"not null"` // the release that made the change
+	Details   json.RawMessage `gorm:"type:jsonb;not null;default:'{}'"`
+	SeenAt    *time.Time
+	CreatedAt time.Time
+
+	User *User `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
+}
+
+func (UserNotice) TableName() string { return "user_notices" }
