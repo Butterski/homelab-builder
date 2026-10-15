@@ -1279,7 +1279,7 @@ const Flow = React.memo(function Flow() {
   );
 
   const onNodeDragStop = useCallback(
-    (_: React.MouseEvent, node: ReactFlowNode) => {
+    (_: MouseEvent | TouchEvent, node: ReactFlowNode) => {
       // Rack nodes manage their own position, don't nest them
       if (node.type === 'rack') return;
 
