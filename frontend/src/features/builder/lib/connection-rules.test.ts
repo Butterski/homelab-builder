@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { HardwareNode, HardwareType } from '../../../types';
 import { checkConnection, requiredConnectionType, type LinkEnd } from './connection-rules';
+import { normalizePowerConnection } from './power-ports';
 
 const node = (id: string, type: HardwareType): HardwareNode => ({ id, type, name: id, x: 0, y: 0 });
 
@@ -15,6 +16,7 @@ const nodes = [
   node('deck', 'console'),
   node('table', 'lan_table'),
   node('ups', 'ups'),
+  node('server-2', 'server'),
 ];
 
 const link = (
@@ -94,14 +96,54 @@ describe('checkConnection', () => {
     expect(message(checkConnection(link('ap', 'table'), nodes, []))).toBe(
       'A LAN table plugs into a switch or router.',
     );
-    // A UPS feed is power, not a second uplink.
-    expect(
-      checkConnection(link('ups', 'table', 'eth0', 'target-0'), nodes, [link('switch', 'table')])
-        .ok,
-    ).toBe(true);
-    expect(
-      checkConnection(link('switch', 'table'), nodes, [link('ups', 'table', 'eth0', 'eth0')]).ok,
-    ).toBe(true);
+    // A power feed is not a second uplink.
+    const feed = link('ups', 'table', 'pwr-out-0', 'pwr-in-0');
+    expect(checkConnection(link('switch', 'table'), nodes, [feed]).ok).toBe(true);
+  });
+
+  it('plugs power cables from a socket into a power input', () => {
+    // Dragged from the server's input to the UPS socket it is fine, and it is
+    // stored the other way round.
+    const drawn = {
+      source: 'server',
+      sourceHandle: 'pwr-in-0',
+      target: 'ups',
+      targetHandle: 'pwr-out-0',
+    };
+    expect(checkConnection(drawn, nodes, []).ok).toBe(true);
+    expect(normalizePowerConnection(drawn)).toEqual({
+      source: 'ups',
+      sourceHandle: 'pwr-out-0',
+      target: 'server',
+      targetHandle: 'pwr-in-0',
+    });
+    expect(message(checkConnection(link('ups', 'server', 'pwr-out-0', 'target-0'), nodes, []))).toBe(
+      'A power cable runs from a socket to a power input.',
+    );
+    const feed = link('ups', 'server', 'pwr-out-0', 'pwr-in-0');
+    expect(message(checkConnection(link('ups', 'server-2', 'pwr-out-0', 'pwr-in-0'), nodes, [feed]))).toBe(
+      'That socket is already in use.',
+    );
+    expect(message(checkConnection(link('ups', 'server', 'pwr-out-1', 'pwr-in-0'), nodes, [feed]))).toBe(
+      'That power input is already plugged in.',
+    );
+  });
+
+  it('keeps power feeds off the network ports and out of the loop check', () => {
+    const feed = link('ups', 'server', 'pwr-out-0', 'pwr-in-0');
+    expect(checkConnection(link('switch', 'server'), nodes, [feed]).ok).toBe(true);
+    // A UPS feeding two servers that also share a switch is not a network loop.
+    const feeds = [feed, link('ups', 'server-2', 'pwr-out-1', 'pwr-in-0')];
+    const cabled = [...feeds, link('switch', 'server', 'eth0')];
+    expect(checkConnection(link('switch', 'server-2', 'eth1'), nodes, cabled).ok).toBe(true);
+  });
+
+  it('refuses a power cable that loops back into itself', () => {
+    const powerNodes = [...nodes, node('pdu', 'pdu')];
+    const feed = link('ups', 'pdu', 'pwr-out-0', 'pwr-in-0');
+    expect(message(checkConnection(link('pdu', 'ups', 'pwr-out-0', 'pwr-in-0'), powerNodes, [feed]))).toBe(
+      'That power cable would loop back into itself.',
+    );
   });
 });
 
@@ -113,7 +155,7 @@ describe('requiredConnectionType', () => {
     // An access point's uplink may be a cable or a mesh hop.
     expect(requiredConnectionType('switch', 'access_point')).toBeNull();
     expect(requiredConnectionType('router', 'switch')).toBeNull();
-    expect(requiredConnectionType('ups', 'lan_table')).toBeNull();
+    expect(requiredConnectionType('ups', 'lan_table')).toBe('ethernet');
     expect(requiredConnectionType(undefined, 'switch')).toBeNull();
   });
 });

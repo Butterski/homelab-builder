@@ -212,6 +212,17 @@ func applyVMFields(vm *VMDTO, op TopologyOp) error {
 		}
 		vm.MacAddress = mac
 	}
+	if op.Notes != nil {
+		notes, err := cleanText("notes", *op.Notes, maxDetailStringLength)
+		if err != nil {
+			return err
+		}
+		if notes == "" {
+			delete(vm.Details, "notes")
+		} else {
+			vm.Details["notes"] = notes
+		}
+	}
 	if op.DiskGB != nil {
 		if err := checkRange("disk_gb", *op.DiskGB, 0, 4_000_000); err != nil {
 			return err
@@ -320,7 +331,7 @@ func (ed *topologyEditor) addComponent(op TopologyOp) (TopologyOp, error) {
 		component.Details, component.PowerDraw = catalogHardwareDetails(hardware)
 	}
 	if !componentTypes[component.Type] {
-		return op, fmt.Errorf("unsupported component type %q; use disk, gpu, hba or pcie", component.Type)
+		return op, fmt.Errorf("unsupported component type %q; use disk, cpu, gpu, hba or pcie", component.Type)
 	}
 	if op.Name != nil {
 		component.Name = *op.Name

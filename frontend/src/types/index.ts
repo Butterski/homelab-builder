@@ -129,10 +129,12 @@ export type HardwareType =
   | 'access_point'
   | 'disk'
   | 'gpu'
+  | 'cpu'
   | 'hba'
   | 'pcie'
   | 'ups'
   | 'pdu'
+  | 'power_outlet'
   | 'sbc'
   | 'minipc'
   | 'iot'
@@ -142,6 +144,9 @@ export type HardwareType =
   | 'lan_table';
 
 export interface HardwareSpec {
+  /** IDs of the custom builder tags assigned to this device. */
+  tags?: string[];
+  notes?: string;
   virtual_network?: VirtualNetwork;
   model?: string;
   cpu?: string | number;
@@ -196,9 +201,60 @@ export interface HardwareSpec {
   inventory_quantity?: number; // Component: how many units of the item it is
   ram_type?: string; // What memory the machine takes, e.g. "DDR4 SODIMM"
   proxmox_node?: string; // The Proxmox host this device is
+  // Power wiring
+  psu_count?: number; // Power inputs of a device, one per power supply (0..4)
+  outlets?: number; // Sockets of a UPS, PDU or power outlet (1..48)
+  capacity_w?: number; // UPS: output in watts
+  capacity_va?: number; // UPS: output in volt-amperes, used when capacity_w is not set
+  amps?: number; // PDU: current rating
+  breaker_amps?: number; // Power outlet: rating of its breaker
+  voltage?: number; // Power outlet: mains voltage
+  /** Derived on save for a UPS, PDU or power outlet. */
+  power_load?: PowerLoad;
+  // Port settings of routers, firewalls and switches
+  port_config?: Record<string, PortSettings>; // Keyed by handle: target-0 or ethN
+  vlans?: VlanDef[]; // Switch: the VLANs its ports may carry
+  /** Derived by IPAM on routers and firewalls for every port that is a gateway. */
+  port_networks?: Record<string, PortNetwork>;
 }
 
-export type VMType = 'vm' | 'container' | 'lxc';
+/** What a port of a router or firewall is for. */
+export type PortRole = 'wan' | 'lan' | 'dmz' | 'vpn' | 'unused';
+
+/** The settings of one port. Address, DHCP and role apply to routers and firewalls, tagged VLANs to switches. */
+export interface PortSettings {
+  role?: PortRole;
+  address?: string; // IPv4 CIDR of the port, e.g. "192.168.10.1/24"
+  dhcp?: boolean;
+  untagged_vlan?: number;
+  tagged_vlans?: number[];
+  comment?: string;
+}
+
+/** A VLAN defined on a switch. */
+export interface VlanDef {
+  id: number;
+  name: string;
+  color?: string; // "#rrggbb"
+  subnet?: string; // IPv4 CIDR
+}
+
+/** The load on a UPS, PDU or power outlet. A null capacity is unknown. */
+export interface PowerLoad {
+  load_w: number;
+  capacity_w: number | null;
+  sockets_used: number;
+  sockets: number;
+}
+
+/** The network IPAM built behind a gateway port. */
+export interface PortNetwork {
+  ip: string;
+  subnet: string;
+  dhcp_pool?: { start: string; end: string; size: number; clients: number };
+}
+
+export type VMType = 'vm' | 'container' | 'lxc' | 'other';
 
 export interface VirtualNetwork {
   switches: Array<{ id: string; name: string; x: number; y: number }>;
@@ -245,6 +301,13 @@ export interface HardwareNode {
   vms?: VirtualMachine[]; // Nested VMs / Containers
   internal_components?: HardwareComponent[]; // Nested hardware (GPU, Disk, etc)
   parent_id?: string; // If inside a rack, the rack node's ID
+}
+
+/** A reusable, build-scoped label shown on devices in the canvas. */
+export interface BuilderTag {
+  id: string;
+  name: string;
+  color: string;
 }
 
 export type HardwareNodeValidationIssue = {

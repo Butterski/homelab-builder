@@ -48,6 +48,7 @@ const UPSTREAM_RANK: Partial<Record<HardwareType, number>> = {
   firewall: 2,
   switch: 3,
   access_point: 4,
+  power_outlet: 7,
   ups: 8,
   pdu: 9,
 };
@@ -69,9 +70,11 @@ const TYPE_ORDER: Partial<Record<HardwareType, number>> = {
   iot: 12,
   console: 13,
   lan_table: 14,
-  ups: 15,
-  pdu: 16,
-  rack: 17,
+  power_outlet: 15,
+  ups: 16,
+  pdu: 17,
+  cpu: 18,
+  rack: 19,
 };
 
 /** A cable beats Wi-Fi, Wi-Fi beats a tunnel, and a power feed comes last. */

@@ -49,6 +49,8 @@ const ASSET_LABELS: Record<string, string> = {
   'details.inventory_label': 'Machine from your inventory',
   'details.inventory_item_id': 'Inventory item',
   'details.proxmox_node': 'Proxmox host',
+  disk_gb: 'Disk',
+  notes: 'Notes',
 };
 
 function fieldLabel(field: string): string {

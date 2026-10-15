@@ -134,7 +134,7 @@ func TestPortCountMatchesCanvas(t *testing.T) {
 		want     int
 	}{
 		{"router", "5x GbE + 1x SFP", 6}, {"server", float64(6), 6},
-		{"router", nil, 4}, {"server", nil, 4}, {"ups", nil, 2}, {"modem", nil, 4}, {"vps", nil, 2},
+		{"router", nil, 4}, {"server", nil, 4}, {"modem", nil, 4}, {"vps", nil, 2},
 		// Fixed-port types always render a single eth0, whatever details say.
 		{"minipc", float64(8), 1}, {"nas", nil, 1}, {"access_point", nil, 1},
 	}
@@ -148,8 +148,11 @@ func TestPortCountMatchesCanvas(t *testing.T) {
 		}
 	}
 
-	if handles := ValidHandles("switch", map[string]any{"ports": float64(2)}); strings.Join(handles, ",") != "target-0,eth0,eth1" {
+	if handles := ValidHandles("switch", map[string]any{"ports": float64(2)}); strings.Join(handles, ",") != "target-0,eth0,eth1,pwr-in-0" {
 		t.Errorf("switch handles = %v", handles)
+	}
+	if handles := ValidHandles("ups", map[string]any{"outlets": float64(2)}); strings.Join(handles, ",") != "pwr-in-0,pwr-out-0,pwr-out-1" {
+		t.Errorf("ups handles = %v", handles)
 	}
 	if handles := ValidHandles("rack", nil); len(handles) != 0 {
 		t.Errorf("racks have no handles, got %v", handles)
@@ -531,25 +534,21 @@ func TestApplyOps_AccessPointsDefaultToWireless(t *testing.T) {
 	}
 }
 
-func TestApplyOps_UPSFeedsShareNetworkPorts(t *testing.T) {
+func TestApplyOps_PowerFeedsUseSockets(t *testing.T) {
 	f := newOpsFixture()
 	result := mustApply(t, f.base,
 		TopologyOp{Op: "add_node", Ref: "ups", Type: "ups"},
 		TopologyOp{Op: "connect", Source: f.server, Target: "ups"},
 		TopologyOp{Op: "connect", Source: "ups", Target: f.sw},
-		TopologyOp{Op: "connect", Source: "ups", Target: f.router},
 	)
 	upsID := result.Refs["ups"]
 	toServer := findEdge(t, result.Input, upsID, f.server)
-	// The server's top port already carries its uplink; power may share it.
-	if toServer.Source != upsID || toServer.SourceHandle != "eth0" || toServer.TargetHandle != TargetHandle {
+	if toServer.Type != "power" || toServer.Source != upsID || toServer.SourceHandle != "pwr-out-0" || toServer.Target != f.server || toServer.TargetHandle != "pwr-in-0" {
 		t.Fatalf("unexpected power feed: %+v", toServer)
 	}
-	if got := findEdge(t, result.Input, upsID, f.sw).SourceHandle; got != "eth1" {
-		t.Fatalf("second feed should use the next outlet, got %s", got)
-	}
-	if got := findEdge(t, result.Input, upsID, f.router).SourceHandle; got != "eth0" {
-		t.Fatalf("outlets wrap around a 2-port UPS, got %s", got)
+	toSwitch := findEdge(t, result.Input, upsID, f.sw)
+	if toSwitch.Type != "power" || toSwitch.SourceHandle != "pwr-out-1" || toSwitch.TargetHandle != "pwr-in-0" {
+		t.Fatalf("second feed should use the next socket: %+v", toSwitch)
 	}
 
 	// A power feed never blocks a later network cable.
@@ -557,6 +556,19 @@ func TestApplyOps_UPSFeedsShareNetworkPorts(t *testing.T) {
 		TopologyOp{Op: "add_node", Ref: "nas", Type: "nas"},
 		TopologyOp{Op: "connect", Source: f.sw, Target: "nas"},
 	)
+
+	full := mustApply(t, f.base, TopologyOp{Op: "add_node", Ref: "ups", Type: "ups", Details: map[string]any{"outlets": float64(1)}},
+		TopologyOp{Op: "connect", Source: "ups", Target: f.server})
+	fullUPS := full.Refs["ups"]
+	if opErr := applyError(t, full.Input, ApplyOptions{}, TopologyOp{Op: "connect", Source: fullUPS, Target: f.sw}); !strings.Contains(opErr.Message, "no free socket") {
+		t.Fatalf("unexpected error: %+v", opErr)
+	}
+	if opErr := applyError(t, full.Input, ApplyOptions{}, TopologyOp{Op: "connect", Source: fullUPS, Target: f.sw, ConnectionType: strPtr("ethernet")}); !strings.Contains(opErr.Message, "has no network port") {
+		t.Fatalf("unexpected error: %+v", opErr)
+	}
+	if opErr := applyError(t, full.Input, ApplyOptions{}, TopologyOp{Op: "update_node", Node: f.server, Details: map[string]any{"psu_count": float64(0)}}); !strings.Contains(opErr.Message, "has a power cable on pwr-in-0") {
+		t.Fatalf("unexpected error: %+v", opErr)
+	}
 }
 
 // ─── Racks ───────────────────────────────────────────────────────────────────
@@ -657,6 +669,27 @@ func TestApplyOps_VMRules(t *testing.T) {
 	}
 }
 
+func TestApplyOps_VMOtherTypeNotes(t *testing.T) {
+	f := newOpsFixture()
+	result := mustApply(t, f.base,
+		TopologyOp{Op: "add_vm", Ref: "bk", Host: f.server, Name: strPtr("Backup box"), Type: "other", Notes: strPtr("backup nightly")},
+	)
+	vms := findNode(t, result.Input, f.server).VMs
+	vm := vms[len(vms)-1]
+	if vm.Type != "other" || vm.Details["notes"] != "backup nightly" {
+		t.Fatalf("unexpected guest: %+v", vm)
+	}
+
+	result = mustApply(t, f.base,
+		TopologyOp{Op: "add_vm", Ref: "bk", Host: f.server, Name: strPtr("Backup box"), Type: "other", Notes: strPtr("backup nightly")},
+		TopologyOp{Op: "update_vm", VM: "bk", Notes: strPtr("")},
+	)
+	vms = findNode(t, result.Input, f.server).VMs
+	if _, found := vms[len(vms)-1].Details["notes"]; found {
+		t.Fatalf("notes were not cleared: %+v", vms[len(vms)-1])
+	}
+}
+
 func TestApplyOps_VMsAreWiredIntoVirtualNetworks(t *testing.T) {
 	f := newOpsFixture()
 	existingVM := uuid.NewString()
@@ -696,12 +729,27 @@ func TestApplyOps_ComponentRules(t *testing.T) {
 	f := newOpsFixture()
 	result := mustApply(t, f.base,
 		TopologyOp{Op: "add_component", Ref: "gpu", Node: f.server, Type: "gpu", Name: strPtr("Arc A380"), PowerDraw: numPtr(75)},
+		TopologyOp{Op: "add_component", Ref: "cpu", Node: f.server, Type: "cpu", Name: strPtr("Xeon Silver"), Details: map[string]any{"cpu": float64(16)}},
+		TopologyOp{Op: "add_component", Ref: "pcie", Node: f.server, Type: "pcie", Name: strPtr("10GbE NIC"), Details: map[string]any{"model": "PCIe 3.0 x8"}},
 		TopologyOp{Op: "add_component", Ref: "disk", Node: f.server, Type: "disk", Name: strPtr("Exos 8TB"), Details: map[string]any{"storage": float64(8000)}},
 		TopologyOp{Op: "remove_component", Component: "gpu"},
 	)
 	components := findNode(t, result.Input, f.server).InternalComponents
-	if len(components) != 1 || components[0].ID != result.Refs["disk"] || components[0].Details["storage"] != float64(8000) {
+	if len(components) != 3 {
 		t.Fatalf("unexpected components: %+v", components)
+	}
+	byID := make(map[string]ComponentDTO, len(components))
+	for _, component := range components {
+		byID[component.ID] = component
+	}
+	if cpu := byID[result.Refs["cpu"]]; cpu.Type != "cpu" || cpu.Name != "Xeon Silver" || cpu.Details["cpu"] != float64(16) {
+		t.Errorf("CPU component was not retained: %+v", cpu)
+	}
+	if pcie := byID[result.Refs["pcie"]]; pcie.Type != "pcie" || pcie.Name != "10GbE NIC" || pcie.Details["model"] != "PCIe 3.0 x8" {
+		t.Errorf("PCIe component was not retained: %+v", pcie)
+	}
+	if disk := byID[result.Refs["disk"]]; disk.Type != "disk" || disk.Details["storage"] != float64(8000) {
+		t.Errorf("disk component changed while adding CPU: %+v", disk)
 	}
 
 	if opErr := applyError(t, f.base, ApplyOptions{}, TopologyOp{Op: "add_component", Node: f.sw, Type: "disk", Name: strPtr("x")}); !strings.Contains(opErr.Message, "cannot hold internal components") {
@@ -709,6 +757,18 @@ func TestApplyOps_ComponentRules(t *testing.T) {
 	}
 	if opErr := applyError(t, f.base, ApplyOptions{}, TopologyOp{Op: "add_component", Node: f.server, Type: "ram", Name: strPtr("x")}); !strings.Contains(opErr.Message, "unsupported component type") {
 		t.Fatalf("unexpected error: %+v", opErr)
+	}
+}
+
+func TestApplyOps_CPUNodeAndRackSize(t *testing.T) {
+	f := newOpsFixture()
+	result := mustApply(t, f.base, TopologyOp{Op: "add_node", Ref: "cpu", Type: "cpu"})
+	cpu := findNode(t, result.Input, result.Refs["cpu"])
+	if cpu.Type != "cpu" || cpu.Name != "CPU" {
+		t.Fatalf("unexpected CPU node: %+v", cpu)
+	}
+	if got := rackUnitsOf(NodeDTO{Type: "cpu", Details: map[string]any{}}); got != 1 {
+		t.Fatalf("CPU default rack size = %dU, want 1U", got)
 	}
 }
 

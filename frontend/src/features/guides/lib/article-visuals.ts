@@ -132,15 +132,15 @@ export const VISUALS: Record<string, VisualSpec> = {
       n('server', 'server_v2', 'Service Host', '192.168.1.150', 180, 310, { cpu: 8, ram: 64 }, appVms),
       n('nas', 'nas', 'Backup NAS', '192.168.1.100', 480, 310, { storage: 16000 }),
       n('ups', 'ups', 'UPS', '', 650, 90, { model: '1500VA' }),
-      n('pdu', 'pdu', 'Rack PDU', '', 650, 310, { ports: 8 }),
+      n('pdu', 'pdu', 'Rack PDU', '', 650, 310, { outlets: 8 }),
     ],
     edges: [
       ['router', 'switch', 'LAN'],
       ['switch', 'server', 'protected'],
       ['switch', 'nas', 'backup path'],
-      ['ups', 'router', 'runtime'],
-      ['nas', 'ups', 'runtime'],
-      ['server', 'pdu', 'outlets'],
+      ['ups', 'router', '', 'power'],
+      ['ups', 'nas', '', 'power'],
+      ['pdu', 'server', '', 'power'],
     ],
   },
   'homelab-ip-address-planning': {
@@ -187,13 +187,13 @@ export const VISUALS: Record<string, VisualSpec> = {
       n('server', 'server_v2', 'Rack Server', '192.168.1.150', 370, 250, { cpu: 16, ram: 128, rack_units: 2 }, appVms),
       n('nas', 'nas', 'Rack NAS', '192.168.1.100', 650, 250, { storage: 24000, rack_units: 2 }),
       n('ups', 'ups', 'Rack UPS', '', 650, 70, { model: '2U UPS', rack_units: 2 }),
-      n('pdu', 'pdu', 'Rack PDU', '', 650, 410, { ports: 8, rack_units: 1 }),
+      n('pdu', 'pdu', 'Rack PDU', '', 650, 410, { outlets: 8, rack_units: 1 }),
     ],
     edges: [
       ['switch', 'server', 'compute'],
       ['switch', 'nas', 'storage'],
-      ['ups', 'switch', 'runtime'],
-      ['server', 'pdu', 'outlets'],
+      ['ups', 'switch', '', 'power'],
+      ['pdu', 'server', '', 'power'],
     ],
   },
   'ups-and-power-planning-for-homelab': {
@@ -202,17 +202,17 @@ export const VISUALS: Record<string, VisualSpec> = {
       n('ups', 'ups', 'UPS', '', 80, 80, { model: '1500VA' }),
       n('router', 'router', 'Router', '192.168.1.1', 360, 80, { ports: 4 }),
       n('switch', 'switch', 'Switch', '192.168.1.10', 620, 80, { ports: 8 }),
-      n('pdu', 'pdu', 'PDU', '', 80, 310, { ports: 8 }),
+      n('pdu', 'pdu', 'PDU', '', 80, 310, { outlets: 8 }),
       n('nas', 'nas', 'NAS', '192.168.1.100', 360, 310, { storage: 8000 }),
       n('server', 'server_v2', 'Server', '192.168.1.150', 620, 310, { cpu: 8, ram: 64 }),
     ],
     edges: [
-      ['ups', 'router', 'runtime'],
+      ['ups', 'router', '', 'power'],
       ['router', 'switch', 'LAN'],
       ['switch', 'nas', 'storage'],
       ['switch', 'server', 'services'],
-      ['server', 'pdu', 'outlets'],
-      ['nas', 'ups', 'runtime'],
+      ['pdu', 'server', '', 'power'],
+      ['ups', 'nas', '', 'power'],
     ],
   },
 };
@@ -243,8 +243,22 @@ export function toReactFlowNodes(spec: VisualSpec): Node[] {
 
 export function toReactFlowEdges(spec: VisualSpec): Edge[] {
   const usedSourcePorts = new Map<string, number>();
+  const usedSockets = new Map<string, number>();
 
   return spec.edges.map(([source, target, speed, connectionType]) => {
+    if (connectionType === 'power') {
+      const socket = usedSockets.get(source) ?? 0;
+      usedSockets.set(source, socket + 1);
+      return {
+        id: `${source}-${target}`,
+        source,
+        target,
+        sourceHandle: `pwr-out-${socket}`,
+        targetHandle: 'pwr-in-0',
+        type: 'custom',
+        data: { connection_type: 'power' },
+      };
+    }
     const sourcePort = usedSourcePorts.get(source) ?? 0;
     usedSourcePorts.set(source, sourcePort + 1);
 
