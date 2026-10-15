@@ -1,4 +1,4 @@
-import { memo, useEffect } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { Handle, Position, useUpdateNodeInternals, type NodeProps } from '@xyflow/react';
 import {
   Server,
@@ -22,6 +22,7 @@ import {
   Network,
   Gamepad2,
   Armchair,
+  ChevronDown,
 } from 'lucide-react';
 import { Card } from '../../../components/ui/card';
 import { cn } from '../../../lib/utils';
@@ -348,6 +349,7 @@ const POOL_HINT_NODE_TYPES: HardwareType[] = [
 ];
 
 export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
+  const [collapsed, setCollapsed] = useState(false);
   const nodeData = data as unknown as HardwareNodeData;
   const details = nodeData.details ?? {};
   const availableTags = useBuilderStore(state => state.tags ?? []);
@@ -497,6 +499,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
     hasVMs,
     hasComponents,
     hasWarning,
+    collapsed,
   ]);
 
   // Container pool range hint
@@ -557,7 +560,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
       <Card
         className={cn(
           'hardware-node-card transition-[border-color,box-shadow,background-color,transform,opacity] duration-200 ease-out overflow-hidden',
-          hasVMs || hasComponents ? 'w-[15.25rem]' : 'w-[13.75rem]',
+          !collapsed && (hasVMs || hasComponents) ? 'w-[15.25rem]' : 'w-[13.75rem]',
           hasResourceWarning || hasIpError
             ? 'hardware-node-danger border-destructive'
             : maxResourceUsage >= 0.8 || hasIpWarning
@@ -631,6 +634,19 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
             className={cn('inline-flex shrink-0 rounded-full size-2.5 node-status-led', lightColor)}
             title={nodeData.status ?? 'online'}
           />
+          <button
+            type="button"
+            className="nodrag nopan inline-flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${displayLabel}`}
+            aria-expanded={!collapsed}
+            title={collapsed ? 'Expand node' : 'Collapse node'}
+            onClick={event => {
+              event.stopPropagation();
+              setCollapsed(value => !value);
+            }}
+          >
+            <ChevronDown className={cn('size-4 transition-transform', collapsed ? '-rotate-90' : '')} />
+          </button>
         </div>
 
         {nodeTags.length > 0 && (
@@ -648,7 +664,7 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
         )}
 
         {/* Body */}
-        {shouldShowBody && (
+        {!collapsed && shouldShowBody && (
           <div className="node-body p-3 space-y-2.5">
             {/* Model subtitle */}
             {nodeData.details?.model && (
