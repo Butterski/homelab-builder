@@ -11,10 +11,12 @@ const HARDWARE_CATEGORY_LABELS: Record<string, string> = {
   access_point: 'Access Points',
   ups: 'UPS',
   pdu: 'PDUs',
+  power_outlet: 'Power outlets',
   storage: 'Storage',
   disk: 'Storage',
   ram: 'RAM',
   gpu: 'GPUs',
+  cpu: 'CPUs',
   hba: 'HBA Cards',
   nic: 'NICs',
   pcie: 'PCIe Cards',
@@ -46,10 +48,12 @@ const HARDWARE_TYPE_NAMES: Partial<Record<HardwareType, string>> = {
   console: 'Console',
   ups: 'UPS',
   pdu: 'PDU',
+  power_outlet: 'Power outlet',
   lan_table: 'LAN table',
   rack: 'Rack',
   disk: 'Disk',
   gpu: 'GPU',
+  cpu: 'CPU',
   hba: 'HBA card',
   pcie: 'PCIe card',
 };
@@ -105,6 +109,8 @@ export function normalizeHardwareCategory(category: string) {
       return 'hba';
     case 'gpus':
       return 'gpu';
+    case 'cpus':
+      return 'cpu';
     case 'routers':
       return 'router';
     case 'switches':
@@ -126,6 +132,14 @@ export function normalizeHardwareCategory(category: string) {
     case 'handheld':
     case 'handhelds':
       return 'console';
+    case 'power_outlets':
+    case 'outlet':
+    case 'outlets':
+    case 'wall_outlet':
+    case 'wall_outlets':
+    case 'socket':
+    case 'sockets':
+      return 'power_outlet';
     default:
       return normalized;
   }

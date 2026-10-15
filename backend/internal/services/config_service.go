@@ -114,7 +114,7 @@ func dockerCompose(build *models.Build) string {
 				continue
 			}
 			if vm.Type != "container" && vm.Type != "lxc" {
-				composeStr += fmt.Sprintf("  # Skipped %s: it is a VM, not a container image.\n", vm.Name)
+				composeStr += fmt.Sprintf("  # Skipped %s: it is not a container.\n", vm.Name)
 				continue
 			}
 			cfg, known := getServiceConfig(vm.Name)

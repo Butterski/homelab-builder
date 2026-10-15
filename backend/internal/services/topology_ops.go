@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Butterski/homelab-builder/backend/internal/models"
+	"github.com/Butterski/homelab-builder/backend/internal/wiring"
 	"github.com/google/uuid"
 )
 
@@ -92,6 +93,7 @@ type TopologyOp struct {
 	// the system it was read from, so the next comparison finds it again.
 	MacAddress *string  `json:"mac_address,omitempty"`
 	DiskGB     *float64 `json:"disk_gb,omitempty"`
+	Notes      *string  `json:"notes,omitempty"`
 	VMID       *float64 `json:"vmid,omitempty"`
 
 	// Game server settings of a service added from a game in the catalog.
@@ -129,7 +131,7 @@ type AppliedTopology struct {
 var addableNodeTypes = map[string]bool{
 	"router": true, "switch": true, "firewall": true, "server_v2": true, "minipc": true,
 	"pc": true, "nas": true, "sbc": true, "vps": true, "access_point": true, "rack": true,
-	"iot": true, "ups": true, "modem": true, "pdu": true,
+	"iot": true, "ups": true, "modem": true, "pdu": true, "power_outlet": true, "cpu": true,
 	nodeTypeConsole: true, nodeTypeLANTable: true,
 }
 
@@ -137,19 +139,20 @@ var defaultNodeNames = map[string]string{
 	"router": "Router", "switch": "Switch", "firewall": "Firewall", "server_v2": "Server",
 	"minipc": "Mini PC", "pc": "PC", "nas": "NAS", "sbc": "SBC", "vps": "VPS",
 	"access_point": "Access Point", "rack": "Rack", "iot": "IoT Device", "ups": "UPS",
-	"modem": "Modem", "pdu": "PDU", nodeTypeConsole: "Console", nodeTypeLANTable: "LAN Table",
+	"modem": "Modem", "pdu": "PDU", "power_outlet": "Power Outlet", "cpu": "CPU", nodeTypeConsole: "Console", nodeTypeLANTable: "LAN Table",
 }
 
 // Details keys the canvas and IPAM own; operations may not write them.
 var reservedDetailKeys = map[string]bool{
 	"virtual_network": true, "interfaces": true, "wan_ip": true,
 	"lan_gateway_ip": true, "lan_subnet": true, "rack_position": true,
-	"dhcp_pool": true,
+	"dhcp_pool": true, "port_config": true, "vlans": true, "port_networks": true, "power_load": true,
 }
 
 var numberDetailKeys = map[string]bool{
 	"cpu": true, "cpu_cores": true, "ram": true, "storage": true, "ports": true,
 	"rack_size": true, "rack_units": true, "price_est": true, "capacity_va": true,
+	"psu_count": true, "outlets": true, "capacity_w": true, "amps": true, "breaker_amps": true, "voltage": true,
 }
 
 var boolDetailKeys = map[string]bool{
@@ -165,9 +168,9 @@ var enumDetailKeys = map[string][]string{
 
 var rackUnitPattern = regexp.MustCompile(`(?i)(\d+)\s*u`)
 
-var connectionTypes = []string{"ethernet", "wireless", "vpn"}
+var connectionTypes = []string{"ethernet", "wireless", "vpn", "power"}
 var connectionDirections = []string{"auto", "lan", "wan"}
-var vmTypes = []string{"vm", "container", "lxc"}
+var vmTypes = []string{"vm", "container", "lxc", "other"}
 var vmStatuses = []string{"running", "stopped", "paused"}
 
 type topologyEditor struct {
@@ -475,7 +478,7 @@ func (ed *topologyEditor) addNode(op TopologyOp) (TopologyOp, error) {
 		return op, errors.New("type is required (or pass hardware_id from search_hardware)")
 	}
 	if !addableNodeTypes[nodeType] {
-		return op, fmt.Errorf("unsupported node type %q; use one of %s. Disks, GPUs and cards are added with add_component", nodeType, joinKeys(addableNodeTypes))
+		return op, fmt.Errorf("unsupported node type %q; use one of %s. Disks, CPUs, GPUs and cards are added with add_component", nodeType, joinKeys(addableNodeTypes))
 	}
 	if op.Name != nil {
 		name = *op.Name
@@ -570,6 +573,10 @@ func (ed *topologyEditor) updateNode(op TopologyOp) (TopologyOp, error) {
 		if highest := highestUsedPort(id, ed.graph.Edges); highest >= PortCount(node.Type, node.Details) {
 			return op, fmt.Errorf("%q has a cable on port eth%d; it needs at least %d ports", node.Name, highest, highest+1)
 		}
+		if err := checkPowerHandlesFit(*node, ed.graph.Edges); err != nil {
+			return op, err
+		}
+		wiring.PrunePortConfig(node.Details, PortCount(node.Type, node.Details))
 		if node.Type == nodeTypeLANTable {
 			// Changing the seats resizes the switch unless the same change sets it.
 			if _, seatsChanged := op.Details["seats"]; seatsChanged {

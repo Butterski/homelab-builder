@@ -403,8 +403,10 @@ func appendUnique(values []string, value string) []string {
 	return append(values, value)
 }
 
+// skipNATBoundary keeps a synthetic gateway ("<node>:lan", "<node>:eth2")
+// from walking back into the node that owns it, so the owner's own address
+// stays in its upstream subnet.
 func skipNATBoundary(routerID, current, neighbor string) bool {
-	return strings.HasSuffix(routerID, ":lan") &&
-		current == routerID &&
-		neighbor == strings.TrimSuffix(routerID, ":lan")
+	base, _, ok := strings.Cut(routerID, ":")
+	return ok && current == routerID && neighbor == base
 }

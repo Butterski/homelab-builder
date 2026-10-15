@@ -1,12 +1,15 @@
 import type { Edge, Node } from '@xyflow/react';
 import {
   canNodeHostVMs,
+  hasNetworkPorts,
   isNetworkNode,
+  isPowerSource,
   nodeHasDynamicPorts,
 } from '../../../../lib/hardware-config';
-import type { HardwareNode, HardwareType } from '../../../../types';
+import type { HardwareNode } from '../../../../types';
 import { RACK_WIDTH_PX, rackHeightPx } from '../../components/rack-node-constants';
 import { getNodePortCount } from '../port-count';
+import { powerInputCount, powerOutputCount } from '../power-ports';
 import type { LayoutEdge, LayoutGraph, LayoutNode, Medium } from './types';
 import { TOP_HANDLE } from './units';
 
@@ -27,7 +30,7 @@ interface CanvasCable {
   target: string;
   sourceHandle?: string | null;
   targetHandle?: string | null;
-  /** ethernet, wireless or vpn. */
+  /** ethernet, wireless, vpn or power. */
   type?: string;
 }
 
@@ -57,7 +60,10 @@ export function estimateNodeSize(node: HardwareNode): { width: number; height: n
   const guests = node.vms?.length ?? 0;
   const components = node.internal_components?.length ?? 0;
   const base = guests > 0 || components > 0 ? CARD_WIDTH_WITH_GUESTS : CARD_WIDTH;
-  const byPorts = nodeHasDynamicPorts(node.type) ? portCount(node) * PORT_PITCH : 0;
+  const source = isPowerSource(node.type);
+  const byPorts =
+    (nodeHasDynamicPorts(node.type) ? portCount(node) * PORT_PITCH : 0) +
+    (source ? powerOutputCount(node.type, details) * PORT_PITCH : 0);
   const width = byPorts > PORTS_WIDEN_FROM ? Math.max(base, byPorts) : base;
 
   const networked = isNetworkNode(node.type);
@@ -78,6 +84,7 @@ export function estimateNodeSize(node: HardwareNode): { width: number; height: n
     const blocks: number[] = [];
     if (details.model) blocks.push(14);
     if (node.type === 'lan_table') blocks.push(78);
+    if (source) blocks.push(52); // load and sockets
     if (networked) {
       let cells = 1; // address
       if (details.lan_gateway_ip) cells += details.lan_subnet ? 2 : 1;
@@ -97,7 +104,10 @@ export function estimateNodeSize(node: HardwareNode): { width: number; height: n
     if (node.type === 'server_v2') blocks.push(24);
     const specs = [details.cpu, details.ram, details.storage, details.ports].filter(Boolean).length;
     if (specs > 0) blocks.push(Math.ceil(specs / 2) * 28);
-    if (compute && guests > 0 && (details.cpu || details.ram)) blocks.push(68);
+    if (compute && guests > 0) {
+      const resources = (details.cpu || details.ram ? 68 : 0) + (details.storage ? 34 : 0);
+      if (resources > 0) blocks.push(resources);
+    }
     if (components > 0) blocks.push(32 + components * 42);
     if (compute) blocks.push(40); // virtual network button
     if (guests > 0) blocks.push(34 + Math.min(guests * 42, 144));
@@ -117,10 +127,8 @@ function isZoneRoot(node: HardwareNode): boolean {
   return !!details.nat_enabled || !!details.firewall_enabled || node.type === 'firewall' || routes;
 }
 
-/** A link with a UPS at one end carries power, whatever it was drawn as. */
-function mediumOf(cable: CanvasCable, types: Map<string, HardwareType>): Medium {
-  if (types.get(cable.source) === 'ups' || types.get(cable.target) === 'ups') return 'power';
-  if (cable.type === 'wireless' || cable.type === 'vpn') return cable.type;
+function mediumOf(cable: CanvasCable): Medium {
+  if (cable.type === 'wireless' || cable.type === 'vpn' || cable.type === 'power') return cable.type;
   return 'ethernet';
 }
 
@@ -148,6 +156,9 @@ export function buildLayoutGraph(cards: CanvasCard[], cables: CanvasCable[]): La
       ports: portCount(hardware),
       spreadPorts: nodeHasDynamicPorts(hardware.type),
       zoneRoot: isZoneRoot(hardware),
+      powerInputs: powerInputCount(hardware.type, hardware.details),
+      powerOutputs: powerOutputCount(hardware.type, hardware.details),
+      networkPorts: hasNetworkPorts(hardware.type),
     };
   });
   const edges: LayoutEdge[] = cables
@@ -158,7 +169,7 @@ export function buildLayoutGraph(cards: CanvasCard[], cables: CanvasCable[]): La
       target: cable.target,
       sourceHandle: cable.sourceHandle || 'eth0',
       targetHandle: cable.targetHandle || TOP_HANDLE,
-      medium: mediumOf(cable, types),
+      medium: mediumOf(cable),
     }));
   return { nodes, edges };
 }

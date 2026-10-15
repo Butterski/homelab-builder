@@ -84,6 +84,7 @@ const CATEGORY_META: Record<string, { label: string }> = {
   accessory: { label: 'Accessories' },
   rack: { label: 'Racks' },
   pdu: { label: 'PDUs' },
+  power_outlet: { label: 'Power outlets' },
   iot: { label: 'IoT' },
   modem: { label: 'Modems' },
   pc: { label: 'PCs' },
