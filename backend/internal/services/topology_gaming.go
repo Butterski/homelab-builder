@@ -41,7 +41,7 @@ var circuitRefPattern = regexp.MustCompile(`^[A-Za-z0-9_\-]{1,40}$`)
 var wifiClientNodeTypes = map[string]bool{"pc": true, "minipc": true, "sbc": true, nodeTypeConsole: true}
 
 // floorNodeTypes stand on a desk or the floor and cannot be mounted in a rack.
-var floorNodeTypes = map[string]bool{nodeTypeConsole: true, nodeTypeLANTable: true}
+var floorNodeTypes = map[string]bool{nodeTypeConsole: true, nodeTypeLANTable: true, "power_outlet": true}
 
 // isWifiAssociation reports whether a link is a client joining an access
 // point's Wi-Fi. It is keyed on the two device types, not on the connection

@@ -28,7 +28,6 @@ describe('getNodePortCount', () => {
   it('falls back to type defaults for dynamic nodes', () => {
     expect(getDefaultPortCount('router')).toBe(4);
     expect(getDefaultPortCount('server')).toBe(4);
-    expect(getDefaultPortCount('ups')).toBe(2);
     expect(getNodePortCount('modem', undefined)).toBe(4);
   });
 });

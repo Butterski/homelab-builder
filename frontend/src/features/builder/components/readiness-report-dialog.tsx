@@ -27,9 +27,9 @@ import { Badge } from '../../../components/ui/badge';
 import { Progress } from '../../../components/ui/progress';
 import { formatMemory } from '../../../lib/format';
 import { cn } from '../../../lib/utils';
-import type { HardwareNode, HardwareNodeValidationIssue, HardwareType } from '../../../types';
-import { isComputeNode, isNetworkNode, nodeHasStorage } from '../../../lib/hardware-config';
-import { getVmResourceUsage } from '../lib/resource-usage';
+import type { HardwareNode, HardwareNodeValidationIssue } from '../../../types';
+import { isComputeNode, isNetworkNode } from '../../../lib/hardware-config';
+import { getVmResourceUsage, hostStorageGb } from '../lib/resource-usage';
 
 type ReadinessReportDialogProps = {
   open: boolean;
@@ -206,11 +206,13 @@ function computeReadinessReport(
   const gateways = networkNodes.filter(isGatewayNode);
   const gatewayIds = gateways.map(node => node.id);
   const networkNodeIds = new Set(networkNodes.map(node => node.id));
-  const adjacency = buildAdjacency(networkNodeIds, edges);
+  // Power cables carry no network.
+  const networkEdges = edges.filter(edge => edge.data?.connection_type !== 'power');
+  const adjacency = buildAdjacency(networkNodeIds, networkEdges);
   const reachable = reachableFromGateways(gatewayIds, adjacency);
   const orphanNodes = networkNodes.filter(node => !gatewayIds.includes(node.id) && !reachable.has(node.id));
   const missingIPNodes = networkNodes.filter(node => !node.ip);
-  const hasCycle = graphHasCycle(networkNodeIds, edges);
+  const hasCycle = graphHasCycle(networkNodeIds, networkEdges);
   const vmCount = hardwareNodes.reduce((count, node) => count + (node.vms?.length || 0), 0);
   const hasPowerProtection = hardwareNodes.some(node => node.type === 'ups' || node.type === 'pdu');
 
@@ -227,16 +229,13 @@ function computeReadinessReport(
     totalPowerWatts += node.power_draw || 0;
     node.internal_components?.forEach(component => {
       totalPowerWatts += component.power_draw || 0;
-      if (nodeHasStorage(component.type as HardwareType)) {
-        storageCapacityGb += parseSpecNumber(component.details?.storage);
-      }
     });
 
     if (!isComputeNode(node.type)) return;
 
     const nodeCpu = parseSpecNumber(node.details?.cpu);
     const nodeRam = normalizeRamMb(node.details?.ram);
-    const nodeStorage = parseSpecNumber(node.details?.storage);
+    const nodeStorage = hostStorageGb(node.details, node.internal_components);
 
     cpuCapacity += nodeCpu;
     ramCapacityMb += nodeRam;

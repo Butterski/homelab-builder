@@ -58,7 +58,7 @@ func (s *ConfigService) GenerateCompleteExport(buildID, userID uuid.UUID) ([]byt
 				continue
 			}
 			if vm.Type != "container" && vm.Type != "lxc" {
-				warnings = append(warnings, fmt.Sprintf("%s is a VM and was intentionally omitted from Docker Compose", vm.Name))
+				warnings = append(warnings, fmt.Sprintf("%s is not a container and was intentionally omitted from Docker Compose", vm.Name))
 			} else if !known {
 				warnings = append(warnings, fmt.Sprintf("%s has no verified image metadata and was omitted from Docker Compose", vm.Name))
 			}

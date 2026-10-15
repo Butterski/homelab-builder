@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/Butterski/homelab-builder/backend/internal/wiring"
 )
 
 // The builder canvas only renders a connection when both of its port handles
@@ -18,12 +20,12 @@ const TargetHandle = "target-0"
 
 var dynamicPortTypes = map[string]bool{
 	"server": true, "server_v2": true, "firewall": true, "vps": true,
-	"router": true, "switch": true, "modem": true, "ups": true,
+	"router": true, "switch": true, "modem": true,
 }
 
 var defaultPortCounts = map[string]int{
 	"router": 4, "switch": 4, "server": 4, "server_v2": 4,
-	"firewall": 4, "vps": 2, "modem": 4, "ups": 2,
+	"firewall": 4, "vps": 2, "modem": 4,
 }
 
 // vmHostNodeTypes can run virtual machines, containers and services.
@@ -43,11 +45,11 @@ var componentTypes = map[string]bool{"disk": true, "gpu": true, "hba": true, "pc
 // hubNodeTypes may be cabled to anything; every other pair needs one of them.
 var hubNodeTypes = map[string]bool{
 	"router": true, "switch": true, "modem": true, "firewall": true,
-	"server_v2": true, "vps": true, "iot": true, "ups": true,
+	"server_v2": true, "vps": true, "iot": true,
 }
 
 var uncabledNodeTypes = map[string]bool{
-	"disk": true, "gpu": true, "hba": true, "pcie": true, "pdu": true, "rack": true,
+	"disk": true, "gpu": true, "hba": true, "pcie": true, "rack": true,
 }
 
 var multiplierPattern = regexp.MustCompile(`(?i)(\d+)\s*[x×]`)
@@ -107,16 +109,24 @@ func PortCount(nodeType string, details map[string]any) int {
 	return 1
 }
 
-// ValidHandles lists every handle id that exists on a node card.
+// ValidHandles lists every handle id that exists on a node card: network
+// handles first, then power inputs, then sockets.
 func ValidHandles(nodeType string, details map[string]any) []string {
 	if nodeType == "rack" {
 		return nil
 	}
-	count := PortCount(nodeType, details)
-	handles := make([]string, 0, count+1)
-	handles = append(handles, TargetHandle)
-	for i := 0; i < count; i++ {
-		handles = append(handles, fmt.Sprintf("eth%d", i))
+	var handles []string
+	if !wiring.IsPowerSource(nodeType) {
+		handles = append(handles, TargetHandle)
+		for i := range PortCount(nodeType, details) {
+			handles = append(handles, fmt.Sprintf("eth%d", i))
+		}
+	}
+	for i := range wiring.PowerInputCount(nodeType, details) {
+		handles = append(handles, fmt.Sprintf("%s%d", wiring.PowerInPrefix, i))
+	}
+	for i := range wiring.PowerOutputCount(nodeType, details) {
+		handles = append(handles, fmt.Sprintf("%s%d", wiring.PowerOutPrefix, i))
 	}
 	return handles
 }
@@ -133,18 +143,12 @@ func handlePortIndex(handle string) int {
 	return n
 }
 
-// isPowerEdge reports whether a connection is a UPS power feed. Power cables do
-// not occupy network ports.
-func isPowerEdge(sourceType, targetType string) bool {
-	return sourceType == "ups" || targetType == "ups"
-}
-
-// usedHandles collects the handles on nodeID that already carry a cable.
-// Power feeds are ignored; VPN links count because the canvas draws them.
+// usedHandles collects the network handles on nodeID that already carry a
+// cable. Power cables are ignored; VPN links count because the canvas draws them.
 func usedHandles(nodeID string, nodeTypes map[string]string, edges []EdgeDTO) map[string]bool {
 	used := map[string]bool{}
 	for _, edge := range edges {
-		if isPowerEdge(nodeTypes[edge.Source], nodeTypes[edge.Target]) {
+		if edge.Type == wiring.EdgeTypePower {
 			continue
 		}
 		// Wi-Fi clients do not take the access point's port; it carries the uplink.
@@ -159,6 +163,30 @@ func usedHandles(nodeID string, nodeTypes map[string]string, edges []EdgeDTO) ma
 		}
 	}
 	return used
+}
+
+// checkPowerHandlesFit refuses a psu_count or outlets below the highest power
+// handle that carries a cable.
+func checkPowerHandlesFit(node NodeDTO, edges []EdgeDTO) error {
+	highestIn, highestOut := -1, -1
+	for _, edge := range edges {
+		if edge.Type != wiring.EdgeTypePower {
+			continue
+		}
+		if edge.Target == node.ID {
+			highestIn = max(highestIn, wiring.PowerHandleIndex(edge.TargetHandle, wiring.PowerInPrefix))
+		}
+		if edge.Source == node.ID {
+			highestOut = max(highestOut, wiring.PowerHandleIndex(edge.SourceHandle, wiring.PowerOutPrefix))
+		}
+	}
+	if highestIn >= wiring.PowerInputCount(node.Type, node.Details) {
+		return fmt.Errorf("%q has a power cable on %s%d; it needs at least %d", node.Name, wiring.PowerInPrefix, highestIn, highestIn+1)
+	}
+	if highestOut >= wiring.PowerOutputCount(node.Type, node.Details) {
+		return fmt.Errorf("%q has a power cable on %s%d; it needs at least %d", node.Name, wiring.PowerOutPrefix, highestOut, highestOut+1)
+	}
+	return nil
 }
 
 // firstFreePort returns the lowest ethN handle on a node that carries no cable.
@@ -206,7 +234,7 @@ func NodePortUsage(input SyncGraphInput) map[string]PortUsage {
 	}
 	usage := make(map[string]PortUsage, len(input.Nodes))
 	for _, node := range input.Nodes {
-		if uncabledNodeTypes[node.Type] {
+		if uncabledNodeTypes[node.Type] || wiring.IsPowerSource(node.Type) {
 			continue
 		}
 		used := usedHandles(node.ID, types, input.Edges)

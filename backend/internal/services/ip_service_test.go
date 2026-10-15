@@ -544,3 +544,116 @@ func TestCalculateNetwork_DeviceInsideRack_GetsIP(t *testing.T) {
 		t.Errorf("rack should never get an IP, got %q", ip)
 	}
 }
+
+// portGatewayTopology is a router whose eth1 serves 192.168.10.0/24: a switch
+// with a PC behind eth1, a NAS on eth0.
+func portGatewayTopology(t *testing.T, db *gorm.DB, buildID uuid.UUID) (router, sw, pc, nas models.Node) {
+	t.Helper()
+	router = createNode(t, db, buildID, "router", "Router", "192.168.1.1")
+	setDetails(t, db, &router, map[string]any{
+		"dhcp_enabled": true,
+		"subnet_mask":  "255.255.255.0",
+		"ports":        4,
+		"port_config": map[string]any{
+			"eth1": map[string]any{"role": "lan", "address": "192.168.10.1/24", "dhcp": true},
+		},
+	})
+	sw = createNode(t, db, buildID, "switch", "Switch", "")
+	pc = createNode(t, db, buildID, "pc", "PC", "")
+	nas = createNode(t, db, buildID, "nas", "NAS", "")
+	connectNodesWithMeta(t, db, buildID, router.ID, sw.ID, "eth1", "target-0", "auto")
+	connectNodesWithMeta(t, db, buildID, sw.ID, pc.ID, "eth0", "target-0", "auto")
+	connectNodesWithMeta(t, db, buildID, router.ID, nas.ID, "eth0", "target-0", "auto")
+	return router, sw, pc, nas
+}
+
+func TestPlanIPAM_PortSubnetBecomesGateway(t *testing.T) {
+	tx := testTx(t)
+	buildID := newBuildID(t, tx)
+	router, sw, _, nas := portGatewayTopology(t, tx, buildID)
+	nodes, edges, err := loadTopology(tx, buildID)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+
+	plan := planIPAM(nodes, edges)
+	rid := router.ID.String() + ":eth1"
+	var port *ipamRouter
+	for i := range plan.request.Routers {
+		if plan.request.Routers[i].ID == rid {
+			port = &plan.request.Routers[i]
+		}
+	}
+	if port == nil {
+		t.Fatalf("no port gateway %s in %+v", rid, plan.request.Routers)
+	}
+	if port.GatewayIP != "192.168.10.1" || port.Subnet != "192.168.10.1/24" || !port.DHCPEnabled {
+		t.Fatalf("unexpected port gateway %+v", *port)
+	}
+	if ref := plan.portByRouterID[rid]; ref.nodeID != router.ID.String() || ref.handle != "eth1" {
+		t.Fatalf("unexpected port lookup %+v", ref)
+	}
+	for _, node := range plan.request.Nodes {
+		switch node.ID {
+		case sw.ID.String():
+			if len(node.Connections) == 0 || node.Connections[0] != rid {
+				t.Fatalf("switch should hang off %s, got %v", rid, node.Connections)
+			}
+		case nas.ID.String():
+			if len(node.Connections) != 1 || node.Connections[0] != router.ID.String() {
+				t.Fatalf("NAS should stay on the router, got %v", node.Connections)
+			}
+		case router.ID.String():
+			for _, neighbor := range node.Connections {
+				if neighbor == sw.ID.String() {
+					t.Fatalf("router should not reach the switch on eth1 directly: %v", node.Connections)
+				}
+			}
+		}
+	}
+}
+
+func TestCalculateNetwork_PortSubnetServesDevicesBehindIt(t *testing.T) {
+	skipWithoutIPAM(t)
+	tx := testTx(t)
+	svc := NewIPService(tx)
+	buildID := newBuildID(t, tx)
+	router, sw, pc, nas := portGatewayTopology(t, tx, buildID)
+
+	if err := svc.CalculateNetwork(buildID); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if ip := fetchIP(t, tx, router.ID); ip != "192.168.1.1" {
+		t.Fatalf("router address changed: %q", ip)
+	}
+	for name, id := range map[string]uuid.UUID{"switch": sw.ID, "pc": pc.ID} {
+		if ip := fetchIP(t, tx, id); !hasPrefix(ip, "192.168.10.") {
+			t.Fatalf("%s behind eth1 should be in 192.168.10.0/24, got %q", name, ip)
+		}
+	}
+	if ip := fetchIP(t, tx, nas.ID); !hasPrefix(ip, "192.168.1.") {
+		t.Fatalf("NAS on eth0 should stay in 192.168.1.0/24, got %q", ip)
+	}
+
+	networks, _ := fetchDetails(t, tx, router.ID)["port_networks"].(map[string]any)
+	eth1, _ := networks["eth1"].(map[string]any)
+	if eth1["ip"] != "192.168.10.1" || eth1["subnet"] != "192.168.10.1/24" {
+		t.Fatalf("unexpected port_networks: %v", networks)
+	}
+	if pool, _ := eth1["dhcp_pool"].(map[string]any); pool == nil || !hasPrefix(pool["start"].(string), "192.168.10.") {
+		t.Fatalf("expected a DHCP pool on eth1, got %v", eth1["dhcp_pool"])
+	}
+
+	// Without the port address the key goes away and eth1 joins the router's subnet.
+	setDetails(t, tx, &router, map[string]any{"dhcp_enabled": true, "subnet_mask": "255.255.255.0", "ports": 4})
+	if err := svc.CalculateNetwork(buildID); err != nil {
+		t.Fatalf("recalculate: %v", err)
+	}
+	if _, ok := fetchDetails(t, tx, router.ID)["port_networks"]; ok {
+		t.Fatal("stale port_networks was kept")
+	}
+	if ip := fetchIP(t, tx, pc.ID); !hasPrefix(ip, "192.168.1.") {
+		t.Fatalf("pc should fall back to 192.168.1.0/24, got %q", ip)
+	}
+}

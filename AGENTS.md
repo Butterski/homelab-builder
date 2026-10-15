@@ -79,7 +79,8 @@ homelab-builder/
 │   │   ├── secrets/            # AES-256-GCM sealing of stored provider keys
 │   │   ├── services/           # business logic; most tests live here
 │   │   ├── testutil/           # Postgres transaction helper for packages outside services
-│   │   └── version/version.go  # release number; a frontend test keeps package.json in step
+│   │   ├── version/version.go  # release number; a frontend test keeps package.json in step
+│   │   └── wiring/             # power cables, port settings, VLANs: loads and warnings (pure)
 │   ├── pkg/database/database.go # connection, AutoMigrate, Models() (every table)
 │   ├── go.mod
 │   ├── Dockerfile              # multi-stage: Go builder → alpine runtime
@@ -459,6 +460,34 @@ Change them together.
 
 ---
 
+## Power, Ports and VLANs
+
+Three things a cable can say besides its speed: where a device gets its power, what a router port is for, and which VLANs a switch port carries. The rules are pure and exist twice, in `backend/internal/wiring/` (imports nothing internal) and in `frontend/src/features/builder/lib/power-ports.ts` and `port-config.ts`.
+
+### Power
+
+- `ups`, `pdu` and `power_outlet` are power sources: no network handles, no address, only sockets (`details.outlets`; defaults 6, 8, 2). A power outlet is the wall: it has no input; a UPS and a PDU have one.
+- Every other powered device has `details.psu_count` power inputs (default 1, 0..4). Racks, components and VPS have none.
+- A power cable is an edge of type `power` that always runs **from** a socket `pwr-out-N` **to** an input `pwr-in-N` (0-based). The store, the shared page and the change-set engine turn a drag the other way round. It takes no network port, and two power cables between one pair are allowed (a dual PSU on one PDU). Power cables may not loop.
+- `details.power_load` `{load_w, capacity_w, sockets_used, sockets}` on every power source is derived: `writePowerLoads` (`services/power_service.go`) writes it at the end of every save. A device's draw (its own plus its components') is split evenly over its plugged-in inputs. Capacity: UPS `capacity_w`, else 60% of `capacity_va`; PDU `amps` × the voltage of the outlet above it (230 by default); outlet `breaker_amps` × `voltage` (16 A, 230 V).
+- `wiring.Warnings` adds to `ValidateNetwork`: an overloaded source, a source with every socket used, a device with some of its power supplies unplugged, two power supplies that depend on the same source or circuit (`details.circuit`).
+
+### Ports of a router, firewall or switch
+
+- `details.port_config` holds per-port settings keyed by handle (`target-0`, `ethN`): `role` (`wan`, `lan`, `dmz`, `vpn`, `unused`; `target-0` is WAN and `ethN` LAN unless set), `address` (a CIDR such as `192.168.10.1/24`), `dhcp`, `untagged_vlan`, `tagged_vlans` (switch only), `comment`. A switch defines its VLANs in `details.vlans` (`id`, `name`, `color`, `subnet`). `validateWiringDetails` refuses anything else on save; LLM operations cannot write these keys.
+- The port count and `port_config` change together: `withPortCount` never drops below a cabled port and prunes settings of ports that are gone.
+- A LAN or DMZ port with an address is a gateway of its own: `planIPAM` sends it to hlbIPAM as router `<node>:<handle>`, devices behind that port take addresses from its subnet, and the result is stored in `details.port_networks` (derived, like `dhcp_pool`).
+- A cable whose ends share a VLAN with a colour is drawn in that colour (speed stays in the badge); ends with no VLAN in common draw amber and are a warning.
+
+### Rules that exist in more than one place
+
+|Rule|Backend|Frontend|
+|---|---|---|
+|Power handle counts and geometry, orientation of a power cable|`wiring/power.go`, `build_service.go` (`validateEdgeEndpoints`), `topology_ops_connections.go`|`lib/power-ports.ts`, `connection-rules.ts`, `hardware-node.tsx`, `lib/layout/units.ts`|
+|Port settings and VLANs: validation, VLAN set of a port, the colour of a cable|`wiring/ports.go`, `wiring/checks.go` (`CableVLAN`)|`lib/port-config.ts`|
+
+---
+
 ## Frontend Architecture
 
 ### State Management (Zustand)
@@ -711,8 +740,9 @@ Each node type maps to a fixed IP offset block within a `/24` subnet:
 | hba | 195 | 1 | No (non-network) |
 | pcie | 198 | 1 | No (non-network) |
 | lan_table | - | - | No (non-network; its seats take DHCP leases) |
+| power_outlet | - | - | No (non-network; power only) |
 
-Non-network types (`disk`, `gpu`, `hba`, `pcie`, `pdu`, `ups`, `lan_table`) are never assigned IPs even when connected to a router.
+Non-network types (`disk`, `gpu`, `hba`, `pcie`, `pdu`, `ups`, `power_outlet`, `lan_table`) are never assigned IPs. `ups`, `pdu` and `power_outlet` have no network handles at all (see [Power, Ports and VLANs](#power-ports-and-vlans)).
 
 The demo on the landing page repeats these zones in `frontend/src/features/landing/lib/demo-addresses.ts`. Change them together.
 
@@ -839,7 +869,9 @@ hasPrefix(s, prefix string) bool
 | `internal/services/proxmox_import_test.go` | `services` | The comparison; an import is a proposal; a new build; addresses in a DHCP range; size limits; the owner only |
 | `internal/handlers/integration_handler_test.go` | `handlers` | No response contains the secret; a saved connection is read at once; an import through a proposal; the inventory API |
 | `hlbipam/internal/core/dhcp_demand_test.go` | `core` | Pool grows with demand, no demand keeps the default, console zone, tables get no address |
-| `hlbipam/internal/core/allocator_test.go` | `core` | IPAM allocator tests |
+| `hlbipam/internal/core/allocator_test.go` | `core` | IPAM allocator tests; a port gateway (`<node>:ethN`) never hands its own node an address |
+| `backend/internal/wiring/*_test.go` | `wiring` | Power loads through outlet, UPS and PDU; every power warning; port settings and VLAN validation; the VLAN of a cable and mismatches |
+| `internal/services/power_service_test.go`, `wiring_validation_test.go` | `services` | `power_load` written on save; `ValidateNetwork` adds wiring warnings with plain node ids; invalid port settings and undefined VLANs refused |
 | `hlbipam/internal/core/validator_test.go` | `core` | IPAM validator tests |
 | `frontend/src/features/builder/store/builder-store.test.ts` | - | The save path, both kinds of conflict, a reload that keeps what was measured, what the browser remembers, deleting devices and racks |
 | `frontend/src/features/builder/store/autosave.test.ts` | - | Fake timers: the wait, retries, no save when in sync, during a review or before the canvas is loaded |
@@ -864,7 +896,9 @@ hasPrefix(s, prefix string) bool
 | `frontend/src/features/builder/components/node-properties-panel.store.test.tsx` | - | Selecting a device leaves it as it is; an edit of the form is saved to that device (pitfall 43) |
 | `frontend/src/features/inventory/**/*.test.ts(x)` | - | Items as nodes and components, what a canvas uses, state, spare memory for a host; placing; the panel; the inventory page and the item form |
 | `frontend/src/features/integrations/**/*.test.ts(x)` | - | What an import does unless told otherwise, and counts; the Proxmox dialog: connection, certificate trust, hosts, compare, import |
-| `frontend/src/features/builder/lib/planner/planner.test.ts`, `lib/connection-rules.test.ts` | - | Plan builders for the three kinds; canvas connection rules |
+| `frontend/src/features/builder/lib/planner/planner.test.ts`, `lib/connection-rules.test.ts` | - | Plan builders for the three kinds; canvas connection rules, power cables included |
+| `frontend/src/features/builder/lib/power-ports.test.ts`, `lib/port-config.test.ts` | - | Power handle counts, geometry and orientation; port count against cabled ports, address checks, the VLAN colour of a cable |
+| `frontend/src/features/builder/components/port-settings-editor.store.test.tsx` | - | The port editor on the real store: roles, addresses, ports added and removed, VLANs deleted from ports, nothing lost to the panel's own save |
 | `frontend/src/features/landing/lib/demo-plan.test.ts` | - | Demo addresses by role; the demo plans from the real planners |
 | `frontend/src/features/landing/lib/ascii-rack.test.ts`, `components/ascii-rack.test.tsx` | - | The ASCII rack: grid, characters, framing, lights from the front only, fans from behind; pause, and standing still under reduced motion until started |
 | `frontend/src/lib/site.test.ts`, `features/auth/pages/welcome-page.test.tsx` | - | Which hosts get the landing page; the welcome screen of an own instance and what it reports |
@@ -1044,9 +1078,9 @@ With login enabled and `GIN_MODE=release`, a missing `SECRETS_KEY` does not stop
 
 `loadBuild` must set `buildKind`, `gamingPlan` and `buildSettings` before it computes `lastSyncedFingerprint`, and the server must return the plan exactly as stored (`Plan.Normalize` adds no defaults). Otherwise every load looks like an unsaved change and two tabs save in turns (pitfall 12). `completePlan()` is for display: do not write its result back unless the user edited something.
 
-### 15. `details.dhcp_pool` is derived
+### 15. `details.dhcp_pool`, `port_networks` and `power_load` are derived
 
-The pool on a gateway is written by the IP calculation, like `wan_ip` and `interfaces`. It must stay in `reservedDetailKeys` (`topology_ops.go`), `derivedDetailKeys` (`topology_diff.go`) and `DERIVED_DETAIL_KEYS` (`builder-store.ts`). Leave one out and a proposal shows a pool change the user did not make, or a removed pool lingers on the canvas.
+The pool on a gateway and the subnets of its ports are written by the IP calculation, like `wan_ip` and `interfaces`; the load of a power source by `writePowerLoads` after it. Each must stay in `reservedDetailKeys` (`topology_ops.go`), `derivedDetailKeys` (`topology_diff.go`) and `DERIVED_DETAIL_KEYS` (`builder-store.ts`). Leave one out and a proposal shows a change the user did not make, or a removed value lingers on the canvas.
 
 ### 16. The Wi-Fi association rule lives in three places
 

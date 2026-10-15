@@ -21,6 +21,8 @@ import type { HardwareNode, HardwareSpec } from '../../../types';
 import { VMManager } from './vm-manager';
 import { InternalComponentManager } from './internal-component-manager';
 import { GamingNodeFields } from '../../gaming/components/gaming-node-fields';
+import { PowerFields } from './power-fields';
+import { PortSettingsEditor } from './port-settings-editor';
 import { NodeAssetField } from '../../inventory/components/node-asset-field';
 import {
   canNodeHostVMs,
@@ -33,6 +35,7 @@ import {
 } from '../../../lib/hardware-config';
 import { getHostLoad } from '../lib/resource-usage';
 import { getNodePortCount, parsePortCount } from '../lib/port-count';
+import { withPortCount } from '../lib/port-config';
 import { DEFAULT_DEVICE_U } from './rack-node-constants';
 import { useHardware } from '../../catalog/api/use-hardware';
 import { HardwareBlueprintCreator } from '../../catalog/components/hardware-blueprint-creator';
@@ -59,6 +62,81 @@ function fieldErrors(fields: { ip: string; mask: string; gateway: string; macAdd
   if (fields.macAddress && !/^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/.test(fields.macAddress))
     errors.macAddress = 'Invalid MAC';
   return errors;
+}
+
+type PanelForm = {
+  name: string;
+  ip: string;
+  macAddress: string;
+  mask: string;
+  gateway: string;
+  dhcpEnabled: boolean;
+  dhcpLocked: boolean;
+  model: string;
+  cpu: string;
+  ram: string;
+  ramUnit: 'GB' | 'TB';
+  storage: string;
+  storageUnit: 'GB' | 'TB';
+  hypervisorEnabled: boolean;
+  appHostEnabled: boolean;
+  storageEnabled: boolean;
+  routingEnabled: boolean;
+  natEnabled: boolean;
+  firewallEnabled: boolean;
+  networkZone: NonNullable<HardwareSpec['network_zone']>;
+  publicIP: string;
+  provider: string;
+  region: string;
+  notes: string;
+};
+
+/**
+ * The form as it shows a device. A field that still reads like this was not
+ * edited, so it is not written back: selecting a device must not fill its
+ * details with the form's defaults.
+ */
+function formOf(node: HardwareNode): PanelForm {
+  const details = node.details;
+  const ramField = details?.ram ? sizeField(Number(details.ram)) : { value: '', unit: 'GB' as const };
+  const storageField = details?.storage
+    ? sizeField(Number(details.storage))
+    : { value: '', unit: 'GB' as const };
+  return {
+    name: node.name,
+    ip: node.ip || '',
+    macAddress: node.mac_address || '',
+    mask: node.subnet_mask || '',
+    gateway: node.gateway || '',
+    dhcpEnabled: details?.dhcp_enabled ?? (node.type === 'router' || node.type === 'firewall'),
+    dhcpLocked: details?.dhcp_locked ?? false,
+    model: details?.model || '',
+    cpu: details?.cpu?.toString() || '',
+    ram: ramField.value,
+    ramUnit: ramField.unit,
+    storage: storageField.value,
+    storageUnit: storageField.unit,
+    hypervisorEnabled: details?.hypervisor_enabled ?? false,
+    appHostEnabled: details?.app_host_enabled ?? false,
+    storageEnabled: details?.storage_enabled ?? false,
+    routingEnabled: details?.routing_enabled ?? false,
+    natEnabled: details?.nat_enabled ?? false,
+    firewallEnabled: details?.firewall_enabled ?? false,
+    networkZone: details?.network_zone || 'lan',
+    publicIP: details?.public_ip || '',
+    provider: details?.provider || '',
+    region: details?.region || '',
+    notes: details?.notes || '',
+  };
+}
+
+/** Whether a device of this type hands out addresses, given its routing switches. */
+function providesDHCP(type: string, form: Pick<PanelForm, 'natEnabled' | 'routingEnabled'>): boolean {
+  return (
+    type === 'router' ||
+    ((type === 'firewall' || type === 'server_v2' || type === 'vps') &&
+      (form.natEnabled || form.routingEnabled))
+  );
 }
 
 export const NodePropertiesPanel = memo(function NodePropertiesPanel() {
@@ -92,6 +170,7 @@ export const NodePropertiesPanel = memo(function NodePropertiesPanel() {
   const [ram, setRam] = useState('');
   const [storage, setStorage] = useState('');
   const [ports, setPorts] = useState('');
+  const [portsHint, setPortsHint] = useState<string | null>(null);
   const [hypervisorEnabled, setHypervisorEnabled] = useState(false);
   const [appHostEnabled, setAppHostEnabled] = useState(false);
   const [storageEnabled, setStorageEnabled] = useState(false);
@@ -119,13 +198,7 @@ export const NodePropertiesPanel = memo(function NodePropertiesPanel() {
       selectedNode.type === 'firewall' ||
       selectedNode.type === 'server_v2' ||
       selectedNode.type === 'vps');
-  const canProvideDHCP =
-    !!selectedNode &&
-    (selectedNode.type === 'router' ||
-      ((selectedNode.type === 'firewall' ||
-        selectedNode.type === 'server_v2' ||
-        selectedNode.type === 'vps') &&
-        (natEnabled || routingEnabled)));
+  const canProvideDHCP = !!selectedNode && providesDHCP(selectedNode.type, { natEnabled, routingEnabled });
 
   const { data: hardwareResponse } = useHardware(
     selectedNode ? { category: selectedNode.type, limit: 100 } : {},
@@ -201,49 +274,36 @@ export const NodePropertiesPanel = memo(function NodePropertiesPanel() {
   if (selectedNode !== syncedNode) {
     setSyncedNode(selectedNode);
     if (selectedNode) {
-      const details = selectedNode.details;
-      setName(selectedNode.name);
-      setIp(selectedNode.ip || '');
-      setMacAddress(selectedNode.mac_address || '');
-      setMask(selectedNode.subnet_mask || '');
-      setGateway(selectedNode.gateway || '');
-      const defaultDhcp = selectedNode.type === 'router' || selectedNode.type === 'firewall';
-      setDhcpEnabled(details?.dhcp_enabled ?? defaultDhcp);
-      setDhcpLocked(details?.dhcp_locked ?? false);
-      setModel(details?.model || '');
-      setCpu(details?.cpu?.toString() || '');
-
-      const ramField = details?.ram
-        ? sizeField(Number(details.ram))
-        : { value: '', unit: 'GB' as const };
-      setRam(ramField.value);
-      setRamUnit(ramField.unit);
-      const storageField = details?.storage
-        ? sizeField(Number(details.storage))
-        : { value: '', unit: 'GB' as const };
-      setStorage(storageField.value);
-      setStorageUnit(storageField.unit);
-
-      const portValue = details?.ports;
-      setPorts(
-        portValue === undefined
-          ? ''
-          : String(parsePortCount(portValue) ?? getNodePortCount(selectedNode.type, portValue)),
-      );
-      setHypervisorEnabled(details?.hypervisor_enabled ?? false);
-      setAppHostEnabled(details?.app_host_enabled ?? false);
-      setStorageEnabled(details?.storage_enabled ?? false);
-      setRoutingEnabled(details?.routing_enabled ?? false);
-      setNatEnabled(details?.nat_enabled ?? false);
-      setFirewallEnabled(details?.firewall_enabled ?? false);
-      setNetworkZone(details?.network_zone || 'lan');
-      setPublicIP(details?.public_ip || '');
-      setProvider(details?.provider || '');
-      setRegion(details?.region || '');
+      const form = formOf(selectedNode);
+      setName(form.name);
+      setIp(form.ip);
+      setMacAddress(form.macAddress);
+      setMask(form.mask);
+      setGateway(form.gateway);
+      setDhcpEnabled(form.dhcpEnabled);
+      setDhcpLocked(form.dhcpLocked);
+      setModel(form.model);
+      setCpu(form.cpu);
+      setRam(form.ram);
+      setRamUnit(form.ramUnit);
+      setStorage(form.storage);
+      setStorageUnit(form.storageUnit);
+      setPorts(String(getNodePortCount(selectedNode.type, selectedNode.details?.ports)));
+      if (selectedNode.id !== syncedNode?.id) setPortsHint(null);
+      setHypervisorEnabled(form.hypervisorEnabled);
+      setAppHostEnabled(form.appHostEnabled);
+      setStorageEnabled(form.storageEnabled);
+      setRoutingEnabled(form.routingEnabled);
+      setNatEnabled(form.natEnabled);
+      setFirewallEnabled(form.firewallEnabled);
+      setNetworkZone(form.networkZone);
+      setPublicIP(form.publicIP);
+      setProvider(form.provider);
+      setRegion(form.region);
       // Keep an in-progress note edit while other updates replace this node
       // in the store (for example, a save response that recalculates IPs).
       if (!notesDirty.current || selectedNode.id !== syncedNode?.id) {
-        setNotes(details?.notes || '');
+        setNotes(form.notes);
         notesDirty.current = false;
       }
       setErrors({});
@@ -252,7 +312,8 @@ export const NodePropertiesPanel = memo(function NodePropertiesPanel() {
 
   // Saved half a second after the last edit of the form. The device is read
   // from the store when the write happens, so fields saved outside this form
-  // in the meantime (rack slot, seats, circuit) are kept.
+  // in the meantime (rack slot, seats, circuit) are kept, and only the fields
+  // that differ from what the form would show for it are written.
   useEffect(() => {
     if (!selectedId || !selectedType) return;
     const timer = setTimeout(() => {
@@ -261,45 +322,71 @@ export const NodePropertiesPanel = memo(function NodePropertiesPanel() {
       if (Object.keys(nextErrors).length > 0) return;
       const current = useBuilderStore.getState().hardwareNodes.find(node => node.id === selectedId);
       if (!current) return;
+      const form: PanelForm = {
+        name, ip, macAddress, mask, gateway, dhcpEnabled, dhcpLocked, model, cpu, ram, ramUnit,
+        storage, storageUnit, hypervisorEnabled, appHostEnabled, storageEnabled, routingEnabled,
+        natEnabled, firewallEnabled, networkZone, publicIP, provider, region, notes,
+      };
+      const saved = formOf(current);
+      const edited = (...keys: (keyof PanelForm)[]) => keys.some(key => form[key] !== saved[key]);
       const parseNum = (val: string) => {
         if (!val || val.trim() === '') return undefined;
         const num = Number(val);
         return isNaN(num) ? undefined : num;
       };
-      const rVal = parseNum(ram);
-      const sVal = parseNum(storage);
       const hostsGuests = selectedType === 'server_v2' || selectedType === 'vps';
       const routes = hostsGuests || selectedType === 'firewall';
 
-      updateHardware(selectedId, {
-        name,
-        ip,
-        mac_address: macAddress,
-        subnet_mask: mask,
-        gateway,
-        details: {
-          ...current.details,
-          model,
-          dhcp_enabled: canProvideDHCP ? dhcpEnabled : undefined,
-          dhcp_locked: dhcpLocked,
-          cpu: parseNum(cpu),
-          ram: rVal ? rVal * (ramUnit === 'TB' ? 1000 : 1) : undefined,
-          storage: sVal ? sVal * (storageUnit === 'TB' ? 1000 : 1) : undefined,
-          ports: parseNum(ports),
-          hypervisor_enabled: hostsGuests ? hypervisorEnabled : undefined,
-          app_host_enabled: hostsGuests ? appHostEnabled : undefined,
-          storage_enabled: selectedType === 'server_v2' ? storageEnabled : undefined,
-          routing_enabled: routes ? routingEnabled : undefined,
-          nat_enabled: routes ? natEnabled : undefined,
-          firewall_enabled:
-            selectedType === 'server_v2' || selectedType === 'firewall' ? firewallEnabled : undefined,
-          network_zone: isNetworkNode(selectedType) ? networkZone : undefined,
-          public_ip: selectedType === 'vps' ? publicIP : undefined,
-          provider: selectedType === 'vps' ? provider : undefined,
-          region: selectedType === 'vps' ? region : undefined,
-          notes,
-        },
-      });
+      const updates: Partial<HardwareNode> = {};
+      if (edited('name')) updates.name = name;
+      if (edited('ip')) updates.ip = ip;
+      if (edited('macAddress')) updates.mac_address = macAddress;
+      if (edited('mask')) updates.subnet_mask = mask;
+      if (edited('gateway')) updates.gateway = gateway;
+
+      const details: HardwareSpec = { ...current.details };
+      let detailsEdited = false;
+      const write = <K extends keyof HardwareSpec>(key: K, value: HardwareSpec[K]) => {
+        if (value === undefined) delete details[key];
+        else details[key] = value;
+        detailsEdited = true;
+      };
+      if (edited('model')) write('model', model);
+      // Switching NAT or routing on decides whether DHCP applies at all.
+      if (edited('dhcpEnabled') || canProvideDHCP !== providesDHCP(selectedType, saved)) {
+        write('dhcp_enabled', canProvideDHCP ? dhcpEnabled : undefined);
+      }
+      if (edited('dhcpLocked')) write('dhcp_locked', dhcpLocked);
+      if (edited('cpu')) write('cpu', parseNum(cpu));
+      if (edited('ram', 'ramUnit')) {
+        const value = parseNum(ram);
+        write('ram', value ? value * (ramUnit === 'TB' ? 1000 : 1) : undefined);
+      }
+      if (edited('storage', 'storageUnit')) {
+        const value = parseNum(storage);
+        write('storage', value ? value * (storageUnit === 'TB' ? 1000 : 1) : undefined);
+      }
+      if (edited('hypervisorEnabled')) write('hypervisor_enabled', hostsGuests ? hypervisorEnabled : undefined);
+      if (edited('appHostEnabled')) write('app_host_enabled', hostsGuests ? appHostEnabled : undefined);
+      if (edited('storageEnabled')) {
+        write('storage_enabled', selectedType === 'server_v2' ? storageEnabled : undefined);
+      }
+      if (edited('routingEnabled')) write('routing_enabled', routes ? routingEnabled : undefined);
+      if (edited('natEnabled')) write('nat_enabled', routes ? natEnabled : undefined);
+      if (edited('firewallEnabled')) {
+        write(
+          'firewall_enabled',
+          selectedType === 'server_v2' || selectedType === 'firewall' ? firewallEnabled : undefined,
+        );
+      }
+      if (edited('networkZone')) write('network_zone', isNetworkNode(selectedType) ? networkZone : undefined);
+      if (edited('publicIP')) write('public_ip', selectedType === 'vps' ? publicIP : undefined);
+      if (edited('provider')) write('provider', selectedType === 'vps' ? provider : undefined);
+      if (edited('region')) write('region', selectedType === 'vps' ? region : undefined);
+      if (edited('notes')) write('notes', notes);
+      if (detailsEdited) updates.details = details;
+
+      if (Object.keys(updates).length > 0) updateHardware(selectedId, updates);
       notesDirty.current = false;
     }, 500);
     return () => clearTimeout(timer);
@@ -321,7 +408,6 @@ export const NodePropertiesPanel = memo(function NodePropertiesPanel() {
     ramUnit,
     storage,
     storageUnit,
-    ports,
     hypervisorEnabled,
     appHostEnabled,
     storageEnabled,
@@ -352,6 +438,24 @@ export const NodePropertiesPanel = memo(function NodePropertiesPanel() {
   const handleIpChange = (val: string) => {
     setIp(val);
     setDhcpLocked(val.trim() !== '');
+  };
+
+  // The port count is saved at once, never below the highest cabled port, and
+  // settings of removed ports go with them.
+  const commitPorts = (requested: number | undefined) => {
+    const state = useBuilderStore.getState();
+    const current = state.hardwareNodes.find(node => node.id === selectedNode.id);
+    if (!current) return;
+    if (requested === undefined) {
+      setPorts(String(getNodePortCount(current.type, current.details?.ports)));
+      return;
+    }
+    const next = withPortCount(current, state.edges, requested);
+    setPorts(String(next.count));
+    setPortsHint(
+      next.clamped && next.count > requested ? `Ports up to eth${next.count - 1} carry cables.` : null,
+    );
+    if (current.details?.ports !== next.count) updateHardware(current.id, { details: next.details });
   };
 
   const isLegacyServer = selectedNode.type === 'server';
@@ -385,10 +489,13 @@ export const NodePropertiesPanel = memo(function NodePropertiesPanel() {
     usedRamMb: usedRam,
     totalCpu,
     totalRamMb: totalRamMB,
+    usedStorageGb,
+    totalStorageGb,
     cpuWarning,
     ramWarning,
-  } = getHostLoad(selectedNode.details, selectedNode.vms);
-  const hasWarning = cpuWarning || ramWarning;
+    storageWarning,
+  } = getHostLoad(selectedNode.details, selectedNode.vms, selectedNode.internal_components);
+  const hasWarning = cpuWarning || ramWarning || storageWarning;
   const rackChildren = isRack ? hardwareNodes.filter(n => n.parent_id === selectedNode.id) : [];
 
   return (
@@ -483,6 +590,10 @@ export const NodePropertiesPanel = memo(function NodePropertiesPanel() {
           </div>
 
           <GamingNodeFields node={selectedNode} />
+
+          <PowerFields node={selectedNode} />
+
+          <PortSettingsEditor node={selectedNode} />
 
           {/* ── Rack-specific properties ── */}
           {isRack && (
@@ -908,9 +1019,16 @@ export const NodePropertiesPanel = memo(function NodePropertiesPanel() {
                   max={96}
                   value={ports}
                   onChange={e => setPorts(e.target.value)}
+                  onBlur={e => commitPorts(parsePortCount(e.target.value))}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') commitPorts(parsePortCount(e.currentTarget.value));
+                  }}
                   className="h-8 text-xs"
                   placeholder="e.g. 4, 8, 16, 24"
                 />
+                {portsHint && (
+                  <p className="text-[10px] text-muted-foreground">{portsHint}</p>
+                )}
               </div>
             )}
             <div className="space-y-1 relative">
@@ -958,11 +1076,14 @@ export const NodePropertiesPanel = memo(function NodePropertiesPanel() {
                             }
                             if (item.spec.ports !== undefined) {
                               const pCount = parsePortCount(item.spec.ports);
-                              if (pCount !== undefined) setPorts(String(pCount));
+                              if (pCount !== undefined) commitPorts(pCount);
                             }
                             if (parsed.rackUnits !== undefined && selectedNode.parent_id) {
+                              const latest = useBuilderStore
+                                .getState()
+                                .hardwareNodes.find(node => node.id === selectedNode.id);
                               updateHardware(selectedNode.id, {
-                                details: { ...selectedNode.details, rack_units: parsed.rackUnits },
+                                details: { ...latest?.details, rack_units: parsed.rackUnits },
                               });
                             }
                             setModelSearchOpen(false);
@@ -1084,6 +1205,7 @@ export const NodePropertiesPanel = memo(function NodePropertiesPanel() {
                       {cpuWarning && ` Used CPU: ${usedCpu}/${totalCpu}.`}
                       {ramWarning &&
                         ` Used RAM: ${Math.round(usedRam / 1024)}GB/${Math.round(totalRamMB / 1024)}GB.`}
+                      {storageWarning && ` Used disk: ${usedStorageGb}/${totalStorageGb} GB.`}
                     </p>
                   </div>
                 </div>

@@ -24,6 +24,7 @@ import { CanvasGrid } from '../components/canvas-grid';
 import { useCanvasMoving } from '../hooks/use-canvas-moving';
 import { CustomEdge } from '../components/custom-edge';
 import { mapBuildToFlow } from '../lib/build-mapper';
+import { isPowerHandle, normalizePowerConnection } from '../lib/power-ports';
 import type { HardwareNode as HardwareNodeType } from '../../../types';
 
 const nodeTypes = { hardware: HardwareNode, rack: RackNode };
@@ -61,6 +62,14 @@ export default function SharedBuildPage() {
 
   const onConnect = useCallback(
     (connection: Connection) => {
+      if (isPowerHandle(connection.sourceHandle) || isPowerHandle(connection.targetHandle)) {
+        const cable = normalizePowerConnection(connection);
+        if (!cable) return;
+        setEdges(eds =>
+          addEdge({ ...cable, type: 'custom', data: { connection_type: 'power' } }, eds),
+        );
+        return;
+      }
       setEdges(eds =>
         addEdge({ ...connection, type: 'custom', data: { speed: '1 GbE', subnet: '' } }, eds),
       );

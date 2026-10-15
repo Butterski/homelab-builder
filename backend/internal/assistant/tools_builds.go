@@ -120,6 +120,8 @@ type guestView struct {
 	CPUCores       float64 `json:"cpu_cores,omitempty"`
 	RAMMB          int     `json:"ram_mb,omitempty"`
 	OS             string  `json:"os,omitempty"`
+	DiskGB         float64 `json:"disk_gb,omitempty"`
+	Notes          string  `json:"notes,omitempty"`
 	CatalogService string  `json:"catalog_service,omitempty"`
 	// Game is set on game servers: profile, players, exposure and port offset.
 	Game *gaming.Instance `json:"game,omitempty"`
@@ -278,6 +280,8 @@ func describeBuild(build *models.Build) (*buildView, error) {
 			}
 			guest.StaticIP, _ = vm.Details["static_ip"].(string)
 			guest.CatalogService, _ = vm.Details["catalog_service_name"].(string)
+			guest.DiskGB, _ = vm.Details["disk_gb"].(float64)
+			guest.Notes, _ = vm.Details["notes"].(string)
 			if instance, found, err := gaming.ParseInstance(vm.Details[gaming.InstanceKey]); found && err == nil {
 				guest.Game = &instance
 			}
@@ -336,7 +340,7 @@ func (v validationView) summary() string {
 func (v validationView) focus() []string {
 	ids := []string{}
 	for _, issue := range append(append([]validationIssue{}, v.Errors...), v.Warnings...) {
-		ids = append(ids, strings.TrimSuffix(issue.NodeID, ":lan"))
+		ids = append(ids, issue.NodeID)
 	}
 	return focusOn(ids...)
 }
@@ -368,7 +372,7 @@ func describeValidation(raw json.RawMessage, build *models.Build) validationView
 	label := func(issues []validationIssue) []validationIssue {
 		out := make([]validationIssue, 0, len(issues))
 		for _, issue := range issues {
-			issue.NodeName = names[strings.TrimSuffix(issue.NodeID, ":lan")]
+			issue.NodeName = names[issue.NodeID]
 			out = append(out, issue)
 		}
 		return out
