@@ -2,6 +2,7 @@ import { api, authHeaders } from '../../../lib/api';
 import { apiUrl } from '../../../lib/api-base';
 import type {
   BuildKind,
+  BuilderTag,
   GamingPlan,
   HardwareComponent,
   HardwareSpec,
@@ -30,6 +31,8 @@ export type BuildSettings = {
   planner?: Record<string, unknown>;
   /** Which steps of the setup guide are ticked off. */
   setupDone?: string[];
+  /** Reusable tags for this project; assigned tag IDs live in node details. */
+  tags?: BuilderTag[];
   [key: string]: unknown;
 };
 

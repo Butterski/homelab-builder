@@ -143,6 +143,8 @@ export type HardwareType =
   | 'lan_table';
 
 export interface HardwareSpec {
+  /** IDs of the custom builder tags assigned to this device. */
+  tags?: string[];
   notes?: string;
   virtual_network?: VirtualNetwork;
   model?: string;
@@ -298,6 +300,13 @@ export interface HardwareNode {
   vms?: VirtualMachine[]; // Nested VMs / Containers
   internal_components?: HardwareComponent[]; // Nested hardware (GPU, Disk, etc)
   parent_id?: string; // If inside a rack, the rack node's ID
+}
+
+/** A reusable, build-scoped label shown on devices in the canvas. */
+export interface BuilderTag {
+  id: string;
+  name: string;
+  color: string;
 }
 
 export type HardwareNodeValidationIssue = {
