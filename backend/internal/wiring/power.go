@@ -5,6 +5,7 @@ package wiring
 import (
 	"encoding/json"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -16,8 +17,9 @@ const (
 	PowerInPrefix  = "pwr-in-"
 	PowerOutPrefix = "pwr-out-"
 
-	maxPowerInputs  = 4
-	maxPowerOutputs = 48
+	maxPowerInputs = 4
+	// MaxPowerOutputs is the most sockets a power source can have.
+	MaxPowerOutputs = 48
 	defaultVoltage  = 230
 	defaultBreakerA = 16
 )
@@ -37,6 +39,16 @@ func IsPowerSource(nodeType string) bool {
 	return ok
 }
 
+// PowerSourceTypes lists the types that have sockets, sorted.
+func PowerSourceTypes() []string {
+	types := make([]string, 0, len(defaultOutlets))
+	for nodeType := range defaultOutlets {
+		types = append(types, nodeType)
+	}
+	slices.Sort(types)
+	return types
+}
+
 // PowerInputCount is the number of power inputs (one per PSU) of a node.
 func PowerInputCount(nodeType string, details map[string]any) int {
 	if noPowerInputTypes[nodeType] {
@@ -51,7 +63,7 @@ func PowerOutputCount(nodeType string, details map[string]any) int {
 	if !ok {
 		return 0
 	}
-	return clamp(countDetail(details, "outlets", fallback), 1, maxPowerOutputs)
+	return clamp(countDetail(details, "outlets", fallback), 1, MaxPowerOutputs)
 }
 
 // PowerHandleIndex returns N for a handle "<prefix>N", or -1 when the handle

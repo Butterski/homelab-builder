@@ -105,6 +105,13 @@ func setupRouter(cfg *config.Config, db *gorm.DB) *gin.Engine {
 		if err := services.SeedCatalog(db); err != nil {
 			log.Printf("Warning: failed to seed the default catalog: %v", err)
 		}
+		report, err := services.ConvertLegacyPowerCables(db)
+		if report.Builds > 0 {
+			log.Printf("Cables saved before power wiring: %d builds, %d turned into power cables, %d removed", report.Builds, report.Converted, report.Dropped)
+		}
+		if err != nil {
+			log.Printf("Warning: converting cables saved before power wiring: %v", err)
+		}
 
 		authService := services.NewAuthService(db)
 		serviceService := services.NewServiceService(db)

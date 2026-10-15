@@ -202,6 +202,7 @@ HTTP Request → Gin Router → Middleware → Handler → Service → GORM → 
 | `gaming_service.go` | Turns a build into `gaming.ReportInput`: gaming report, per-host game compose files, the `gaming/` files of the export bundle |
 | `topology_gaming.go` | Rules for `console` and `lan_table`, the Wi-Fi association rule, table defaults, the `set_plan` operation, DHCP demand per node |
 | `hardware_seed.go`, `default_service_seed.go`, `catalog_seed.go` | Startup seed of the hardware catalog (`hardware_seed.json`) and the service catalog; `SeedCatalog` runs both |
+| `legacy_power_cables.go` | Startup conversion of cables saved before power wiring: a non-power edge with a UPS, PDU or outlet at one end becomes a power cable (`ConvertLegacyPowerCables`); see [Power](#power) |
 | `auth_service.go` | Google OAuth token verification, JWT issuance |
 | `hardware_service.go` | Hardware catalog queries + admin operations |
 | `recommendation_service.go` | Hardware tiers for a set of services (the assistant's `recommend_hardware` tool) |
@@ -471,6 +472,7 @@ Three things a cable can say besides its speed: where a device gets its power, w
 - A power cable is an edge of type `power` that always runs **from** a socket `pwr-out-N` **to** an input `pwr-in-N` (0-based). The store, the shared page and the change-set engine turn a drag the other way round. It takes no network port, and two power cables between one pair are allowed (a dual PSU on one PDU). Power cables may not loop.
 - `details.power_load` `{load_w, capacity_w, sockets_used, sockets}` on every power source is derived: `writePowerLoads` (`services/power_service.go`) writes it at the end of every save. A device's draw (its own plus its components') is split evenly over its plugged-in inputs. Capacity: UPS `capacity_w`, else 60% of `capacity_va`; PDU `amps` × the voltage of the outlet above it (230 by default); outlet `breaker_amps` × `voltage` (16 A, 230 V).
 - `wiring.Warnings` adds to `ValidateNetwork`: an overloaded source, a source with every socket used, a device with some of its power supplies unplugged, two power supplies that depend on the same source or circuit (`details.circuit`).
+- Before power wiring a UPS had network ports, and any cable with a UPS at one end was its feed, stored as an `ethernet` edge between `ethN` and `target-0`. The canvas cannot draw such an edge on a UPS any more, and the save validation refuses it, so `ConvertLegacyPowerCables` (`services/legacy_power_cables.go`) runs at every startup and rewrites them: the power source feeds the other end (outlet, then UPS, then PDU when both are sources) from its first free socket into the first free input. A cable is dropped when the device has no power input or none free, when a power cable already joins the two, or when it would close a loop; a source with too few sockets gets more (up to 48). Each changed build gets a new revision, so an open canvas loads it again; `updated_at` is left alone. A build without such cables is not touched.
 
 ### Ports of a router, firewall or switch
 
@@ -872,6 +874,7 @@ hasPrefix(s, prefix string) bool
 | `hlbipam/internal/core/allocator_test.go` | `core` | IPAM allocator tests; a port gateway (`<node>:ethN`) never hands its own node an address |
 | `backend/internal/wiring/*_test.go` | `wiring` | Power loads through outlet, UPS and PDU; every power warning; port settings and VLAN validation; the VLAN of a cable and mismatches |
 | `internal/services/power_service_test.go`, `wiring_validation_test.go` | `services` | `power_load` written on save; `ValidateNetwork` adds wiring warnings with plain node ids; invalid port settings and undefined VLANs refused |
+| `internal/services/legacy_power_cables_test.go` | `services` | Cables stored before power wiring: refused before, power cables after, the build saves again; direction, sockets, dropped cables, loops; a second run changes nothing |
 | `hlbipam/internal/core/validator_test.go` | `core` | IPAM validator tests |
 | `frontend/src/features/builder/store/builder-store.test.ts` | - | The save path, both kinds of conflict, a reload that keeps what was measured, what the browser remembers, deleting devices and racks |
 | `frontend/src/features/builder/store/autosave.test.ts` | - | Fake timers: the wait, retries, no save when in sync, during a review or before the canvas is loaded |
@@ -1250,6 +1253,7 @@ These bugs were diagnosed and fixed; tests guard against regression.
 | 38 | `custom-edge.tsx`, `visual-builder.tsx`, `hardware-node.tsx` | Dragging one card rendered every card and every cable on each frame: a cable read all nodes and kept its settings mounted, node objects were made anew on every change, the canvas and its panels took the whole store | Selectors, node objects kept while unchanged, cable buttons mounted when needed (pitfall 42) |
 | 39 | `index.css`, `canvas-grid.tsx`, `custom-edge.tsx` | Panning and zooming painted the whole canvas again for each frame, under a blur behind every floating panel and an SVG dot pattern; blur filters on cables and zone outlines made each of those paintings dear | Solid panels, `CanvasGrid`, a compositor layer while the view moves, glows drawn as paths or dropped |
 | 40 | `gaming-plan-dialog.tsx` | The closed game plan dialog compared the build with the server on every change of the store, a drag included | Asked only while the dialog is open |
+| 41 | `services/legacy_power_cables.go` | Builds saved before power wiring could not be saved at all ("UPS is a ups and has no network port"): their UPS cables were ethernet edges on handles a UPS no longer has, so the canvas did not draw them and nothing could remove them | Converted into power cables at startup |
 
 ---
 
