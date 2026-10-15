@@ -14,6 +14,7 @@ import type {
   InventorySpecs,
   InventoryStatus,
 } from '../api/inventory';
+import { randomUUID } from '@/lib/uuid';
 
 // Kinds, types, states and places mirror backend/internal/inventory. Change them together.
 
@@ -326,7 +327,7 @@ export function inventoryItemToDragData(item: InventoryItem, units = 1): Invento
 export function itemAsComponent(item: InventoryItem, units: number): HardwareComponent {
   const data = inventoryItemToDragData(item, units);
   return {
-    id: crypto.randomUUID(),
+    id: randomUUID(),
     type: data.type as ComponentType,
     name: data.name,
     power_draw: data.power_draw,

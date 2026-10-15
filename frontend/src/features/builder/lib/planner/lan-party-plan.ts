@@ -8,6 +8,7 @@ import {
 import { arrangePlan } from './arrange';
 import { gameHost, gameServerVM, gameService, nextPortOffsets } from './game-hosts';
 import type { LanPartyAnswers, Plan, PlannedEdge, PlannedNode, PlannedVM } from './types';
+import { randomUUID } from '../../../../lib/uuid';
 
 export const MAX_PARTY_SEATS = 64;
 
@@ -102,8 +103,8 @@ export function buildLanPartyPlan(
     CORE_SWITCH_SIZES.find(size => size >= sizes.length + extras + 1) ??
     sizes.length + extras + 1;
 
-  const routerID = crypto.randomUUID();
-  const coreID = crypto.randomUUID();
+  const routerID = randomUUID();
+  const coreID = randomUUID();
   nodes.push({
     id: routerID,
     type: 'router',
@@ -161,7 +162,7 @@ export function buildLanPartyPlan(
   sizes.forEach((size, index) => {
     const table = newTableDetails(size);
     plugIntoCore({
-      id: crypto.randomUUID(),
+      id: randomUUID(),
       type: 'lan_table',
       name: `Table ${index + 1}`,
       x: 400 + (index % TABLE_COLUMNS) * COLUMN_WIDTH,
@@ -184,7 +185,7 @@ export function buildLanPartyPlan(
   if (answers.wifi) {
     plugIntoCore(
       {
-        id: crypto.randomUUID(),
+        id: randomUUID(),
         type: 'access_point',
         name: 'Party Wi-Fi',
         ...nextSide(),
@@ -198,7 +199,7 @@ export function buildLanPartyPlan(
   }
   for (let index = 0; index < consoles; index += 1) {
     plugIntoCore({
-      id: crypto.randomUUID(),
+      id: randomUUID(),
       type: 'console',
       name: `Console ${index + 1}`,
       ...nextSide(),

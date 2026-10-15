@@ -2,6 +2,7 @@ import type { GameExposure, GamingPlan, Service } from '../../../../types';
 import { arrangePlan } from './arrange';
 import { gameHost, gameServerVM, gameService, nextPortOffsets } from './game-hosts';
 import type { GameServerAnswers, Plan, PlannedEdge, PlannedNode, PlannedVM } from './types';
+import { randomUUID } from '../../../../lib/uuid';
 
 export const MAX_PLANNED_GAMES = 8;
 
@@ -32,7 +33,7 @@ export function buildGameServerPlan(
     }
   }
 
-  const routerID = crypto.randomUUID();
+  const routerID = randomUUID();
   const router: PlannedNode = {
     id: routerID,
     type: 'router',
@@ -52,7 +53,7 @@ export function buildGameServerPlan(
     internal_components: [],
   };
   const modem: PlannedNode = {
-    id: crypto.randomUUID(),
+    id: randomUUID(),
     type: 'modem',
     name: 'Internet',
     x: 80,

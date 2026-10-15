@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/features/builder/api/builds', () => ({ buildApi: {} }));
 vi.mock('@/features/builder/api/proposals', () => ({ proposalApi: {} }));
@@ -28,7 +28,28 @@ beforeEach(() => {
   useBuilderStore.setState({ currentBuildId: 'build-1', buildStatus: 'ready' });
 });
 
+afterEach(() => vi.unstubAllGlobals());
+
 describe('placing what one owns', () => {
+  it('places and duplicates a device with components on plain HTTP', () => {
+    const getRandomValues = crypto.getRandomValues.bind(crypto);
+    vi.stubGlobal('crypto', { getRandomValues });
+
+    expect(placeDeviceFromItem(M75Q).ok).toBe(true);
+    const original = store().hardwareNodes[0];
+    expect(installItem(original.id, NVME, 1).ok).toBe(true);
+    store().duplicateHardware(original.id);
+
+    const nodes = store().getBuildData().nodes;
+    expect(nodes).toHaveLength(2);
+    const ids = nodes.flatMap(node => [node.id, ...node.internal_components!.map(part => part.id)]);
+    expect(ids).toHaveLength(4);
+    for (const id of ids) {
+      expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    }
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
   it('puts a device on the canvas as a node that is that machine', () => {
     const result = placeDeviceFromItem(M75Q);
     expect(result.ok).toBe(true);

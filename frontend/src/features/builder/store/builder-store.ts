@@ -53,6 +53,7 @@ import { withoutAssetLink } from '../../../lib/asset-link';
 import { computeLayout, type LayoutResult, type LayoutStyle } from '../lib/layout';
 import { layoutGraphFromFlow } from '../lib/layout/from-flow';
 import { RACK_WIDTH_PX, rackHeightPx } from '../components/rack-node-constants';
+import { randomUUID } from '../../../lib/uuid';
 
 let topologyMutationQueue: Promise<void> = Promise.resolve();
 
@@ -876,7 +877,7 @@ export const useBuilderStore = create<BuilderState>()(
         if (!orig) return;
         // Don't duplicate racks (too complex with children)
         if (orig.type === 'rack') return;
-        const newId = crypto.randomUUID();
+        const newId = randomUUID();
         // A copy cannot be the same physical machine, nor hold the same parts:
         // the links to the owner's inventory stay with the original.
         const dup = withFreshChildIds({

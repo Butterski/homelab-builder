@@ -9,6 +9,7 @@ import { Label } from '../../../components/ui/label';
 import { Badge } from '../../../components/ui/badge';
 import { Plus, Trash2, Cpu, Box, Container, Server, Wifi, Pencil, Check, X } from 'lucide-react';
 import { GameServerSettings } from '../../gaming/components/game-server-settings';
+import { randomUUID } from '../../../lib/uuid';
 
 const VM_TYPE_ICONS: Record<VMType, React.ElementType> = {
   vm: Cpu,
@@ -180,7 +181,7 @@ export const VMManager = React.memo(function VMManager({ nodeId }: Props) {
     const notes = newVM.notes?.trim() ?? '';
     if (!newVM.name?.trim()) return;
     addVM(nodeId, {
-      id: crypto.randomUUID(),
+      id: randomUUID(),
       name: newVM.name!,
       type: (newVM.type as VMType) || 'container',
       status: (newVM.status as VirtualMachine['status']) || 'running',

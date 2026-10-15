@@ -103,6 +103,7 @@ import { AssistantActivityPill } from '../../assistant/components/activity-pill'
 import { AssistantPanel } from '../../assistant/components/assistant-panel';
 import { useAssistantStore } from '../../assistant/store/assistant-store';
 import { useAssistantSettings } from '../../settings/api/assistant-settings';
+import { randomUUID } from '../../../lib/uuid';
 
 function roundedZonePath(width: number, height: number, inset = 14) {
   const x = inset;
@@ -1163,7 +1164,7 @@ const Flow = React.memo(function Flow() {
         if (data.inventory.kind !== 'device') {
           const host = intersecting.find(n => n.type === 'hardware');
           const result = installComponent(host?.id ?? '', {
-            id: crypto.randomUUID(),
+            id: randomUUID(),
             type: data.type,
             name: data.name,
             power_draw: data.power_draw,
@@ -1203,7 +1204,7 @@ const Flow = React.memo(function Flow() {
         const deviceU = data.details?.rack_units || DEFAULT_DEVICE_U[data.type] || 1;
 
         const newNode: HardwareNode = {
-          id: crypto.randomUUID(),
+          id: randomUUID(),
           type: data.type,
           name: data.name || `New ${data.type}`,
           // Position relative to rack, snapped to U-slot grid
@@ -1241,7 +1242,7 @@ const Flow = React.memo(function Flow() {
           const ramVal = data.details?.ram ? Number(data.details.ram) : undefined;
 
           addVM(targetNode.id, {
-            id: crypto.randomUUID(),
+            id: randomUUID(),
             name: data.name ?? '',
             type: 'container',
             status: 'running',
@@ -1264,7 +1265,7 @@ const Flow = React.memo(function Flow() {
 
         if (canHost && canNodeBeNested(data.type)) {
           addInternalComponent(targetNode.id, {
-            id: crypto.randomUUID(),
+            id: randomUUID(),
             type: data.type,
             name: data.name || `New ${data.type}`,
             power_draw: data.power_draw,
@@ -1280,7 +1281,7 @@ const Flow = React.memo(function Flow() {
       }
 
       const newNode: HardwareNode = {
-        id: crypto.randomUUID(),
+        id: randomUUID(),
         type: data.type,
         name: data.name || `New ${data.type}`,
         x: position.x,

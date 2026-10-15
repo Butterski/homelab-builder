@@ -3,6 +3,7 @@ import type { HardwareBlueprint } from '../../catalog/api/use-hardware-blueprint
 import type { HardwareComponent } from '../../catalog/api/use-hardware';
 import { hardwareCategoryToNodeType } from '../../../lib/hardware-taxonomy';
 import { parsePortCount } from './port-count';
+import { randomUUID } from '../../../lib/uuid';
 
 type BlueprintDragData = Partial<HardwareNode> & {
   type: HardwareType;
@@ -100,7 +101,7 @@ export function hardwareComponentToDragData(component: HardwareComponent): Bluep
 export function serviceToVm(service: Service): VirtualMachine {
   const req = service.requirements;
   return {
-    id: crypto.randomUUID(),
+    id: randomUUID(),
     name: service.name,
     type: 'container',
     status: 'running',

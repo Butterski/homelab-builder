@@ -8,6 +8,7 @@ import {
   type PlannedNode,
   type PlannerAnswers,
 } from './types';
+import { randomUUID } from '../../../../lib/uuid';
 
 const SERVICE_BY_GOAL: Record<Goal, string[]> = {
   backup: ['restic', 'duplicati', 'syncthing'],
@@ -36,8 +37,8 @@ export function buildHomelabPlan(
 ): Plan {
   const nodes: PlannedNode[] = [];
   const edges: PlannedEdge[] = [];
-  const routerID = crypto.randomUUID();
-  const switchID = crypto.randomUUID();
+  const routerID = randomUUID();
+  const switchID = randomUUID();
 
   nodes.push({
     id: routerID,
@@ -91,7 +92,7 @@ export function buildHomelabPlan(
     y: number,
     details: Record<string, unknown>,
   ) => {
-    const id = crypto.randomUUID();
+    const id = randomUUID();
     computeIDs.push(id);
     nodes.push({
       id,
@@ -109,7 +110,7 @@ export function buildHomelabPlan(
 
   let rackID: string | undefined;
   if (answers.footprint === 'rack') {
-    rackID = crypto.randomUUID();
+    rackID = randomUUID();
     nodes.push({
       id: rackID,
       type: 'rack',
@@ -163,7 +164,7 @@ export function buildHomelabPlan(
 
   if (answers.goals.includes('backup') || answers.goals.includes('media')) {
     nodes.push({
-      id: crypto.randomUUID(),
+      id: randomUUID(),
       type: 'nas',
       name: 'Storage NAS',
       x: 990,
@@ -182,7 +183,7 @@ export function buildHomelabPlan(
 
   if (answers.goals.includes('home') || answers.goals.includes('network')) {
     nodes.push({
-      id: crypto.randomUUID(),
+      id: randomUUID(),
       type: 'access_point',
       name: 'Wi-Fi Access Point',
       x: 990,
@@ -196,7 +197,7 @@ export function buildHomelabPlan(
 
   if (answers.footprint === 'rack' || answers.reliability === 'resilient') {
     nodes.push({
-      id: crypto.randomUUID(),
+      id: randomUUID(),
       type: 'ups',
       name: 'UPS',
       x: 990,
@@ -231,7 +232,7 @@ export function buildHomelabPlan(
     const catalogService = chooseService(goal, services);
     const fallbackName = GOAL_LABELS[goal] || goal;
     host.vms.push({
-      id: crypto.randomUUID(),
+      id: randomUUID(),
       name: catalogService?.name || fallbackName,
       type: 'container',
       status: 'running',

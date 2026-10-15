@@ -48,6 +48,7 @@ import { withFreshChildIds } from '../lib/hardware-instance';
 import { newTableDetails } from '../../gaming/lib/table';
 import { InventoryPanel } from '../../inventory/components/inventory-panel';
 import { IntegrationsPanel } from '../../integrations/components/integrations-panel';
+import { randomUUID } from '../../../lib/uuid';
 
 // ─── Basic component types ─────────────────────────────────────────────────────
 const HARDWARE_TOOLS: {
@@ -848,7 +849,7 @@ export const HardwareToolbox = React.memo(function HardwareToolbox({
     const index = hardwareNodes.length;
     addHardware(
       withFreshChildIds({
-        id: crypto.randomUUID(),
+        id: randomUUID(),
         type: nodeType,
         name: data.name || 'New ' + nodeType.replace('_', ' '),
         x: 180 + (index % 4) * 250,
@@ -869,7 +870,7 @@ export const HardwareToolbox = React.memo(function HardwareToolbox({
       return;
     }
     addVM(host.id, {
-      id: crypto.randomUUID(),
+      id: randomUUID(),
       name: service.name,
       type: 'container',
       status: 'running',
@@ -1294,7 +1295,7 @@ export const HardwareToolbox = React.memo(function HardwareToolbox({
                         toast.error('A tag with that name already exists.');
                         return;
                       }
-                      const tag: BuilderTag = { id: crypto.randomUUID(), name, color: newTagColor };
+                      const tag: BuilderTag = { id: randomUUID(), name, color: newTagColor };
                       addTag(tag);
                       setNewTagName('');
                       toast.success(`Created tag “${name}”.`);

@@ -332,6 +332,7 @@ describe('reassignAllIPs', () => {
 
 describe('openBuild', () => {
   beforeEach(() => resetStoreWithBuildId());
+  afterEach(() => vi.unstubAllGlobals());
 
   it('loads the server revision even when the build is already open', async () => {
     useBuilderStore.setState({ currentRevision: 3 });
@@ -344,6 +345,86 @@ describe('openBuild', () => {
     expect(useBuilderStore.getState().currentRevision).toBe(4);
     expect(useBuilderStore.getState().projectName).toBe('Renamed');
   });
+
+  it.each(['object', 'json'] as const)(
+    'edits and saves an existing build on HTTP, preserving IDs and settings (%s details)',
+    async detailsFormat => {
+      const getRandomValues = crypto.getRandomValues.bind(crypto);
+      vi.stubGlobal('crypto', { getRandomValues });
+
+      const routerId = '11111111-1111-4111-8111-111111111111';
+      const hostId = '22222222-2222-4222-8222-222222222222';
+      const vmId = '33333333-3333-4333-8333-333333333333';
+      const diskId = '44444444-4444-4444-8444-444444444444';
+      const settings = {
+        planner: { goals: ['backup'] },
+        boughtItems: ['Server'],
+        custom: { keep: true },
+      };
+      const details = { cpu: 8, ram: 32, inventory_item_id: 'owned-server' };
+      const existing = serverBuild({
+        name: 'Existing lab',
+        revision: 7,
+        settings,
+        // Older builds may omit kind and gaming_plan entirely.
+        nodes: [
+          { id: routerId, type: 'router', name: 'Router', ip: '192.168.1.1' },
+          {
+            id: hostId,
+            type: 'server',
+            name: 'Server',
+            ip: '192.168.1.150',
+            details: detailsFormat === 'json' ? JSON.stringify(details) : details,
+            virtual_machines: [
+              { id: vmId, name: 'Guest', type: 'vm', status: 'running', ip: '192.168.1.151' },
+            ],
+            internal_components: [{ id: diskId, type: 'disk', name: 'SSD' }],
+          },
+        ],
+        edges: [{ source_node_id: routerId, target_node_id: hostId, type: 'ethernet' }],
+      });
+      vi.mocked(buildApi.get).mockResolvedValueOnce(existing);
+      await useBuilderStore.getState().openBuild(existing.id);
+      const before = useBuilderStore.getState().getBuildData();
+      expect(useBuilderStore.getState().hasUnsavedChanges()).toBe(false);
+
+      useBuilderStore.getState().duplicateHardware(hostId);
+      const data = useBuilderStore.getState().getBuildData();
+      expect(data.nodes.slice(0, 2)).toEqual(before.nodes);
+      expect(data.nodes[1].vms[0].id).toBe(vmId);
+      expect(data.nodes[1].internal_components![0].id).toBe(diskId);
+      expect(data.edges).toEqual(before.edges);
+      expect(data.settings).toEqual(settings);
+      expect(data.kind).toBe('homelab');
+      expect(data).not.toHaveProperty('gaming_plan');
+      const copy = data.nodes[2];
+      const originalIds = new Set([routerId, hostId, vmId, diskId]);
+      for (const id of [copy.id, copy.internal_components![0].id]) {
+        expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+        expect(originalIds.has(id)).toBe(false);
+      }
+
+      const saved = serverBuild({
+        name: existing.name,
+        revision: 8,
+        settings: data.settings,
+        nodes: data.nodes.map(({ vms, ...node }) => ({ ...node, virtual_machines: vms })),
+        edges: data.edges.map(({ source, target, ...edge }) => ({
+          ...edge,
+          source_node_id: source,
+          target_node_id: target,
+        })),
+      });
+      vi.mocked(buildApi.updateTopology).mockResolvedValueOnce({ build: saved });
+      await useBuilderStore.getState().reassignAllIPs();
+      expect(buildApi.updateTopology).toHaveBeenCalledWith(
+        existing.id,
+        expect.objectContaining({ ...data, revision: 7 }),
+      );
+      useBuilderStore.getState().loadBuild(saved.id, saved.name, saved);
+      expect(useBuilderStore.getState().getBuildData()).toEqual(data);
+    },
+  );
 
   it('sends back loaded settings unchanged, keys it does not manage included', () => {
     // A save replaces the whole settings object on the server, so the Guided

@@ -1,6 +1,7 @@
 import type { GameExposure, Service } from '../../../../types';
 import { newGameInstance, sizeServer } from '../../../gaming/lib/sizing';
 import type { PlannedNode, PlannedVM } from './types';
+import { randomUUID } from '../../../../lib/uuid';
 
 /** Finds the catalog entry of a game or gaming tool by its profile slug. */
 export function gameService(services: Service[], slug: string): Service | undefined {
@@ -18,7 +19,7 @@ export function gameServerVM(
   const instance = newGameInstance(profile, { players, exposure, port_offset: portOffset });
   const sizing = sizeServer(profile, instance.players);
   return {
-    id: crypto.randomUUID(),
+    id: randomUUID(),
     name: service.name,
     type: 'container',
     status: 'running',
@@ -64,7 +65,7 @@ export function gameHost(
   const cpu = atLeast(CORE_SIZES, Math.max(4, cores * 1.25));
   const isServer = ram > 32 || cpu > 8;
   return {
-    id: crypto.randomUUID(),
+    id: randomUUID(),
     type: isServer ? 'server_v2' : 'minipc',
     name,
     ...position,

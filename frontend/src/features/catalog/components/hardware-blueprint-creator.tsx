@@ -36,6 +36,7 @@ import {
 } from '../lib/blueprint-fit';
 import { withoutAssetLink } from '../../../lib/asset-link';
 import { errorMessage } from '../../../lib/utils';
+import { randomUUID } from '../../../lib/uuid';
 
 type Props = {
   open: boolean;
@@ -63,13 +64,6 @@ function splitTags(value: string) {
     .map(tag => tag.trim())
     .filter(Boolean)
     .slice(0, 12);
-}
-
-function makeComponentId() {
-  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-    return crypto.randomUUID();
-  }
-  return `component-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 function previewGrade(utilization: { cpu: number; ram: number; storage: number; ports: number }) {
@@ -107,7 +101,7 @@ function BlueprintForm({ onClose, initialNode }: Omit<Props, 'open'>) {
   const [internalComponents, setInternalComponents] = useState<HardwareComponent[]>(() =>
     (initialNode?.internal_components || []).map(component => ({
       ...component,
-      id: component.id || makeComponentId(),
+      id: component.id || randomUUID(),
     })),
   );
   const [componentType, setComponentType] = useState<HardwareType>('disk');
@@ -182,7 +176,7 @@ function BlueprintForm({ onClose, initialNode }: Omit<Props, 'open'>) {
     setInternalComponents(current => [
       ...current,
       {
-        id: makeComponentId(),
+        id: randomUUID(),
         type: componentType,
         name: componentName.trim() || fallbackName,
         power_draw: numberOrUndefined(componentPower),

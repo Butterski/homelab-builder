@@ -23,6 +23,7 @@ import {
   UPLINK_ID,
 } from '../lib/virtual-network';
 import { VMManager } from './vm-manager';
+import { randomUUID } from '../../../lib/uuid';
 
 function VirtualNode({ data, selected }: NodeProps) {
   return (
@@ -187,7 +188,7 @@ function Editor({ hostId }: { hostId: string }) {
               ...network,
               switches: [
                 ...network.switches,
-                { id: crypto.randomUUID(), name: `vmbr${index}`, x: 280 + index * 260, y: 180 },
+                { id: randomUUID(), name: `vmbr${index}`, x: 280 + index * 260, y: 180 },
               ],
             });
           }}
@@ -259,7 +260,7 @@ function Editor({ hostId }: { hostId: string }) {
                 ...network,
                 edges: [
                   ...network.edges,
-                  { id: crypto.randomUUID(), source: connection.source, target: connection.target },
+                  { id: randomUUID(), source: connection.source, target: connection.target },
                 ],
               });
             }}

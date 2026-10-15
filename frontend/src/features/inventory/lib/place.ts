@@ -10,6 +10,7 @@ import {
   itemAsComponent,
   ramAfterInstall,
 } from './inventory';
+import { randomUUID } from '@/lib/uuid';
 
 /** What placing something from the inventory led to, in words for a toast. */
 type PlaceResult = { ok: boolean; message: string };
@@ -42,7 +43,7 @@ export function placeDevice(
   }
   store.addHardware(
     withFreshChildIds({
-      id: crypto.randomUUID(),
+      id: randomUUID(),
       type: data.type as HardwareNode['type'],
       name: data.name,
       x: position.x,
