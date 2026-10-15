@@ -8,6 +8,7 @@ import (
 
 	"github.com/Butterski/homelab-builder/backend/internal/gaming"
 	"github.com/Butterski/homelab-builder/backend/internal/models"
+	"github.com/Butterski/homelab-builder/backend/internal/wiring"
 )
 
 // ProposalDiff describes what a proposal changes, grouped the way the review
@@ -123,7 +124,7 @@ type AddressChange struct {
 var derivedDetailKeys = map[string]bool{
 	"wan_ip": true, "lan_gateway_ip": true, "lan_subnet": true, "interfaces": true,
 	"virtual_network": true, "dhcp_locked": true, "rack_position": true,
-	"dhcp_pool": true,
+	"dhcp_pool": true, "port_networks": true, "power_load": true,
 }
 
 // storedGame reads the game settings of a stored guest.
@@ -398,6 +399,10 @@ func diffGuests(diff *ProposalDiff, before, after *models.Build) {
 		compare("os", previous.vm.OS, current.vm.OS)
 		compare("status", previous.vm.Status, current.vm.Status)
 		compare("static_ip", requestedVMIP(previous.vm), requestedVMIP(current.vm))
+		previousDetails, _ := detailsMap(previous.vm.Details)
+		currentDetails, _ := detailsMap(current.vm.Details)
+		compare("disk_gb", previousDetails["disk_gb"], currentDetails["disk_gb"])
+		compare("notes", previousDetails["notes"], currentDetails["notes"])
 		// A change to a game server's players or exposure is a change the owner
 		// must see, even when memory and cores stay the same.
 		if was, now := storedGame(previous.vm), storedGame(current.vm); was != nil || now != nil {
@@ -460,11 +465,15 @@ func diffComponents(diff *ProposalDiff, before, after *models.Build) {
 }
 
 // connectionKey identifies a cable by its unordered node pair: edge ids are
-// regenerated on every save and cannot be compared across revisions.
+// regenerated on every save and cannot be compared across revisions. A power
+// cable adds its power input, so two feeds between one pair stay distinct.
 func connectionKey(edge models.Edge) string {
 	a, b := edge.SourceNodeID.String(), edge.TargetNodeID.String()
 	if b < a {
 		a, b = b, a
+	}
+	if edge.Type == wiring.EdgeTypePower {
+		return a + "|" + b + "|power|" + edge.TargetNodeID.String() + ":" + edge.TargetHandle
 	}
 	return a + "|" + b
 }

@@ -1,10 +1,13 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, type CSSProperties } from 'react';
 import { useBuilderStore } from '../store/builder-store';
 import { Card } from '../../../components/ui/card';
 import { Input } from '../../../components/ui/input';
 import { Label } from '../../../components/ui/label';
 import { Button } from '../../../components/ui/button';
 import { Zap, Info, ChevronDown } from 'lucide-react';
+import { isPowerSource } from '../../../lib/hardware-config';
+import { hardwareTypeName } from '../../../lib/hardware-taxonomy';
+import { cn } from '../../../lib/utils';
 
 type DevicePower = { id: string; name: string; power: number };
 
@@ -34,6 +37,7 @@ const POWER_TIPS: Record<string, [number, number]> = {
   hba: [10, 30],
   pcie: [0, 20],
   pdu: [10, 50],
+  power_outlet: [0, 0],
   rack: [0, 0],
   console: [10, 220],
   lan_table: [800, 8000],
@@ -136,6 +140,11 @@ export function PowerUsagePanel() {
     return { totalPower, devicePowers, monthlyCost, yearlyCost: monthlyCost * 12 };
   }, [hardwareNodes, costPerKwh]);
 
+  const powerSources = useMemo(
+    () => hardwareNodes.filter(node => isPowerSource(node.type)),
+    [hardwareNodes],
+  );
+
   const handlePowerUpdate = (nodeId: string, newPower: number) => {
     const node = hardwareNodes.find(n => n.id === nodeId);
     if (!node) return;
@@ -220,6 +229,48 @@ export function PowerUsagePanel() {
           <Card className="p-2 border">
             <PowerPieChart stats={stats} colors={PIE_COLORS} />
           </Card>
+        )}
+
+        {/* Power sources: their load is written by the server on save. */}
+        {powerSources.length > 0 && (
+          <div className="space-y-1.5">
+            <h3 className="px-1 text-[10px] font-bold uppercase tracking-wide">Power sources</h3>
+            {powerSources.map(node => {
+              const load = node.details?.power_load;
+              const capacity = load?.capacity_w ?? null;
+              const over = !!load && capacity !== null && load.load_w > capacity;
+              const percent =
+                load && capacity ? Math.min(100, Math.round((load.load_w / capacity) * 100)) : 0;
+              return (
+                <div
+                  key={node.id}
+                  className="rounded-lg border border-secondary/30 bg-secondary/20 p-2 text-[11px]"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-semibold">{node.name}</p>
+                      <p className="text-[9px] text-muted-foreground">{hardwareTypeName(node.type)}</p>
+                    </div>
+                    <span className={cn('shrink-0 font-bold', over ? 'text-red-400' : 'text-primary')}>
+                      {load ? `${load.load_w}${capacity !== null ? `/${capacity}` : ''} W` : '—'}
+                    </span>
+                  </div>
+                  <div
+                    className="node-resource-track"
+                    style={{ '--node-accent': '#ef4444' } as CSSProperties}
+                  >
+                    <div
+                      className={cn('node-resource-bar', over ? 'node-resource-over' : '')}
+                      style={{ width: `${percent}%` }}
+                    />
+                  </div>
+                  <p className="mt-1 text-[9px] text-muted-foreground">
+                    Sockets: {load ? `${load.sockets_used}/${load.sockets}` : '—'}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
         )}
 
         {/* Device Assignment - Compact */}

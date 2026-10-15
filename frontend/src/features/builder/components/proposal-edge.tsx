@@ -63,6 +63,7 @@ export function ProposalEdge({
 
   const color = status ? DIFF_COLORS[status] : '#71717a';
   const wireless = connectionType === 'wireless';
+  const power = connectionType === 'power';
   // A new cable draws itself from port to device. A dotted one cannot (the
   // drawing is done with the dash pattern), so it fades in.
   const drawn = status === 'added' && !wireless;
@@ -82,7 +83,8 @@ export function ProposalEdge({
           stroke: color,
           strokeWidth: status ? 3 : 2,
           opacity: status === 'removed' ? 0.6 : status ? 1 : 0.55,
-          ...(drawn
+          // A power cable stays solid, also when it goes.
+          ...(drawn || power
             ? {}
             : {
                 strokeDasharray: status === 'removed' ? '6 6' : wireless ? '1 8' : undefined,

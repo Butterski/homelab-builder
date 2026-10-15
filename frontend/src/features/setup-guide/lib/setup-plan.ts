@@ -28,7 +28,7 @@ export interface SetupLink {
   target: string;
   /** The port on the source the cable leaves from, e.g. "eth1". */
   sourcePort?: string;
-  /** 'ethernet', 'wireless' or 'vpn'. */
+  /** 'ethernet', 'wireless', 'vpn' or 'power'. */
   type?: string;
   speed?: string;
   wirelessStandard?: string;
@@ -253,7 +253,10 @@ function rackSection(nodes: HardwareNode[]): SetupSection | null {
 
 function cablingSection(nodes: HardwareNode[], links: SetupLink[]): SetupSection | null {
   const byId = new Map(nodes.map(node => [node.id, node]));
-  const known = links.filter(link => byId.has(link.source) && byId.has(link.target));
+  // Power cables are not part of the network wiring.
+  const known = links.filter(
+    link => link.type !== 'power' && byId.has(link.source) && byId.has(link.target),
+  );
   const tunnels = known.filter(link => link.type === 'vpn');
   const wifi = known.filter(
     link =>
@@ -441,6 +444,7 @@ const RUNS_AS: Record<string, string> = {
   vm: 'Virtual machine',
   lxc: 'LXC',
   container: 'Container',
+  other: 'Other',
 };
 
 function catalogService(guest: VirtualMachine, services: Service[]): Service | undefined {
@@ -462,7 +466,7 @@ function hostSection(
   services: Service[],
 ): SetupSection | null {
   const guests = guestsOf(host);
-  const machines = guests.filter(guest => guest.type === 'vm' || guest.type === 'lxc');
+  const machines = guests.filter(guest => guest.type === 'vm' || guest.type === 'lxc' || guest.type === 'other');
   const containers = guests.filter(guest => guest.type === 'container');
   const hypervisor = machines.length > 0 || host.details?.hypervisor_enabled === true;
   const gateway = routers.find(

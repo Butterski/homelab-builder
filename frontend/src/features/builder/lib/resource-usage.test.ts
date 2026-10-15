@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { VirtualMachine } from '../../../types';
-import { getVmResourceUsage, vmConsumesHostResources } from './resource-usage';
+import { getHostLoad, getVmResourceUsage, vmConsumesHostResources } from './resource-usage';
 
 const makeVm = (overrides: Partial<VirtualMachine> = {}): VirtualMachine => ({
   id: overrides.id ?? 'vm-1',
@@ -12,6 +12,7 @@ const makeVm = (overrides: Partial<VirtualMachine> = {}): VirtualMachine => ({
   ram_mb: overrides.ram_mb,
   ip: overrides.ip,
   os: overrides.os,
+  details: overrides.details,
 });
 
 describe('vmConsumesHostResources', () => {
@@ -31,7 +32,7 @@ describe('getVmResourceUsage', () => {
       makeVm({ id: 'vm-stopped', status: 'stopped', cpu_cores: 4, ram_mb: 4096 }),
     ]);
 
-    expect(usage).toEqual({ cpu: 2, ramMb: 2048, storageGb: 10 });
+    expect(usage).toEqual({ cpu: 2, ramMb: 2048, storageGb: 20 });
   });
 
   it('applies existing fallback values only to active workloads', () => {
@@ -40,6 +41,29 @@ describe('getVmResourceUsage', () => {
       makeVm({ id: 'vm-stopped-defaults', status: 'stopped', cpu_cores: 0, ram_mb: 0 }),
     ]);
 
-    expect(usage).toEqual({ cpu: 1, ramMb: 512, storageGb: 10 });
+    expect(usage).toEqual({ cpu: 1, ramMb: 512, storageGb: 20 });
+  });
+});
+
+describe('getHostLoad', () => {
+  it('counts the disks of every guest against the host storage', () => {
+    const load = getHostLoad({ storage: 500 }, [
+      makeVm({ id: 'a', status: 'running', details: { disk_gb: 300 } }),
+      makeVm({ id: 'b', status: 'stopped', details: { disk_gb: 400 } }),
+    ]);
+
+    expect(load.usedStorageGb).toBe(700);
+    expect(load.totalStorageGb).toBe(500);
+    expect(load.storageWarning).toBe(true);
+  });
+
+  it('counts a guest without a disk size as 10 GB and adds disk components', () => {
+    const load = getHostLoad({ storage: 5 }, [makeVm()], [
+      { id: 'd', type: 'disk', name: 'SSD', details: { storage: 100 } },
+    ]);
+
+    expect(load.usedStorageGb).toBe(10);
+    expect(load.totalStorageGb).toBe(105);
+    expect(load.storageWarning).toBe(false);
   });
 });
