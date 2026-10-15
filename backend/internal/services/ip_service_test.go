@@ -429,9 +429,13 @@ func TestCalculateNetwork_NonNetworkTypes_SkipIP(t *testing.T) {
 
 	router := createNode(t, tx, buildID, "router", "Router", "192.168.1.1")
 	gpu := createNode(t, tx, buildID, "gpu", "GPU", "")
+	cpu := createNode(t, tx, buildID, "cpu", "CPU", "")
+	pcie := createNode(t, tx, buildID, "pcie", "PCIe Card", "")
 	disk := createNode(t, tx, buildID, "disk", "Disk", "")
 
 	connectNodes(t, tx, buildID, router.ID, gpu.ID)
+	connectNodes(t, tx, buildID, router.ID, cpu.ID)
+	connectNodes(t, tx, buildID, router.ID, pcie.ID)
 	connectNodes(t, tx, buildID, router.ID, disk.ID)
 
 	if err := svc.CalculateNetwork(buildID); err != nil {
@@ -439,6 +443,12 @@ func TestCalculateNetwork_NonNetworkTypes_SkipIP(t *testing.T) {
 	}
 	if ip := fetchIP(t, tx, gpu.ID); ip != "" {
 		t.Errorf("GPU should never get an IP, got %q", ip)
+	}
+	if ip := fetchIP(t, tx, cpu.ID); ip != "" {
+		t.Errorf("CPU should never get an IP, got %q", ip)
+	}
+	if ip := fetchIP(t, tx, pcie.ID); ip != "" {
+		t.Errorf("PCIe card should never get an IP, got %q", ip)
 	}
 	if ip := fetchIP(t, tx, disk.ID); ip != "" {
 		t.Errorf("Disk should never get an IP, got %q", ip)

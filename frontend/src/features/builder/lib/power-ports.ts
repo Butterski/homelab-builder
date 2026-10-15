@@ -22,6 +22,7 @@ const NO_POWER_INPUT: Record<string, true> = {
   rack: true,
   disk: true,
   gpu: true,
+  cpu: true,
   hba: true,
   pcie: true,
   vps: true,

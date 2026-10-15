@@ -131,7 +131,7 @@ type AppliedTopology struct {
 var addableNodeTypes = map[string]bool{
 	"router": true, "switch": true, "firewall": true, "server_v2": true, "minipc": true,
 	"pc": true, "nas": true, "sbc": true, "vps": true, "access_point": true, "rack": true,
-	"iot": true, "ups": true, "modem": true, "pdu": true, "power_outlet": true,
+	"iot": true, "ups": true, "modem": true, "pdu": true, "power_outlet": true, "cpu": true,
 	nodeTypeConsole: true, nodeTypeLANTable: true,
 }
 
@@ -139,7 +139,7 @@ var defaultNodeNames = map[string]string{
 	"router": "Router", "switch": "Switch", "firewall": "Firewall", "server_v2": "Server",
 	"minipc": "Mini PC", "pc": "PC", "nas": "NAS", "sbc": "SBC", "vps": "VPS",
 	"access_point": "Access Point", "rack": "Rack", "iot": "IoT Device", "ups": "UPS",
-	"modem": "Modem", "pdu": "PDU", "power_outlet": "Power Outlet", nodeTypeConsole: "Console", nodeTypeLANTable: "LAN Table",
+	"modem": "Modem", "pdu": "PDU", "power_outlet": "Power Outlet", "cpu": "CPU", nodeTypeConsole: "Console", nodeTypeLANTable: "LAN Table",
 }
 
 // Details keys the canvas and IPAM own; operations may not write them.
@@ -478,7 +478,7 @@ func (ed *topologyEditor) addNode(op TopologyOp) (TopologyOp, error) {
 		return op, errors.New("type is required (or pass hardware_id from search_hardware)")
 	}
 	if !addableNodeTypes[nodeType] {
-		return op, fmt.Errorf("unsupported node type %q; use one of %s. Disks, GPUs and cards are added with add_component", nodeType, joinKeys(addableNodeTypes))
+		return op, fmt.Errorf("unsupported node type %q; use one of %s. Disks, CPUs, GPUs and cards are added with add_component", nodeType, joinKeys(addableNodeTypes))
 	}
 	if op.Name != nil {
 		name = *op.Name

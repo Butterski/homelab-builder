@@ -26,7 +26,7 @@ const (
 // the chain, a rack is furniture, components draw through their host and a
 // VPS runs elsewhere.
 var noPowerInputTypes = map[string]bool{
-	"power_outlet": true, "rack": true, "disk": true, "gpu": true, "hba": true, "pcie": true, "vps": true,
+	"power_outlet": true, "rack": true, "disk": true, "gpu": true, "cpu": true, "hba": true, "pcie": true, "vps": true,
 }
 
 var defaultOutlets = map[string]int{"ups": 6, "pdu": 8, "power_outlet": 2}

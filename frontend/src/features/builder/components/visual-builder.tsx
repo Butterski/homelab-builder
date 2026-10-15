@@ -1250,6 +1250,7 @@ const Flow = React.memo(function Flow() {
             id: crypto.randomUUID(),
             type: data.type,
             name: data.name || `New ${data.type}`,
+            power_draw: data.power_draw,
             details: data.details || {},
           });
           return;

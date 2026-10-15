@@ -129,6 +129,7 @@ export type HardwareType =
   | 'access_point'
   | 'disk'
   | 'gpu'
+  | 'cpu'
   | 'hba'
   | 'pcie'
   | 'ups'
