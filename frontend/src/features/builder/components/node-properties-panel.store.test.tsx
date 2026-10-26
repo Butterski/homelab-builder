@@ -71,4 +71,24 @@ describe('NodePropertiesPanel on the builder store', () => {
     expect(stored()).toMatchObject({ name: 'Backup NAS', ip: '192.168.1.100' });
     expect(stored()?.details).toEqual({ model: 'Synology DS923+', ram: 4, storage: 12000 });
   });
+
+  it('keeps the chosen icon through the form write and removes only the icon on reset', () => {
+    act(() => useBuilderStore.getState().selectNode('nas'));
+    fireEvent.click(screen.getByRole('button', { name: 'Icon' }));
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search icons' }), {
+      target: { value: 'proxmox' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Proxmox' }));
+    act(() => vi.advanceTimersByTime(1000));
+    expect(stored()?.details).toEqual({ ...nas.details, icon: 'proxmox' });
+
+    fireEvent.change(screen.getByDisplayValue('Storage NAS'), { target: { value: 'Backup NAS' } });
+    act(() => vi.advanceTimersByTime(1000));
+    expect(stored()).toMatchObject({ name: 'Backup NAS', details: { icon: 'proxmox' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Icon' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Use default icon' }));
+    act(() => vi.advanceTimersByTime(1000));
+    expect(stored()?.details).toEqual(nas.details);
+  });
 });

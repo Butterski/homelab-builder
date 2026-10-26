@@ -144,6 +144,8 @@ export type HardwareType =
   | 'lan_table';
 
 export interface HardwareSpec {
+  /** Stable ID of a locally bundled brand icon; absent keeps the device-type icon. */
+  icon?: string;
   /** IDs of the custom builder tags assigned to this device. */
   tags?: string[];
   notes?: string;

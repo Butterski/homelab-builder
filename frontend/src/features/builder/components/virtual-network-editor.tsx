@@ -24,6 +24,7 @@ import {
 } from '../lib/virtual-network';
 import { VMManager } from './vm-manager';
 import { randomUUID } from '../../../lib/uuid';
+import { BrandIcon } from '../../icons/components/brand-icon';
 
 function VirtualNode({ data, selected }: NodeProps) {
   return (
@@ -32,7 +33,7 @@ function VirtualNode({ data, selected }: NodeProps) {
     >
       <Handle type="target" position={Position.Top} id="in" className="!h-3 !w-3" />
       <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
-        <Network className="h-4 w-4" />
+        <BrandIcon icon={data.icon} className="size-4 shrink-0" fallback={<Network className="h-4 w-4" />} />
         {String(data.kind)}
       </div>
       <div className="truncate font-medium">{String(data.label)}</div>
@@ -88,6 +89,7 @@ function Editor({ hostId }: { hostId: string }) {
         data: {
           kind: 'Physical uplink',
           label: host.name,
+          icon: host.details?.icon,
           subtitle: host.ip || 'Connect the host to a router',
         },
       },
@@ -112,6 +114,7 @@ function Editor({ hostId }: { hostId: string }) {
         data: {
           kind: vm.type === 'vm' ? 'Virtual machine' : 'Container',
           label: vm.name,
+          icon: vm.details?.icon,
           subtitle: !reached.has(vm.id)
             ? 'Disconnected from uplink'
             : vm.ip || 'Awaiting IP assignment',

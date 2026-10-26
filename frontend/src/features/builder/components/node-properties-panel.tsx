@@ -40,6 +40,7 @@ import { DEFAULT_DEVICE_U } from './rack-node-constants';
 import { useHardware } from '../../catalog/api/use-hardware';
 import { HardwareBlueprintCreator } from '../../catalog/components/hardware-blueprint-creator';
 import { Textarea } from '../../../components/ui/textarea';
+import { IconPicker } from '../../icons/components/icon-picker';
 
 const IP_REGEX =
   /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
@@ -567,6 +568,18 @@ export const NodePropertiesPanel = memo(function NodePropertiesPanel() {
               placeholder={isRack ? 'e.g. Main Rack' : 'e.g. Main Router'}
             />
           </div>
+
+          <IconPicker
+            value={selectedNode.details?.icon}
+            onChange={icon => {
+              const current = useBuilderStore.getState().hardwareNodes.find(node => node.id === selectedNode.id);
+              if (!current || current.details?.icon === icon) return;
+              const details = { ...current.details };
+              if (icon) details.icon = icon;
+              else delete details.icon;
+              updateHardware(current.id, { details });
+            }}
+          />
 
           {isLegacyServer && (
             <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 space-y-2">

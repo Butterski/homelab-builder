@@ -54,6 +54,7 @@ import {
   powerOutputLeft,
 } from '../lib/power-ports';
 import { defaultRole, readPortConfig, readVlans, type PortRole } from '../lib/port-config';
+import { BrandIcon } from '../../icons/components/brand-icon';
 
 type HardwareNodeData = {
   onOpenVirtualNetwork?: () => void;
@@ -274,7 +275,7 @@ function VmChip({ vm }: { vm: VirtualMachine }) {
       )}
     >
       <div className="node-vm-icon">
-        <Icon className="size-3 shrink-0" />
+        <BrandIcon icon={vm.details?.icon} className="size-3 shrink-0" fallback={<Icon className="size-3 shrink-0" />} />
       </div>
       <div className="min-w-0 flex-1">
         <div className="truncate font-semibold max-w-28" title={vm.name}>
@@ -589,7 +590,11 @@ export const HardwareNode = memo(({ id, data, selected }: NodeProps) => {
           )}
         >
           <div className="node-icon-plate">
-            <Icon className={cn('size-4 shrink-0', cfg.iconColor)} />
+            <BrandIcon
+              icon={details.icon}
+              className="size-4 shrink-0"
+              fallback={<Icon className={cn('size-4 shrink-0', cfg.iconColor)} />}
+            />
           </div>
           <div className="min-w-0 flex-1">
             <span

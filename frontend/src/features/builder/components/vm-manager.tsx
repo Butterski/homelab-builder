@@ -10,6 +10,8 @@ import { Badge } from '../../../components/ui/badge';
 import { Plus, Trash2, Cpu, Box, Container, Server, Wifi, Pencil, Check, X } from 'lucide-react';
 import { GameServerSettings } from '../../gaming/components/game-server-settings';
 import { randomUUID } from '../../../lib/uuid';
+import { BrandIcon } from '../../icons/components/brand-icon';
+import { IconPicker } from '../../icons/components/icon-picker';
 
 const VM_TYPE_ICONS: Record<VMType, React.ElementType> = {
   vm: Cpu,
@@ -29,7 +31,7 @@ interface Props {
 }
 
 /** The form state of a guest. The disk size is kept as typed; empty means not set. */
-type VMDraft = Partial<VirtualMachine> & { disk_gb?: string; notes?: string };
+type VMDraft = Partial<VirtualMachine> & { disk_gb?: string; notes?: string; icon?: string };
 
 const EMPTY_VM_DRAFT: VMDraft = {
   type: 'container',
@@ -78,6 +80,10 @@ function VMFormFields({ draft, setDraft, namePlaceholder }: VMFormFieldsProps) {
           </select>
         </div>
       </div>
+      <IconPicker
+        value={draft.icon}
+        onChange={icon => setDraft(p => ({ ...p, icon }))}
+      />
       <div className="grid grid-cols-3 gap-2">
         <div>
           <Label className="text-[10px]">OS / Image</Label>
@@ -186,7 +192,12 @@ export const VMManager = React.memo(function VMManager({ nodeId }: Props) {
       type: (newVM.type as VMType) || 'container',
       status: (newVM.status as VirtualMachine['status']) || 'running',
       ip: newVM.ip || undefined,
-      details: { static_ip: newVM.ip || '', ...(disk > 0 && { disk_gb: disk }), ...(notes ? { notes } : {}) },
+      details: {
+        static_ip: newVM.ip || '',
+        ...(disk > 0 && { disk_gb: disk }),
+        ...(notes ? { notes } : {}),
+        ...(newVM.icon ? { icon: newVM.icon } : {}),
+      },
       mac_address: newVM.mac_address || undefined,
       os: newVM.os || undefined,
       cpu_cores: newVM.cpu_cores,
@@ -217,6 +228,7 @@ export const VMManager = React.memo(function VMManager({ nodeId }: Props) {
       ram_mb: vm.ram_mb || 512,
       disk_gb: Number(vm.details?.disk_gb) > 0 ? String(vm.details?.disk_gb) : '',
       notes: typeof vm.details?.notes === 'string' ? vm.details.notes : '',
+      icon: typeof vm.details?.icon === 'string' ? vm.details.icon : undefined,
     });
   };
 
@@ -232,6 +244,8 @@ export const VMManager = React.memo(function VMManager({ nodeId }: Props) {
     else delete details.disk_gb;
     if (notes) details.notes = notes;
     else delete details.notes;
+    if (editVM.icon) details.icon = editVM.icon;
+    else delete details.icon;
     updateVM(nodeId, editingVmId, {
       name: editVM.name!,
       type: (editVM.type as VMType) || 'container',
@@ -328,7 +342,11 @@ export const VMManager = React.memo(function VMManager({ nodeId }: Props) {
           <div key={vm.id} className="rounded-lg border bg-background/60 p-2.5">
             <div className="flex items-start gap-2">
             <div className="mt-0.5 shrink-0">
-              <Icon className="size-3.5 text-muted-foreground" />
+              <BrandIcon
+                icon={vm.details?.icon}
+                className="size-3.5"
+                fallback={<Icon className="size-3.5 text-muted-foreground" />}
+              />
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">

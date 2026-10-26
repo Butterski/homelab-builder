@@ -20,6 +20,7 @@ The core of the application is a visual canvas powered by **ReactFlow**.
 - **Nested Virtualization**: Define Virtual Machines (VMs), Containers, or LXCs directly on compute nodes, and wire them in a host's virtual network. See [docs/VIRTUAL-NETWORKS.md](./docs/VIRTUAL-NETWORKS.md).
 - **Polish**: One click arranges the canvas with a layout engine written for it: internet at the top, every device under the port it is plugged into, a rack moved as one block, no overlapping cards, and the cables of the network tree drawn without a crossing. Two styles (Hierarchy and Compact), shown on your own build before anything moves; one `Ctrl+Z` undoes it.
 - **Saves by itself, stays current**: The canvas is saved to PostgreSQL as you work and says honestly whether it is saved. A failed save is retried, changes made in another tab arrive without a reload, and an edit that lost against a newer version is one Undo away.
+- **Brand icons**: Select a device, open **Icon**, and search 79 bundled hardware, platform, network and service marks. VMs, containers and LXCs have their own icon choice in their add/edit form; save that form to apply it. **Use default icon** restores the generic type icon. Choices are saved with the project and shown on the canvas, shared builds and the host's virtual network.
 
 ### 2. Automated IP Management (`hlbIPAM`)
 A sophisticated backend microservice manages network addressing:
@@ -237,3 +238,10 @@ HLBuilder's custom 3-layer structural logo was designed and created by **[Paweł
 
 ## 📄 License
 This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**. See the [LICENSE](./LICENSE) file for details.
+
+### Bundled brand artwork
+
+Brand icons are served locally and work without a third-party icon service. Artwork comes from [Homarr Dashboard Icons](https://github.com/homarr-labs/dashboard-icons) at commit `320c819da84048d5a3066e2578bfa83be9019fdf`, under [Apache-2.0](frontend/public/licenses/dashboard-icons-LICENSE.txt). The [asset manifest](frontend/public/brand-icons/manifest.json) records each original source URL, checksum and contrast background. Product names and marks belong to their respective owners; inclusion does not grant trademark rights or imply endorsement.
+
+Device and guest selections use a stable catalog ID in `details.icon`; an absent or unrecognized ID displays the existing generic icon. Only bundled IDs resolve to artwork, never arbitrary URLs or inline SVG supplied in build data.
+

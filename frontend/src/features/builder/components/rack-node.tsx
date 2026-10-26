@@ -3,6 +3,7 @@ import { type NodeProps } from '@xyflow/react';
 import type { HardwareSpec } from '../../../types';
 import { useBuilderStore } from '../store/builder-store';
 import { RACK_U_HEIGHT_PX, RACK_WIDTH_PX, RACK_RAIL_WIDTH, DEFAULT_DEVICE_U, rackHeightPx } from './rack-node-constants';
+import { BrandIcon } from '../../icons/components/brand-icon';
 
 type RackNodeData = {
   label: string;
@@ -49,14 +50,20 @@ const RackNode = memo(({ data, selected, id }: NodeProps) => {
       {/* Rack Header */}
       <div className="rack-node-header">
         <div className="rack-node-header-title">
-          <svg className="rack-node-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="2" y="2" width="20" height="20" rx="2" />
-            <line x1="2" y1="8" x2="22" y2="8" />
-            <line x1="2" y1="14" x2="22" y2="14" />
-            <circle cx="18" cy="5" r="1" />
-            <circle cx="18" cy="11" r="1" />
-            <circle cx="18" cy="17" r="1" />
-          </svg>
+          <BrandIcon
+            icon={nodeData.details?.icon}
+            className="rack-node-icon"
+            fallback={
+              <svg className="rack-node-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="2" y="2" width="20" height="20" rx="2" />
+                <line x1="2" y1="8" x2="22" y2="8" />
+                <line x1="2" y1="14" x2="22" y2="14" />
+                <circle cx="18" cy="5" r="1" />
+                <circle cx="18" cy="11" r="1" />
+                <circle cx="18" cy="17" r="1" />
+              </svg>
+            }
+          />
           <span className="rack-node-name" title={nodeData.label}>
             {nodeData.label}
           </span>
