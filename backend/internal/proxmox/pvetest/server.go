@@ -15,8 +15,8 @@ import (
 
 const (
 	// TokenID and Secret are the only credentials the server accepts.
-	TokenID = "hlbuilder@pve!hlbuilder"
-	Secret  = "3f1c5d5e-0000-4000-8000-1234567890ab"
+	TokenID = "hlbuilder@pve!hlbuilder"              // #nosec G101 -- Fixed credential for this development-only fake API, not a real cluster.
+	Secret  = "3f1c5d5e-0000-4000-8000-1234567890ab" // #nosec G101 -- Fixed credential for this development-only fake API, not a real cluster.
 
 	apiPrefix = "/api2/json"
 )

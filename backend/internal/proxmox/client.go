@@ -206,7 +206,7 @@ func NewClient(opts Options) *Client {
 				MinVersion: tls.VersionTLS12,
 				// Verification is done in VerifyConnection, where the certificate
 				// can be compared with a pinned one and reported when it is unknown.
-				InsecureSkipVerify: true, //nolint:gosec
+				InsecureSkipVerify: true, // #nosec G402 -- VerifyConnection enforces the exact certificate pin or public CA and hostname verification.
 				VerifyConnection: func(state tls.ConnectionState) error {
 					return client.verify(state, host, pinned)
 				},

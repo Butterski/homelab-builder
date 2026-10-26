@@ -168,6 +168,11 @@ many that were.
 - **Sent to one address.** It goes to the address you entered it for, and nowhere else. Change
   the address or the token id and the stored secret is deleted unless you enter it again; a
   changed address also forgets the trusted certificate. The client follows no redirects.
+- **Verified before authentication.** The TLS client's `VerifyConnection` accepts only the
+  exact certificate you pinned, or, without a pin, a certificate whose chain and hostname pass
+  public CA verification. The scoped `#nosec G402` annotation documents this custom verification;
+  it does not bypass it. The fixed credentials annotated `#nosec G101` belong only to
+  `internal/proxmox/pvetest`, the development fake API, not to a real integration.
 - **Read only.** The client can send nothing but GET. It reads `/version`,
   `/cluster/resources`, `/cluster/status`, each host's `status` and `network`, each guest's
   `config`, and for a running guest that takes its address from DHCP, the address it holds.

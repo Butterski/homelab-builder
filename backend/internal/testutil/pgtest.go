@@ -56,7 +56,9 @@ func connect() (*gorm.DB, error) {
 	// Ignore "already exists": another test binary may have created it first.
 	admin.Exec(fmt.Sprintf(`CREATE DATABASE "%s"`, name))
 	if sqlAdmin, err := admin.DB(); err == nil {
-		sqlAdmin.Close()
+		if err := sqlAdmin.Close(); err != nil {
+			return nil, fmt.Errorf("close postgres admin db: %w", err)
+		}
 	}
 
 	db, err := gorm.Open(postgres.Open(fmt.Sprintf(
